@@ -92,7 +92,7 @@ describe('Genome v2 Research table', () => {
       'Compound Interest'
     );
 
-    for (const tier of [3, 4, 5]) {
+    for (const tier of [2, 3, 4]) {
       expect(screen.getByTestId(`workbench-tier-AURUM-${tier}`)).toHaveClass(
         'min-h-11',
         'min-w-11'
@@ -106,6 +106,19 @@ describe('Genome v2 Research table', () => {
 
     fireEvent.click(screen.getByTestId('workbench-snake-primal'));
     expect(screen.getByTestId('workbench-gene-time_dilation')).toBeInTheDocument();
+  });
+
+  it('shows every gene Strain at first glance, including both halves of a dual-Strain gene', async () => {
+    await renderResearch();
+    expect(screen.getByTestId('workbench-gene-loan_shark-strain-AURUM')).toBeVisible();
+    expect(screen.getByTestId('workbench-gene-loan_shark-strain-UMBRA')).toBeVisible();
+
+    fireEvent.click(screen.getByTestId('workbench-gene-loan_shark'));
+    expect(screen.getByTestId('workbench-focused-gene-strain-AURUM')).toBeVisible();
+    expect(screen.getByTestId('workbench-focused-gene-strain-UMBRA')).toBeVisible();
+    fireEvent.click(screen.getByTestId('workbench-thread'));
+    expect(screen.getByTestId('workbench-locus-0-strain-AURUM')).toBeVisible();
+    expect(screen.getByTestId('workbench-locus-0-strain-UMBRA')).toBeVisible();
   });
 
   it('reveals exact Strain and future Splice consequences by tap', async () => {

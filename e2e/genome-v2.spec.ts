@@ -70,6 +70,8 @@ test.describe('Genome v2 live player journey', () => {
     await expect(phoenix).toContainText('Phoenix');
     await expect(phoenix).toContainText('UMBRA');
     await expect(phoenix).toContainText('FERAL');
+    await expect(page.getByTestId('gene-option-0-strain-UMBRA')).toBeVisible();
+    await expect(page.getByTestId('gene-option-0-strain-FERAL')).toBeVisible();
 
     // The choice names the immediate Strain crossing and the next threshold;
     // the player is never expected to memorize either ladder.
@@ -78,7 +80,7 @@ test.describe('Genome v2 live player journey', () => {
     await expect(page.getByTestId('loom-strain-UMBRA-rule')).toContainText('NOW');
     await expect(page.getByTestId('loom-strain-FERAL')).toContainText('FERAL');
     await expect(page.getByTestId('loom-strain-FERAL')).toContainText('1 → 2');
-    await expect(page.getByTestId('loom-strain-FERAL-rule')).toContainText('NEXT');
+    await expect(page.getByTestId('loom-strain-FERAL-rule')).toContainText('NOW');
 
     await testInfo.attach('tactical-loom-mobile', {
       body: await page.screenshot(),

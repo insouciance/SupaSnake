@@ -1,6 +1,25 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.11 · amended 2 August 2026
+**Version:** 1.12 · amended 2 August 2026
+**v1.12 amendment (explicit owner ruling, 2 August 2026):** Genome v2 Strain
+ladders activate at **2/3/4 points**, mapped to Minor, Expression, and Apex.
+With only six loci, the previously approved 3/4/5 ladder delayed the first
+meaningful family reaction too far and made deep commitment unnecessarily
+restrictive. The FTUE gates remain semantic: Minor is available from the first
+run, Expression requires two validated banks, and Apex requires ten validated
+banks or the existing M3 alternate. Spawn inheritance remains capped at two
+points per Strain, World Conditions may shift the frozen run ladder by at most
+one point, and Genome v1 sessions keep their original rules.
+
+Strain affiliation is also part of a gene's first-read identity. Every v2 gene
+shown in the Tactical Loom or Workbench carries a compact badge containing its
+rune, independent Strain color, and written Strain name; dual-Strain genes show
+both badges. Color alone, a hover state, or buried description text is not
+sufficient. This correction is made before the first production Genome v2
+session. If that premise proves false at release time, the ladder change must be
+versioned as a new ruleset rather than silently changing an active run. The
+owner approved this correction during the active Genome v2 build and waived the
+cooling period; the trade-off is recorded in §15.
 **v1.11 amendment (explicit owner ruling, 2 August 2026):** the live Loom's
 intuition must include legible second- and third-order consequences, not merely
 the immediate arithmetic. Every candidate names and depicts its Strain tags.
@@ -890,7 +909,7 @@ genes produce over a million six-gene combinations (F6). Rulings:
   inactive genes are shelved, not deleted, and may rotate in via seasons *within the
   cap*.
 - The FTUE remains server-enforced, but v1.9 replaces hidden depth with a visible
-  activation ramp: Strain tags and every 3/4/5 rung are visible immediately;
+  activation ramp: Strain tags and every 2/3/4 rung are visible immediately;
   CONTINUE activates after 1 validated bank, Expressions after 2, MUTATE after 4,
   spawn inheritance and Splices after 6, and Apex after 10 or M3 [H]. Locked portal
   verbs and ladder effects explain their server-authored requirement rather than
@@ -1824,6 +1843,7 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 30 | **Genome depth remains hidden behind the 4/8/10/12/15/20-bank FTUE and live offers disclose only prose plus a partial hint** | **v1.9:** the Tactical Loom makes the offer the run's explicit strategy break; future portal verbs and all ladders are visible from run one, while activation advances at 1/2/4/6/10 banks [H]. Explicit owner ruling, 1 August 2026; cooling period waived | The unusually quiet early game and the lowest possible first-session information load. Gained: legible aspiration, learnable n-order buildcraft, and a genuine skill gap without requiring Codex memorisation or a cheat sheet |
 | 31 | **Every affected ladder, one-step Splice path, liability ledger, and BANK/crash projection belongs in the live Tactical Loom** (v1.9) | **v1.10:** intuition in-run, Research outside. The live Loom shows only the immediate actionable delta and irreversible consequences; Codex/Workbench carries the complete visible future, direct experimentation, and on-demand arithmetic. No in-run expert expander. Explicit owner ruling, 2 August 2026; cooling period waived | The guarantee that every n-order possibility is visible without leaving the run. Gained: a mobile-legible decision beat, lower working-memory load, and preservation of flow. The permanent guardrail is that a player is never blind about what the current choice activates, breaks, costs, or exposes |
 | 32 | **v1.10's live surface shows only a newly activated or lost rung/Splice** | **v1.11:** the focused choice shows its complete affected 3/4/5 route and all directly connected Splice branches as a compact rune reaction map; unrelated systems and exhaustive research remain outside the run. Explicit owner ruling, 2 August 2026; cooling period waived | The smallest possible live consequence pane. Gained: visible second-/third-order strategy, explicit Strain identity, and learnable buildcraft without recreating a table, solver, or expert dashboard |
+| 33 | **Genome v2 Strain ladders activate at 3/4/5 points** | **v1.12:** the v2 ladder activates at 2/3/4, mapped to Minor/Expression/Apex; FTUE gates remain semantic, v1 remains unchanged, and every Loom/Workbench gene exposes rune + color + written Strain badge at first read. Explicit owner ruling, 2 August 2026; cooling period waived | The wider delay before a run's first Strain effect and the stricter concentration needed to reach Apex. Gained: meaningful family identity after two points within a six-locus Genome, earlier build feedback, and immediate legibility without requiring Codex memorisation. Pre-release compatibility condition: no production v2 session may exist before this correction ships |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
@@ -2047,7 +2067,7 @@ deliberately undecided pending data.
 
 ---
 
-*Ratified 25 July 2026; amended through v1.11 on 2 August 2026. The owner should be able to read this and recognize their own
+*Ratified 25 July 2026; amended through v1.12 on 2 August 2026. The owner should be able to read this and recognize their own
 game — better organized, with the avoided decisions made and priced. Where it is
 wrong, amend it honestly: name the rule, pay the cost, record the overturn. What it
 must never become is a document that is merely agreed with.*

@@ -5,7 +5,7 @@ import {
 } from './genomeV2AtlasAdapter';
 
 describe('Genome v2 Atlas adapter', () => {
-  it('shows the complete roster, every 3/4/5 ladder, and every tactical recipe', () => {
+  it('shows the complete roster, every 2/3/4 ladder, and every tactical recipe', () => {
     const model = buildGenomeV2AtlasModel();
     expect(model.rulesVersion).toBe(2);
     expect(model.genes).toHaveLength(16);
@@ -16,7 +16,7 @@ describe('Genome v2 Atlas adapter', () => {
     ]));
     expect(model.strains).toHaveLength(5);
     for (const strain of model.strains) {
-      expect(strain.tiers.map((tier) => tier.points)).toEqual([3, 4, 5]);
+      expect(strain.tiers.map((tier) => tier.points)).toEqual([2, 3, 4]);
     }
     expect(model.splices).toHaveLength(GENOME_V2_SPLICE_IDS.length);
     expect(model.splices.every((splice) => splice.parentIds.length === 2)).toBe(true);

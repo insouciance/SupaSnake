@@ -534,7 +534,7 @@ export interface GenomeV2State {
   offerTiltStrain: StrainId | null;
   /** World Condition/Gauntlet ladder suppression frozen for the run. */
   suppressedStrains: StrainId[];
-  /** Per-strain shift of the visible 3/4/5 ladder thresholds. */
+  /** Per-strain shift of the visible 2/3/4 ladder thresholds. */
   strainThresholdDelta: Partial<Record<StrainId, number>>;
   eventIndex: number;
   tick: number;
@@ -954,8 +954,20 @@ export function genomeV2FtueFromPresentation(
   return deriveGenomeV2Ftue(expected.bankedRuns, expected.masteryLevel);
 }
 
+export const GENOME_V2_STRAIN_THRESHOLDS = {
+  minor: 2,
+  expression: 3,
+  apex: 4,
+} as const;
+
+/** Current World Conditions shift the complete ladder by at most one point. */
+export const GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT = 1;
+
+export type GenomeV2StrainThreshold =
+  (typeof GENOME_V2_STRAIN_THRESHOLDS)[keyof typeof GENOME_V2_STRAIN_THRESHOLDS];
+
 export interface GenomeV2StrainLadderTier {
-  points: 3 | 4 | 5;
+  points: GenomeV2StrainThreshold;
   name: string;
   rule: string;
 }
@@ -965,29 +977,29 @@ export const GENOME_V2_STRAIN_LADDERS: Readonly<
   Record<StrainId, readonly GenomeV2StrainLadderTier[]>
 > = {
   AURUM: [
-    { points: 3, name: 'Mint', rule: 'Successful active contracts mint visible Yield.' },
-    { points: 4, name: 'Dividend', rule: 'BANK converts execution chains into a premium.' },
-    { points: 5, name: 'Treasury', rule: 'One forfeitable reserve may compound across portals.' },
+    { points: 2, name: 'Mint', rule: 'Successful active contracts mint visible Yield.' },
+    { points: 3, name: 'Dividend', rule: 'BANK converts execution chains into a premium.' },
+    { points: 4, name: 'Treasury', rule: 'One forfeitable reserve may compound across portals.' },
   ],
   VOLT: [
-    { points: 3, name: 'Telemetry', rule: 'Route budgets reveal their exact execution margin.' },
-    { points: 4, name: 'Relay', rule: 'A clean route can arm the next compatible challenge.' },
-    { points: 5, name: 'Overclock', rule: 'The player may activate a rewarded, bounded speed burst.' },
+    { points: 2, name: 'Telemetry', rule: 'Route budgets reveal their exact execution margin.' },
+    { points: 3, name: 'Relay', rule: 'A clean route can arm the next compatible challenge.' },
+    { points: 4, name: 'Overclock', rule: 'The player may activate a rewarded, bounded speed burst.' },
   ],
   FERAL: [
-    { points: 3, name: 'Mass', rule: 'Body pressure visibly raises FERAL execution value.' },
-    { points: 4, name: 'Territory', rule: 'Clean coils can claim strategically useful space.' },
-    { points: 5, name: 'Worldbody', rule: 'Perfect body control converts pressure into a major payout.' },
+    { points: 2, name: 'Mass', rule: 'Body pressure visibly raises FERAL execution value.' },
+    { points: 3, name: 'Territory', rule: 'Clean coils can claim strategically useful space.' },
+    { points: 4, name: 'Worldbody', rule: 'Perfect body control converts pressure into a major payout.' },
   ],
   FLUX: [
-    { points: 3, name: 'Vector', rule: 'Planned terrain interactions preview a legal exit.' },
-    { points: 4, name: 'Riftcraft', rule: 'The player may trade permanent space for route power.' },
-    { points: 5, name: 'Topology', rule: 'Linked spatial actions can reshape one target route.' },
+    { points: 2, name: 'Vector', rule: 'Planned terrain interactions preview a legal exit.' },
+    { points: 3, name: 'Riftcraft', rule: 'The player may trade permanent space for route power.' },
+    { points: 4, name: 'Topology', rule: 'Linked spatial actions can reshape one target route.' },
   ],
   UMBRA: [
-    { points: 3, name: 'Stake', rule: 'At-risk Yield is separated and always visible.' },
-    { points: 4, name: 'Covenant', rule: 'Deferred contracts may protect or amplify one another.' },
-    { points: 5, name: 'Afterlife', rule: 'One explicit second-life economy may be assembled.' },
+    { points: 2, name: 'Stake', rule: 'At-risk Yield is separated and always visible.' },
+    { points: 3, name: 'Covenant', rule: 'Deferred contracts may protect or amplify one another.' },
+    { points: 4, name: 'Afterlife', rule: 'One explicit second-life economy may be assembled.' },
   ],
 };
 
@@ -1052,7 +1064,8 @@ export function createGenomeV2State(
   for (const [strain, delta] of Object.entries(strainThresholdDelta)) {
     if (
       !(STRAIN_IDS as readonly string[]).includes(strain) ||
-      !Number.isSafeInteger(delta)
+      !Number.isSafeInteger(delta) ||
+      Math.abs(delta ?? 0) > GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT
     ) throw new Error('Genome v2 threshold shift is malformed.');
   }
   const state: GenomeV2State = {
@@ -1352,26 +1365,53 @@ export function genomeV2HasSplice(
 export function genomeV2StrainTier(
   state: GenomeV2State,
   strain: StrainId
-): 0 | 3 | 4 | 5 {
+): 0 | GenomeV2StrainThreshold {
   if (state.suppressedStrains.includes(strain)) return 0;
   const points = genomeV2StrainPoints(state)[strain] ?? 0;
-  const delta = state.strainThresholdDelta[strain] ?? 0;
-  return points >= Math.max(1, 5 + delta)
-    ? 5
-    : points >= Math.max(1, 4 + delta)
-      ? 4
-      : points >= Math.max(1, 3 + delta)
-        ? 3
+  return points >= genomeV2EffectiveStrainThreshold(
+    state,
+    strain,
+    GENOME_V2_STRAIN_THRESHOLDS.apex
+  )
+    ? GENOME_V2_STRAIN_THRESHOLDS.apex
+    : points >= genomeV2EffectiveStrainThreshold(
+        state,
+        strain,
+        GENOME_V2_STRAIN_THRESHOLDS.expression
+      )
+      ? GENOME_V2_STRAIN_THRESHOLDS.expression
+      : points >= genomeV2EffectiveStrainThreshold(
+          state,
+          strain,
+          GENOME_V2_STRAIN_THRESHOLDS.minor
+        )
+        ? GENOME_V2_STRAIN_THRESHOLDS.minor
         : 0;
+}
+
+/** Effective target shown by the Loom after the run-frozen World Condition. */
+export function genomeV2EffectiveStrainThreshold(
+  state: GenomeV2State,
+  strain: StrainId,
+  threshold: GenomeV2StrainThreshold
+): number {
+  const delta = state.strainThresholdDelta[strain] ?? 0;
+  return Math.max(1, threshold + delta);
 }
 
 export function genomeV2HasLadderTier(
   state: GenomeV2State,
   strain: StrainId,
-  minimum: 3 | 4 | 5
+  minimum: GenomeV2StrainThreshold
 ): boolean {
-  if (!state.ftue.expressionsUnlocked) return false;
-  if (minimum === 5 && !state.ftue.apexesUnlocked) return false;
+  if (
+    minimum === GENOME_V2_STRAIN_THRESHOLDS.expression
+    && !state.ftue.expressionsUnlocked
+  ) return false;
+  if (
+    minimum === GENOME_V2_STRAIN_THRESHOLDS.apex
+    && !state.ftue.apexesUnlocked
+  ) return false;
   return genomeV2StrainTier(state, strain) >= minimum;
 }
 
@@ -1389,13 +1429,13 @@ function captureGenomeV2DiscoveryHistory(state: GenomeV2State): void {
   for (const strain of STRAIN_IDS) {
     if (
       state.expressions[strain] === undefined &&
-      genomeV2HasLadderTier(state, strain, 3)
+      genomeV2HasLadderTier(state, strain, GENOME_V2_STRAIN_THRESHOLDS.expression)
     ) {
       state.expressions[strain] = state.foodCount;
     }
     if (
       state.apexes[strain] === undefined &&
-      genomeV2HasLadderTier(state, strain, 5)
+      genomeV2HasLadderTier(state, strain, GENOME_V2_STRAIN_THRESHOLDS.apex)
     ) {
       state.apexes[strain] = state.foodCount;
     }
@@ -1994,7 +2034,10 @@ function applyResolvedTarget(
     event.resolution === 'collected' &&
     target.kind !== 'ordinary' &&
     exclusiveBps > GENOME_V2_YIELD_SCALE;
-  if (successfulExecution && genomeV2HasLadderTier(state, 'AURUM', 3)) {
+  if (
+    successfulExecution
+    && genomeV2HasLadderTier(state, 'AURUM', GENOME_V2_STRAIN_THRESHOLDS.minor)
+  ) {
     const minted = genomeV2MultiplyBps(
       Math.max(0, exclusiveYield - event.baseYield),
       GENOME_V2_CONFIG.ladders.aurumMintBonusBps
@@ -2015,7 +2058,7 @@ function applyResolvedTarget(
   }
   if (
     successfulExecution &&
-    genomeV2HasLadderTier(state, 'FLUX', 4) &&
+    genomeV2HasLadderTier(state, 'FLUX', GENOME_V2_STRAIN_THRESHOLDS.expression) &&
     (event.usedOptionalRoute === true ||
       target.kind === 'wall_rush' ||
       target.kind === 'coilkeeper')
@@ -2027,7 +2070,7 @@ function applyResolvedTarget(
   }
   if (
     successfulExecution &&
-    genomeV2HasLadderTier(state, 'FLUX', 5) &&
+    genomeV2HasLadderTier(state, 'FLUX', GENOME_V2_STRAIN_THRESHOLDS.apex) &&
     (target.secondaryCell !== null || event.usedOptionalRoute === true)
   ) {
     continuousYield = genomeV2MultiplyBps(
@@ -2035,7 +2078,10 @@ function applyResolvedTarget(
       GENOME_V2_YIELD_SCALE + GENOME_V2_CONFIG.ladders.fluxTopologyBonusBps
     );
   }
-  if (genomeV2HasLadderTier(state, 'FERAL', 3) && event.pressureBps > 0) {
+  if (
+    genomeV2HasLadderTier(state, 'FERAL', GENOME_V2_STRAIN_THRESHOLDS.minor)
+    && event.pressureBps > 0
+  ) {
     const massBonusBps = Math.floor(
       (Math.min(event.pressureBps, GENOME_V2_CONFIG.overgrowth.maxPressureBps) *
         GENOME_V2_CONFIG.ladders.feralMassMaxBonusBps) /
@@ -2117,7 +2163,13 @@ function applyResolvedTarget(
         );
         flowYield = 0;
       }
-      if (genomeV2HasLadderTier(state, 'UMBRA', 4)) {
+      if (
+        genomeV2HasLadderTier(
+          state,
+          'UMBRA',
+          GENOME_V2_STRAIN_THRESHOLDS.expression
+        )
+      ) {
         state.covenantShield = Math.max(
           state.covenantShield,
           genomeV2MultiplyBps(
@@ -2131,7 +2183,7 @@ function applyResolvedTarget(
   }
 
   if (
-    genomeV2HasLadderTier(state, 'AURUM', 5) &&
+    genomeV2HasLadderTier(state, 'AURUM', GENOME_V2_STRAIN_THRESHOLDS.apex) &&
     successfulExecution &&
     flowYield > 0
   ) {
@@ -2213,7 +2265,13 @@ function applyResolvedTarget(
   }
   if (successfulExecution) {
     state.executionChain += 1;
-    if (genomeV2HasLadderTier(state, 'VOLT', 4)) {
+    if (
+      genomeV2HasLadderTier(
+        state,
+        'VOLT',
+        GENOME_V2_STRAIN_THRESHOLDS.expression
+      )
+    ) {
       state.relayCharges = 1;
     }
   } else if (target.kind !== 'ordinary') {
@@ -2646,7 +2704,7 @@ export function reduceGenomeV2Event(
           ? territory.cells.length >= GENOME_V2_CONFIG.signatures.heartwoodLargeCells
             ? GENOME_V2_CONFIG.signatures.heartwoodLargeMultiplierBps
             : GENOME_V2_CONFIG.signatures.heartwoodBaseMultiplierBps
-          : genomeV2HasLadderTier(state, 'FERAL', 5)
+          : genomeV2HasLadderTier(state, 'FERAL', GENOME_V2_STRAIN_THRESHOLDS.apex)
             ? GENOME_V2_CONFIG.ladders.feralWorldbodyMultiplierBps
             : GENOME_V2_CONFIG.ladders.feralTerritoryMultiplierBps;
         territoryMultiplierBps = Math.max(territoryMultiplierBps, candidate);
@@ -2855,7 +2913,11 @@ export function reduceGenomeV2Event(
         event.cells.length < minimumCells ||
         (event.source === 'heartwood'
           ? !genomeV2HasGene(state, 'heartwood')
-          : !genomeV2HasLadderTier(state, 'FERAL', 4))
+          : !genomeV2HasLadderTier(
+              state,
+              'FERAL',
+              GENOME_V2_STRAIN_THRESHOLDS.expression
+            ))
       ) {
         throw new Error('Genome v2 territory claim is not a legal recovered coil.');
       }
@@ -2875,7 +2937,11 @@ export function reduceGenomeV2Event(
       const zenith = event.source === 'zenith_protocol';
       if (
         (zenith && !genomeV2HasGene(state, 'zenith_protocol')) ||
-        (!zenith && !genomeV2HasLadderTier(state, 'VOLT', 5))
+        (!zenith && !genomeV2HasLadderTier(
+          state,
+          'VOLT',
+          GENOME_V2_STRAIN_THRESHOLDS.apex
+        ))
       ) {
         throw new Error('Genome v2 Overclock source is not unlocked.');
       }
@@ -3064,7 +3130,11 @@ export function reduceGenomeV2Event(
         rewindSegments: GENOME_V2_CONFIG.phoenix.rewindSegments,
         phaseTicks:
           GENOME_V2_CONFIG.phoenix.phaseTicks +
-          (genomeV2HasLadderTier(state, 'UMBRA', 5)
+          (genomeV2HasLadderTier(
+            state,
+            'UMBRA',
+            GENOME_V2_STRAIN_THRESHOLDS.apex
+          )
             ? GENOME_V2_CONFIG.ladders.umbraAfterlifeExtraPhaseTicks
             : 0),
         growth: GENOME_V2_CONFIG.phoenix.growthCost,
@@ -3214,7 +3284,11 @@ export function settleGenomeV2(
       )
     : 0;
   const ladderDividendBonus = terminal === 'bank' &&
-    genomeV2HasLadderTier(state, 'AURUM', 4)
+    genomeV2HasLadderTier(
+      state,
+      'AURUM',
+      GENOME_V2_STRAIN_THRESHOLDS.expression
+    )
     ? genomeV2MultiplyBps(
         bankable,
         Math.min(
@@ -3338,7 +3412,11 @@ export interface TacticalLoomCandidateDelta {
     | 'genome';
   strainDelta: StrainPoints;
   resultingStrainPoints: StrainPoints;
-  unlockDistance: Partial<Record<StrainId, { to3: number; to4: number; to5: number }>>;
+  unlockDistance: Partial<Record<StrainId, {
+    minor: number;
+    expression: number;
+    apex: number;
+  }>>;
   completesSplice: GenomeV2SpliceId | null;
   occupiesSlot: boolean;
   requiresReplacement: boolean;
@@ -3506,8 +3584,11 @@ export interface TacticalLoomModel {
 export interface GenomeV2LadderProjection {
   strain: StrainId;
   points: number;
-  activeTier: 0 | 3 | 4 | 5;
-  tiers: Array<GenomeV2StrainLadderTier & { active: boolean }>;
+  activeTier: 0 | GenomeV2StrainThreshold;
+  tiers: Array<GenomeV2StrainLadderTier & {
+    effectivePoints: number;
+    active: boolean;
+  }>;
 }
 
 export function projectGenomeV2Ladders(
@@ -3517,12 +3598,24 @@ export function projectGenomeV2Ladders(
   return Object.fromEntries(
     STRAIN_IDS.map((strain) => {
       const value = points[strain] ?? 0;
-      const activeTier = genomeV2HasLadderTier(state, strain, 5)
-        ? 5
-        : genomeV2HasLadderTier(state, strain, 4)
-          ? 4
-          : genomeV2HasLadderTier(state, strain, 3)
-            ? 3
+      const activeTier = genomeV2HasLadderTier(
+        state,
+        strain,
+        GENOME_V2_STRAIN_THRESHOLDS.apex
+      )
+        ? GENOME_V2_STRAIN_THRESHOLDS.apex
+        : genomeV2HasLadderTier(
+            state,
+            strain,
+            GENOME_V2_STRAIN_THRESHOLDS.expression
+          )
+          ? GENOME_V2_STRAIN_THRESHOLDS.expression
+          : genomeV2HasLadderTier(
+              state,
+              strain,
+              GENOME_V2_STRAIN_THRESHOLDS.minor
+            )
+            ? GENOME_V2_STRAIN_THRESHOLDS.minor
             : 0;
       return [strain, {
         strain,
@@ -3530,6 +3623,11 @@ export function projectGenomeV2Ladders(
         activeTier,
         tiers: GENOME_V2_STRAIN_LADDERS[strain].map((tier) => ({
           ...tier,
+          effectivePoints: genomeV2EffectiveStrainThreshold(
+            state,
+            strain,
+            tier.points
+          ),
           active: genomeV2HasLadderTier(state, strain, tier.points),
         })),
       }];
@@ -4319,9 +4417,21 @@ export function projectGenomeV2(
       for (const strain of STRAIN_IDS) {
         const value = resulting[strain] ?? 0;
         unlockDistance[strain] = {
-          to3: Math.max(0, 3 - value),
-          to4: Math.max(0, 4 - value),
-          to5: Math.max(0, 5 - value),
+          minor: Math.max(0, genomeV2EffectiveStrainThreshold(
+            state,
+            strain,
+            GENOME_V2_STRAIN_THRESHOLDS.minor
+          ) - value),
+          expression: Math.max(0, genomeV2EffectiveStrainThreshold(
+            state,
+            strain,
+            GENOME_V2_STRAIN_THRESHOLDS.expression
+          ) - value),
+          apex: Math.max(0, genomeV2EffectiveStrainThreshold(
+            state,
+            strain,
+            GENOME_V2_STRAIN_THRESHOLDS.apex
+          ) - value),
         };
       }
       const thread = threadProjection(state, geneId);

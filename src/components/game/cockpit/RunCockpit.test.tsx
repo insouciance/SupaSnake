@@ -81,14 +81,14 @@ describe('RunCockpit', () => {
     );
   });
 
-  it('renders the complete 3/4/5 Genome v2 ladder without changing legacy width', () => {
+  it('renders the complete 2/3/4 Genome v2 ladder without changing legacy width', () => {
     const { rerender } = render(
       <RunCockpit
         model={{
           ...MODEL,
-          strainPointCap: 5,
+          strainPointCap: 4,
           strains: MODEL.strains.map((strain) =>
-            strain.id === 'AURUM' ? { ...strain, points: 5 } : strain
+            strain.id === 'AURUM' ? { ...strain, points: 4 } : strain
           ),
         }}
         onPause={jest.fn()}
@@ -97,8 +97,8 @@ describe('RunCockpit', () => {
         <canvas />
       </RunCockpit>
     );
-    expect(screen.getByLabelText(/Aurum 5 of 5, tier 2/i)).toBeInTheDocument();
-    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(5);
+    expect(screen.getByLabelText(/Aurum 4 of 4, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(4);
 
     rerender(
       <RunCockpit model={MODEL} onPause={jest.fn()} onResetView={jest.fn()}>

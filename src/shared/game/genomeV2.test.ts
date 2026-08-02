@@ -399,9 +399,9 @@ describe('Genome v2 Tactical Loom and persistence envelope', () => {
     });
     expect(loom.candidates[0].resultingStrainPoints.AURUM).toBe(2);
     expect(loom.candidates[0].unlockDistance.AURUM).toEqual({
-      to3: 1,
-      to4: 2,
-      to5: 3,
+      minor: 0,
+      expression: 1,
+      apex: 2,
     });
     expect(loom.candidates[0].resultingActiveSplices).toEqual([
       'splice_dragon_hoard',

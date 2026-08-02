@@ -146,29 +146,42 @@
 
 .choiceStrains {
   display: flex;
-  min-height: 14px;
+  min-height: 20px;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 1px 5px;
-  margin-top: 2px;
+  gap: 3px;
+  margin-top: 4px;
 }
 
 .choiceStrain {
   display: inline-flex;
   min-width: 0;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor, transparent 88%);
+  padding: 2px 5px 2px 3px;
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: .04em;
+  letter-spacing: .055em;
+  line-height: 1;
+  box-shadow: inset 0 0 8px color-mix(in srgb, currentColor, transparent 88%);
 }
 
 .choiceStrain i {
-  width: 9px;
-  height: 9px;
+  width: 11px;
+  height: 11px;
   flex: none;
+}
+
+.replacementStrains {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 5px;
 }
 
 .choiceDisabled {
@@ -189,7 +202,7 @@
   .choiceGlyph { width: 28px; height: 28px; }
   .choiceAction { font-size: 12px; }
   .choiceName { font-size: 14px; }
-  .choiceStrain { font-size: 12px; }
+  .choiceStrain { font-size: 11px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

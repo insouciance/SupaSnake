@@ -2,7 +2,7 @@
 
 **For:** the implementing agents (Opus 5 max, GPT 5.6 max) running in parallel on
 feature branches. **Prepared:** 25 July 2026 from Constitution v1.3; maintained
-under the current `docs/PRODUCT_CONSTITUTION.md` (v1.11) and
+under the current `docs/PRODUCT_CONSTITUTION.md` (v1.12) and
 `docs/GROUND_TRUTH.md` (code-verified baseline @ `main` fd22c0c era).
 **Owner:** available for escalations; batch them.
 
@@ -64,7 +64,7 @@ stale; when code and GT disagree, the code is the truth and the WP spec is the g
 ## 4. Kickoff briefing — paste this at the top of each agent session
 
 > You are implementing SupaSnake work packages. Authority:
-> `docs/PRODUCT_CONSTITUTION.md` v1.11 (design law — its §4 Rules and §12.2 caps
+> `docs/PRODUCT_CONSTITUTION.md` v1.12 (design law — its §4 Rules and §12.2 caps
 > are inviolable). Process: `docs/IMPLEMENTATION_HANDOFF.md` (your WP, the branch
 > and migration protocol, the decision/escalation rules). Baseline facts:
 > `docs/GROUND_TRUTH.md` (pre-implementation; code outranks it once WPs land).

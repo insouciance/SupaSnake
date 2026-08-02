@@ -81,7 +81,7 @@ describe('Genome v2 post-commit presentation', () => {
     });
     expect(presentation?.moments).toEqual(expect.arrayContaining([
       expect.objectContaining({ label: 'Dragon Hoard formed' }),
-      expect.objectContaining({ label: 'Aurum 3 · Mint' }),
+      expect.objectContaining({ label: 'Aurum 3 · Dividend' }),
     ]));
   });
 
@@ -90,7 +90,7 @@ describe('Genome v2 post-commit presentation', () => {
     state = acquire(state, 'overgrowth', 0);
     state = acquire(state, 'phoenix', 1);
     state = acquire(state, 'time_dilation', 2);
-    const before = acquire(state, 'coilkeeper', 3);
+    const before = state;
     const offerId = 'offer:heartwood';
     const opened = apply(before, {
       type: 'offer_opened',
@@ -103,7 +103,7 @@ describe('Genome v2 post-commit presentation', () => {
       offerId,
       instanceId: 'instance:heartwood',
       geneId: 'heartwood',
-      slot: 4,
+      slot: 3,
       source: 'offer',
     });
     const activation = {
@@ -114,7 +114,7 @@ describe('Genome v2 post-commit presentation', () => {
     const presentation = buildGenomeV2CommitPresentation(opened, after, activation);
     expect(presentation?.moments).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        label: 'Feral 5 · Worldbody',
+        label: 'Feral 4 · Worldbody',
         detail: expect.stringContaining('activation remains locked'),
         tone: 'warning',
       }),

@@ -2,7 +2,7 @@
 
 **Status:** Product Owner approved · implementation contract · 31 July 2026
 
-**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.11 remains design law. This
+**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.12 remains design law. This
 contract defines the approved end-to-end player journey, information
 architecture, run-continuity presentation, and cross-system attention behavior;
 it is authoritative within the Constitution's protected bounds. The Career Spine,

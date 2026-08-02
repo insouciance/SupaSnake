@@ -48,8 +48,10 @@ application as rollback.
 ### Genome v2 release checks
 
 - [ ] Every offer explicitly names its Strain(s) and renders their runes.
-- [ ] The focused choice shows its affected 3/4/5 route and every directly
+- [ ] The focused choice shows its affected 2/3/4 route and every directly
       connected Splice fate without ranking or recommending a build.
+- [ ] Candidate, held, and Recode genes expose every Strain at first read through
+      a rune + independent color + written-name badge; dual-Strain genes show both.
 - [ ] The ordinary Loom remains compact and game-like at phone widths; any
       post-choice callout is pointer-transparent after play resumes.
 - [ ] Codex and Workbench expose complete rules and direct six-locus Research

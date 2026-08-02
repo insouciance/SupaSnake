@@ -139,6 +139,7 @@ import {
 import {
   STRAIN_ECONOMICS,
   STRAIN_PHYSICS,
+  STRAIN_IDS,
   fortressFiresAt,
   type StrainId,
   type StrainPoints,
@@ -174,10 +175,13 @@ import {
 import {
   GENOME_RULES_V2,
   GENOME_V2_CONFIG,
+  GENOME_V2_STRAIN_THRESHOLDS,
   genomeV2FtueFromPresentation,
   genomeV2RunRecord,
+  genomeV2StrainPoints,
   genomeV2Yield,
   genomeV2YieldFloor,
+  projectGenomeV2Ladders,
   type GenomeRulesVersion,
   type GenomeV2FtueCapability,
   type GenomeV2FtuePresentation,
@@ -1113,6 +1117,21 @@ export class SnakeGameLogic {
       this.state.dnaCollected = genomeV2YieldFloor(
         reducer.ledger.bankableYield
       );
+      this.state.strainCounts = genomeV2StrainPoints(reducer);
+      const ladders = projectGenomeV2Ladders(reducer);
+      this.state.strainTiers = Object.fromEntries(
+        STRAIN_IDS.map((strain) => {
+          const active = ladders[strain].activeTier;
+          const semanticTier = active === GENOME_V2_STRAIN_THRESHOLDS.apex
+            ? 3
+            : active === GENOME_V2_STRAIN_THRESHOLDS.expression
+              ? 2
+              : active === GENOME_V2_STRAIN_THRESHOLDS.minor
+                ? 1
+                : 0;
+          return [strain, semanticTier];
+        })
+      );
     }
   }
 
@@ -1497,6 +1516,7 @@ export class SnakeGameLogic {
     }
 
     this.state = this.createInitialState();
+    if (this.genomeV2Runtime) this.syncGenomeV2State();
     this.state.snake = snake;
     this.state.isPlaying = true;
     this.state.startTime = startClock ? Date.now() : null;
@@ -4661,7 +4681,10 @@ export class SnakeGameLogic {
       runtime.hasMechanic('coilkeeper') &&
       reducer.coilCharge >= GENOME_V2_CONFIG.coilkeeper.chargeFoods;
     const heartwood = runtime.hasGene('heartwood');
-    const feralTerritory = runtime.hasLadderTier('FERAL', 4);
+    const feralTerritory = runtime.hasLadderTier(
+      'FERAL',
+      GENOME_V2_STRAIN_THRESHOLDS.expression
+    );
     if (!coilReady && !heartwood && !feralTerritory) return;
     const occupied = [
       ...this.state.snake.map((cell) => ({ x: cell.x, z: cell.z })),

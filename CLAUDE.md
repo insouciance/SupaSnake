@@ -12,7 +12,7 @@ settled, so the economy can still change freely.
 
 ## Documentation authority
 
-**IMPORTANT — `docs/PRODUCT_CONSTITUTION.md` (v1.11, 2026-08-02) is the single design
+**IMPORTANT — `docs/PRODUCT_CONSTITUTION.md` (v1.12, 2026-08-02) is the single design
 authority.** Every system change is designed from it and checked against its 15
 Inviolable Rules; every PR runs `docs/CONSTITUTION_CHECKLIST.md`. Implementation work
 is decomposed in `docs/IMPLEMENTATION_HANDOFF.md` — take work packages from there,

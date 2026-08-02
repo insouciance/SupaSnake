@@ -1,7 +1,7 @@
 # SupaSnake Career Spine
 
 **Status:** Owner-approved product contract · amended 31 July 2026
-**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.11 remains design law. This
+**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.12 remains design law. This
 contract defines the recognition, attention, career-memory, and social-witness
 projection of its three progression pillars. Where an older identity or flow
 document conflicts, this contract wins.

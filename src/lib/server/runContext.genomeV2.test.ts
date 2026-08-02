@@ -74,6 +74,9 @@ describe('run_context: Genome v2 and Ascendance authority', () => {
         lineage: null,
         tierCap: 1,
         suppressedStrains: ['VOLT', 'VOLT'],
+        // Historical v1 accepted a wider authored condition envelope. The v2
+        // correction must not retroactively invalidate those frozen sessions.
+        strainThresholdDelta: { VOLT: 99 },
         splicesUnlocked: false,
         prevRunDied: false,
       },
@@ -96,6 +99,20 @@ describe('run_context: Genome v2 and Ascendance authority', () => {
       const parsed = parseRunStartContext({
         ...raw,
         genome: { ...(raw.genome as object), genePool },
+      });
+      expect(parsed).toMatchObject({ ok: false, malformed: true });
+    }
+  });
+
+  it('rejects v2 ladder shifts outside the frozen one-point condition envelope', () => {
+    const raw = serializeRunStartContext(v2Context());
+    for (const delta of [-2, 2]) {
+      const parsed = parseRunStartContext({
+        ...raw,
+        genome: {
+          ...(raw.genome as object),
+          strainThresholdDelta: { AURUM: delta },
+        },
       });
       expect(parsed).toMatchObject({ ok: false, malformed: true });
     }

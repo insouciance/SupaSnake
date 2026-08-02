@@ -442,6 +442,7 @@ function recodeCandidate(geneId: 'live_wire' | 'phase_gate') {
       slotIndex: slot.index,
       label: slot.label,
       kind: slot.kind,
+      strains: slot.strains,
       growthCost: 8,
       consequence: slot.kind === 'ash'
         ? recodeConsequence(geneId, 0)

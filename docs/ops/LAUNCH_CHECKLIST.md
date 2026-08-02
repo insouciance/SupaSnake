@@ -62,7 +62,7 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] Results presents no more than three meaningful Career recognition beats;
       destination-specific acknowledgement clears server-backed attention
       without bell-open or route-open shortcuts
-- [ ] Tactical Loom candidates name their Strains, show affected 3/4/5 routes
+- [ ] Tactical Loom candidates name their Strains, show affected 2/3/4 routes
       and direct Splice fates as a compact reaction map, and never rank choices
 - [ ] Results `Study this Genome` opens the exact owned terminal Genome in the
       free Research Workbench through an opaque server-backed handoff; no

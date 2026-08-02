@@ -141,6 +141,38 @@ function uniqueStrains(ids: readonly StrainId[]): StrainId[] {
   return Array.from(new Set(ids));
 }
 
+function GeneStrainBadges({
+  strains,
+  compact = false,
+  testIdPrefix,
+}: {
+  strains: readonly StrainId[];
+  compact?: boolean;
+  testIdPrefix?: string;
+}) {
+  const unique = uniqueStrains(strains);
+  if (unique.length === 0) return null;
+  return (
+    <span
+      className={styles.geneStrainBadges}
+      data-compact={compact || undefined}
+      aria-label={`Strains ${unique.map((id) => STRAINS[id].name).join(', ')}`}
+    >
+      {unique.map((id) => (
+        <span
+          key={id}
+          className={styles.geneStrainBadge}
+          style={{ '--strain': STRAINS[id].color } as CSSProperties}
+          data-testid={testIdPrefix ? `${testIdPrefix}-strain-${id}` : undefined}
+        >
+          <i aria-hidden="true"><StrainGlyph id={id} /></i>
+          <b>{STRAINS[id].name.toUpperCase()}</b>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function activeGene(
   plan: ReturnType<typeof readGenomeV2Experiment>,
   geneId: GenomeV2ActiveGeneId
@@ -168,7 +200,7 @@ function LocusStone({
       data-kind={locus.kind}
       data-recode-target={interactive || undefined}
       data-testid={`workbench-locus-${locus.slot}`}
-      aria-label={`Locus ${locus.slot + 1}: ${locus.label}${interactive ? ', replace this locus' : ''}`}
+      aria-label={`Locus ${locus.slot + 1}: ${locus.label}${locus.strains.length > 0 ? `, Strains ${locus.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}${interactive ? ', replace this locus' : ''}`}
       disabled={!interactive}
       onClick={() => onSelect(locus.slot)}
     >
@@ -176,6 +208,11 @@ function LocusStone({
         {locus.kind === 'empty' ? <i /> : locus.kind === 'ash' ? <b>✦</b> : <GeneGlyph id={geneId} />}
       </span>
       <strong>{locus.label}</strong>
+      <GeneStrainBadges
+        strains={locus.strains}
+        compact
+        testIdPrefix={`workbench-locus-${locus.slot}`}
+      />
       {locus.kind === 'splice' ? <small>BRAID</small> : <small>{locus.slot + 1}</small>}
     </button>
   );
@@ -190,7 +227,7 @@ function StrainRail({
 }) {
   const [openTier, setOpenTier] = useState<{
     strain: StrainId;
-    points: 3 | 4 | 5;
+    points: number;
   } | null>(null);
   const openStrain = openTier
     ? reading.strains.find((strain) => strain.id === openTier.strain) ?? null
@@ -225,10 +262,11 @@ function StrainRail({
                       key={tier.points}
                       type="button"
                       className="min-h-11 min-w-11"
-                      data-active={strain.points >= tier.points || undefined}
+                      data-active={tier.active || undefined}
+                      data-locked={tier.reached && !tier.active || undefined}
                       aria-pressed={selected}
                       aria-label={`${STRAINS[strain.id].name} ${tier.points}, ${tier.name}: ${tier.rule}`}
-                      title={`${tier.points} · ${tier.name}: ${tier.rule}`}
+                      title={`${tier.points} · ${tier.name}: ${tier.rule}${tier.lockedReason ? ` · ${tier.lockedReason}` : ''}`}
                       onClick={() => setOpenTier(selected ? null : {
                         strain: strain.id,
                         points: tier.points,
@@ -241,9 +279,12 @@ function StrainRail({
                 })}
               </span>
               <small>
-                {strain.nextTier === null
+                {strain.suppressed
+                  ? 'Suppressed this run'
+                  : strain.tiers.find((tier) => tier.reached && !tier.active)?.lockedReason
+                    ?? (strain.nextTier === null
                   ? strain.tiers[2].name
-                  : `${strain.pointsToNext} to ${strain.tiers.find((tier) => tier.points === strain.nextTier)?.name}`}
+                  : `${strain.pointsToNext} to ${strain.tiers.find((tier) => tier.points === strain.nextTier)?.name}`)}
               </small>
             </div>
           );
@@ -260,10 +301,11 @@ function StrainRail({
           <span>
             <strong>{STRAINS[openTier.strain].name} {openDefinition.points} · {openDefinition.name}</strong>
             <small>{openDefinition.rule}</small>
+            {openDefinition.lockedReason ? <em>{openDefinition.lockedReason}</em> : null}
           </span>
         </p>
       ) : (
-        <p className={styles.strainHint}>Tap any 3 / 4 / 5 rune to reveal its exact activation.</p>
+        <p className={styles.strainHint}>Tap any 2 / 3 / 4 rune to reveal its exact activation.</p>
       )}
     </div>
   );
@@ -467,6 +509,13 @@ export function ResearchTable({
             {focusedGene?.name ?? 'Genome complete'}
           </strong>
           <small>{focusedGene?.category ?? 'No unseen genes remain'}</small>
+          {focusedGene ? (
+            <GeneStrainBadges
+              strains={focusedGene.strains}
+              compact
+              testIdPrefix="workbench-focused-gene"
+            />
+          ) : null}
         </div>
       </section>
 
@@ -514,9 +563,17 @@ export function ResearchTable({
                   setOpenSpliceId(null);
                 }}
                 data-testid={`workbench-gene-${geneId}`}
+                style={{ '--gene-strain': STRAINS[gene.strains[0]].color } as CSSProperties}
               >
                 <i aria-hidden="true"><GeneGlyph id={geneId} /></i>
-                <span><strong>{gene.name}</strong><small>{gene.category}</small></span>
+                <span className={styles.geneRailCopy}>
+                  <strong>{gene.name}</strong>
+                  <small>{gene.category}</small>
+                  <GeneStrainBadges
+                    strains={gene.strains}
+                    testIdPrefix={`workbench-gene-${geneId}`}
+                  />
+                </span>
               </button>
             );
           })}

@@ -20,9 +20,10 @@ import {
   GENOME_RULES_V2,
   GENOME_V2_CONFIG,
   GENOME_V2_SPLICES,
-  GENOME_V2_STRAIN_LADDERS,
+  GENOME_V2_STRAIN_THRESHOLDS,
   createGenomeV2State,
   genomeV2EventId,
+  projectGenomeV2Ladders,
   genomeV2StrainPoints,
   projectGenomeV2,
   reduceGenomeV2Event,
@@ -32,6 +33,7 @@ import {
   type GenomeV2SlotIndex,
   type GenomeV2SpliceId,
   type GenomeV2State,
+  type GenomeV2StrainThreshold,
   type GenomeV2SettlementBreakdown,
   type TacticalLoomModel,
 } from '@/shared/game/genomeV2';
@@ -76,10 +78,19 @@ export interface GenomeV2ResearchLocus {
 export interface GenomeV2ResearchStrain {
   id: StrainId;
   points: number;
-  activeTier: 0 | 3 | 4 | 5;
-  nextTier: 3 | 4 | 5 | null;
+  activeTier: 0 | GenomeV2StrainThreshold;
+  nextTier: number | null;
   pointsToNext: number;
-  tiers: typeof GENOME_V2_STRAIN_LADDERS[StrainId];
+  suppressed: boolean;
+  tiers: Array<{
+    points: number;
+    basePoints: GenomeV2StrainThreshold;
+    name: string;
+    rule: string;
+    active: boolean;
+    reached: boolean;
+    lockedReason: string | null;
+  }>;
 }
 
 export interface GenomeV2ResearchFact {
@@ -367,19 +378,42 @@ function locusReading(state: GenomeV2State): GenomeV2ResearchLocus[] {
 
 function strainReading(state: GenomeV2State): GenomeV2ResearchStrain[] {
   const points = genomeV2StrainPoints(state);
+  const ladders = projectGenomeV2Ladders(state);
   return STRAIN_IDS.map((id) => {
     const value = points[id] ?? 0;
-    const activeTier: GenomeV2ResearchStrain['activeTier'] =
-      value >= 5 ? 5 : value >= 4 ? 4 : value >= 3 ? 3 : 0;
-    const nextTier: GenomeV2ResearchStrain['nextTier'] =
-      value < 3 ? 3 : value < 4 ? 4 : value < 5 ? 5 : null;
+    const suppressed = state.suppressedStrains.includes(id);
+    const tiers = ladders[id].tiers.map((tier) => {
+      const reached = value >= tier.effectivePoints;
+      const lockedReason = tier.active
+        ? null
+        : suppressed
+          ? 'Suppressed for this run'
+          : tier.points === GENOME_V2_STRAIN_THRESHOLDS.expression
+            && !state.ftue.expressionsUnlocked
+            ? 'Expression progress not yet unlocked'
+            : tier.points === GENOME_V2_STRAIN_THRESHOLDS.apex
+              && !state.ftue.apexesUnlocked
+              ? 'Apex progress not yet unlocked'
+              : null;
+      return {
+        points: tier.effectivePoints,
+        basePoints: tier.points,
+        name: tier.name,
+        rule: tier.rule,
+        active: tier.active,
+        reached,
+        lockedReason,
+      };
+    });
+    const next = tiers.find((tier) => !tier.active) ?? null;
     return {
       id,
       points: value,
-      activeTier,
-      nextTier,
-      pointsToNext: nextTier === null ? 0 : Math.max(0, nextTier - value),
-      tiers: GENOME_V2_STRAIN_LADDERS[id],
+      activeTier: ladders[id].activeTier,
+      nextTier: next?.points ?? null,
+      pointsToNext: next === null ? 0 : Math.max(0, next.points - value),
+      suppressed,
+      tiers,
     };
   });
 }

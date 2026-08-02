@@ -17,6 +17,7 @@ import {
   deriveGenomeV2FtuePresentation,
   GENOME_RULES_V1,
   GENOME_RULES_V2,
+  GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT,
   genomeV2FtueFromPresentation,
   type GenomeV2FtuePresentation,
 } from '@/shared/game/genomeV2';
@@ -89,13 +90,15 @@ function sanitizePoints(raw: unknown): StrainPoints {
 /**
  * The world condition's per-strain threshold shift (WP-2.10b).
  *
- * Bounded to +/-`MAX_STRAIN_THRESHOLD_SHIFT` on the way in. Not a trust
+ * Legacy v1 is bounded to +/-`MAX_V1_STRAIN_THRESHOLD_SHIFT` on the way in.
+ * Genome v2 uses its tighter canonical authored-condition envelope below.
+ * Not a trust
  * boundary - the server recomputes the run under the condition it stamped on
  * the session row - but a malformed or absurd block must degrade to ordinary
  * thresholds rather than hand the engine a tier ladder the payout will never
  * agree with.
  */
-const MAX_STRAIN_THRESHOLD_SHIFT = 2;
+const MAX_V1_STRAIN_THRESHOLD_SHIFT = 2;
 
 function sanitizeThresholdDelta(raw: unknown): Partial<Record<StrainId, number>> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
@@ -103,8 +106,8 @@ function sanitizeThresholdDelta(raw: unknown): Partial<Record<StrainId, number>>
   for (const [key, value] of Object.entries(raw)) {
     if (!isStrainId(key) || typeof value !== 'number' || !Number.isFinite(value)) continue;
     const normalized = Math.max(
-      -MAX_STRAIN_THRESHOLD_SHIFT,
-      Math.min(MAX_STRAIN_THRESHOLD_SHIFT, Math.trunc(value))
+      -MAX_V1_STRAIN_THRESHOLD_SHIFT,
+      Math.min(MAX_V1_STRAIN_THRESHOLD_SHIFT, Math.trunc(value))
     );
     if (normalized !== 0) delta[key] = normalized;
   }
@@ -147,8 +150,8 @@ function strictV2ThresholdDelta(
       !isStrainId(key) ||
       typeof value !== 'number' ||
       !Number.isSafeInteger(value) ||
-      value < -MAX_STRAIN_THRESHOLD_SHIFT ||
-      value > MAX_STRAIN_THRESHOLD_SHIFT
+      value < -GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT ||
+      value > GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT
     ) return null;
     delta[key] = value;
   }

@@ -3,6 +3,7 @@ import {
   deriveGenomeV2Ftue,
 } from '@/shared/game/genomeV2';
 import {
+  buildGenomeV2OverclockPresentation,
   genomeV2RuntimeBridge,
   parseAscendanceRunPresentationStamp,
   parseGenomeV2ActivationPresentation,
@@ -85,5 +86,29 @@ describe('Genome v2 runtime presentation adapter', () => {
       resolveGenomeV2Portal: () => true,
       activateGenomeV2Overclock: () => true,
     })).not.toBeNull();
+  });
+
+  it('exposes VOLT Overclock only at the 4-point Apex with its FTUE gate open', () => {
+    const belowApex = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { VOLT: 3 },
+      ftue: deriveGenomeV2Ftue(10, 0),
+    });
+    expect(buildGenomeV2OverclockPresentation(belowApex)).toBeNull();
+
+    const reachedButLocked = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { VOLT: 4 },
+      ftue: deriveGenomeV2Ftue(2, 0),
+    });
+    expect(buildGenomeV2OverclockPresentation(reachedButLocked)).toBeNull();
+
+    const apex = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { VOLT: 4 },
+      ftue: deriveGenomeV2Ftue(10, 0),
+    });
+    expect(buildGenomeV2OverclockPresentation(apex)?.available).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'volt_apex', label: 'OVERCLOCK' }),
+      ])
+    );
   });
 });

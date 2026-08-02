@@ -265,26 +265,50 @@ describe('Genome v2 run-start authority and deterministic offers', () => {
 });
 
 describe('Genome v2 FTUE activation authority', () => {
-  it.each(STRAIN_IDS)('%s ladders are visible but locked until Expressions/Apex', (strain) => {
-    const locked = createGenomeV2State('PRIMAL', {
-      startingStrainPoints: { [strain]: 5 },
+  it.each(STRAIN_IDS)('%s activates Minor at 2, Expression at 3, and Apex at 4', (strain) => {
+    const belowMinor = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { [strain]: 1 },
       ftue: deriveGenomeV2Ftue(0, 0),
     });
-    expect(projectGenomeV2Ladders(locked)[strain]).toMatchObject({
-      points: 5,
-      activeTier: 0,
-      tiers: [{ active: false }, { active: false }, { active: false }],
+    expect(projectGenomeV2Ladders(belowMinor)[strain].activeTier).toBe(0);
+
+    const minor = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { [strain]: 2 },
+      ftue: deriveGenomeV2Ftue(0, 0),
     });
+    expect(projectGenomeV2Ladders(minor)[strain]).toMatchObject({
+      points: 2,
+      activeTier: 2,
+      tiers: [{ active: true }, { active: false }, { active: false }],
+    });
+
+    const expressionReachedButLocked = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { [strain]: 3 },
+      ftue: deriveGenomeV2Ftue(0, 0),
+    });
+    expect(projectGenomeV2Ladders(expressionReachedButLocked)[strain]).toMatchObject({
+      points: 3,
+      activeTier: 2,
+      tiers: [{ active: true }, { active: false }, { active: false }],
+    });
+
     const expression = createGenomeV2State('PRIMAL', {
-      startingStrainPoints: { [strain]: 5 },
+      startingStrainPoints: { [strain]: 3 },
       ftue: deriveGenomeV2Ftue(2, 0),
     });
-    expect(projectGenomeV2Ladders(expression)[strain].activeTier).toBe(4);
+    expect(projectGenomeV2Ladders(expression)[strain].activeTier).toBe(3);
+
+    const apexReachedButLocked = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { [strain]: 4 },
+      ftue: deriveGenomeV2Ftue(2, 0),
+    });
+    expect(projectGenomeV2Ladders(apexReachedButLocked)[strain].activeTier).toBe(3);
+
     const apex = createGenomeV2State('PRIMAL', {
-      startingStrainPoints: { [strain]: 5 },
+      startingStrainPoints: { [strain]: 4 },
       ftue: deriveGenomeV2Ftue(10, 0),
     });
-    expect(projectGenomeV2Ladders(apex)[strain].activeTier).toBe(5);
+    expect(projectGenomeV2Ladders(apex)[strain].activeTier).toBe(4);
   });
 
   it('publishes the Apex OR unlock with both progress tracks', () => {
@@ -387,7 +411,7 @@ describe('Genome v2 ladder mechanics', () => {
 
   it('FERAL Mass and claimed territory scale with pressure and Apex', () => {
     let expression = createGenomeV2State('PRIMAL', {
-      startingStrainPoints: { FERAL: 4 },
+      startingStrainPoints: { FERAL: 3 },
       ftue: apexFtue,
     });
     expression = apply(expression, {
@@ -406,7 +430,7 @@ describe('Genome v2 ladder mechanics', () => {
     );
     const expressionYield = expression.ledger.bankableYield;
     let apex = createGenomeV2State('PRIMAL', {
-      startingStrainPoints: { FERAL: 5 },
+      startingStrainPoints: { FERAL: 4 },
       ftue: apexFtue,
     });
     apex = apply(apex, {
@@ -880,17 +904,17 @@ describe('Genome v2 World Condition buildcraft', () => {
   it('freezes offer tilt, suppression, and shifted ladder thresholds', () => {
     const shifted = createGenomeV2State('PRIMAL', {
       offerTiltStrain: 'AURUM',
-      startingStrainPoints: { AURUM: 3 },
+      startingStrainPoints: { AURUM: 2 },
       strainThresholdDelta: { AURUM: 1 },
     });
     expect(projectGenomeV2Ladders(shifted).AURUM.activeTier).toBe(0);
 
     const reached = createGenomeV2State('PRIMAL', {
       offerTiltStrain: 'AURUM',
-      startingStrainPoints: { AURUM: 4 },
+      startingStrainPoints: { AURUM: 3 },
       strainThresholdDelta: { AURUM: 1 },
     });
-    expect(projectGenomeV2Ladders(reached).AURUM.activeTier).toBe(3);
+    expect(projectGenomeV2Ladders(reached).AURUM.activeTier).toBe(2);
 
     const suppressed = createGenomeV2State('PRIMAL', {
       startingStrainPoints: { AURUM: 8 },
@@ -904,5 +928,14 @@ describe('Genome v2 World Condition buildcraft', () => {
       .flatMap((offer) => offer?.weights ?? [])
       .find((weight) => weight.condition > 0);
     expect(conditionWeight).toMatchObject({ condition: 100 });
+  });
+
+  it('rejects threshold shifts outside the authored one-point envelope', () => {
+    expect(() => createGenomeV2State('PRIMAL', {
+      strainThresholdDelta: { AURUM: 2 },
+    })).toThrow('threshold shift is malformed');
+    expect(() => createGenomeV2State('PRIMAL', {
+      strainThresholdDelta: { VOLT: -2 },
+    })).toThrow('threshold shift is malformed');
   });
 });

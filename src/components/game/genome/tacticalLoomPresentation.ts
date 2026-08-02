@@ -94,6 +94,7 @@ export interface TacticalLoomReplacementChoice {
   slotIndex: number;
   label: string;
   kind: TacticalLoomGenomeSlot['kind'];
+  strains: readonly StrainId[];
   growthCost: number;
   consequence: TacticalLoomConsequence;
   disabledReason?: string;

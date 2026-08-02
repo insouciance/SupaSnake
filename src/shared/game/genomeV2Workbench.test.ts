@@ -1,10 +1,14 @@
 import {
   GENOME_V2_CONFIG,
+  createGenomeV2State,
+  deriveGenomeV2Ftue,
+  genomeV2RunRecord,
   projectGenomeV2,
   settleGenomeV2,
 } from './genomeV2';
 import {
   readGenomeV2Experiment,
+  readGenomeV2RunResearch,
   replayGenomeV2Experiment,
   type GenomeV2ExperimentPlan,
 } from './genomeV2Workbench';
@@ -121,5 +125,24 @@ describe('Genome v2 Research model', () => {
     );
     const keys = deepKeys(reading);
     expect(keys.filter((key) => /score|recommend|rank|best/i.test(key))).toEqual([]);
+  });
+
+  it('reads effective shifted thresholds and FTUE locks from an authoritative run', () => {
+    const state = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 4 },
+      strainThresholdDelta: { AURUM: 1 },
+      ftue: deriveGenomeV2Ftue(2, 0),
+    });
+    const record = genomeV2RunRecord(state, settleGenomeV2(state, 'bank'));
+    const reading = readGenomeV2RunResearch(record);
+    const aurum = reading.strains.find((strain) => strain.id === 'AURUM');
+
+    expect(aurum?.tiers.map((tier) => tier.points)).toEqual([3, 4, 5]);
+    expect(aurum?.tiers.map((tier) => tier.active)).toEqual([true, true, false]);
+    expect(aurum?.tiers[2]).toMatchObject({
+      name: 'Treasury',
+      reached: false,
+      lockedReason: 'Apex progress not yet unlocked',
+    });
   });
 });

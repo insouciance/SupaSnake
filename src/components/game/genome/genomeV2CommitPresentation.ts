@@ -2,8 +2,10 @@ import { GENOME_V2_GENES, type GenomeV2ActiveGeneId } from '@/shared/game/genes'
 import {
   GENOME_V2_SPLICES,
   GENOME_V2_STRAIN_LADDERS,
+  GENOME_V2_STRAIN_THRESHOLDS,
   genomeV2StrainPoints,
   type GenomeV2State,
+  type GenomeV2StrainThreshold,
 } from '@/shared/game/genomeV2';
 import { STRAIN_IDS, STRAINS, type StrainId } from '@/shared/game/strains';
 import type { GenomeV2ActivationPresentation } from './genomeV2PresentationAdapter';
@@ -26,11 +28,15 @@ export interface GenomeV2CommitPresentation {
 }
 
 function tierUnlocked(
-  points: 3 | 4 | 5,
+  points: GenomeV2StrainThreshold,
   activation: GenomeV2ActivationPresentation
 ): boolean {
-  if (points === 4) return activation.expressions.unlocked;
-  if (points === 5) return activation.apex.unlocked;
+  if (points === GENOME_V2_STRAIN_THRESHOLDS.expression) {
+    return activation.expressions.unlocked;
+  }
+  if (points === GENOME_V2_STRAIN_THRESHOLDS.apex) {
+    return activation.apex.unlocked;
+  }
   return true;
 }
 

@@ -277,6 +277,7 @@ export function TacticalLoomDecision({
                         key={id}
                         className={decisionStyles.choiceStrain}
                         style={{ color: STRAINS[id].color }}
+                        data-testid={`${testId}-strain-${id}`}
                       >
                         <i aria-hidden="true"><StrainGlyph id={id} /></i>
                         {STRAINS[id].name.toUpperCase()}
@@ -317,6 +318,7 @@ export function TacticalLoomDecision({
                     type="button"
                     role="radio"
                     aria-checked={replacementSlot === choice.slotIndex}
+                    aria-label={`Replace ${choice.label}${choice.strains.length > 0 ? `, Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}, +${choice.growthCost} growth`}
                     disabled={Boolean(choice.disabledReason)}
                     onClick={() => setReplacementSlot(choice.slotIndex)}
                     onFocus={() => setReplacementSlot(choice.slotIndex)}
@@ -328,6 +330,21 @@ export function TacticalLoomDecision({
                     data-testid={`loom-replace-${choice.slotIndex}`}
                   >
                     <span className="block font-body text-sm font-bold leading-tight text-bone-white">{choice.label}</span>
+                    {model.rulesVersion === 2 && choice.strains.length > 0 ? (
+                      <span className={decisionStyles.replacementStrains}>
+                        {choice.strains.map((id) => (
+                          <span
+                            key={id}
+                            className={decisionStyles.choiceStrain}
+                            style={{ color: STRAINS[id].color }}
+                            data-testid={`loom-replace-${choice.slotIndex}-strain-${id}`}
+                          >
+                            <i aria-hidden="true"><StrainGlyph id={id} /></i>
+                            {STRAINS[id].name.toUpperCase()}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
                     <span className="mt-0.5 block font-mono text-sm text-venom-orange">+{choice.growthCost} growth</span>
                     {choice.disabledReason ? <span className="block text-sm text-beige/45">{choice.disabledReason}</span> : null}
                   </button>
@@ -376,6 +393,7 @@ export function TacticalLoomDecision({
             geneId={selectedCandidate?.geneId ?? null}
             geneName={selectedCandidate?.name ?? null}
             strains={selectedCandidate?.strains ?? []}
+            showStrains={model.rulesVersion === 2}
           />
         </div>
 

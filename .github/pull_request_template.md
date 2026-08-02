@@ -1,6 +1,6 @@
 <!--
 Every PR on this repository is a work package from docs/IMPLEMENTATION_HANDOFF.md
-and is judged against the current docs/PRODUCT_CONSTITUTION.md (v1.11).
+and is judged against the current docs/PRODUCT_CONSTITUTION.md (v1.12).
 
 The checklist below is a verbatim copy of docs/CONSTITUTION_CHECKLIST.md. If that
 file changes, this template changes with it in the same PR. An unchecked `[ ]`
@@ -74,7 +74,7 @@ Migration files: <!-- paths, or n/a -->
 
 # Constitution Compliance Checklist
 
-Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.11) §4. Items marked ⚙ are
+Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.12) §4. Items marked ⚙ are
 mechanically checkable (grep/test); the rest are reviewer reads.
 
 ## The 15 Rules

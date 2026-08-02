@@ -76,15 +76,15 @@ const MODEL: RunCockpitModel = {
 };
 
 const PHOENIX_LADDER = [
-  { points: 3 as const, name: 'Stake', rule: 'At-risk Yield is separated and always visible.', state: 'active' as const, progressLabel: 'active' },
-  { points: 4 as const, name: 'Covenant', rule: 'Deferred contracts may protect or amplify one another.', state: 'next' as const, progressLabel: '1 away' },
-  { points: 5 as const, name: 'Afterlife', rule: 'One explicit second-life economy may be assembled.', state: 'future' as const, progressLabel: '2 away' },
+  { points: 2 as const, name: 'Stake', rule: 'At-risk Yield is separated and always visible.', state: 'active' as const, progressLabel: 'active' },
+  { points: 3 as const, name: 'Covenant', rule: 'Deferred contracts may protect or amplify one another.', state: 'active' as const, progressLabel: 'active' },
+  { points: 4 as const, name: 'Afterlife', rule: 'One explicit second-life economy may be assembled.', state: 'next' as const, progressLabel: '1 away' },
 ];
 
 const FERAL_LADDER = [
-  { points: 3 as const, name: 'Mass', rule: 'Body pressure visibly raises FERAL execution value.', state: 'active' as const, progressLabel: 'active' },
-  { points: 4 as const, name: 'Territory', rule: 'Clean coils can claim strategically useful space.', state: 'next' as const, progressLabel: '1 away' },
-  { points: 5 as const, name: 'Worldbody', rule: 'Perfect body control converts pressure into a major payout.', state: 'future' as const, progressLabel: '2 away' },
+  { points: 2 as const, name: 'Mass', rule: 'Body pressure visibly raises FERAL execution value.', state: 'active' as const, progressLabel: 'active' },
+  { points: 3 as const, name: 'Territory', rule: 'Clean coils can claim strategically useful space.', state: 'active' as const, progressLabel: 'active' },
+  { points: 4 as const, name: 'Worldbody', rule: 'Perfect body control converts pressure into a major payout.', state: 'next' as const, progressLabel: '1 away' },
 ];
 
 function loomSlots(
@@ -195,9 +195,9 @@ function hardCaseLoomModel(): TacticalLoomDecisionModel {
       before: 2,
       after: 3,
       thresholds: [
-        { points: 3 as const, name: 'Vector', rule: 'Planned terrain interactions preview a legal exit.', state: 'active' as const, progressLabel: 'active' },
-        { points: 4 as const, name: 'Riftcraft', rule: 'Trade permanent space for route power.', state: 'next' as const, progressLabel: '1 away' },
-        { points: 5 as const, name: 'Topology', rule: 'Linked spatial actions can reshape one target route.', state: 'future' as const, progressLabel: '2 away' },
+        { points: 2 as const, name: 'Vector', rule: 'Planned terrain interactions preview a legal exit.', state: 'active' as const, progressLabel: 'active' },
+        { points: 3 as const, name: 'Riftcraft', rule: 'Trade permanent space for route power.', state: 'active' as const, progressLabel: 'active' },
+        { points: 4 as const, name: 'Topology', rule: 'Linked spatial actions can reshape one target route.', state: 'next' as const, progressLabel: '1 away' },
       ],
     }],
   };
@@ -241,9 +241,9 @@ function recodeLoomModel(): TacticalLoomDecisionModel {
     strains: [{
       id: 'FLUX', name: 'Flux', color: '#a642f5', before: 4, after: 4,
       thresholds: [
-        { points: 3, name: 'Vector', rule: 'Planned terrain interactions preview a legal exit.', state: 'active', progressLabel: 'active' },
-        { points: 4, name: 'Riftcraft', rule: 'Trade permanent space for route power.', state: 'active', progressLabel: 'active' },
-        { points: 5, name: 'Topology', rule: 'Linked spatial actions can reshape one target route.', state: 'next', progressLabel: '1 away' },
+        { points: 2, name: 'Vector', rule: 'Planned terrain interactions preview a legal exit.', state: 'active', progressLabel: 'active' },
+        { points: 3, name: 'Riftcraft', rule: 'Trade permanent space for route power.', state: 'active', progressLabel: 'active' },
+        { points: 4, name: 'Topology', rule: 'Linked spatial actions can reshape one target route.', state: 'active', progressLabel: 'active' },
       ],
     }],
     splices: [
@@ -283,7 +283,7 @@ function recodeLoomModel(): TacticalLoomDecisionModel {
     candidates: [
       {
         action: 'FORK', geneId: 'phase_gate', name: 'Phase Gate', category: 'Terrain', strains: ['FLUX'], consequence: candidateBase,
-        replacementChoices: [{ slotIndex: 0, label: 'Worldcoil', kind: 'splice', growthCost: 8, consequence: replacement }],
+        replacementChoices: [{ slotIndex: 0, label: 'Worldcoil', kind: 'splice', strains: ['FERAL', 'FLUX'], growthCost: 8, consequence: replacement }],
       },
       { action: 'FORK', geneId: 'phoenix', name: 'Phoenix', category: 'Survival', strains: ['UMBRA', 'FERAL'], consequence: quietConsequence(currentGenome, 'Phoenix'), disabledReason: 'Dev fixture keeps focus on the exact break/form path' },
     ],

@@ -7,6 +7,7 @@ import {
   GENOME_RULES_V2,
   GENOME_V2_CONFIG,
   GENOME_V2_SPLICES,
+  GENOME_V2_STRAIN_THRESHOLDS,
   genomeV2CarryBankBps,
   genomeV2CarrySalvageBps,
   genomeV2HasGene,
@@ -17,7 +18,6 @@ import {
   type GenomeV2SettlementBreakdown,
   type GenomeV2SpliceId,
   type GenomeV2State,
-  type GenomeV2StrainLadderTier,
   type TacticalLoomCandidateDelta as CoreCandidateDelta,
   type TacticalLoomModel as CoreLoomModel,
 } from '@/shared/game/genomeV2';
@@ -388,8 +388,10 @@ function lockForTier(
   points: number,
   activation: GenomeV2ActivationPresentation
 ): GenomeV2UnlockPresentation {
-  if (points === 4) return activation.expressions;
-  if (points === 5) return activation.apex;
+  if (points === GENOME_V2_STRAIN_THRESHOLDS.expression) {
+    return activation.expressions;
+  }
+  if (points === GENOME_V2_STRAIN_THRESHOLDS.apex) return activation.apex;
   return { unlocked: true };
 }
 
@@ -397,7 +399,7 @@ function strainProjection(
   before: StrainPoints,
   after: StrainPoints,
   affected: readonly StrainId[],
-  ladder: CoreLoomModel['ladder'],
+  ladderState: CoreLoomModel['ladderState'],
   activation: GenomeV2ActivationPresentation
 ): TacticalLoomStrainProjection[] {
   return uniqueStrains(affected).map((strain) => ({
@@ -406,23 +408,24 @@ function strainProjection(
     color: STRAINS[strain].color,
     before: before[strain] ?? 0,
     after: after[strain] ?? 0,
-    thresholds: ladder[strain].map((tier: GenomeV2StrainLadderTier) => {
+    thresholds: ladderState[strain].tiers.map((tier) => {
       const permission = lockForTier(tier.points, activation);
       const nextPoints = after[strain] ?? 0;
+      const threshold = tier.effectivePoints;
       return {
-        points: tier.points,
+        points: threshold,
         name: tier.name,
         rule: tier.rule,
         state: !permission.unlocked
           ? 'locked' as const
-          : nextPoints >= tier.points
+          : nextPoints >= threshold
             ? 'active' as const
-            : nextPoints + 1 === tier.points
+            : nextPoints + 1 === threshold
               ? 'next' as const
               : 'future' as const,
-        progressLabel: nextPoints >= tier.points
-          ? permission.unlocked ? 'active' : `${nextPoints} / ${tier.points}`
-          : `${tier.points - nextPoints} away`,
+        progressLabel: nextPoints >= threshold
+          ? permission.unlocked ? 'active' : `${nextPoints} / ${threshold}`
+          : `${threshold - nextPoints} away`,
         lockedReason: permission.unlocked
           ? undefined
           : [permission.reason, permission.progress].filter(Boolean).join(' · ') || 'Activation pending',
@@ -835,7 +838,7 @@ function replacementConsequence(
       projection.strainPoints,
       replacement.resultingStrainPoints,
       affected,
-      projection.ladder,
+      projection.ladderState,
       input.activation
     ),
     splices: immediateSplices,
@@ -888,7 +891,7 @@ function candidateConsequence(
       projection.strainPoints,
       candidate.resultingStrainPoints,
       GENOME_V2_GENES[candidate.geneId].strains,
-      projection.ladder,
+      projection.ladderState,
       input.activation
     ),
     splices: splicePresentation(
@@ -1095,6 +1098,7 @@ export function buildGenomeV2TacticalLoomModel(
           slotIndex: replacement.slot,
           label: currentGenome[replacement.slot]?.label ?? `Locus ${replacement.slot + 1}`,
           kind: currentGenome[replacement.slot]?.kind ?? 'gene',
+          strains: currentGenome[replacement.slot]?.strains ?? [],
           growthCost: replacement.growthCost,
           consequence: replacementConsequence(
             input.state,

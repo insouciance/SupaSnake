@@ -126,9 +126,9 @@ describe('Genome v2 presentation adapter', () => {
     ]));
     expect(model?.candidates[0].consequence.splices.filter((path) => path.stage === 'immediate')).toHaveLength(1);
     expect(model?.candidates[0].consequence.strains[0].thresholds).toEqual([
-      expect.objectContaining({ points: 3 }),
-      expect.objectContaining({ points: 4, state: 'locked', lockedReason: 'Bank 2 runs · 1 / 2' }),
-      expect.objectContaining({ points: 5, state: 'locked', lockedReason: 'Bank 10 runs or reach M3 · 4 / 10' }),
+      expect.objectContaining({ points: 2 }),
+      expect.objectContaining({ points: 3, state: 'locked', lockedReason: 'Bank 2 runs · 1 / 2' }),
+      expect.objectContaining({ points: 4, state: 'locked', lockedReason: 'Bank 10 runs or reach M3 · 4 / 10' }),
     ]);
     expect(model?.candidates[0].consequence.body).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'body-length', before: '28 segments' }),
@@ -163,6 +163,27 @@ describe('Genome v2 presentation adapter', () => {
         lockedReason: 'Bank 6 runs · 2 / 6',
       }),
     ]));
+  });
+
+  it('shows the exact run-frozen effective 2/3/4 route after a World Condition shift', () => {
+    let state = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 2 },
+      strainThresholdDelta: { AURUM: 1 },
+    });
+    state = apply(state, {
+      type: 'offer_opened',
+      offerId: 'shifted-ladder-offer',
+      source: 'cadence',
+      candidates: ['compound_interest', 'coilkeeper'],
+    });
+
+    const model = buildGenomeV2TacticalLoomModel({ state, activation: ACTIVATION });
+    const aurum = model?.candidates[0].consequence.strains.find(
+      (strain) => strain.id === 'AURUM'
+    );
+
+    expect(aurum?.thresholds.map((tier) => tier.points)).toEqual([3, 4, 5]);
+    expect(aurum?.thresholds[0]).toMatchObject({ name: 'Mint', state: 'active' });
   });
 
   it('does not label an absent partner HELD when another fusion closes the branch', () => {

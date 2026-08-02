@@ -1,11 +1,11 @@
 # SupaSnake — Tactical Genome v2
 
-**Version:** 2.1
+**Version:** 2.2
 
 **Date:** 2 August 2026
 
 **Status:** APPROVED for production by the Product Owner; governed by Product
-Constitution v1.11.
+Constitution v1.12.
 
 This contract supersedes the active catalog, tuning, FTUE, portal-Genome,
 Strain, Splice, and outcome-cap rules in `BUILDCRAFT_GENOME_DESIGN.md` v1.1.
@@ -55,7 +55,7 @@ small amount of future context required to understand that reaction:
 - the gene's primary identity, concrete gain, meaningful risk, and trigger rhythm;
 - the locus added or replaced;
 - every explicit Strain name/rune on the candidate and the complete affected
-  3/4/5 route, with the current transition visually dominant;
+  2/3/4 route, with the current transition visually dominant;
 - every directly connected Splice branch, visibly marked as forming, future,
   closed, broken, locked, or requiring Recode;
 - second-life exclusivity, Ash, and another direct socket conflict when relevant;
@@ -67,6 +67,10 @@ It does not carry unrelated ladders, the full Splice catalog, unchanged ledgers,
 broad BANK/crash projections, or an expert expander. It never says `best`,
 `recommended`, or supplies an automatic ranking. Mobile uses compact rune
 choices and the same single focused reaction map rather than three long cards.
+Every candidate and held/replacement locus makes Strain identity legible before
+inspection through a compact badge containing rune, independent family color,
+and the written name. Dual-Strain genes retain two distinct badges. Neither
+color alone nor description copy is an acceptable substitute.
 The first read must expose candidate identity, gain/risk, affected routes,
 immediate Splice fate, and confirmation in a practical phone viewport. A tapped
 rule may use the frozen surface's contained scroll rather than truncating a
@@ -97,7 +101,7 @@ inspect every Strain rung in Research without receiving every verb immediately.
 
 | Progress | Activation |
 |---|---|
-| 0 validated banks | Strain tags, Minor state, and all 3/4/5 ladders visible |
+| 0 validated banks | Strain tags, Minor state, and all 2/3/4 ladders visible |
 | 1 validated bank | CONTINUE at portals |
 | 2 validated banks | Strain Expressions |
 | 4 validated banks | MUTATE / portal Genome action |
@@ -275,7 +279,8 @@ It changes offer control, not Yield directly.
 
 ## 6. Strains, Splices, and signatures
 
-All Strain ladders use visible thresholds at 3, 4, and 5 points. A ladder deepens
+All Strain ladders use visible thresholds at 2, 3, and 4 points, mapped to Minor,
+Expression, and Apex. A ladder deepens
 its family's strategic identity; it does not duplicate a shared gene. Threshold
 effects are qualitative rules with visible state and authoritative activation.
 No tier imposes an unconditional speed increase or exchanges ordinary banking

@@ -8,8 +8,8 @@ const MODEL = {
   geneId: 'circuit_run' as const,
   strains: ['VOLT', 'FLUX'] as const,
   moments: [{
-    id: 'rung:VOLT:3',
-    label: 'Volt 3 · Telemetry',
+    id: 'rung:VOLT:2',
+    label: 'Volt 2 · Telemetry',
     detail: 'Route budgets reveal their exact execution margin.',
     strain: 'VOLT' as const,
     tone: 'positive' as const,
@@ -29,7 +29,7 @@ describe('GenomeCommitCallout', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Perfect Circuit');
     expect(screen.getByRole('status')).toHaveTextContent('VOLT');
     expect(screen.getByRole('status')).toHaveTextContent('FLUX');
-    expect(screen.getByRole('status')).toHaveTextContent('Volt 3 · Telemetry');
+    expect(screen.getByRole('status')).toHaveTextContent('Volt 2 · Telemetry');
     act(() => jest.advanceTimersByTime(5000));
     expect(onDone).not.toHaveBeenCalled();
 

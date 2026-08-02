@@ -176,6 +176,39 @@ describe('SnakeGameLogic Genome v2 authority boundary', () => {
     expect(terminal?.genome).toBeNull();
   });
 
+  it('bridges canonical 2/3/4 points into semantic Minor, Expression, and Apex cockpit tiers', () => {
+    const reducer = createGenomeV2State('PRIMAL', {
+      startingStrainPoints: { AURUM: 2, VOLT: 3, FERAL: 4 },
+      ftue: deriveGenomeV2Ftue(10, 3),
+    });
+    const game = new SnakeGameLogic({
+      gridSize: 20,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'v2-cockpit-strain-bridge',
+      genome: configForState(reducer),
+    });
+    game.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 10, y: 0, z: 5 }],
+    });
+
+    expect(game.getState().strainCounts).toMatchObject({
+      AURUM: 2,
+      VOLT: 3,
+      FERAL: 4,
+    });
+    expect(game.getState().strainTiers).toMatchObject({
+      AURUM: 1,
+      VOLT: 2,
+      FERAL: 3,
+    });
+  });
+
   it('rejects checkpoint counters that diverge from the canonical reducer', () => {
     const game = new SnakeGameLogic({
       gridSize: 20,

@@ -29,9 +29,9 @@ function consequence(name: string): TacticalLoomConsequence {
       before: 2,
       after: 3,
       thresholds: [
-        { points: 3, name: 'Telemetry', rule: 'Route budgets reveal their exact margin.', state: 'active', progressLabel: 'active' },
-        { points: 4, name: 'Relay', rule: 'A clean route arms a compatible challenge.', state: 'next', progressLabel: '1 away', lockedReason: 'Bank 2 runs to activate Expressions' },
-        { points: 5, name: 'Overclock', rule: 'Trigger a rewarded bounded burst.', state: 'locked', progressLabel: '2 away', lockedReason: 'Bank 10 runs or reach M3' },
+        { points: 2, name: 'Telemetry', rule: 'Route budgets reveal their exact margin.', state: 'active', progressLabel: 'active' },
+        { points: 3, name: 'Relay', rule: 'A clean route arms a compatible challenge.', state: 'locked', progressLabel: '3 / 3', lockedReason: 'Bank 2 runs to activate Expressions' },
+        { points: 4, name: 'Overclock', rule: 'Trigger a rewarded bounded burst.', state: 'locked', progressLabel: '1 away', lockedReason: 'Bank 10 runs or reach M3' },
       ],
     }],
     splices: [{
@@ -110,7 +110,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('keeps the live decision intuitive while exposing the whole tappable 3/4/5 path', () => {
+  it('keeps the live decision intuitive while exposing the whole tappable 2/3/4 path', () => {
     render(
       <GeneChoiceOverlay
         {...baseProps}
@@ -130,14 +130,15 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Telemetry');
     expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Relay');
     expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Overclock');
-    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('NOW');
+    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('REACHED · LOCKED');
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Perfect Circuit');
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('FORMS');
-    expect(screen.queryByText('Bank 2 runs to activate Expressions')).toBeNull();
+    expect(screen.getByText('Bank 2 runs to activate Expressions')).toBeInTheDocument();
     expect(screen.queryByText('Bank 10 runs or reach M3')).toBeNull();
     fireEvent.click(screen.getByTestId('loom-strain-VOLT-tier-4'));
-    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('A clean route arms a compatible challenge.');
-    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('Bank 2 runs to activate Expressions');
+    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('Trigger a rewarded bounded burst.');
+    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('LOCKED');
+    expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('Bank 10 runs or reach M3');
     expect(screen.queryByText(/best|recommended/i)).toBeNull();
   });
 
@@ -199,6 +200,8 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     );
     expect(screen.getByTestId('gene-option-0')).toHaveTextContent('UMBRA');
     expect(screen.getByTestId('gene-option-0')).toHaveTextContent('FERAL');
+    expect(screen.getByTestId('gene-option-0-strain-UMBRA')).toBeVisible();
+    expect(screen.getByTestId('gene-option-0-strain-FERAL')).toBeVisible();
     expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('UMBRA');
     expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('FERAL');
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Styx Contract');
@@ -337,6 +340,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
           slotIndex: 0,
           label: 'Gold Trail',
           kind: 'gene',
+          strains: ['AURUM'],
           growthCost: 8,
           consequence: replacementConsequence,
         }],
@@ -355,6 +359,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(screen.getByTestId('loom-recode-step')).toHaveTextContent('Step 2 of 2');
     expect(screen.getByTestId('loom-replace-0')).toHaveTextContent('+8 growth');
+    expect(screen.getByTestId('loom-replace-0-strain-AURUM')).toBeVisible();
     expect(screen.getByTestId('loom-lite')).toHaveTextContent('THREAD Live Wire · replace Gold Trail');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Live Wire');

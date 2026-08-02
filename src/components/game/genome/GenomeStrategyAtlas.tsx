@@ -230,7 +230,7 @@ export function GenomeStrategyAtlas({ model }: { model: GenomeStrategyAtlasModel
       <section className="mt-5" aria-labelledby="atlas-all-ladders-title" data-testid="atlas-all-ladders">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 id="atlas-all-ladders-title" className="font-display text-sm uppercase tracking-[0.12em] text-bone-white">All Strain ladders</h3>
-          <p className="font-body text-[10px] text-beige/45">Every 3 / 4 / 5 threshold stays visible before it activates.</p>
+          <p className="font-body text-[10px] text-beige/45">Every 2 / 3 / 4 threshold stays visible before it activates.</p>
         </div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {model.strains.map((strain) => (

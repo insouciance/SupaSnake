@@ -111,6 +111,18 @@ async function auditLoom(browser, viewport) {
       text: element.textContent?.trim().slice(0, 48) ?? '',
       fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
     }));
+    const strainBadges = [
+      ...document.querySelectorAll('[data-testid^="gene-option-0-strain-"]'),
+    ].map((element) => {
+      const style = getComputedStyle(element);
+      return {
+        text: element.textContent?.trim() ?? '',
+        box: rect(element),
+        fontSize: Number.parseFloat(style.fontSize),
+        clipped: element.scrollWidth > element.clientWidth + 0.5
+          || element.scrollHeight > element.clientHeight + 0.5,
+      };
+    });
     return {
       panel: rect(panel),
       scroll: rect(scroll),
@@ -122,6 +134,7 @@ async function auditLoom(browser, viewport) {
       focused: readable('[data-testid="loom-focused-gene-name"]'),
       buttons,
       material,
+      strainBadges,
       pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     };
   });
@@ -151,6 +164,14 @@ async function auditLoom(browser, viewport) {
     `loom/${viewport.name}: control below 44px ${JSON.stringify(undersizedButtons)}`
   );
   invariant(metrics.material.every(({ fontSize }) => fontSize >= 14), `loom/${viewport.name}: material text below 14px`);
+  invariant(
+    metrics.strainBadges.map(({ text }) => text).join(' · ') === 'UMBRA · FERAL',
+    `loom/${viewport.name}: dual Strain identity is not a first-read badge ${JSON.stringify(metrics.strainBadges)}`
+  );
+  invariant(
+    metrics.strainBadges.every(({ fontSize, clipped }) => fontSize >= 10 && !clipped),
+    `loom/${viewport.name}: Strain badge is clipped or below 10px ${JSON.stringify(metrics.strainBadges)}`
+  );
   invariant(!metrics.pageOverflow, `loom/${viewport.name}: horizontal page overflow`);
 
   await capture(page, 'tactical-loom', viewport);
@@ -179,6 +200,15 @@ async function auditWorkbench(browser, viewport) {
         const { width, height } = element.getBoundingClientRect();
         return { width, height };
       });
+    const badge = (selector) => [...document.querySelectorAll(selector)].map((element) => {
+      const style = getComputedStyle(element);
+      return {
+        text: element.textContent?.trim() ?? '',
+        fontSize: Number.parseFloat(style.fontSize),
+        clipped: element.scrollWidth > element.clientWidth + 0.5
+          || element.scrollHeight > element.clientHeight + 0.5,
+      };
+    });
     return {
       focusedText: focused.textContent?.trim() ?? '',
       focusedFontSize: Number.parseFloat(focusedStyle.fontSize),
@@ -186,6 +216,8 @@ async function auditWorkbench(browser, viewport) {
       focusedClippedX: focused.scrollWidth > focused.clientWidth + 0.5,
       focusedClippedY: focused.scrollHeight > focused.clientHeight + 0.5,
       targets,
+      focusedBadges: badge('[data-testid^="workbench-focused-gene-strain-"]'),
+      dualGeneBadges: badge('[data-testid^="workbench-locus-1-strain-"]'),
       strainOverflowX: getComputedStyle(strainRail).overflowX,
       geneOverflowX: getComputedStyle(geneRail).overflowX,
       pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -205,6 +237,19 @@ async function auditWorkbench(browser, viewport) {
     `workbench/${viewport.name}: Strain target below 44px`
   );
   invariant(metrics.geneOverflowX === 'auto', `workbench/${viewport.name}: gene rail is not contained`);
+  invariant(
+    metrics.focusedBadges.map(({ text }) => text).join(' · ') === 'AURUM',
+    `workbench/${viewport.name}: focused Strain identity missing ${JSON.stringify(metrics.focusedBadges)}`
+  );
+  invariant(
+    metrics.dualGeneBadges.map(({ text }) => text).join(' · ') === 'AURUM · UMBRA',
+    `workbench/${viewport.name}: dual gene badges missing ${JSON.stringify(metrics.dualGeneBadges)}`
+  );
+  invariant(
+    [...metrics.focusedBadges, ...metrics.dualGeneBadges]
+      .every(({ fontSize, clipped }) => fontSize >= 9 && !clipped),
+    `workbench/${viewport.name}: Strain badge is clipped or below 9px`
+  );
   if (viewport.name !== 'desktop') {
     invariant(metrics.strainOverflowX === 'auto', `workbench/${viewport.name}: mobile Strain rail is not contained`);
   }

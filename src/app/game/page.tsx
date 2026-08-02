@@ -4575,7 +4575,7 @@ export default function GamePage() {
       tier: normalizeStrainTier(strainTiers[id]),
       suppressed: suppressedStrains.has(id),
     })),
-    strainPointCap: genomeRulesVersion === 2 ? 5 : 4,
+    strainPointCap: 4,
     showGenome: cockpitGenomeVisible,
     portalLive: Boolean(exitTile),
     portalTicksRemaining: Math.max(0, exitTicksRemaining),

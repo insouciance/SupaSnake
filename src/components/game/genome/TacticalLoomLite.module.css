@@ -624,6 +624,34 @@
 .locusCharms i { color: #a855f7; font-style: normal; }
 .locusCharms strong { color: #f7f0ff; overflow-wrap: anywhere; }
 
+.inlineStrains {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.inlineStrains em {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--strain), transparent 52%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--strain), transparent 90%);
+  padding: 2px 4px 2px 3px;
+  color: var(--strain);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: .04em;
+  line-height: 1;
+}
+
+.inlineStrains em i {
+  width: 10px;
+  height: 10px;
+}
+
 .deltaCharm { outline: 1px solid rgb(196 181 253 / 16%); }
 .deltaCharm > span { color: rgb(237 233 223 / 42%); }
 .deltaCharm strong { color: rgb(237 233 223 / 73%); font-family: var(--font-mono); font-size: 12px; }

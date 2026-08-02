@@ -77,8 +77,8 @@ export interface RunCockpitModel {
   constellation: { stars: number; fraction: number } | null;
   genes: readonly RunCockpitGene[];
   strains: readonly RunCockpitStrain[];
-  /** Visible ladder width: legacy is four points; Genome v2 activates at 3/4/5. */
-  strainPointCap?: 4 | 5;
+  /** Visible ladder width: both versions use four points; Genome v2 activates at 2/3/4. */
+  strainPointCap?: 4;
   showGenome: boolean;
   portalLive: boolean;
   portalTicksRemaining: number;

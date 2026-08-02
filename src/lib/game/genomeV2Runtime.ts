@@ -33,6 +33,7 @@ import {
   type GenomeV2SlotIndex,
   type GenomeV2SpliceId,
   type GenomeV2State,
+  type GenomeV2StrainThreshold,
   type GenomeV2TargetState,
 } from '@/shared/game/genomeV2';
 import type { DynastyName } from '@/shared/game/rulesets';
@@ -1431,7 +1432,7 @@ export class GenomeV2Runtime {
     return genomeV2HasSplice(this.state, spliceId);
   }
 
-  hasLadderTier(strain: StrainId, minimum: 3 | 4 | 5): boolean {
+  hasLadderTier(strain: StrainId, minimum: GenomeV2StrainThreshold): boolean {
     return genomeV2HasLadderTier(this.state, strain, minimum);
   }
 

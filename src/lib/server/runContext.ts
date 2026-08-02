@@ -45,6 +45,7 @@ import {
 import {
   GENOME_RULES_V1,
   GENOME_RULES_V2,
+  GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT,
   genomeV2FtueFromPresentation,
   type GenomeRulesVersion,
   type GenomeV2FtuePresentation,
@@ -284,6 +285,12 @@ function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
     raw.strainThresholdDelta
   );
   if (strainThresholdDelta === null) return 'invalid';
+  if (
+    rulesVersion === GENOME_RULES_V2
+    && Object.values(strainThresholdDelta ?? {}).some(
+      (delta) => Math.abs(delta ?? 0) > GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT
+    )
+  ) return 'invalid';
 
   if (typeof raw.splicesUnlocked !== 'boolean') return 'invalid';
   if (typeof raw.prevRunDied !== 'boolean') return 'invalid';

@@ -30,12 +30,12 @@ function atlasModel(): GenomeStrategyAtlasModel {
       name: STRAINS[id].name,
       color: STRAINS[id].color,
       identity: STRAINS[id].identity,
-      tiers: [3, 4, 5].map((points) => ({
+      tiers: [2, 3, 4].map((points) => ({
         points,
         name: `${id} ${points}`,
         rule: `Rule at ${points} points`,
-        cost: points === 5 ? 'Player-controlled risk' : '',
-        lockedReason: points === 5 ? 'Bank 10 runs or reach M3' : undefined,
+        cost: points === 4 ? 'Player-controlled risk' : '',
+        lockedReason: points === 4 ? 'Bank 10 runs or reach M3' : undefined,
       })),
     })),
     splices: [
@@ -64,10 +64,10 @@ function atlasModel(): GenomeStrategyAtlasModel {
 }
 
 describe('GenomeStrategyAtlas', () => {
-  it('makes every 3/4/5 ladder and tactical recipe visible before discovery', () => {
+  it('makes every 2/3/4 ladder and tactical recipe visible before discovery', () => {
     render(<GenomeStrategyAtlas model={atlasModel()} />);
     for (const strain of STRAIN_IDS) {
-      for (const points of [3, 4, 5]) {
+      for (const points of [2, 3, 4]) {
         expect(screen.getByTestId(`atlas-all-tier-${strain}-${points}`)).toBeInTheDocument();
       }
     }

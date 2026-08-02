@@ -6,9 +6,11 @@ import {
 import {
   GENOME_RULES_V2,
   GENOME_V2_CONFIG,
+  GENOME_V2_STRAIN_THRESHOLDS,
   genomeV2HasGene,
   projectGenomeV2,
   type GenomeV2State,
+  type GenomeV2StrainThreshold,
 } from '@/shared/game/genomeV2';
 import type { GenomeV2ActivationPresentation } from './genomeV2PresentationAdapter';
 
@@ -211,7 +213,7 @@ export function buildGenomeV2OverclockPresentation(
     };
   }>;
   const projection = projectGenomeV2(state) as ReturnType<typeof projectGenomeV2> & Partial<{
-    ladderState: { VOLT: { activeTier: 0 | 3 | 4 | 5 } };
+    ladderState: { VOLT: { activeTier: 0 | GenomeV2StrainThreshold } };
   }>;
   const runtimeState = state as GenomeV2State & Partial<{
     overclock: {
@@ -229,7 +231,10 @@ export function buildGenomeV2OverclockPresentation(
       moveBudget: config.signatures.zenithMoveBudget,
     });
   }
-  if (projection.ladderState?.VOLT.activeTier === 5 && config.ladders) {
+  if (
+    projection.ladderState?.VOLT.activeTier === GENOME_V2_STRAIN_THRESHOLDS.apex
+    && config.ladders
+  ) {
     available.push({
       source: 'volt_apex',
       label: 'OVERCLOCK',

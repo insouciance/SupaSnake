@@ -174,5 +174,13 @@ describe('sanitizeGenomeCapability', () => {
       ...base,
       strainThresholdDelta: { VOLT: 99 },
     })).toBeNull();
+    expect(sanitizeGenomeCapability({
+      ...base,
+      strainThresholdDelta: { VOLT: 2 },
+    })).toBeNull();
+    expect(sanitizeGenomeCapability({
+      ...base,
+      strainThresholdDelta: { VOLT: -2 },
+    })).toBeNull();
   });
 });

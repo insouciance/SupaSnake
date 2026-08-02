@@ -66,6 +66,11 @@ function thresholdStateLabel(
   strain: TacticalLoomStrainProjection,
   threshold: TacticalLoomThreshold
 ): string {
+  if (
+    threshold.state === 'locked'
+    && strain.before < threshold.points
+    && strain.after >= threshold.points
+  ) return 'REACHED · LOCKED';
   if (strain.before < threshold.points && strain.after >= threshold.points) return 'NOW';
   if (threshold.state === 'next') return 'NEXT';
   if (threshold.state === 'active') return 'ACTIVE';
@@ -248,6 +253,23 @@ function DeltaCharm({ fact }: { fact: TacticalLoomFact }) {
   );
 }
 
+function InlineStrains({ strains }: { strains: readonly StrainId[] }) {
+  if (strains.length === 0) return null;
+  return (
+    <span
+      className={styles.inlineStrains}
+      aria-label={`Strains ${strains.map((id) => STRAINS[id].name).join(', ')}`}
+    >
+      {strains.map((id) => (
+        <em key={id} style={{ '--strain': STRAINS[id].color } as LoomStyle}>
+          <i aria-hidden="true"><StrainGlyph id={id} /></i>
+          {STRAINS[id].name.toUpperCase()}
+        </em>
+      ))}
+    </span>
+  );
+}
+
 export function TacticalLoomLite({
   consequence,
   action,
@@ -255,6 +277,7 @@ export function TacticalLoomLite({
   geneId = null,
   geneName = null,
   strains = [],
+  showStrains = false,
 }: {
   consequence: TacticalLoomConsequence;
   action: string;
@@ -262,6 +285,7 @@ export function TacticalLoomLite({
   geneId?: string | null;
   geneName?: string | null;
   strains?: readonly StrainId[];
+  showStrains?: boolean;
 }) {
   const [focusedThresholds, setFocusedThresholds] = useState<Record<string, number>>({});
   const loci = changedLoci(currentGenome, consequence.genomeAfter);
@@ -348,8 +372,10 @@ export function TacticalLoomLite({
             <li key={before.index}>
               <span>L{before.index + 1}</span>
               <b>{before.kind === 'empty' ? 'OPEN' : before.label}</b>
+              {showStrains ? <InlineStrains strains={before.strains} /> : null}
               <i aria-hidden="true">→</i>
               <strong>{after.kind === 'empty' ? 'OPEN' : after.label}</strong>
+              {showStrains ? <InlineStrains strains={after.strains} /> : null}
             </li>
           ))}
         </ol>

@@ -164,7 +164,7 @@
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 86px;
+  min-height: 98px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -269,13 +269,15 @@
 .rungs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .rungs button { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; border: 1px solid color-mix(in srgb, var(--strain), transparent 68%); border-radius: 50%; background: rgb(4 8 20 / 45%); color: rgb(237 233 223 / 58%); font-family: var(--font-mono); font-size: 12px; }
 .rungs button[data-active='true'] { border-color: var(--strain); background: color-mix(in srgb, var(--strain), transparent 82%); color: #fff; box-shadow: 0 0 9px color-mix(in srgb, var(--strain), transparent 52%); }
+.rungs button[data-locked='true'] { border-style: dashed; border-color: color-mix(in srgb, var(--strain), transparent 36%); color: var(--strain); }
 .rungs button[aria-pressed='true'] { outline: 1px solid #fff; outline-offset: 2px; color: #fff; }
 .strain > small { display: block; margin-top: 4px; overflow: hidden; color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .strainDisclosure { display: flex; min-height: 44px; align-items: center; gap: 9px; margin: 0; border: 1px solid color-mix(in srgb, var(--strain), transparent 66%); border-radius: 12px; background: color-mix(in srgb, var(--strain), transparent 92%); padding: 8px 10px; color: #f7f0ff; }
 .strainDisclosure > i { width: 24px; height: 24px; flex: none; color: var(--strain); filter: drop-shadow(0 0 7px color-mix(in srgb, var(--strain), transparent 48%)); }
-.strainDisclosure strong, .strainDisclosure small { display: block; font-family: var(--font-body); }
+.strainDisclosure strong, .strainDisclosure small, .strainDisclosure em { display: block; font-family: var(--font-body); }
 .strainDisclosure strong { color: var(--strain); font-size: 10px; }
 .strainDisclosure small { margin-top: 2px; color: rgb(237 233 223 / 74%); font-size: 10px; line-height: 1.35; }
+.strainDisclosure em { margin-top: 3px; color: var(--gold); font-size: 9px; font-style: normal; }
 .strainHint { margin: 0; color: rgb(237 233 223 / 52%); font-family: var(--font-body); font-size: 10px; text-align: center; }
 
 .palette { margin-top: 14px; border-top: 1px solid rgb(168 85 247 / 22%); padding-top: 12px; }
@@ -286,13 +288,72 @@
 .lenses button[aria-selected='true'] { color: var(--gold); text-shadow: 0 0 9px rgb(245 197 66 / 42%); }
 .lenses i { font-size: 14px; font-style: normal; }
 .geneRail { display: flex; gap: 6px; overflow-x: auto; padding: 7px 1px 4px; scroll-snap-type: x proximity; scrollbar-width: thin; }
-.geneRail button { display: flex; min-width: 132px; min-height: 52px; align-items: center; gap: 7px; scroll-snap-align: start; border: 1px solid rgb(125 249 255 / 15%); border-radius: 12px; background: rgb(4 8 20 / 54%); padding: 7px; color: rgb(237 233 223 / 58%); text-align: left; }
+.geneRail button { display: flex; min-width: 164px; min-height: 72px; align-items: center; gap: 7px; scroll-snap-align: start; border: 1px solid color-mix(in srgb, var(--gene-strain), transparent 78%); border-radius: 12px; background: linear-gradient(120deg, color-mix(in srgb, var(--gene-strain), transparent 93%), rgb(4 8 20 / 66%)); padding: 7px; color: rgb(237 233 223 / 58%); text-align: left; }
 .geneRail button[aria-pressed='true'] { border-color: rgb(168 85 247 / 66%); background: radial-gradient(circle at 22% 50%, rgb(168 85 247 / 25%), rgb(4 8 20 / 82%)); color: #f7f0ff; box-shadow: 0 0 14px rgb(168 85 247 / 13%); }
-.geneRail button > i { width: 29px; height: 29px; flex: none; color: var(--cyan); }
-.geneRail span { min-width: 0; }
+.geneRail button > i { width: 29px; height: 29px; flex: none; color: var(--gene-strain, var(--cyan)); filter: drop-shadow(0 0 7px color-mix(in srgb, var(--gene-strain), transparent 48%)); }
+.geneRailCopy { min-width: 0; flex: 1; }
 .geneRail strong, .geneRail small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .geneRail strong { font-family: var(--font-display); font-size: 10px; }
 .geneRail small { margin-top: 2px; color: rgb(237 233 223 / 54%); font-family: var(--font-body); font-size: 9px; text-transform: uppercase; }
+
+.geneStrainBadges {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  margin-top: 5px;
+}
+
+.geneStrainBadge {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid color-mix(in srgb, var(--strain), transparent 48%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--strain), transparent 88%);
+  padding: 2px 5px 2px 3px;
+  color: var(--strain);
+  box-shadow: inset 0 0 8px color-mix(in srgb, var(--strain), transparent 88%);
+}
+
+.geneStrainBadge i {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+
+.geneStrainBadge b {
+  overflow: visible;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .055em;
+  line-height: 1;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.geneStrainBadges[data-compact='true'] {
+  max-width: 110px;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 3px;
+}
+
+.geneStrainBadges[data-compact='true'] .geneStrainBadge {
+  padding: 1px 4px 1px 2px;
+}
+
+.geneStrainBadges[data-compact='true'] .geneStrainBadge i {
+  width: 9px;
+  height: 9px;
+}
+
+.geneStrainBadges[data-compact='true'] .geneStrainBadge b { font-size: 9px; }
 
 .focusReaction { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, .7fr) auto; gap: 12px; align-items: center; margin-top: 10px; border: 1px solid rgb(168 85 247 / 24%); border-radius: 14px; background: rgb(8 8 24 / 46%); padding: 10px; }
 .focusRule { display: grid; gap: 6px; }
@@ -421,7 +482,7 @@
   .paletteHeader small { font-size: 11px; line-height: 1.35; }
   .lenses { width: 100%; justify-content: space-between; }
   .lenses button { flex: 1; justify-content: center; font-size: 10px; }
-  .geneRail button { min-width: 145px; }
+  .geneRail button { min-width: 172px; }
   .geneRail strong { font-size: 11px; }
   .geneRail small { font-size: 10px; }
   .focusReaction { grid-template-columns: 1fr; }
