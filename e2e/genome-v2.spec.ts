@@ -34,7 +34,7 @@ test.describe('Genome v2 live player journey', () => {
 
   test('a resumed mobile run exposes the reaction map, commits Phoenix, and returns the flick untouched', async ({
     page,
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await seedConsent(page);
     const fixture = await installGenomeV2BrowserFixture(page);
@@ -80,6 +80,11 @@ test.describe('Genome v2 live player journey', () => {
     await expect(page.getByTestId('loom-strain-FERAL')).toContainText('1 → 2');
     await expect(page.getByTestId('loom-strain-FERAL-rule')).toContainText('NEXT');
 
+    await testInfo.attach('tactical-loom-mobile', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+
     const spliceMap = page.getByTestId('loom-lite-splices');
     await expect(spliceMap).toContainText('Styx Contract');
     await expect(spliceMap).toContainText('FORMS');
@@ -101,6 +106,11 @@ test.describe('Genome v2 live player journey', () => {
     await expect(callout).toBeVisible();
     await expect(callout).toContainText('Styx Contract');
     await expect(callout).toHaveCSS('pointer-events', 'none');
+
+    await testInfo.attach('genome-commit-callout-mobile', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
 
     // Confirmation never leaks into movement. The held-state Abandon control
     // proves the engine is still waiting; the pointer-transparent celebration
