@@ -1,4 +1,5 @@
 import { sanitizeGenomeCapability } from './genomeCapability';
+import { deriveGenomeV2FtuePresentation } from '@/shared/game/genomeV2';
 
 describe('sanitizeGenomeCapability', () => {
   it('accepts a server block and sanitizes every nested domain', () => {
@@ -57,6 +58,121 @@ describe('sanitizeGenomeCapability', () => {
     expect(sanitizeGenomeCapability({
       runSeed: '12345678-1234-1234-1234-123456789abc',
       genePool: ['tithe', 'bogus'],
+    })).toBeNull();
+  });
+
+  it('keeps explicit v1 discrimination byte-identical to the historical path', () => {
+    const capability = {
+      runSeed: '12345678-1234-1234-1234-123456789abc',
+      genePool: ['gold_trail', 'tithe'],
+      heirloom: { AURUM: 1 },
+      lineage: null,
+      anomalyStrain: null,
+      suppressedStrains: [],
+      strainThresholdDelta: {},
+      prevRunDied: false,
+      ftue: {},
+    };
+    expect(sanitizeGenomeCapability({ rulesVersion: 1, ...capability }))
+      .toEqual(sanitizeGenomeCapability(capability));
+    expect(sanitizeGenomeCapability({ rulesVersion: 3, ...capability }))
+      .toBeNull();
+  });
+
+  it('accepts only the exact fresh v2 start contract and preserves curated order', () => {
+    const ftuePresentation = deriveGenomeV2FtuePresentation(7, 3);
+    const capability = sanitizeGenomeCapability({
+      rulesVersion: 2,
+      runSeed: 'genome-v2-server-seed',
+      v2GenePool: ['phase_gate', 'live_wire', 'gold_trail'],
+      heirloom: { FLUX: 2, AURUM: 0 },
+      ftuePresentation,
+      offerTiltStrain: 'VOLT',
+      suppressedStrains: ['UMBRA'],
+      strainThresholdDelta: { FERAL: -1, VOLT: 0 },
+      // Never accepted from this network boundary or copied to the result.
+      reducerState: { v: 2, forged: true },
+    });
+
+    expect(capability).toEqual({
+      rulesVersion: 2,
+      runSeed: 'genome-v2-server-seed',
+      v2GenePool: ['phase_gate', 'live_wire', 'gold_trail'],
+      heirloom: { FLUX: 2, AURUM: 0 },
+      ftuePresentation,
+      offerTiltStrain: 'VOLT',
+      suppressedStrains: ['UMBRA'],
+      strainThresholdDelta: { FERAL: -1, VOLT: 0 },
+    });
+    expect(capability).not.toHaveProperty('genePool');
+    expect(capability).not.toHaveProperty('ftue');
+    expect(capability).not.toHaveProperty('reducerState');
+  });
+
+  it('never treats the v1 genePool alias as v2 offer authority', () => {
+    const ftuePresentation = deriveGenomeV2FtuePresentation(7, 3);
+    const base = {
+      rulesVersion: 2,
+      runSeed: 'genome-v2-server-seed',
+      heirloom: {},
+      ftuePresentation,
+      offerTiltStrain: null,
+      suppressedStrains: [],
+      strainThresholdDelta: {},
+    };
+
+    expect(sanitizeGenomeCapability({
+      ...base,
+      genePool: ['live_wire', 'phase_gate'],
+    })).toBeNull();
+    expect(sanitizeGenomeCapability({
+      ...base,
+      v2GenePool: ['live_wire', 'phase_gate'],
+      genePool: ['gold_trail', 'overgrowth'],
+    })).toBeNull();
+    expect(sanitizeGenomeCapability({
+      ...base,
+      v2GenePool: ['live_wire', 'live_wire'],
+    })).toBeNull();
+    expect(sanitizeGenomeCapability({
+      ...base,
+      v2GenePool: ['magnet_pulse', 'live_wire'],
+    })).toBeNull();
+    expect(sanitizeGenomeCapability({
+      ...base,
+      rulesVersion: undefined,
+      v2GenePool: ['live_wire', 'phase_gate'],
+    })).toBeNull();
+  });
+
+  it('fails closed on incomplete or internally inconsistent v2 authority', () => {
+    const ftuePresentation = deriveGenomeV2FtuePresentation(7, 3);
+    const base = {
+      rulesVersion: 2,
+      runSeed: 'genome-v2-server-seed',
+      v2GenePool: ['live_wire', 'phase_gate'],
+      heirloom: {},
+      ftuePresentation,
+      offerTiltStrain: null,
+      suppressedStrains: [],
+      strainThresholdDelta: {},
+    };
+    const { ftuePresentation: _missingFtue, ...withoutFtue } = base;
+    expect(sanitizeGenomeCapability(withoutFtue)).toBeNull();
+    expect(sanitizeGenomeCapability({
+      ...base,
+      ftuePresentation: {
+        ...ftuePresentation,
+        bankedRuns: ftuePresentation.bankedRuns + 1,
+      },
+    })).toBeNull();
+    expect(sanitizeGenomeCapability({
+      ...base,
+      suppressedStrains: ['VOLT', 'VOLT'],
+    })).toBeNull();
+    expect(sanitizeGenomeCapability({
+      ...base,
+      strainThresholdDelta: { VOLT: 99 },
     })).toBeNull();
   });
 });

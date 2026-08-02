@@ -1355,7 +1355,12 @@ export function genomeV2HasLadderTier(
   return genomeV2StrainTier(state, strain) >= minimum;
 }
 
-function genomeV2MechanicEnabled(
+/**
+ * Canonical runtime answer for whether one parent mechanic survives the
+ * current Genome. A `spliced` instance alone is not enough: each fused rule
+ * explicitly names which parent behavior it retains.
+ */
+export function genomeV2MechanicEnabled(
   state: GenomeV2State,
   geneId: GenomeV2ActiveGeneId
 ): boolean {
