@@ -53,6 +53,8 @@ export interface TacticalLoomFact {
 
 export interface TacticalLoomConsequence {
   category: string;
+  /** One neutral, highest-salience fact for the default fast comparison. */
+  salienceChip?: string;
   effect: string;
   cost: string;
   genomeAfter: readonly TacticalLoomGenomeSlot[];

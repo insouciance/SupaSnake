@@ -138,13 +138,26 @@ function candidateConsequence(
   discovered: ReadonlySet<SpliceId>
 ): TacticalLoomConsequence {
   const def = GENES[option];
+  const strains = strainProjection(option, input.strainCounts, input.showStrains);
+  const splices = splicePaths(option, input.held, input.splicesUnlocked, discovered);
+  const formingSplice = splices.find((path) => path.stage === 'immediate');
+  const unlockedTier = strains.flatMap((strain) =>
+    strain.thresholds.map((threshold) => ({ strain, threshold }))
+  ).find(({ strain, threshold }) =>
+    strain.before < threshold.points && strain.after >= threshold.points
+  );
   return {
     category: def.economics === 'pure' ? 'Yield & outcome' : def.economics === 'path' ? 'Execution' : 'Genome',
+    salienceChip: formingSplice
+      ? `Forms ${formingSplice.name}`
+      : unlockedTier
+        ? `Unlocks ${unlockedTier.threshold.name}`
+        : `+1 ${STRAINS[def.strains[0]].name}`,
     effect: def.effect,
     cost: def.cost,
     genomeAfter: genomeSlots(input.held, option),
-    strains: strainProjection(option, input.strainCounts, input.showStrains),
-    splices: splicePaths(option, input.held, input.splicesUnlocked, discovered),
+    strains,
+    splices,
     ledgers: [],
     targets: [],
     body: [],
@@ -159,6 +172,9 @@ function declineConsequence(input: LegacyTacticalLoomInput): TacticalLoomConsequ
     : 'Normal weighted offer stream';
   return {
     category: 'Opportunity cost',
+    salienceChip: input.pityStrain
+      ? `Next: ${STRAINS[input.pityStrain].name}`
+      : 'Genome unchanged',
     effect: input.pityStrain
       ? `Spend this offer. The next first slot is forced to ${STRAINS[input.pityStrain].name.toUpperCase()}.`
       : 'Spend this offer and preserve every open Genome locus.',

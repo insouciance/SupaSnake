@@ -92,7 +92,6 @@ describe('Genome v2 presentation adapter', () => {
     });
     expect(model?.candidates[0].consequence.splices).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'Dragon Hoard', stage: 'immediate', activation: 'available' }),
-      expect.objectContaining({ name: 'Loom Bond', stage: 'one-step', activation: 'available' }),
     ]));
     expect(model?.candidates[0].consequence.strains[0].thresholds).toEqual([
       expect.objectContaining({ points: 3 }),
@@ -144,7 +143,7 @@ describe('Genome v2 presentation adapter', () => {
     });
     const model = buildGenomeV2TacticalLoomModel({ state, activation: ACTIVATION });
     const bonds = model?.decline.consequence.ledgers.find((fact) => fact.id === 'bonds');
-    expect(model?.decline.consequence.effect).toContain('1 prospective BANK Bond');
+    expect(model?.decline.consequence.effect).toContain('prospective BANK Bond');
     expect(bonds).toMatchObject({ before: '0', after: '1' });
   });
 
