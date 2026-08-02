@@ -625,6 +625,38 @@ function projectedDynastyFacts(
   return [`This is a universal gene. Its value still depends on ${projection.dynasty} speed, growth, and board state.`];
 }
 
+function highestSalienceChip(
+  consequence: TacticalLoomConsequence,
+  fallback: string
+): string {
+  const formingSplice = consequence.splices.find(
+    (path) => path.stage === 'immediate' && path.activation === 'available'
+  );
+  if (formingSplice) return `Forms ${formingSplice.name}`;
+  const newlyActive = consequence.strains.flatMap((strain) =>
+    strain.thresholds.map((threshold) => ({ strain, threshold }))
+  ).find(({ strain, threshold }) =>
+    strain.before < threshold.points
+    && strain.after >= threshold.points
+    && threshold.state === 'active'
+  );
+  if (newlyActive) return `Unlocks ${newlyActive.threshold.name}`;
+  const bodyCommit = consequence.body.find((fact) =>
+    fact.id === 'body-length' && fact.after.startsWith('+')
+  );
+  if (bodyCommit) return `${bodyCommit.after.replace(' on commit', '')} body`;
+  const changedLedger = consequence.ledgers.find((fact) => fact.before !== fact.after);
+  if (changedLedger) return `${changedLedger.label}: ${changedLedger.after}`;
+  const targetRule = consequence.targets.find((fact) => fact.id === 'target-rule');
+  if (targetRule && targetRule.before !== targetRule.after) return targetRule.after;
+  const nextTier = consequence.strains.flatMap((strain) =>
+    strain.thresholds
+      .filter((threshold) => threshold.state === 'next')
+      .map((threshold) => `${threshold.name} · ${threshold.progressLabel}`)
+  )[0];
+  return nextTier ?? fallback;
+}
+
 function replacementConsequence(
   state: GenomeV2State,
   projection: EnrichedLoomModel,
@@ -663,7 +695,7 @@ function replacementConsequence(
         }
       : null,
   ].filter((path): path is TacticalLoomSplicePath => path !== null);
-  return {
+  const consequence: TacticalLoomConsequence = {
     category: CATEGORY_LABELS[candidate.category],
     effect: candidate.projectedYieldRule,
     cost: candidate.strategicCost,
@@ -699,6 +731,12 @@ function replacementConsequence(
       ...(replacement.losesSecondLife ? ['Phoenix is lost with the outgoing locus'] : []),
     ],
   };
+  return {
+    ...consequence,
+    salienceChip: replacement.breaksSplice
+      ? `Breaks ${GENOME_V2_SPLICES[replacement.breaksSplice].name}`
+      : highestSalienceChip(consequence, `Replaces locus ${replacement.slot + 1}`),
+  };
 }
 
 function candidateConsequence(
@@ -707,7 +745,7 @@ function candidateConsequence(
   candidate: EnrichedCandidateDelta,
   input: GenomeV2TacticalLoomInput
 ): TacticalLoomConsequence {
-  return {
+  const consequence: TacticalLoomConsequence = {
     category: CATEGORY_LABELS[candidate.category],
     effect: candidate.projectedYieldRule,
     cost: candidate.strategicCost,
@@ -734,6 +772,13 @@ function candidateConsequence(
     outcomes: projectedOutcomeFacts(state, candidate),
     dynastyFacts: projectedDynastyFacts(state, candidate),
   };
+  return {
+    ...consequence,
+    salienceChip: highestSalienceChip(
+      consequence,
+      `+1 ${GENOME_V2_GENES[candidate.geneId].strains[0]}`
+    ),
+  };
 }
 
 function projectedDeclineState(state: GenomeV2State): GenomeV2State {
@@ -755,7 +800,7 @@ function declineOptionConsequence(
 ): TacticalLoomConsequence {
   const decline = projection.decline;
   const bondDelta = option.bondAfter - projection.liabilities.bonds;
-  return {
+  const consequence: TacticalLoomConsequence = {
     category: option.pinGeneId ? 'Genome control' : 'Opportunity cost',
     effect: option.pinGeneId
       ? `Spend one charged Anchor to preserve ${GENOME_V2_GENES[option.pinGeneId].name} for its next legal offer.`
@@ -823,6 +868,14 @@ function declineOptionConsequence(
     ],
     dynastyFacts: [`DECLINE resolves inside the frozen ${option.dynasty} run state.`],
   };
+  return {
+    ...consequence,
+    salienceChip: option.pinGeneId
+      ? `Pins ${GENOME_V2_GENES[option.pinGeneId].name}`
+      : bondDelta > 0
+        ? `BANK Bond ${projection.liabilities.bonds} → ${option.bondAfter}`
+        : 'Genome unchanged',
+  };
 }
 
 function declineConsequence(
@@ -833,6 +886,7 @@ function declineConsequence(
   if (input.declineBehavior === 'return-to-portal') {
     return {
       category: 'Portal return',
+      salienceChip: 'No commitment',
       effect: 'Return to BANK / CONTINUE / MUTATE without consuming this portal or its Genome offer.',
       cost: 'No build choice is committed.',
       genomeAfter: genomePresentation(state),
@@ -857,6 +911,7 @@ function declineConsequence(
   const afterProjection = projectGenomeV2(after, []);
   return {
     category: 'Opportunity cost',
+    salienceChip: after.bonds > state.bonds ? `BANK Bond ${state.bonds} → ${after.bonds}` : 'Genome unchanged',
     effect: after.bonds > state.bonds
       ? 'Spend this offer, keep the current Genome, and mint one prospective BANK Bond.'
       : 'Spend this offer and keep the current Genome unchanged.',

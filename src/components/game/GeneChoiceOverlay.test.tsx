@@ -119,6 +119,9 @@ describe('GeneChoiceOverlay tactical Loom', () => {
       />
     );
     expect(screen.getByRole('dialog', { name: 'Tactical Loom' })).toHaveAttribute('aria-modal', 'true');
+    expect(screen.queryByTestId('loom-consequence-pane')).toBeNull();
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Live Wire creates');
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
     expect(screen.getAllByTestId('loom-consequence-pane')).toHaveLength(1);
     expect(screen.getByTestId('loom-genome-before')).toHaveAccessibleName('Current Genome');
     expect(screen.getByTestId('loom-genome-after')).toHaveAccessibleName('Resulting Genome');
@@ -144,13 +147,13 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
 
     fireEvent.click(screen.getByTestId('gene-option-1'));
-    expect(screen.getByTestId('loom-consequence-pane')).toHaveTextContent('Phase Gate creates');
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Phase Gate creates');
     expect(onChoose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onChoose).toHaveBeenCalledWith(1);
 
     fireEvent.click(screen.getByTestId('gene-decline'));
-    expect(screen.getByTestId('loom-consequence-pane')).toHaveTextContent('mint Bond 2 of 3');
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('mint Bond 2 of 3');
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onDecline).toHaveBeenCalledTimes(1);
   });
@@ -239,7 +242,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.click(screen.getByTestId('gene-decline'));
     expect(screen.getByTestId('loom-anchor-decline-step')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('loom-decline-option-pin-a'));
-    expect(screen.getByTestId('loom-consequence-pane')).toHaveTextContent('mints no Bond');
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('mints no Bond');
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onDecline).toHaveBeenCalledWith(0);
   });
@@ -314,6 +317,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
       />
     );
     expect(screen.getByTestId('gene-choice-overlay')).toHaveAttribute('data-rules-version', '1');
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
     expect(screen.getByTestId('loom-splice-paths')).toHaveTextContent('Uncatalogued Splice');
     fireEvent.focus(screen.getByTestId('gene-decline'));
     expect(screen.getByTestId('loom-consequence-pane')).toHaveTextContent('forced to FERAL');
