@@ -16,6 +16,19 @@ const VIEWPORTS = [
   { name: 'phone', width: 390, height: 844 },
   { name: 'desktop', width: 1440, height: 900 },
 ];
+const WORKBENCH_VIEWPORTS = [
+  ...VIEWPORTS,
+  // A 1440×900 physical desktop at 200% zoom exposes a 720×450 CSS layout
+  // viewport. DPR 2 preserves that physical canvas while exercising reflow.
+  {
+    name: 'desktop-zoom-200',
+    width: 720,
+    height: 450,
+    deviceScaleFactor: 2,
+    hasTouch: false,
+    zoom: 2,
+  },
+];
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -39,8 +52,9 @@ async function capture(page, surface, viewport) {
 async function openPage(browser, viewport, route) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
+    deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
     reducedMotion: 'reduce',
-    hasTouch: viewport.name !== 'desktop',
+    hasTouch: viewport.hasTouch ?? viewport.name !== 'desktop',
   });
   const page = await context.newPage();
   const errors = [];
@@ -243,12 +257,26 @@ async function auditWorkbench(browser, viewport) {
   const metrics = await page.evaluate(() => {
     const rect = (element) => {
       const value = element.getBoundingClientRect();
-      return { x: value.x, width: value.width, right: value.right };
+      return {
+        x: value.x,
+        y: value.y,
+        width: value.width,
+        height: value.height,
+        right: value.right,
+        bottom: value.bottom,
+      };
     };
+    const hasDirectText = (element) => [...element.childNodes].some(
+      (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim())
+    );
     const focused = document.querySelector('[data-testid="workbench-focused-gene-name"]');
     const strainRail = document.querySelector('[data-testid="workbench-strains"]');
     const geneRail = document.querySelector('[data-testid="workbench-gene-palette"]');
-    if (!focused || !strainRail || !geneRail) throw new Error('Workbench readability targets missing');
+    const table = document.querySelector('[data-testid="workbench-research-table"]');
+    const focusReaction = document.querySelector('[data-testid="workbench-focused-reaction"]');
+    if (!focused || !strainRail || !geneRail || !table || !focusReaction) {
+      throw new Error('Workbench readability targets missing');
+    }
     const focusedStyle = getComputedStyle(focused);
     const targets = [...document.querySelectorAll('[data-testid^="workbench-tier-"]')]
       .map((element) => {
@@ -264,12 +292,39 @@ async function auditWorkbench(browser, viewport) {
           || element.scrollHeight > element.clientHeight + 0.5,
       };
     });
+    const material = [
+      ...table.querySelectorAll('h1, h2, h3, h4, p, button, strong, small, b, em, span'),
+    ].filter((element) => {
+      const style = getComputedStyle(element);
+      return hasDirectText(element)
+        && style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && element.getClientRects().length > 0;
+    }).map((element) => {
+      const style = getComputedStyle(element);
+      return {
+        text: element.textContent?.trim().slice(0, 64) ?? '',
+        fontSize: Number.parseFloat(style.fontSize),
+        box: rect(element),
+        clippedX: ['hidden', 'clip'].includes(style.overflowX)
+          && element.scrollWidth > element.clientWidth + 0.5,
+        clippedY: ['hidden', 'clip'].includes(style.overflowY)
+          && element.scrollHeight > element.clientHeight + 0.5,
+      };
+    });
+    const focusColumns = getComputedStyle(focusReaction).gridTemplateColumns
+      .split(' ')
+      .filter(Boolean);
     return {
       focusedText: focused.textContent?.trim() ?? '',
       focusedFontSize: Number.parseFloat(focusedStyle.fontSize),
       focusedWhiteSpace: focusedStyle.whiteSpace,
       focusedClippedX: focused.scrollWidth > focused.clientWidth + 0.5,
       focusedClippedY: focused.scrollHeight > focused.clientHeight + 0.5,
+      focusedScrollWidth: focused.scrollWidth,
+      focusedClientWidth: focused.clientWidth,
+      focusedScrollHeight: focused.scrollHeight,
+      focusedClientHeight: focused.clientHeight,
       targets,
       focusedBadges: badge('[data-testid^="workbench-focused-gene-strain-"]'),
       dualGeneBadges: badge('[data-testid^="workbench-locus-1-strain-"]'),
@@ -283,6 +338,10 @@ async function auditWorkbench(browser, viewport) {
       strainClientWidth: strainRail.clientWidth,
       geneScrollWidth: geneRail.scrollWidth,
       geneClientWidth: geneRail.clientWidth,
+      material,
+      focusColumnCount: focusColumns.length,
+      devicePixelRatio: window.devicePixelRatio,
+      viewportWidth: document.documentElement.clientWidth,
       pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     };
   });
@@ -290,8 +349,19 @@ async function auditWorkbench(browser, viewport) {
   invariant(errors.length === 0, `workbench/${viewport.name}: ${errors.join('; ')}`);
   invariant(metrics.focusedText === 'Compound Interest', `workbench/${viewport.name}: full selected name missing`);
   invariant(metrics.focusedWhiteSpace !== 'nowrap', `workbench/${viewport.name}: selected name cannot wrap`);
-  invariant(!metrics.focusedClippedX && !metrics.focusedClippedY, `workbench/${viewport.name}: selected name clips`);
-  invariant(metrics.focusedFontSize >= 12, `workbench/${viewport.name}: selected name is ${metrics.focusedFontSize}px`);
+  invariant(
+    !metrics.focusedClippedX && !metrics.focusedClippedY,
+    `workbench/${viewport.name}: selected name clips ${JSON.stringify({
+      x: metrics.focusedClippedX,
+      y: metrics.focusedClippedY,
+      fontSize: metrics.focusedFontSize,
+      scrollWidth: metrics.focusedScrollWidth,
+      clientWidth: metrics.focusedClientWidth,
+      scrollHeight: metrics.focusedScrollHeight,
+      clientHeight: metrics.focusedClientHeight,
+    })}`
+  );
+  invariant(metrics.focusedFontSize >= 14, `workbench/${viewport.name}: selected name is ${metrics.focusedFontSize}px`);
   invariant(metrics.targets.length === 15, `workbench/${viewport.name}: expected 15 Strain targets, found ${metrics.targets.length}`);
   invariant(
     metrics.targets.every(
@@ -327,11 +397,32 @@ async function auditWorkbench(browser, viewport) {
   );
   invariant(
     [...metrics.focusedBadges, ...metrics.dualGeneBadges]
-      .every(({ fontSize, clipped }) => fontSize >= 9 && !clipped),
-    `workbench/${viewport.name}: Strain badge is clipped or below 9px`
+      .every(({ fontSize, clipped }) => fontSize >= 14 && !clipped),
+    `workbench/${viewport.name}: Strain badge is clipped or below 14px`
+  );
+  const undersizedMaterial = metrics.material.filter(({ fontSize }) => fontSize < 14);
+  invariant(
+    undersizedMaterial.length === 0,
+    `workbench/${viewport.name}: material text below 14px ${JSON.stringify(undersizedMaterial)}`
+  );
+  const clippedMaterial = metrics.material.filter(({ clippedX, clippedY }) => clippedX || clippedY);
+  invariant(
+    clippedMaterial.length === 0,
+    `workbench/${viewport.name}: material text clips ${JSON.stringify(clippedMaterial)}`
+  );
+  const escapedMaterial = metrics.material.filter(
+    ({ box }) => box.x < -TARGET_EPSILON || box.right > metrics.viewportWidth + TARGET_EPSILON
+  );
+  invariant(
+    escapedMaterial.length === 0,
+    `workbench/${viewport.name}: material text escaped the viewport ${JSON.stringify(escapedMaterial)}`
   );
   invariant(metrics.geneOverflowX !== 'auto', `workbench/${viewport.name}: gene palette retained a scroll rail`);
   invariant(metrics.strainOverflowX !== 'auto', `workbench/${viewport.name}: Strain ladder retained a scroll rail`);
+  if (viewport.zoom === 2) {
+    invariant(metrics.devicePixelRatio === 2, `workbench/${viewport.name}: 200% scale was not applied`);
+    invariant(metrics.focusColumnCount === 1, `workbench/${viewport.name}: focused reaction did not reflow to one column`);
+  }
   invariant(!metrics.pageOverflow, `workbench/${viewport.name}: horizontal page overflow`);
 
   await capture(page, 'research-workbench', viewport);
@@ -343,8 +434,11 @@ let checks = 0;
 try {
   for (const viewport of VIEWPORTS) {
     await auditLoom(browser, viewport);
+    checks += 1;
+  }
+  for (const viewport of WORKBENCH_VIEWPORTS) {
     await auditWorkbench(browser, viewport);
-    checks += 2;
+    checks += 1;
   }
   console.log(`PASS ${checks} Genome v2 readable-surface checks`);
 } finally {
