@@ -14,6 +14,10 @@ import {
   validateRunCheckpoint,
 } from './runContinuity';
 import {
+  GENOME_V2_INTERACTION_AUTO_OFFER,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+} from '@/shared/game/genomeV2';
+import {
   SNAKE_RULES_VERSION,
   SnakeGameLogic,
 } from '@/lib/game/SnakeGameLogic';
@@ -67,6 +71,18 @@ describe('run continuity server contract', () => {
     ).not.toBe(fingerprintStartRequest(start));
     expect(
       fingerprintStartRequest({ ...start, snakeId: 'snake-2' })
+    ).not.toBe(fingerprintStartRequest(start));
+    expect(
+      fingerprintStartRequest({
+        ...start,
+        genomeInteractionVersion: GENOME_V2_INTERACTION_AUTO_OFFER,
+      })
+    ).toBe(fingerprintStartRequest(start));
+    expect(
+      fingerprintStartRequest({
+        ...start,
+        genomeInteractionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+      })
     ).not.toBe(fingerprintStartRequest(start));
   });
 

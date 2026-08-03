@@ -126,7 +126,10 @@ import { genomeV2ActivePool } from '@/shared/game/genes';
 import {
   deriveGenomeV2Ftue,
   deriveGenomeV2FtuePresentation,
+  GENOME_V2_INTERACTION_AUTO_OFFER,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_RULES_V2,
+  isGenomeV2InteractionVersion,
 } from '@/shared/game/genomeV2';
 import {
   lineageOfferBias,
@@ -386,6 +389,7 @@ export async function POST(request: NextRequest) {
       checkpoint,
       leaseToken,
       replay,
+      genomeInteractionVersion,
     } = body;
 
     // Rolling-deploy boundary: a tab loaded before continuity support cannot
@@ -624,6 +628,22 @@ export async function POST(request: NextRequest) {
       )
         ? ((body as Record<string, unknown>).ladderRung as number)
         : null;
+      if (
+        genomeInteractionVersion !== undefined &&
+        !isGenomeV2InteractionVersion(genomeInteractionVersion)
+      ) {
+        return progressionJson(
+          { error: 'Unsupported genome interaction capability' },
+          { status: 400 }
+        );
+      }
+      // Rolling deploy: omission means the already-shipped automatic-offer
+      // interaction. A client must explicitly opt into the physical-relic
+      // contract; old loaded JS therefore remains replay-compatible.
+      const negotiatedGenomeInteractionVersion =
+        genomeInteractionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC
+          ? GENOME_V2_INTERACTION_PHYSICAL_RELIC
+          : GENOME_V2_INTERACTION_AUTO_OFFER;
       const startFingerprint = fingerprintStartRequest({
         mode: continuityMode,
         snakeId: snake_id,
@@ -632,6 +652,7 @@ export async function POST(request: NextRequest) {
         signalObjectiveId:
           typeof signalObjectiveId === 'string' ? signalObjectiveId : null,
         ladderRung: requestedLadderRung,
+        genomeInteractionVersion: negotiatedGenomeInteractionVersion,
       });
       let preparingShell: ContinuityRow | null = null;
 
@@ -1013,6 +1034,7 @@ export async function POST(request: NextRequest) {
             : null;
           genomeBlock = {
             rulesVersion: GENOME_RULES_V2,
+            interactionVersion: negotiatedGenomeInteractionVersion,
             runSeed: genomeSeed,
             heirloom,
             v2GenePool: genePool,
@@ -1020,6 +1042,7 @@ export async function POST(request: NextRequest) {
           };
           startGenomeContext = {
             rulesVersion: GENOME_RULES_V2,
+            interactionVersion: negotiatedGenomeInteractionVersion,
             genePool,
             heirloom,
             lineage: lineageBias,
@@ -1173,6 +1196,13 @@ export async function POST(request: NextRequest) {
           signalObjectiveId:
             typeof signalObjectiveId === 'string' ? signalObjectiveId : null,
           ladderRung: requestedLadderRung,
+          ...(negotiatedGenomeInteractionVersion ===
+          GENOME_V2_INTERACTION_PHYSICAL_RELIC
+            ? {
+                genomeInteractionVersion:
+                  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+              }
+            : {}),
         },
         simulation_seed: simulationSeed,
         simulation_version: RUN_CONTINUITY_VERSION,

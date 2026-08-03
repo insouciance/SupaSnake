@@ -6,6 +6,11 @@ import {
   type SnakeTerminalReplayProof,
 } from '@/lib/game/SnakeGameLogic';
 import { isCanonicalCompletedSettlement } from '@/lib/game/settlementResponse';
+import {
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+  isGenomeV2InteractionVersion,
+  type GenomeV2InteractionVersion,
+} from '@/shared/game/genomeV2';
 
 export type RunContinuityPhase =
   | 'preparing'
@@ -75,6 +80,7 @@ export interface RunStartRetryIntent {
   confirmMaxEnergy: boolean;
   signalObjectiveId: string | null;
   ladderRung: number | null;
+  genomeInteractionVersion?: GenomeV2InteractionVersion;
 }
 
 function responseRecord(value: unknown): Record<string, unknown> {
@@ -122,6 +128,8 @@ function parseActiveRun(value: unknown): ActiveRunView | null {
       typeof startIntent.startRequestId === 'string' &&
       ['earn', 'free', 'anomaly', 'signal'].includes(String(startIntent.mode)) &&
       typeof startIntent.snakeId === 'string' &&
+      (startIntent.genomeInteractionVersion === undefined ||
+        isGenomeV2InteractionVersion(startIntent.genomeInteractionVersion)) &&
       Number.isSafeInteger(startIntent.energyCommitment)
         ? startIntent as unknown as RunStartRetryIntent
         : null,
@@ -150,6 +158,13 @@ export async function retryPreparingRunStart(
         ? { signalObjectiveId: intent.signalObjectiveId }
         : {}),
       ...(intent.ladderRung !== null ? { ladderRung: intent.ladderRung } : {}),
+      ...(intent.genomeInteractionVersion ===
+      GENOME_V2_INTERACTION_PHYSICAL_RELIC
+        ? {
+            genomeInteractionVersion:
+              GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+          }
+        : {}),
     }),
   });
   const body = await jsonRecord(response);

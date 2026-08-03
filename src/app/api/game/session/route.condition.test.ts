@@ -512,7 +512,11 @@ import {
 import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
 import { isMutationId } from '@/shared/game/mutations';
 import { sanitizeTraits } from '@/shared/game/traits';
-import { GENOME_RULES_V2 } from '@/shared/game/genomeV2';
+import {
+  GENOME_V2_INTERACTION_AUTO_OFFER,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+  GENOME_RULES_V2,
+} from '@/shared/game/genomeV2';
 
 const PLAYER_ID = 'player-1';
 const SNAKE_ID = 'snake-1';
@@ -883,6 +887,77 @@ describe('server-owned run-start continuity', () => {
     expect(
       rpcCalls.filter((call) => call.fn === 'finalize_run_continuity_start')
     ).toHaveLength(1);
+  });
+
+  it('keeps an old client on automatic offers when the interaction capability is omitted', async () => {
+    const response = await POST(post(startBody));
+    const manifest = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(manifest.genome).toMatchObject({
+      rulesVersion: GENOME_RULES_V2,
+      interactionVersion: GENOME_V2_INTERACTION_AUTO_OFFER,
+    });
+    expect(manifest.runContext.genome).toMatchObject({
+      rulesVersion: GENOME_RULES_V2,
+      interactionVersion: GENOME_V2_INTERACTION_AUTO_OFFER,
+    });
+
+    // Simulate the already-loaded sanitizer, which does not retain the new
+    // stamp in its engine config. The new server must accept this exact v1
+    // omission or a rolling deploy strands the charged run at activation.
+    const oldClientCheckpoint = openingCheckpoint(manifest);
+    if (oldClientCheckpoint.config.genome?.rulesVersion === GENOME_RULES_V2) {
+      delete oldClientCheckpoint.config.genome.interactionVersion;
+    }
+    const activation = await POST(post({
+      action: 'activate',
+      sessionId: manifest.sessionId,
+      checkpoint: oldClientCheckpoint,
+    }));
+    expect(activation.status).toBe(200);
+  });
+
+  it('stamps physical relics only when the new client explicitly negotiates interaction v2', async () => {
+    const response = await POST(post({
+      ...startBody,
+      genomeInteractionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    }));
+    const manifest = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(manifest.genome).toMatchObject({
+      rulesVersion: GENOME_RULES_V2,
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    });
+    expect(manifest.runContext.genome).toMatchObject({
+      rulesVersion: GENOME_RULES_V2,
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    });
+    expect(session().continuity_start_intent).toMatchObject({
+      genomeInteractionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    });
+  });
+
+  it('never downgrades a negotiated physical-relic run when its checkpoint drops the stamp', async () => {
+    const manifest = await (await POST(post({
+      ...startBody,
+      genomeInteractionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    }))).json();
+    const checkpoint = openingCheckpoint(manifest);
+    if (checkpoint.config.genome?.rulesVersion === GENOME_RULES_V2) {
+      delete checkpoint.config.genome.interactionVersion;
+    }
+
+    const activation = await POST(post({
+      action: 'activate',
+      sessionId: manifest.sessionId,
+      checkpoint,
+    }));
+    expect(activation.status).toBe(400);
+    expect(await activation.json()).toMatchObject({
+      reason: 'invalid_checkpoint',
+    });
   });
 
   it('repairs a zero-spend preparing shell from the same immutable start intent', async () => {

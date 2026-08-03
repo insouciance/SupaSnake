@@ -4,6 +4,7 @@ import { createAscendanceRunStamp } from '@/shared/game/ascendance';
 import { genomeV2ActivePool } from '@/shared/game/genes';
 import {
   deriveGenomeV2FtuePresentation,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_RULES_V2,
 } from '@/shared/game/genomeV2';
 import {
@@ -28,6 +29,7 @@ function v2Context(): RunStartContext {
     growthProfileId: 'dynasty',
     genome: {
       rulesVersion: GENOME_RULES_V2,
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
       genePool: genomeV2ActivePool('COSMIC'),
       heirloom: { UMBRA: 1 },
       lineage: {
@@ -87,6 +89,17 @@ describe('run_context: Genome v2 and Ascendance authority', () => {
     if (!parsed.ok) return;
     expect(parsed.context.snake.ascendance).toBeUndefined();
     expect(parsed.context.genome?.rulesVersion).toBeUndefined();
+  });
+
+  it('accepts a historical v2 context without an interaction stamp as automatic-offer v1', () => {
+    const raw = serializeRunStartContext(v2Context());
+    const genome = { ...(raw.genome as Record<string, unknown>) };
+    delete genome.interactionVersion;
+
+    const parsed = parseRunStartContext({ ...raw, genome });
+    expect(parsed).toMatchObject({ ok: true });
+    if (!parsed.ok) return;
+    expect(parsed.context.genome?.interactionVersion).toBeUndefined();
   });
 
   it('rejects v2 pools that are duplicated, too small, or contain retired v1 ids', () => {

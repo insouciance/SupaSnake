@@ -29,6 +29,7 @@ import {
 } from '@/shared/game/offerGravity';
 import {
   GENOME_V2_GENE_OFFER_CADENCE,
+  rollGeneOfferInterval,
   rollGenomeV2GeneOfferInterval,
 } from '@/shared/game/geneCadence';
 
@@ -36,6 +37,30 @@ export const GENOME_RULES_V1 = 1 as const;
 export const GENOME_RULES_V2 = 2 as const;
 export const CURRENT_GENOME_RULES_VERSION = GENOME_RULES_V2;
 export type GenomeRulesVersion = typeof GENOME_RULES_V1 | typeof GENOME_RULES_V2;
+
+/**
+ * Rules v2 shipped briefly with cadence offers opening themselves after food.
+ * Keep that interaction readable for already-started sessions while new runs
+ * stamp the player-pulled relic contract explicitly. This is an interaction
+ * sub-version, not new Genome arithmetic: both versions use the same reducer,
+ * genes, settlement, and rulesVersion.
+ */
+export const GENOME_V2_INTERACTION_AUTO_OFFER = 1 as const;
+export const GENOME_V2_INTERACTION_PHYSICAL_RELIC = 2 as const;
+export const CURRENT_GENOME_V2_INTERACTION_VERSION =
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC;
+export type GenomeV2InteractionVersion =
+  | typeof GENOME_V2_INTERACTION_AUTO_OFFER
+  | typeof GENOME_V2_INTERACTION_PHYSICAL_RELIC;
+
+export function isGenomeV2InteractionVersion(
+  value: unknown
+): value is GenomeV2InteractionVersion {
+  return (
+    value === GENOME_V2_INTERACTION_AUTO_OFFER ||
+    value === GENOME_V2_INTERACTION_PHYSICAL_RELIC
+  );
+}
 
 export const GENOME_V2_YIELD_SCALE = 10_000;
 export const GENOME_V2_MAX_SLOTS = 6;
@@ -3737,6 +3762,27 @@ export function genomeV2OfferInterval(
   return rollGenomeV2GeneOfferInterval(
     offerIndex,
     offerStream(`genome-v2-cadence:${state.runSeed}`, offerIndex)
+  );
+}
+
+/**
+ * Player-pulled relic cadence: deterministic 6 +/- 2 foods (4-8 inclusive).
+ * Opportunity identity is deliberately separate from offer identity: an
+ * ignored relic reveals and consumes no candidates, but its next appearance
+ * still follows a stable run-seed-frozen interval.
+ */
+export function genomeV2PhysicalRelicInterval(
+  state: Pick<GenomeV2State, 'runSeed'>,
+  opportunityIndex: number
+): number {
+  if (!Number.isSafeInteger(opportunityIndex) || opportunityIndex < 0) {
+    throw new Error('Genome v2 relic cadence index is malformed.');
+  }
+  return rollGeneOfferInterval(
+    offerStream(
+      `genome-v2-relic-cadence:${state.runSeed}`,
+      opportunityIndex
+    )
   );
 }
 

@@ -14,12 +14,15 @@ import {
   type GenomeV2ActiveGeneId,
 } from '@/shared/game/genes';
 import {
+  GENOME_V2_INTERACTION_AUTO_OFFER,
   deriveGenomeV2FtuePresentation,
   GENOME_RULES_V1,
   GENOME_RULES_V2,
   GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT,
   genomeV2FtueFromPresentation,
+  isGenomeV2InteractionVersion,
   type GenomeV2FtuePresentation,
+  type GenomeV2InteractionVersion,
 } from '@/shared/game/genomeV2';
 import {
   isStrainId,
@@ -56,6 +59,8 @@ export interface SanitizedGenomeV1Capability {
 /** Exact fresh-start contract. No v1 alias is present or synthesized. */
 export interface SanitizedGenomeV2Capability {
   rulesVersion: typeof GENOME_RULES_V2;
+  /** Missing on an issued legacy manifest sanitizes to automatic offers. */
+  interactionVersion: GenomeV2InteractionVersion;
   runSeed: string;
   v2GenePool: GenomeV2ActiveGeneId[];
   heirloom: StrainPoints;
@@ -223,6 +228,12 @@ function sanitizeGenomeV2Capability(
     !Object.prototype.hasOwnProperty.call(value, 'offerTiltStrain') ||
     (value.offerTiltStrain !== null && !isStrainId(value.offerTiltStrain))
   ) return null;
+  if (
+    value.interactionVersion !== undefined &&
+    !isGenomeV2InteractionVersion(value.interactionVersion)
+  ) {
+    return null;
+  }
 
   let ftuePresentation: GenomeV2FtuePresentation;
   try {
@@ -238,6 +249,8 @@ function sanitizeGenomeV2Capability(
 
   return {
     rulesVersion: GENOME_RULES_V2,
+    interactionVersion:
+      value.interactionVersion ?? GENOME_V2_INTERACTION_AUTO_OFFER,
     runSeed: value.runSeed,
     v2GenePool,
     heirloom,

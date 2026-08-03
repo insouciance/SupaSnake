@@ -47,8 +47,10 @@ import {
   GENOME_RULES_V2,
   GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT,
   genomeV2FtueFromPresentation,
+  isGenomeV2InteractionVersion,
   type GenomeRulesVersion,
   type GenomeV2FtuePresentation,
+  type GenomeV2InteractionVersion,
 } from '@/shared/game/genomeV2';
 import {
   ASCENDANCE_MULTIPLIER_BPS,
@@ -107,6 +109,8 @@ export interface RunStartGenomeV1Context extends RunStartGenomeContextCommon {
 
 export interface RunStartGenomeV2Context extends RunStartGenomeContextCommon {
   rulesVersion: typeof GENOME_RULES_V2;
+  /** Missing is the already-issued automatic-offer interaction. */
+  interactionVersion?: GenomeV2InteractionVersion;
   /** Exact run-start-frozen authority consumed by the offer stream. */
   genePool: GenomeV2ActiveGeneId[];
   /** Full locked-but-visible capability contract handed to the client. */
@@ -313,6 +317,12 @@ function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
       genePool: genePool as GeneId[] | null,
     };
   }
+  if (
+    raw.interactionVersion !== undefined &&
+    !isGenomeV2InteractionVersion(raw.interactionVersion)
+  ) {
+    return 'invalid';
+  }
   let ftuePresentation: GenomeV2FtuePresentation;
   try {
     const ftue = genomeV2FtueFromPresentation(raw.ftuePresentation);
@@ -329,6 +339,9 @@ function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
   return {
     ...common,
     rulesVersion: GENOME_RULES_V2,
+    ...(raw.interactionVersion !== undefined
+      ? { interactionVersion: raw.interactionVersion }
+      : {}),
     genePool: genePool as GenomeV2ActiveGeneId[],
     ftuePresentation,
     externalSecondLife: raw.externalSecondLife,
@@ -489,6 +502,12 @@ export function serializeRunStartContext(
           ...(context.genome.rulesVersion === GENOME_RULES_V2
             ? {
                 rulesVersion: GENOME_RULES_V2,
+                ...(context.genome.interactionVersion !== undefined
+                  ? {
+                      interactionVersion:
+                        context.genome.interactionVersion,
+                    }
+                  : {}),
                 ftuePresentation: context.genome.ftuePresentation,
                 externalSecondLife: context.genome.externalSecondLife,
               }

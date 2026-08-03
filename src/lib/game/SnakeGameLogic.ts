@@ -173,6 +173,8 @@ import {
   type OfferTraceEntry,
 } from '@/shared/game/offerGravity';
 import {
+  GENOME_V2_INTERACTION_AUTO_OFFER,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_RULES_V2,
   GENOME_V2_CONFIG,
   GENOME_V2_STRAIN_THRESHOLDS,
@@ -185,6 +187,7 @@ import {
   type GenomeRulesVersion,
   type GenomeV2FtueCapability,
   type GenomeV2FtuePresentation,
+  type GenomeV2InteractionVersion,
   type GenomeV2RecodePreview,
   type GenomeV2RunRecord,
   type GenomeV2SlotIndex,
@@ -587,6 +590,8 @@ export interface DrivenStartState {
 export interface GenomeEngineConfig {
   /** Missing is deliberately v1 for historical sessions and old clients. */
   rulesVersion?: GenomeRulesVersion;
+  /** Missing on rules v2 preserves the issued automatic-offer interaction. */
+  interactionVersion?: GenomeV2InteractionVersion;
   /** The session's offer seed (stored on the session row). */
   runSeed: string;
   /**
@@ -1072,6 +1077,27 @@ export class SnakeGameLogic {
     return this.genome?.rulesVersion === GENOME_RULES_V2;
   }
 
+  private genomeV2InteractionVersion(): GenomeV2InteractionVersion {
+    return (
+      this.genome?.interactionVersion ?? GENOME_V2_INTERACTION_AUTO_OFFER
+    );
+  }
+
+  private genomeV2PhysicalRelicActive(): boolean {
+    return (
+      this.genomeV2Active() &&
+      this.genomeV2InteractionVersion() ===
+        GENOME_V2_INTERACTION_PHYSICAL_RELIC
+    );
+  }
+
+  private nextGenomeV2CadenceFood(): number {
+    return this.genomeV2PhysicalRelicActive()
+      ? (this.genomeV2Runtime?.nextCadenceOpportunityAtFood() ??
+          Number.MAX_SAFE_INTEGER)
+      : Number.MAX_SAFE_INTEGER;
+  }
+
   private createGenomeV2Runtime(
     snapshot?: GenomeV2RuntimeSnapshot,
     reducerStateOverride?: GenomeV2State
@@ -1104,6 +1130,9 @@ export class SnakeGameLogic {
       suppressedStrains: this.genome.suppressedStrains,
       strainThresholdDelta: this.genome.strainThresholdDelta,
       externalSecondLife: this.hasTrait('iron_scales') ? 'iron_scales' : null,
+      interactionVersion: this.genomeV2InteractionVersion(),
+      cadenceMultiplier:
+        this.genomeV2PhysicalRelicActive() && this.hasTrait('patient') ? 2 : 1,
       reducerState,
       snapshot,
       onEvent: (event) => this.emit('genomeV2Event', event),
@@ -1152,6 +1181,9 @@ export class SnakeGameLogic {
     if (this.state.isPlaying) return;
     this.genome = genome ? checkpointClone(genome) : null;
     this.genomeV2Runtime = this.createGenomeV2Runtime();
+    if (!this.state.mutationTile) {
+      this.state.nextMutationAtFood = this.nextGenomeV2CadenceFood();
+    }
     this.state.strainCounts = this.spawnStrainPoints();
     this.syncGenomeV2State();
   }
@@ -1407,7 +1439,7 @@ export class SnakeGameLogic {
       mutationTile: null,
       mutationTicksRemaining: 0,
       nextMutationAtFood: this.genomeV2Active()
-        ? Number.MAX_SAFE_INTEGER
+        ? this.nextGenomeV2CadenceFood()
         : this.rollNextMutationInterval(),
       heldMutations: [],
       pendingChoice: null,
@@ -1650,6 +1682,9 @@ export class SnakeGameLogic {
     if (!this.state.isPlaying && this.genomeV2Active()) {
       this.genomeV2Runtime = this.createGenomeV2Runtime();
       this.syncGenomeV2State();
+      if (!this.state.mutationTile) {
+        this.state.nextMutationAtFood = this.nextGenomeV2CadenceFood();
+      }
     }
     this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
     if (!this.state.isPlaying && !this.state.exitTile) {
@@ -1675,16 +1710,16 @@ export class SnakeGameLogic {
   setTraits(traits: TraitId[]): void {
     this.traits = [...traits];
     if (!this.state.isPlaying) {
-      if (!this.state.mutationTile) {
-        this.state.nextMutationAtFood = this.genomeV2Active()
-          ? Number.MAX_SAFE_INTEGER
-          : this.rollNextMutationInterval();
-      }
-      this.state.ironScalesAvailable = this.hasTrait('iron_scales');
       if (this.genomeV2Active()) {
         this.genomeV2Runtime = this.createGenomeV2Runtime();
         this.syncGenomeV2State();
       }
+      if (!this.state.mutationTile) {
+        this.state.nextMutationAtFood = this.genomeV2Active()
+          ? this.nextGenomeV2CadenceFood()
+          : this.rollNextMutationInterval();
+      }
+      this.state.ironScalesAvailable = this.hasTrait('iron_scales');
     }
   }
 
@@ -3050,7 +3085,11 @@ export class SnakeGameLogic {
       }
 
       this.advancePortalSchedule(n);
-      this.maybeOpenGenomeV2CadenceOffer();
+      if (this.genomeV2PhysicalRelicActive()) {
+        this.maybeSpawnGenomeV2CadenceRelic();
+      } else {
+        this.maybeOpenGenomeV2CadenceOffer();
+      }
       // Ascetic (trait): mutation food never spawns - no builds, pure snake
       if (
         !this.genomeV2Active() &&
@@ -3153,8 +3192,17 @@ export class SnakeGameLogic {
       if (this.state.mutationTicksRemaining <= 0) {
         this.state.mutationTile = null;
         this.state.mutationTicksRemaining = 0;
-        this.state.nextMutationAtFood =
-          this.state.foodEaten + this.rollNextMutationInterval();
+        if (this.genomeV2PhysicalRelicActive()) {
+          if (!this.genomeV2Runtime?.expireCadenceRelic(this.state.foodEaten)) {
+            throw new Error(
+              'Genome v2 relic expiry diverged from its cadence cursor.'
+            );
+          }
+          this.state.nextMutationAtFood = this.nextGenomeV2CadenceFood();
+        } else {
+          this.state.nextMutationAtFood =
+            this.state.foodEaten + this.rollNextMutationInterval();
+        }
         this.emit('mutationDespawned');
       }
     }
@@ -4591,7 +4639,11 @@ export class SnakeGameLogic {
       }
       if (deferredUnits > 0 && !options.terminal) {
         this.advancePortalSchedule(this.state.foodEaten);
-        this.maybeOpenGenomeV2CadenceOffer();
+        if (this.genomeV2PhysicalRelicActive()) {
+          this.maybeSpawnGenomeV2CadenceRelic();
+        } else {
+          this.maybeOpenGenomeV2CadenceOffer();
+        }
       }
     }
     runtime.failCrownWave(this.replayTicks);
@@ -4658,7 +4710,7 @@ export class SnakeGameLogic {
 
   private maybeOpenGenomeV2CadenceOffer(): void {
     const runtime = this.genomeV2Runtime;
-    if (!runtime) return;
+    if (!runtime || this.genomeV2PhysicalRelicActive()) return;
     const offer = runtime.openCadenceOffer(
       this.replayTicks,
       this.state.foodEaten
@@ -4671,6 +4723,20 @@ export class SnakeGameLogic {
       offerId: offer.offerId,
       rulesVersion: GENOME_RULES_V2,
     });
+  }
+
+  private maybeSpawnGenomeV2CadenceRelic(): void {
+    const runtime = this.genomeV2Runtime;
+    if (
+      !runtime ||
+      !runtime.usesPhysicalCadenceRelics() ||
+      this.state.mutationTile ||
+      this.hasTrait('ascetic') ||
+      !runtime.cadenceOfferDue(this.state.foodEaten)
+    ) {
+      return;
+    }
+    this.spawnMutationFood();
   }
 
   private maybeSealGenomeV2Coil(): void {
@@ -5578,6 +5644,24 @@ export class SnakeGameLogic {
   private openMutationChoice(): void {
     this.state.mutationTile = null;
     this.state.mutationTicksRemaining = 0;
+
+    if (this.genomeV2PhysicalRelicActive()) {
+      const offer = this.genomeV2Runtime?.openCadenceOffer(
+        this.replayTicks,
+        this.state.foodEaten
+      );
+      this.state.nextMutationAtFood = this.nextGenomeV2CadenceFood();
+      if (!offer) return;
+      this.syncGenomeV2State();
+      this.emit('mutationChoice', {
+        options: [...offer.candidates],
+        source: 'cadence',
+        offerId: offer.offerId,
+        rulesVersion: GENOME_RULES_V2,
+      });
+      return;
+    }
+
     this.state.nextMutationAtFood =
       this.state.foodEaten + this.rollNextMutationInterval();
 
