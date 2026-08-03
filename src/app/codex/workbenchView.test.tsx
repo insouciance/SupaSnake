@@ -15,6 +15,7 @@ jest.mock('@/components/workbench/WorkbenchView', () => ({
   ),
 }));
 jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: true }));
+jest.mock('@/lib/features/workbench', () => ({ WORKBENCH_V1_ENABLED: true }));
 
 function params(values: Record<string, string | null>) {
   return { get: (key: string) => values[key] ?? null };

@@ -314,6 +314,45 @@ describe('RunCockpit', () => {
     expect(screen.queryByRole('button', { name: /activate redline/i })).toBeNull();
   });
 
+  it('removes dual overclock controls from the shared rail while a run is held', () => {
+    render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          state: 'held',
+          statusText: 'Tactical hold · move to resume',
+          overclock: {
+            active: null,
+            available: [
+              {
+                source: 'zenith_protocol',
+                label: 'REDLINE',
+                multiplierBps: 17_500,
+                moveBudget: 14,
+              },
+              {
+                source: 'volt_apex',
+                label: 'OVERCLOCK',
+                multiplierBps: 18_000,
+                moveBudget: 12,
+              },
+            ],
+          },
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+        onOverclock={jest.fn()}
+        eventCallout={<span data-testid="held-event-callout">Move to resume</span>}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+
+    expect(screen.getByTestId('held-event-callout')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /activate redline/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /activate overclock/i })).toBeNull();
+  });
+
   it('keeps tactical-hold guidance off-board and exposes an abandon action', () => {
     const onAbandon = jest.fn();
     render(

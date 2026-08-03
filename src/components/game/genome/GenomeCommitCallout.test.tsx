@@ -31,14 +31,16 @@ describe('GenomeCommitCallout', () => {
     expect(screen.getByRole('status')).toHaveTextContent('FLUX');
     expect(screen.getByRole('status')).toHaveTextContent('Volt 2 · Telemetry');
     expect(screen.getByTestId('tactical-hold')).toHaveTextContent(
-      'Choose a safe direction to resume'
+      'Move to resume'
     );
     act(() => jest.advanceTimersByTime(5000));
     expect(onDone).not.toHaveBeenCalled();
 
     rerender(<GenomeCommitCallout model={MODEL} held={false} onDone={onDone} />);
     expect(screen.queryByTestId('tactical-hold')).not.toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent(MODEL.rule);
+    expect(screen.getByTestId('genome-commit-outcome')).toHaveTextContent(
+      'Volt 2 · Telemetry'
+    );
     act(() => jest.advanceTimersByTime(3000));
     expect(onDone).toHaveBeenCalledTimes(1);
   });

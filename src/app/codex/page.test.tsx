@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import CodexPage from './page';
+import { genomeResearchCopy } from './researchCopy';
 
 const mockUseAuth = jest.fn();
 const mockFetchCodex = jest.fn();
@@ -19,6 +20,7 @@ jest.mock('@/components/workbench/WorkbenchView', () => ({
   ),
 }));
 jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: true }));
+jest.mock('@/lib/features/workbench', () => ({ WORKBENCH_V1_ENABLED: true }));
 
 const EMPTY_DATA = {
   genes: [],
@@ -65,6 +67,21 @@ describe('Genome Research compatibility page', () => {
 
     const source = fs.readFileSync(path.join(process.cwd(), 'src/app/codex/page.tsx'), 'utf8');
     expect(source).not.toMatch(/premium_required|isPremium|hasPremium/);
+  });
+
+  it('keeps production, mixed rollback, and full rollback copy truthful', () => {
+    expect(genomeResearchCopy(true, true)).toMatchObject({
+      intro: expect.stringContaining('Touch a possible Genome'),
+      signedOutRecord: expect.stringContaining('Workbench is open to everyone'),
+    });
+    expect(genomeResearchCopy(false, true)).toMatchObject({
+      intro: expect.stringContaining('Sign in to plan a Genome'),
+      signedOutRecord: expect.not.stringContaining('Workbench is open to everyone'),
+    });
+    expect(genomeResearchCopy(false, false)).toMatchObject({
+      intro: expect.stringContaining('not active in this version'),
+      signedOutRecord: expect.not.stringContaining('Workbench is open to everyone'),
+    });
   });
 
   it('keeps Research open before personal discovery history unlocks', () => {

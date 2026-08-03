@@ -153,9 +153,20 @@ test.describe('Genome v2 live player journey', () => {
     // cockpit state still has to remain held until the first deliberate flick.
     const cockpit = page.getByTestId('game-hud');
     await expect(cockpit).toHaveAttribute('data-state', 'held');
-    await expect(page.getByTestId('tactical-hold')).toContainText(
-      'Choose a safe direction to resume'
+    const heldCue = page.getByTestId('tactical-hold');
+    await expect(heldCue).toBeVisible();
+    await expect(heldCue).toHaveText('Move to resume');
+    await expect(heldCue).toHaveCSS('font-size', '18px');
+    expect(await heldCue.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    const heldCueBox = await heldCue.boundingBox();
+    const calloutBox = await callout.boundingBox();
+    expect(heldCueBox).not.toBeNull();
+    expect(calloutBox).not.toBeNull();
+    expect(heldCueBox!.x).toBeGreaterThanOrEqual(calloutBox!.x);
+    expect(heldCueBox!.x + heldCueBox!.width).toBeLessThanOrEqual(
+      calloutBox!.x + calloutBox!.width
     );
+    expect(heldCueBox!.x + heldCueBox!.width).toBeLessThanOrEqual(390);
     await expect(page.getByRole('button', { name: 'Abandon run' })).toBeVisible();
     const flickSurface = page.getByTestId('flick-surface');
     await expect(flickSurface).toBeVisible();

@@ -20,7 +20,6 @@ import { seedConsent, signInAsGuest } from './helpers';
 
 const PHONE = { width: 390, height: 844 } as const;
 const GENOME_V2_ENABLED = process.env.NEXT_PUBLIC_GENOME_V2 === 'true';
-const WORKBENCH_V1_ENABLED = process.env.NEXT_PUBLIC_WORKBENCH_V1 === 'true';
 
 const CHARGE = {
   remaining: 4,
@@ -175,22 +174,29 @@ test.describe('Genome Research has one Workbench destination', () => {
       await expect(page.getByTestId('workbench-research-table')).toBeVisible();
       await expect(page.getByTestId('workbench-strains')).toBeVisible();
       await expect(page.getByTestId('workbench-gene-palette')).toBeVisible();
-    } else if (WORKBENCH_V1_ENABLED) {
-      // A mixed rollback preserves the established authenticated Workbench.
-      await expect(page.getByTestId('workbench-signed-out')).toBeVisible();
     } else {
       // The CI rollback leg deliberately disables both Workbench generations.
       // The compatibility route and Research Record must still compose, but a
       // disabled feature must not be resurrected merely to satisfy this test.
       await expect(page.getByTestId('workbench-view')).toHaveCount(0);
       await expect(page.getByTestId('workbench-signed-out')).toHaveCount(0);
+      await expect(page.getByText(
+        'Genome research instruments are not active in this version.'
+      )).toBeVisible();
     }
 
     // Discovery history remains optional and subordinate. Opening it asks for
     // an account without hiding the v2 public research instrument above.
     const researchRecord = page.getByTestId('research-record');
     await researchRecord.locator('summary').click();
-    await expect(page.getByTestId('codex-signed-out')).toBeVisible();
+    const signedOutRecord = page.getByTestId('codex-signed-out');
+    await expect(signedOutRecord).toBeVisible();
+    if (GENOME_V2_ENABLED) {
+      await expect(signedOutRecord).toContainText('The Workbench is open to everyone');
+    } else {
+      await expect(signedOutRecord).toContainText('Sign in to connect discoveries');
+      await expect(signedOutRecord).not.toContainText('The Workbench is open to everyone');
+    }
   });
 
   test('a guest at zero banked runs gets the v2 research catalog', async ({

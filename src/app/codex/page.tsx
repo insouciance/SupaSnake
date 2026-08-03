@@ -16,6 +16,8 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import { WorkbenchView } from '@/components/workbench/WorkbenchView';
 import { LegacyGenomeArchive } from '@/components/game/genome/LegacyGenomeArchive';
 import { GENOME_V2_ENABLED } from '@/lib/features/genomeV2';
+import { WORKBENCH_V1_ENABLED } from '@/lib/features/workbench';
+import { genomeResearchCopy } from './researchCopy';
 import { useCodexStore } from '@/lib/stores/codexStore';
 import { NavBar } from '@/components/ui/NavBar';
 import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
@@ -65,6 +67,10 @@ function ResearchShell({ studyRef = null }: { studyRef?: string | null }) {
     ? (!ownsCodexState || storedIsLoading)
     : false;
   const error = ownsCodexState ? storedError : null;
+  const researchCopy = genomeResearchCopy(
+    GENOME_V2_ENABLED,
+    WORKBENCH_V1_ENABLED
+  );
 
   useEffect(() => {
     if (!isAuthenticated || !accessToken || !authOwnerId) {
@@ -129,7 +135,7 @@ function ResearchShell({ studyRef = null }: { studyRef?: string | null }) {
                 Genome Research
               </h1>
               <p className="font-body text-beige">
-                Touch a possible Genome. Follow what it awakens. Rewind and try another path.
+                {researchCopy.intro}
               </p>
             </div>
             <Link href="/lab" className="btn-secondary inline-flex items-center gap-2 px-4 py-2">
@@ -160,8 +166,7 @@ function ResearchShell({ studyRef = null }: { studyRef?: string | null }) {
             {!hasAuthenticatedOwner ? (
               <section className="panel p-6 text-center" data-testid="codex-signed-out">
                 <p className="mb-4 font-body text-beige">
-                  The Workbench is open to everyone. Sign in to connect discoveries,
-                  world-first history, and Genome Weaver progress to your account.
+                  {researchCopy.signedOutRecord}
                 </p>
                 <Link href="/login" className="btn-go inline-block px-7 py-3">
                   Sign In
