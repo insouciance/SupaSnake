@@ -101,16 +101,9 @@ async function auditLoom(browser, viewport) {
   invariant(!neutral.hasDetailsToggle, `loom/${viewport.name}: details exist before a choice`);
   invariant(!neutral.hasReactionMap, `loom/${viewport.name}: reaction map opened before a choice`);
 
-  // The fixture's real names verify component wiring. This deliberately long
-  // replacement verifies that the same rendered slots remain readable when a
-  // catalog label reaches the width that previously became an ellipsis.
-  await page.evaluate(() => {
-    const longName = 'Compound Interest';
-    const candidate = document.querySelector('[data-testid="gene-option-0-name"]');
-    if (candidate) candidate.textContent = longName;
-  });
-  await settle(page);
-
+  // The first real interaction also proves that hydration has completed. Do
+  // not mutate fixture text before this point: doing so can make React report
+  // a hydration mismatch that the verifier itself manufactured.
   await page.locator('[data-testid="gene-option-0"]').click();
   const selected = await page.evaluate(() => {
     const toggle = document.querySelector('[data-testid="loom-details-toggle"]');
@@ -133,6 +126,11 @@ async function auditLoom(browser, viewport) {
   await page.locator('[data-testid="loom-details-toggle"]').click();
   await page.locator('[data-testid="loom-full-reaction-map"]').waitFor({ state: 'visible' });
   await page.evaluate(() => {
+    // The fixture's real names verified component wiring above. Deliberately
+    // lengthen the settled DOM now to prove the rendered slots wrap instead
+    // of clipping when a catalog label reaches the former ellipsis width.
+    const candidate = document.querySelector('[data-testid="gene-option-0-name"]');
+    if (candidate) candidate.textContent = 'Compound Interest';
     const focused = document.querySelector('[data-testid="loom-focused-gene-name"]');
     if (focused) focused.textContent = 'Compound Interest';
   });
