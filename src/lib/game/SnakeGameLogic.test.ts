@@ -733,6 +733,10 @@ describe('SnakeGameLogic', () => {
         ruleset: RULESETS[id],
         growthProfileId: 'dynasty',
         traits: ['ascetic'],
+        // Growth is the subject of this march. Keep the independently random
+        // portal off its future path so a lucky portal draw cannot extract the
+        // run before the length assertions execute.
+        rng: () => 0.999,
       });
       engine.start();
       eatFoods(engine, 20);
@@ -745,6 +749,9 @@ describe('SnakeGameLogic', () => {
         ruleset: RULESETS.PRIMAL,
         growthProfileId: 'dynasty',
         traits: ['ascetic'],
+        // See the +1 cases above: an unseeded portal could land on a later
+        // forced-food cell and turn this growth test into a random extraction.
+        rng: () => 0.999,
       });
       engine.start();
 
