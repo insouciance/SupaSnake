@@ -197,7 +197,12 @@ describe('VAPID', () => {
 
   it('rejects a public key that is not an uncompressed P-256 point', () => {
     setKeys();
-    process.env.VAPID_PUBLIC_KEY = b64urlEncode(randomBytes(65));
+    // A fully random 65-byte buffer begins with the valid 0x04 marker about
+    // once every 256 runs. Pin the compressed-point marker so this fixture is
+    // invalid by construction rather than by probability.
+    process.env.VAPID_PUBLIC_KEY = b64urlEncode(
+      Buffer.concat([Buffer.from([0x03]), randomBytes(64)])
+    );
     expect(() => readVapidConfig()).toThrow(/uncompressed P-256/);
   });
 
