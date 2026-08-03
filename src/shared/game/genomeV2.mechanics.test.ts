@@ -1,4 +1,5 @@
 import {
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_V2_CONFIG,
   GENOME_V2_SPLICE_IDS,
   GENOME_V2_SPLICES,
@@ -79,6 +80,7 @@ function acquire(
 
 interface SpawnOptions {
   cell?: GenomeV2Cell;
+  interactionVersion?: typeof GENOME_V2_INTERACTION_PHYSICAL_RELIC;
   forkCell?: GenomeV2Cell;
   secondaryCell?: GenomeV2Cell;
   optionalRouteCells?: readonly [GenomeV2Cell, GenomeV2Cell];
@@ -97,6 +99,7 @@ function spawn(
     type: 'target_spawned',
     targetId,
     cell: options.cell ?? { x: 1, z: 1 },
+    interactionVersion: options.interactionVersion,
     forkCell: options.forkCell,
     secondaryCell: options.secondaryCell,
     optionalRouteCells: options.optionalRouteCells,
@@ -532,6 +535,7 @@ describe('Genome v2 Splices', () => {
     state = acquire(state, 'overgrowth', 1);
     for (let index = 0; index < 4; index += 1) state = ordinary(state, `fork-${index}`);
     state = spawn(state, 'fork-choice', {
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
       forkCell: { x: 7, z: 7 },
     });
     expect(state.targets['fork-choice']).toMatchObject({

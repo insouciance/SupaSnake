@@ -707,6 +707,8 @@ export type GenomeV2Event =
       type: 'target_spawned';
       targetId: string;
       cell: GenomeV2Cell;
+      /** Missing is the already-issued automatic-offer interaction. */
+      interactionVersion?: GenomeV2InteractionVersion;
       forkCell?: GenomeV2Cell | null;
       secondaryCell?: GenomeV2Cell | null;
       optionalRouteCells?: readonly [GenomeV2Cell, GenomeV2Cell] | null;
@@ -1867,7 +1869,11 @@ export interface GenomeV2NextTargetProjection {
  */
 export function projectGenomeV2NextTarget(
   state: GenomeV2State,
-  input: { cadenceEligible: boolean }
+  input: {
+    cadenceEligible: boolean;
+    /** Missing preserves the already-issued one-cell Gilded Fork. */
+    interactionVersion?: GenomeV2InteractionVersion;
+  }
 ): GenomeV2NextTargetProjection {
   if (!input.cadenceEligible) {
     return {
@@ -1894,6 +1900,7 @@ export function projectGenomeV2NextTarget(
     kind,
     contract,
     requiresForkCell:
+      input.interactionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC &&
       kind === 'gold_trail' &&
       genomeV2HasSplice(state, 'splice_gilded_fork'),
     requiresSecondaryCell: kind === 'circuit_run',
@@ -2671,6 +2678,8 @@ export function reduceGenomeV2Event(
       assertSafeInteger(event.shortestSafeMoves, 'target route length');
       const spawnProjection = projectGenomeV2NextTarget(state, {
         cadenceEligible: event.cadenceEligible,
+        interactionVersion:
+          event.interactionVersion ?? GENOME_V2_INTERACTION_AUTO_OFFER,
       });
       const eligibleOrdinal = spawnProjection.eligibleOrdinal;
       if (eligibleOrdinal !== null) {

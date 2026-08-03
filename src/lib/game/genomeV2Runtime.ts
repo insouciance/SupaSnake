@@ -1050,7 +1050,10 @@ export class GenomeV2Runtime {
   }
 
   projectNextTarget(cadenceEligible = true): GenomeV2NextTargetProjection {
-    return projectGenomeV2NextTarget(this.state, { cadenceEligible });
+    return projectGenomeV2NextTarget(this.state, {
+      cadenceEligible,
+      interactionVersion: this.interactionVersion,
+    });
   }
 
   spawnTarget(
@@ -1075,6 +1078,7 @@ export class GenomeV2Runtime {
         type: 'target_spawned',
         targetId,
         cell: facts.cell,
+        interactionVersion: this.interactionVersion,
         forkCell: facts.forkCell ?? null,
         secondaryCell: facts.secondaryCell ?? null,
         optionalRouteCells: facts.optionalRouteCells ?? null,

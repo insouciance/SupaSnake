@@ -8,6 +8,7 @@ import {
   genomeV2EventId,
   reduceGenomeV2Event,
   type GenomeV2Event,
+  type GenomeV2InteractionVersion,
   type GenomeV2State,
 } from '@/shared/game/genomeV2';
 import {
@@ -17,6 +18,7 @@ import {
 import { RULESETS, type DynastyName } from '@/shared/game/rulesets';
 import {
   SnakeGameLogic,
+  SNAKE_RULES_VERSION,
   type Direction,
   type GameOverData,
   type GenomeEngineConfig,
@@ -116,11 +118,15 @@ function primeReducerTargets(
   return next;
 }
 
-function configForState(state: GenomeV2State): GenomeEngineConfig {
+function configForState(
+  state: GenomeV2State,
+  interactionVersion?: GenomeV2InteractionVersion
+): GenomeEngineConfig {
   return {
     rulesVersion: GENOME_RULES_V2,
     runSeed: state.runSeed,
     reducerState: state,
+    ...(interactionVersion === undefined ? {} : { interactionVersion }),
   };
 }
 
@@ -505,7 +511,10 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
         gridSize: 20,
         ruleset: RULESETS.PRIMAL,
         simulationSeed: 'gilded-fork-board-seed',
-        genome: configForState(reducer),
+        genome: configForState(
+          reducer,
+          GENOME_V2_INTERACTION_PHYSICAL_RELIC
+        ),
       });
       game.startDriven({
         snake: [
@@ -602,7 +611,10 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
       gridSize: 20,
       ruleset: RULESETS.CYBER,
       simulationSeed: 'arc-target-board-seed',
-      genome: configForState(reducer),
+      genome: configForState(
+        reducer,
+        GENOME_V2_INTERACTION_PHYSICAL_RELIC
+      ),
     });
     game.startDriven({
       snake: [
@@ -774,6 +786,8 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
 
     const checkpointAt = Date.now();
     const checkpoint = original.exportCheckpoint(checkpointAt);
+    expect(SNAKE_RULES_VERSION).toBe('snake-rules-2026-07-31.2');
+    expect(checkpoint.rulesVersion).toBe('snake-rules-2026-07-31.2');
     expect(checkpoint.privateState.genomeV2Runtime?.targetProgress).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ circuitLegsCompleted: 1 }),

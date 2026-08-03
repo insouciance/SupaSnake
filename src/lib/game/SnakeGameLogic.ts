@@ -704,7 +704,7 @@ export const DEATH_SEQUENCE_DURATION_MS = 800;
  * this deployment must not continue.  Bump this value whenever a change can
  * alter deterministic board evolution or the meaning of persisted state.
  */
-export const SNAKE_RULES_VERSION = 'snake-rules-2026-07-31.3' as const;
+export const SNAKE_RULES_VERSION = 'snake-rules-2026-07-31.2' as const;
 
 /**
  * Compact, deterministic evidence for every player-authored state change.
@@ -3144,8 +3144,11 @@ export class SnakeGameLogic {
         );
         if (siblingIndex >= 0) this.state.foods.splice(siblingIndex, 1);
       }
+      const legacyArcCollector =
+        this.genomeActive() ||
+        (this.genomeV2Active() && !this.genomeV2PhysicalRelicActive());
       if (
-        this.genomeActive() &&
+        legacyArcCollector &&
         this.strainTierNow('VOLT') >= 2 &&
         this.state.foods.length > 0
       ) {
@@ -4807,18 +4810,29 @@ export class SnakeGameLogic {
     const { target, choice } = located;
     // The branch is the cell the head entered, so replay derives the same
     // choice from deterministic geometry. It is not a separate input action.
-    if (target.kind === 'gold_trail' && choice !== null) {
+    const committedForkChoice =
+      target.kind === 'gold_trail'
+        ? (target.forkChoice ?? choice ?? 'ordinary')
+        : null;
+    if (target.kind === 'gold_trail' && target.forkChoice === null) {
       if (
-        target.forkChoice === null &&
-        !runtime.chooseGildedFork(target.targetId, choice, this.replayTicks)
+        !runtime.chooseGildedFork(
+          target.targetId,
+          committedForkChoice!,
+          this.replayTicks
+        )
       ) {
-        throw new Error('Genome v2 Gilded Fork rejected its physical branch.');
+        throw new Error('Genome v2 Gilded Fork rejected its board choice.');
       }
-      if (target.forkChoice !== null && target.forkChoice !== choice) {
-        throw new Error(
-          'Genome v2 Gilded Fork choice disagrees with the entered cell.'
-        );
-      }
+    }
+    if (
+      target.kind === 'gold_trail' &&
+      choice !== null &&
+      committedForkChoice !== choice
+    ) {
+      throw new Error(
+        'Genome v2 Gilded Fork choice disagrees with the entered cell.'
+      );
     }
     const result = runtime.resolveTarget(target.targetId, this.replayTicks, {
       resolution: 'collected',
