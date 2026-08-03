@@ -1,13 +1,15 @@
 # Constitution Compliance Checklist
 
 Run on **every PR**. Copy into the PR description and check each line. A `[ ]` left
-unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.12) §4.
+unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.13) §4.
 Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer reads.
 
 ## The 15 Rules
 
 - [ ] **R1 — Run sanctity.** Nothing new renders, fires, or sounds between first
-  input and run end except the run's own decisions.
+  input and run end except the run's own decisions. An ordinary Genome cadence
+  becomes a decision only when the player collects its physical relic; placement
+  and expiry never create an offer or hold.
 - [ ] **R2 — Score is build-independent.** ⚙ The score fold reads only food events
   and the dynasty ruleset (`rulesets.ts` — no genome/account/charge state).
 - [ ] **R3 — No euro reaches a computed number.** Trace any purchase in this PR to
@@ -67,6 +69,24 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
 - [ ] No new claim RPC beyond the Daily Take's collect.
 - [ ] Victory Lap collection taps only acknowledge already-secured presentation;
       Replay/Setup remain available and one action can complete the ceremony.
+- [ ] **Home contract (when touched).** Not touched, or Home remains a
+      full-viewport chamber with exactly one head plus two body pieces, Play
+      primary, and the five-rune Research relic contextual rather than primary.
+- [ ] **One Workbench (when touched).** Not touched, or every player-facing
+      Research entrance renders the same free Genome Workbench; `/codex` is only
+      a compatibility route and the Research Record remains subordinate.
+- [ ] **Genome interaction v2 (when touched).** Not touched, or the post-resolution
+      6 ± 2 cadence places a 40-tick relic without an automatic offer; ignore/
+      expiry is not DECLINE/PASS/Bond, and foods eaten while live do not advance
+      the next interval.
+- [ ] **Simple-first Loom (when touched).** Not touched, or the Loom begins neutral
+      with equal choices, written Strain identity and one salient consequence;
+      focus/hover never consents, and affected route/Splice/locus/ledger detail
+      appears only after UNFOLD DETAILS.
+- [ ] **Interaction continuity (when touched).** Not touched, or the immutable
+      interaction sub-version, opportunity cursor, outstanding relic cell/spawn/
+      expiry, pending offer, RNG state, and lease survive checkpoint/reconnect;
+      omitted/legacy interaction stamps retain v1 behavior.
 - [ ] **No local progress ⚙ (R11).** `npm run verify:constitution` finds no
   progress-related `localStorage`, `sessionStorage`, IndexedDB, Cache Storage, or
   equivalent browser-persistent state, including reward outboxes and notifications.

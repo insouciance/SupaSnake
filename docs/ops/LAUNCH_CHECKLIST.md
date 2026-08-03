@@ -50,8 +50,14 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] Crash-free sessions exceed 99% during a 48-hour staging soak
 - [ ] Fresh browser: no PostHog request before consent; Reject remains silent
 - [ ] Age gate rejects under-14 and accepts an eligible 14+ user
-- [ ] Guest → atomic PRIMAL bootstrap → run → DNA → daily reward flow persists
-      after reload without mandatory Lab or a second Play action
+- [ ] Home is one full-viewport Specimen Chamber whose equipped snake is exactly
+      one head plus two body pieces; Play/Lab/Compete/You remain stable 44px
+      commands, Settings remains a utility, and the five-rune Research relic is
+      contextual rather than a fifth primary command at 320px portrait, short
+      landscape, and desktop viewports
+- [ ] Guest → atomic PRIMAL bootstrap → fully preset Setup → deliberate Start →
+      run → DNA → daily reward flow persists after reload without mandatory Lab;
+      Home Launch does not create a session or spend Energy
 - [ ] Run Setup shows server-authoritative Energy, partial recovery, next-unit
       time, 1–6 commitment choices and the exact multiplier; six Energy requires
       a second deliberate confirmation
@@ -65,17 +71,33 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
       and duplicate completion through server-side recovery; no progress fact,
       pending request, receipt, attention item, or pursuit is persisted in
       browser storage
+- [ ] A resumed v2 checkpoint restores its interaction sub-version, opportunity
+      cursor/next-due food, outstanding relic cell and placement/spawn/expiry
+      state, revealed offer, RNG cursor, and current lease without rerolling or
+      accelerating cadence
 - [ ] Results presents no more than three meaningful Career recognition beats;
       destination-specific acknowledgement clears server-backed attention
       without bell-open or route-open shortcuts
-- [ ] Tactical Loom candidates name their Strains, show affected 2/3/4 routes
-      and direct Splice fates as a compact reaction map, and never rank choices
+- [ ] An ordinary 6 ± 2-food opportunity places one 40-tick physical Gene relic;
+      placement/expiry never pauses or creates an offer, only deliberate
+      collection rolls candidates, and the next interval begins on
+      collection/expiry without counting foods eaten during the relic lifetime;
+      Patient doubles the sampled interval and Ascetic suppresses ordinary relics
+- [ ] Tactical Loom opens neutral with two equal Strain-named choices and one
+      salient consequence each; selection reveals trigger/gain/risk, per-offer
+      UNFOLD DETAILS alone shows the complete affected 2/3/4 route and direct
+      Splice fates, and the surface never ranks choices
 - [ ] Results `Study this Genome` opens the exact owned terminal Genome in the
       free Research Workbench through an opaque server-backed handoff; no
-      authoritative state appears in URL or browser storage
-- [ ] Flag-off new starts stay v1 while a pre-existing v2 session reconnects,
-      banks/crashes, and settles correctly
-- [ ] Guest-to-email upgrade preserves collection, DNA, lineage, and Codex
+      authoritative state appears in URL or browser storage, and `/codex` reaches
+      the same instrument as every Lab/Research link rather than a parallel
+      Archive/Codex surface; the Research Record remains subordinate
+- [ ] Flag-off new starts stay v1 while a pre-existing v2 session reconnects with
+      its physical interaction stamp and cadence/relic state intact, renews its
+      healthy checkpoint lease, banks/crashes, and settles correctly; omitted or
+      historical interaction stamps retain automatic v1 behavior
+- [ ] Guest-to-email upgrade preserves collection, DNA, lineage, and
+      version-scoped Research discovery/history
 - [ ] Registered deletion schedules 30 days out; a new sign-in cancels it
 - [ ] Guest deletion requires `DELETE MY ACCOUNT` and erases immediately
 

@@ -33,30 +33,29 @@ with the Constitution, the Constitution wins and the contract is the stale docum
 | Area | Authoritative document |
 |---|---|
 | Complete game direction | [Game Design v2](game/GAME_DESIGN_V2.md) |
+| End-to-end journey, Home/information architecture, run continuity UX, and attention hierarchy | [Cohesive Player Journey](game/COHESIVE_PLAYER_JOURNEY.md) |
 | Progress recognition, career memory, and social proof | [Career Spine](game/CAREER_SPINE.md) |
-| Player flow, onboarding, and interruptions | [Player Flow & Interruption Policy](game/PLAYER_FLOW_INTERRUPTION_POLICY.md) |
-| Genome/buildcraft | [Tactical Genome v2](game/TACTICAL_GENOME_V2.md); [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) is the historical foundation |
+| FTUE, onboarding, and interruption details | [Player Flow & Interruption Policy](game/PLAYER_FLOW_INTERRUPTION_POLICY.md) |
+| Genome/buildcraft and the one free Workbench | [Tactical Genome v2](game/TACTICAL_GENOME_V2.md); `/codex` is a compatibility route into that same instrument, its Research Record is subordinate, and [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) is the historical foundation |
 | Active game screen and camera | [Run Cockpit & Arena](game/HUD_COCKPIT_REDESIGN.md) |
 | Energy Commitment and Clan Energy Battles | [Energy Commitment & Clan Battles](game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md) |
 | Monetization, catalog, and commerce sequencing | [Monetization Strategy](game/MONETIZATION_STRATEGY.md) |
 | Deliberate practice | [Training Lab](game/TRAINING_LAB_DESIGN.md) |
 | Player identity | [Player Identity v1](game/PLAYER_IDENTITY_V1.md) |
 
-## Approved player-journey contract
-
-- [Cohesive Player Journey](game/COHESIVE_PLAYER_JOURNEY.md) — approved 31 July
-  2026; implementation and production validation tracked in this release.
-  end-to-end journey, information architecture, continuity UX, and attention
-  hierarchy. It becomes authoritative only after the owner validates the local
-  review build.
+The Cohesive Player Journey is the direct authority for the end-to-end journey,
+Home and information architecture, continuity presentation, and attention
+hierarchy. The narrower contracts retain authority for their own calculations
+and implementation details; they do not override that journey contract.
 
 **Superseded:** `game/MONETIZATION_DESIGN.md` — replaced by Constitution §10, with
 the ruling recorded in its §15 Overturn Record. It is kept as the historical v1.0
 position. Do not implement from it; use the current Monetization Strategy for
 product boundaries, catalog sequencing, and commerce architecture.
 
-If an older document conflicts with one of these contracts, the newer dated
-contract and its explicit supersession language win.
+If documents conflict, follow the Constitution first, then the explicit authority
+and supersession hierarchy recorded here and in the contracts themselves. A newer
+date alone does not confer authority.
 
 ## Operations
 

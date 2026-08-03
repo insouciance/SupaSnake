@@ -1,7 +1,7 @@
 # SupaSnake Monetization Strategy
 
 **Status:** Authoritative commercial product strategy within
-[`PRODUCT_CONSTITUTION.md`](../PRODUCT_CONSTITUTION.md) v1.12. The Constitution
+[`PRODUCT_CONSTITUTION.md`](../PRODUCT_CONSTITUTION.md) v1.13. The Constitution
 remains design law; this document turns §10 into a repository-grounded product,
 packaging, and implementation plan. The historical
 [`MONETIZATION_DESIGN.md`](./MONETIZATION_DESIGN.md) remains superseded and must
@@ -48,11 +48,19 @@ The strongest opportunities, in order, are:
 Three requested opportunities should be narrowed or rejected:
 
 - **Do not sell advanced Workbench intelligence.** The existing Workbench is a
-  first-party calculator for build order, reachability, Yield, offer share, and
-  recommendations. Better simulation, comparison, or advice is planning
+  first-party instrument for build order, reachability, Yield, offer share, and
+  scenario comparison. Better simulation, comparison, or advice is planning
   information and can affect competitive Depth. All tactical accuracy and
-  optimization must remain free. Keeper may sell archive presentation and
+  analysis must remain free, while the Workbench itself never ranks Dynasties or
+  recommends an optimum at any tier. Keeper may sell archive presentation and
   organization around plans, never better answers.
+
+Here and throughout this strategy, **Workbench** means exactly one free
+player-facing Genome Workbench. Lab links and the historical `/codex` route enter
+that same instrument; its Research Record is subordinate. Generic paid archive
+retention, folders, and presentation below organize player-owned history—they do
+not create a second Research Archive/Codex or duplicate rules surface.
+
 - **Do not sell serious-clan workforce management.** Member performance reports,
   participation grading, recruitment scoring, officer tools, and scheduled
   accountability reports would turn a small clan from witness into workplace.
@@ -142,7 +150,7 @@ Every paid entitlement must pass all of these tests:
 | System | Free forever | Legitimate paid layer |
 |---|---|---|
 | Immediate game | Every run, dynasty, control, physics rule, banking decision, Energy recovery and commitment | Cosmetic expression only; never an offer during a run or on Results |
-| Genome and Workbench | Full calculations, comparison accuracy, simulations, recommendations, reachability, sharing/import/export, and enough saved active plans for normal use | Archive presentation: folders, tags, notes, historical versions, cosmetic plan cards, and longer retention. No higher-fidelity result, extra probability, faster compute, or exclusive recommendation |
+| Genome and Workbench | Full calculations, comparison accuracy, simulations, scenario exploration, reachability, sharing/import/export, and enough saved active plans for normal use; no ranked optimum | Archive presentation: folders, tags, notes, historical versions, cosmetic plan cards, and longer retention. No higher-fidelity result, extra probability, faster compute, or exclusive recommendation |
 | Run analytics | All actionable summaries, current bests, Dynasty comparison, Energy-efficiency data, and information needed to improve | Full archive retention, richer visual presentation, annotations, collection views, and export packaging—not exclusive conclusions |
 | Replays | A useful recent window, PB/record replays, battle-contribution replays, and sharing needed for fair learning | Larger archive, folders, cosmetic overlays, showcase curation, and high-quality export presentation |
 | Identity | Strong earned items in every slot, permanent Records, PBs, lineage, profile, clan identity, and share cards | Direct-purchase cosmetic variants, extra cosmetic loadouts, colorways, presentation themes, and patron marks |
