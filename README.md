@@ -11,11 +11,10 @@ Production: <https://supasnake.com>
 
 - Next.js 15 App Router, React, TypeScript, react-three-fiber, and Zustand
 - Supabase Auth/Postgres with server-authoritative economy and progression
-- Migrations 001–064 deployed and aligned; additive Genome v2 migration 065 is
-  the reviewed next release migration
-- FTUE v2, the refined Run Cockpit, the Training Lab, Energy Commitment, and
-  Career Spine enabled in production; Genome v2 remains release-gated until the
-  reviewed production workflow enables its exact-`true` public flag
+- Migrations 001–065 deployed and aligned
+- FTUE v2, the refined Run Cockpit, the Training Lab, Energy Commitment,
+  Career Spine, and Tactical Genome v2 enabled in production; Genome v2 is live
+  with its exact-`true` public contract and immutable v1/v2 run compatibility
 - Stripe sandbox/test mode until the commercial-launch checklist is complete
 
 Energy recovers server-side to a six-unit cap. A rewarded run commits 1–6
@@ -37,6 +36,13 @@ Spine before the client receives completion. Settlement, progression, personal
 bests, career memory, recognition, and attention survive dropped responses,
 reloads, reconnects, and duplicate completion attempts without storing progress
 or recovery work in browser storage.
+
+Tactical Genome v2 preserves uninterrupted Snake flow by placing an optional
+physical Gene relic every deterministic 6 ± 2 foods. Only deliberate collection
+opens the compact Tactical Loom; six loci then combine shared Genes, Dynasty
+signatures, 2/3/4 Strain reactions, and eight Splices. Deeper build research
+lives in one free responsive Genome Workbench rather than a parallel in-run
+dashboard or duplicate Codex surface.
 
 ## Local development
 
@@ -99,7 +105,7 @@ are:
 - [Game Design v2](docs/game/GAME_DESIGN_V2.md)
 - [Career Spine](docs/game/CAREER_SPINE.md)
 - [Player Flow & Interruption Policy](docs/game/PLAYER_FLOW_INTERRUPTION_POLICY.md)
-- [Genome design](docs/game/BUILDCRAFT_GENOME_DESIGN.md)
+- [Tactical Genome v2](docs/game/TACTICAL_GENOME_V2.md)
 - [Energy Commitment & Clan Battles](docs/game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md)
 - [Monetization Strategy](docs/game/MONETIZATION_STRATEGY.md)
 - [Run Cockpit & Arena](docs/game/HUD_COCKPIT_REDESIGN.md)

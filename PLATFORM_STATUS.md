@@ -1,6 +1,6 @@
 # SupaSnake platform status
 
-**Updated:** 2026-08-02
+**Updated:** 2026-08-03
 
 **Environment:** operator production, Stripe sandbox
 
@@ -12,24 +12,26 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–064 deployed and aligned; reviewed 065 Genome v2 addition pending release |
+| Schema | Migrations 001–065 deployed and aligned; no pending migration |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
 | Practice | Training Lab enabled; deterministic and rewardless |
 | Energy | Server-time recovery to 6; 1–6 commitment; nonlinear harvest |
 | Clan battle | Automatic positive-Energy eligibility; three days; best five per member |
 | Career | Durable run ingress; atomic progression; bounded recognition; server-backed attention and memory |
-| Player-feature baseline | `23ba6e6fd95029cd9da4cea5b78a998b55aac782` |
-| Current deployment | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` |
-| Outgoing pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; compatible with additive migration 065 before v2 intake, but not a safe rollback target after any v2 session is issued |
+| Tactical Genome | v2 enabled; player-pulled relics, six loci, 13 shared Genes, three signatures, eight Splices, 2/3/4 neutral Strain ladder |
+| Player-feature baseline | `8bb3ef9561c959b1b0683f3436ac68f8159e89d7` |
+| Current deployment | `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`supasnake-i9d5do4ix-josef-bells-projects.vercel.app`) |
+| Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
 The current release passed protected-PR and post-main Build, Lint, Test, and
-both isolated-Supabase E2E workflows; full type checking, lint, Jest coverage,
-production build, deterministic cockpit fixtures, local migrations 001–064
-from zero, phased continuity/Career and concurrency SQL integration, the production
-runtime dependency audit, staged and canonical health, linked database lint,
-and focused public-production smoke. Detailed evidence is maintained in
+all four isolated-Supabase E2E flag shapes; full type checking, lint, 468 Jest
+suites / 6,151 tests, production build, deterministic cockpit/Genome fixtures,
+local migrations 001–065 from zero, ordinary and two-session SQL integration,
+the production runtime dependency audit, staged and canonical health, linked
+read-only schema proof, exact cron ownership, and focused public-production
+smoke. Detailed evidence is maintained in
 `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -43,8 +45,8 @@ and focused public-production smoke. Detailed evidence is maintained in
   privacy-safe clan consequence.
 - The arena remains centered and clear of routine HUD elements.
 - CYBER and COSMIC keep +1 normal body growth; PRIMAL owns the degressive
-  +4/+3/+2/+1 body-pressure curve, while Genome offers run on their own 4–8-food
-  clock.
+  +4/+3/+2/+1 body-pressure curve, while ordinary Genome opportunities use their
+  own deterministic 6 ± 2-food (4–8) clock.
 - Growth and CYBER speed changes use brief, non-blocking board callouts rather
   than permanent cockpit telemetry.
 - Board pressure now has one shared physical/committed occupancy model across
@@ -59,6 +61,26 @@ and focused public-production smoke. Detailed evidence is maintained in
   proven composition and short landscape uses symmetric side rails.
 - Strategic gene, mutation, portal, infusion, and surge decisions command the
   frozen arena in centered dialogs.
+- Ordinary Genome opportunities place one reachable physical relic for 40
+  resolved movement ticks. Placement and expiry never interrupt play; only
+  deliberate collection rolls candidates and freezes the arena. The next
+  interval begins after collection or expiry, and food eaten while a relic is
+  live cannot accelerate it. Patient doubles the sampled interval and Ascetic
+  suppresses ordinary relics.
+- Tactical Loom choices name every contributing Strain at first read through a
+  rune, independent family color, and written badge; dual-Strain Genes show both.
+  The neutral first view stays compact, while `UNFOLD DETAILS` reveals the direct
+  2/3/4 reaction route and Splice consequences without ranking either choice.
+- The one free Genome Workbench is responsive and direct-manipulation-first;
+  `/codex` is a compatibility route into the same instrument and the Research
+  Record remains subordinate rather than becoming a duplicate rules surface.
+- Genome terrain, target, route, wager, and body effects now resolve through the
+  same authoritative mechanics used by validation and receive readable in-board
+  feedback. Post-choice guidance is pointer-transparent and keeps the board held
+  until deliberate movement.
+- Interrupted earning runs renew their live continuity receipt and lease when
+  resumed; the recovery watchdog no longer lets a stale receipt repeatedly
+  interrupt otherwise healthy resumed play.
 - Pause is a tactical hold, not a menu. Accepted movement resumes; Abandon Run
   is a secondary confirmed action.
 - Desktop and mobile accept a turn inside a 25%-tick grace window (capped at
@@ -103,7 +125,12 @@ NEXT_PUBLIC_GROWTH_LAB_V1=true  # inert legacy environment value; code retired
 NEXT_PUBLIC_LADDER_V1=true
 NEXT_PUBLIC_CAREER_SPINE_V1=true  # presentation only; never gates settlement
 NEXT_PUBLIC_RUN_FLOW_V1=true  # cockpit Setup and Victory Lap
+NEXT_PUBLIC_GENOME_V2=true  # new starts use physical-interaction v2; stamped v1 remains supported
 ```
+
+The complete 22-flag production set is defined only in
+`config/production-public-surface.json`; the list above highlights the
+player-flow flags most relevant to this status summary.
 
 ## Known follow-ups
 
@@ -122,6 +149,10 @@ These do not invalidate the operator production release:
   progression during a battle
 - Live Career tuning: recognition significance and pacing, Results readability,
   attention noise, lineage-memory usefulness, and clan-consequence clarity
+- Live Genome tuning: player-pulled relic pursuit and expiry rates, offer-category
+  diversity, DECLINE/Recode frequency, actual 2/3/4 Strain and Splice activation,
+  build Yield spread, Dynasty fit, portal mutation costs, and whether any route
+  becomes universally dominant
 - Monitor pending-settlement age, recovery latency, quarantine volume, duplicate
   end requests, and the ratio of accepted run ends that need asynchronous
   adoption
@@ -130,11 +161,10 @@ These do not invalidate the operator production release:
 - Linked database lint passed with no error and existing non-blocking warnings.
   Address warnings only through a reviewed forward migration; never rewrite
   deployed migration history.
-- Migration 061 intentionally closes the retired Career writer. For Genome v2,
-  migration 065 remains additive, but once a v2 session is issued the outgoing
-  pre-v2 application cannot resume that immutable contract. Rollout incidents
-  therefore require the documented dual-version, flag-off forward fix rather
-  than restoring the outgoing application.
+- Migration 061 intentionally closes the retired Career writer. Migration 065
+  is additive, but the retired pre-v2 application cannot resume or settle an
+  issued immutable v2 contract. Genome rollout incidents therefore require the
+  documented dual-version, flag-off forward fix rather than restoring it.
 - Final commercial legal review and support-mailbox operating procedures
 - Stripe test-to-live review and a controlled real purchase/refund
 - `RESEND_API_KEY` if weekly digest email becomes a marketed feature
@@ -143,6 +173,7 @@ These do not invalidate the operator production release:
 ## Sources of truth
 
 - Product direction: `docs/game/GAME_DESIGN_V2.md`
+- Genome/buildcraft: `docs/game/TACTICAL_GENOME_V2.md`
 - Player flow: `docs/game/PLAYER_FLOW_INTERRUPTION_POLICY.md`
 - Cockpit: `docs/game/HUD_COCKPIT_REDESIGN.md`
 - Energy and clan battles: `docs/game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md`

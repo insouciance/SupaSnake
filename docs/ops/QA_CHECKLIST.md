@@ -1,18 +1,19 @@
 # SupaSnake QA Checklist
 
-_Last updated: 2026-08-02_
+_Last updated: 2026-08-03_
 
 This is the current player-facing QA path for the deployed Redesign Wave,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle release, control responsiveness, Career Spine,
-cohesive UX/run continuity, and the Genome v2 release candidate.
+cohesive UX/run continuity, and the live player-pulled Tactical Genome v2
+release.
 Work from top to bottom when doing a broad playtest; use the focused matrices
 near the end when verifying a fix.
 
 Design references:
 
 - [Game Design v2](../game/GAME_DESIGN_V2.md)
-- [Buildcraft: The Genome](../game/BUILDCRAFT_GENOME_DESIGN.md)
+- [Tactical Genome v2](../game/TACTICAL_GENOME_V2.md)
 - [Energy Commitment and Clan Battles](../game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md)
 - [Career Spine](../game/CAREER_SPINE.md)
 - [Monetization Strategy](../game/MONETIZATION_STRATEGY.md)
@@ -25,51 +26,82 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `23ba6e6` — cohesive UX/run integrity baseline before Genome v2 |
-| Current deployment | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` |
-| Outgoing pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe after any v2 session starts |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–064 deployed and aligned; 065 pending |
+| Production behavior commit | `8bb3ef9561c959b1b0683f3436ac68f8159e89d7` — player-pulled Tactical Genome v2 and playtest UX/continuity hotfix |
+| Current deployment | `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`supasnake-i9d5do4ix-josef-bells-projects.vercel.app`), READY/production |
+| Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–065 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
-| Genome rollout flag | Production baseline has no Genome v2 surface; release target requires `NEXT_PUBLIC_GENOME_V2=true` and 22/22 manifest flags |
+| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 22/22 manifest flags enabled |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health currently reports exact SHA `23ba6e6` |
+| Canonical source | `main`; canonical health reports exact SHA `8bb3ef9561c959b1b0683f3436ac68f8159e89d7` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
-Commitment/Clan Energy Battle system, control responsiveness, and Career Spine
-are live through the cohesive 062–064 release. Genome v2 is not live until
-migration 065, the 22-flag public contract, the exact release SHA, and the
-Genome capability all pass together. After the first v2 session is issued, use
-a flag-off forward deployment of the dual-version code rather than the outgoing
+Commitment/Clan Energy Battle system, control responsiveness, Career Spine, and
+player-pulled Tactical Genome v2 are live through migration 065. The 22-flag
+public contract, exact release SHA, linked schema proof, Genome service
+capability, canonical alias, and cron owner passed together. Use a flag-off
+forward deployment of the dual-version code rather than the retired pre-v2
 application as rollback.
 
 ### Genome v2 release checks
 
-- [ ] Until the exact outgoing Production artifact proves the full dual-version
-      Genome v2 capability and corrected 2/3/4 Strain profile, the dedicated
-      production read-only preflight proves
-      that no durable Genome v2 session evidence exists; any nonzero count stops
-      the first cutover and requires rules v3 or a frozen threshold profile.
-- [ ] Every offer explicitly names its Strain(s) and renders their runes.
-- [ ] The focused choice shows its affected 2/3/4 route and every directly
-      connected Splice fate without ranking or recommending a build.
-- [ ] Candidate, held, and Recode genes expose every Strain at first read through
+- [x] The first-cutover aggregate-only preflights proved zero durable Genome v2
+      evidence. The exact outgoing v2 artifact now proves the corrected 2/3/4
+      profile, so later application-only releases correctly retire that one-time
+      premise.
+- [x] Every offer explicitly names its Strain(s) and renders their runes.
+- [x] `UNFOLD DETAILS` shows the focused choice's affected 2/3/4 route and every
+      directly connected Splice fate without ranking or recommending a build.
+- [x] Candidate, held, and Recode genes expose every Strain at first read through
       a rune + independent color + written-name badge; dual-Strain genes show both.
-- [ ] The ordinary Loom remains compact and game-like at phone widths; any
+- [x] The ordinary Loom remains compact and game-like at phone widths; any
       post-choice callout is pointer-transparent after play resumes.
-- [ ] Codex and Workbench expose complete rules and direct six-locus Research
-      without hiding undiscovered recipes or resembling a ranking dashboard.
-- [ ] Results `Study this Genome` uses an authenticated, opaque, server-backed
+- [x] One responsive Genome Workbench exposes complete rules and direct six-locus
+      Research without hiding recipes or resembling a ranking dashboard;
+      `/codex` reaches that same instrument and the Research Record is subordinate.
+- [x] Results `Study this Genome` uses an authenticated, opaque, server-backed
       handoff; URLs and browser storage never contain authoritative run state.
-- [ ] Flag-off new starts remain v1 while an already-issued v2 run resumes and
+- [x] Flag-off new starts remain v1 while an already-issued v2 run resumes and
       settles under its immutable version.
-- [ ] Deterministic settlement proves a materially large Yield spread between a
+- [x] Deterministic settlement proves a materially large Yield spread between a
       coherent/executed Genome and a poor/misplayed one without declaring one
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Player-pulled Tactical Genome production evidence
+
+- PR 57 merged the playtest hotfix and physical-interaction Genome v2 as exact
+  main SHA `8bb3ef9561c959b1b0683f3436ac68f8159e89d7`.
+- Protected-PR and exact-main Build, Lint, Test, and E2E workflows all passed.
+  The release gate passed 468 Jest suites / 6,151 tests, TypeScript, ESLint,
+  production build, local SQL contracts, and four E2E flag shapes: all-on
+  Production, all-off rollback, Genome-on/Workbench-off, and
+  Genome-off/Workbench-on.
+- Production workflow `30814673700` succeeded in Stripe test mode with
+  `expected_migrations=none`, then deployed and verified
+  `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ`
+  (`supasnake-i9d5do4ix-josef-bells-projects.vercel.app`) as READY/production.
+- Canonical `/api/health` and `/api/release-contract` report healthy application
+  and database, exact release SHA, 22/22 flags, public-surface hash
+  `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`,
+  Genome schema/catalog/Ascendance 2/2/2, rules version 2, eight Splices, and
+  neutral Strain thresholds 2/3/4.
+- Canonical alias, production cron owner, and every cron host resolve to the same
+  deployment. Cron remains enabled and its normalized definition hash remains
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
+- The shipped playtest corrections restore a responsive full-viewport Chamber
+  portrait, one responsive Workbench, integer HUD score, cubic/neon arena
+  presentation with quieter floor fog, authoritative visible Genome effects,
+  collision-contact diagnostics, and continuity lease renewal for resumed runs.
+  The Loom stays simple-first, preserves stable choices through refreshes, and
+  gives a readable pointer-transparent `Move to resume` hold after commitment.
+- The remaining unchecked Genome item above is a physical owner field journey
+  across desktop/mobile force-quit, portal, Recode, BANK/crash, and Research
+  handoff—not an automated release, schema, or flag gap.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
@@ -223,7 +255,8 @@ one sitting against a complete design rather than a series of partial reads.
 **D1 is closed.** CYBER and COSMIC use +1 normal growth throughout. PRIMAL uses
 +4 below modelled length 75, +3 below 96, +2 below 120, then +1. What remains
 open is threshold calibration from real PRIMAL play, not profile selection.
-Gene offers use their own 4–8-food clock, independent of dynasty growth.
+Genome opportunities use their own deterministic 6 ± 2-food (4–8) clock,
+independent of dynasty growth.
 
 Known before you start, so they are not reported as discoveries:
 
@@ -506,11 +539,17 @@ Start on desktop with keyboard controls.
 
 “Mutations” are now player-facing **genes** in Genome-capable runs.
 
-- [ ] A gene pickup appears every 4–8 foods (Patient doubles the interval), is
-      independent of dynasty growth, is distinct from food,
-      and signals its 40-tick despawn window without visual noise.
-- [ ] Collecting it freezes the engine and presents two readable choices with
-      name, effect, cost, and—after the FTUE gate—strain tags.
+- [ ] Each ordinary 6 ± 2-food opportunity places one Gene relic (Patient doubles
+      the sampled interval; Ascetic suppresses ordinary relics), independent of
+      dynasty growth and distinct from food, with a legible 40-tick lifetime.
+- [ ] Collection alone freezes the engine and presents two neutral, readable,
+      Strain-badged choices with one salient consequence each; placement, ignore,
+      and expiry never pause or roll candidates.
+- [ ] The next cadence interval starts only after collection or expiry; foods
+      eaten while the relic is live do not count toward the next interval, and
+      expiry is never recorded as DECLINE, PASS, or a Bond.
+- [ ] `UNFOLD DETAILS` reveals the affected 2/3/4 route and direct Splice fates
+      for that offer while the default view remains compact.
 - [ ] Keyboard 1/2 and touch selection work; Escape declines; focus never lands
       behind the overlay.
 - [ ] After picking or declining, the board stays held until deliberate input.
