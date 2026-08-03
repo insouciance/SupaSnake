@@ -6,6 +6,7 @@ import {
   pruneOutbox,
   readOutbox,
   replayRewardOutbox,
+  REWARD_OUTBOX_ATTEMPT_TIMEOUT_MS,
   REWARD_OUTBOX_MAX_AGE_MS,
   REWARD_OUTBOX_MAX_ENTRIES,
   type RewardOutboxEntry,
@@ -42,6 +43,36 @@ const impact: RunImpactEnvelope = {
   impacts: [],
   featuredImpactKeys: [],
   recommendedAction: null,
+};
+
+const freePlayResult = {
+  sessionId: 'session-1',
+  score: 987,
+  outcome: 'crashed' as const,
+  dnaCredited: 0 as const,
+  yieldDna: 240,
+  hypotheticalDna: 60,
+  valid: true,
+  ascendance: { totalYield: 240 },
+  genome: { v: 2 },
+  playerDna: 420,
+};
+
+const freePlayResponse = {
+  success: true,
+  freePlay: true,
+  sessionId: 'session-1',
+  player: { dna: 420 },
+  validation: {
+    valid: true,
+    adjustedDna: 0,
+    score: 987,
+    extracted: false,
+    yieldDna: 240,
+    ascendance: { totalYield: 240 },
+  },
+  hypotheticalDna: 60,
+  genome: { v: 2 },
 };
 
 function response(status: number, body: unknown = {}): Response {
@@ -86,7 +117,11 @@ describe('tab-memory settlement retry queue', () => {
       dropped: 0,
       remaining: 0,
       impacts: [impact],
+      freePlayResults: [],
       securedPendingSessionIds: [],
+      completedWithoutImpactSessionIds: [],
+      leaseConflictSessionIds: [],
+      permanentlyRejectedSessionIds: [],
     });
     expect(readOutbox()).toEqual([]);
   });
@@ -162,6 +197,7 @@ describe('tab-memory settlement retry queue', () => {
       {
         cache: 'no-store',
         headers: { Authorization: 'Bearer token' },
+        signal: expect.any(AbortSignal),
       }
     );
   });
@@ -276,6 +312,28 @@ describe('tab-memory settlement retry queue', () => {
     expect(readOutbox()).toHaveLength(1);
   });
 
+  it.each(['abandoned', 'expired', 'disconnected'])(
+    'routes a session-bound %s lifecycle closure to secured recovery',
+    async (endReason) => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      enqueueReward(makeEntry());
+      const fetchFn = jest.fn().mockResolvedValue(response(409, {
+        alreadyEnded: true,
+        endReason,
+        sessionId: 'session-1',
+      }));
+
+      await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+        replayed: 0,
+        dropped: 1,
+        remaining: 0,
+        permanentlyRejectedSessionIds: ['session-1'],
+      });
+      expect(readOutbox()).toEqual([]);
+      consoleError.mockRestore();
+    }
+  );
+
   it('accepts an explicit completed end even while its impact is unavailable', async () => {
     enqueueReward(makeEntry());
     const fetchFn = jest
@@ -283,6 +341,7 @@ describe('tab-memory settlement retry queue', () => {
       .mockResolvedValueOnce(response(409, {
         alreadyEnded: true,
         endReason: 'completed',
+        sessionId: 'session-1',
       }))
       .mockResolvedValueOnce(response(404));
 
@@ -290,8 +349,251 @@ describe('tab-memory settlement retry queue', () => {
       replayed: 1,
       dropped: 0,
       remaining: 0,
+      completedWithoutImpactSessionIds: ['session-1'],
     });
     expect(readOutbox()).toEqual([]);
+  });
+
+  it('returns a canonical Free Play receipt from an already-completed replay', async () => {
+    enqueueReward(makeEntry({ freePlay: true }));
+    const fetchFn = jest.fn().mockResolvedValue(
+      response(409, {
+        error: 'Session already ended',
+        alreadyEnded: true,
+        endReason: 'completed',
+        ...freePlayResponse,
+      })
+    );
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 1,
+      remaining: 0,
+      freePlayResults: [freePlayResult],
+      completedWithoutImpactSessionIds: [],
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(readOutbox()).toEqual([]);
+  });
+
+  it.each([
+    ['missing canonical fields', {
+      success: true,
+      freePlay: true,
+      sessionId: 'session-1',
+    }],
+    ['a different session identity', {
+      ...freePlayResponse,
+      sessionId: 'another-session',
+    }],
+    ['a Career impact in place of its practice receipt', { impact }],
+  ])('retains a Free Play proof after %s', async (_label, body) => {
+    enqueueReward(makeEntry({ freePlay: true }));
+    const fetchFn = jest.fn().mockResolvedValueOnce(response(200, body));
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 0,
+      remaining: 1,
+      freePlayResults: [],
+    });
+    // Rewardless practice has no Career impact endpoint: a malformed result
+    // stays queued instead of being laundered through an unrelated receipt.
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(readOutbox()).toHaveLength(1);
+  });
+
+  it('does not accept a free-play response for an earning claim', async () => {
+    enqueueReward(makeEntry({ freePlay: false }));
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(200, {
+        success: true,
+        freePlay: true,
+        sessionId: 'session-1',
+      }))
+      .mockResolvedValueOnce(response(404));
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      remaining: 1,
+    });
+    expect(readOutbox()).toHaveLength(1);
+  });
+
+  it('retains a malformed successful response without canonical settlement authority', async () => {
+    enqueueReward(makeEntry());
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(200, {}))
+      .mockResolvedValueOnce(response(404));
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 0,
+      remaining: 1,
+      completedWithoutImpactSessionIds: [],
+    });
+    expect(readOutbox()).toHaveLength(1);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['impact', { impact: { ...impact, sessionId: 'different-session' } }],
+    ['durable pending', {
+      accepted: true,
+      pendingSettlement: true,
+      clientRetryRequired: false,
+      sessionId: 'different-session',
+    }],
+    ['completed lifecycle', {
+      alreadyEnded: true,
+      endReason: 'completed',
+      sessionId: 'different-session',
+    }],
+  ])('never lets a %s response for another session acknowledge this proof', async (_label, body) => {
+    enqueueReward(makeEntry());
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(200, body))
+      .mockResolvedValueOnce(response(404));
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 0,
+      remaining: 1,
+      completedWithoutImpactSessionIds: [],
+    });
+    expect(readOutbox()).toHaveLength(1);
+  });
+
+  it.each([408, 425, 429])('retains HTTP %s as a transient settlement attempt', async (status) => {
+    enqueueReward(makeEntry());
+    const fetchFn = jest.fn().mockResolvedValue(response(status));
+
+    await expect(replayRewardOutbox('token', fetchFn)).resolves.toMatchObject({
+      replayed: 0,
+      dropped: 0,
+      remaining: 1,
+      permanentlyRejectedSessionIds: [],
+    });
+    expect(readOutbox()).toHaveLength(1);
+  });
+
+  it('processes only the visible owner terminal session and leaves older claims for background replay', async () => {
+    enqueueReward(makeEntry({ ownerId: 'user-a', sessionId: 'older' }));
+    enqueueReward(makeEntry({ ownerId: 'user-a', sessionId: 'current' }));
+    enqueueReward(makeEntry({ ownerId: 'user-a', sessionId: 'newer' }));
+    enqueueReward(makeEntry({ ownerId: 'user-b', sessionId: 'current' }));
+    const fetchFn = jest.fn().mockResolvedValue(response(503));
+
+    await replayRewardOutbox('token-a', fetchFn, 'user-a', 'current');
+
+    const submittedSessions = fetchFn.mock.calls.map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body)).sessionId
+    );
+    expect(submittedSessions).toEqual(['current']);
+    expect(readOutbox()).toHaveLength(4);
+  });
+
+  it('does not make a visible terminal retry join an older hung background drain', async () => {
+    jest.useFakeTimers();
+    try {
+      enqueueReward(makeEntry({ ownerId: 'user-a', sessionId: 'older' }));
+      const backgroundFetch = jest.fn(
+        () => new Promise<Response>(() => {})
+      );
+      const backgroundReplay = replayRewardOutbox(
+        'token-a',
+        backgroundFetch,
+        'user-a'
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(backgroundFetch).toHaveBeenCalledTimes(1);
+
+      enqueueReward(makeEntry({ ownerId: 'user-a', sessionId: 'current' }));
+      const currentImpact = { ...impact, sessionId: 'current' };
+      const currentFetch = jest.fn().mockResolvedValue(
+        response(200, { impact: currentImpact })
+      );
+
+      await expect(
+        replayRewardOutbox('token-a', currentFetch, 'user-a', 'current')
+      ).resolves.toMatchObject({
+        replayed: 1,
+        remaining: 1,
+        impacts: [currentImpact],
+      });
+      expect(currentFetch).toHaveBeenCalledTimes(1);
+      expect(readOutbox().map((entry) => entry.sessionId)).toEqual(['older']);
+
+      jest.advanceTimersByTime(REWARD_OUTBOX_ATTEMPT_TIMEOUT_MS);
+      await expect(backgroundReplay).resolves.toMatchObject({
+        replayed: 0,
+        remaining: 1,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('bounds an initial request even when the injected fetch ignores AbortSignal', async () => {
+    jest.useFakeTimers();
+    try {
+      enqueueReward(makeEntry());
+      let submittedSignal: AbortSignal | undefined;
+      const fetchFn = jest.fn().mockImplementation(
+        (_url: string, init?: RequestInit) => {
+          submittedSignal = init?.signal ?? undefined;
+          return new Promise<Response>(() => {});
+        }
+      );
+
+      const replay = replayRewardOutbox('token', fetchFn);
+      await Promise.resolve();
+      await Promise.resolve();
+      jest.advanceTimersByTime(REWARD_OUTBOX_ATTEMPT_TIMEOUT_MS);
+
+      await expect(replay).resolves.toMatchObject({
+        replayed: 0,
+        dropped: 0,
+        remaining: 1,
+      });
+      expect(submittedSignal?.aborted).toBe(true);
+      expect(readOutbox()).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('bounds a hung impact fallback after canonical completion', async () => {
+    jest.useFakeTimers();
+    try {
+      enqueueReward(makeEntry());
+      const fetchFn = jest
+        .fn()
+        .mockResolvedValueOnce(response(200, {
+          alreadyEnded: true,
+          endReason: 'completed',
+          sessionId: 'session-1',
+        }))
+        .mockImplementationOnce(() => new Promise<Response>(() => {}));
+
+      const replay = replayRewardOutbox('token', fetchFn);
+      for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      jest.advanceTimersByTime(REWARD_OUTBOX_ATTEMPT_TIMEOUT_MS);
+
+      await expect(replay).resolves.toMatchObject({
+        replayed: 1,
+        dropped: 0,
+        remaining: 0,
+        completedWithoutImpactSessionIds: ['session-1'],
+      });
+      expect(readOutbox()).toEqual([]);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('drops a stale terminal claim when another tab owns the run lease', async () => {
@@ -305,6 +607,8 @@ describe('tab-memory settlement retry queue', () => {
       replayed: 0,
       dropped: 1,
       remaining: 0,
+      leaseConflictSessionIds: ['session-1'],
+      permanentlyRejectedSessionIds: [],
     });
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(readOutbox()).toEqual([]);
@@ -323,6 +627,8 @@ describe('tab-memory settlement retry queue', () => {
       replayed: 0,
       dropped: 1,
       remaining: 1,
+      leaseConflictSessionIds: [],
+      permanentlyRejectedSessionIds: ['invalid'],
     });
     expect(readOutbox().map((entry) => entry.sessionId)).toEqual(['transient']);
     expect(consoleError).toHaveBeenCalledWith(
@@ -345,7 +651,11 @@ describe('tab-memory settlement retry queue', () => {
       dropped: 0,
       remaining: 0,
       impacts: [impact],
+      freePlayResults: [],
       securedPendingSessionIds: [],
+      completedWithoutImpactSessionIds: [],
+      leaseConflictSessionIds: [],
+      permanentlyRejectedSessionIds: [],
     });
     expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
     expect(readOutbox()).toEqual([]);
@@ -359,6 +669,8 @@ describe('tab-memory settlement retry queue', () => {
     const fetchFn = jest.fn().mockResolvedValue(response(202, {
       accepted: true,
       pendingSettlement: true,
+      clientRetryRequired: false,
+      sessionId: 'session-1',
     }));
 
     await expect(
@@ -368,10 +680,45 @@ describe('tab-memory settlement retry queue', () => {
       dropped: 0,
       remaining: 0,
       impacts: [],
+      freePlayResults: [],
       securedPendingSessionIds: ['session-1'],
+      completedWithoutImpactSessionIds: [],
+      leaseConflictSessionIds: [],
+      permanentlyRejectedSessionIds: [],
     });
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
+  });
+
+  it('reports stale ownership and permanent rejection separately while draining legacy claims', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    window.localStorage.setItem(
+      LEGACY_REWARD_OUTBOX_KEY,
+      JSON.stringify([
+        makeEntry({ sessionId: 'stale-legacy' }),
+        makeEntry({ sessionId: 'invalid-legacy' }),
+      ])
+    );
+    const fetchFn = jest
+      .fn()
+      .mockResolvedValueOnce(response(409, { reason: 'lease_conflict' }))
+      .mockResolvedValueOnce(response(422));
+
+    await expect(
+      drainLegacyRewardOutbox('token', window.localStorage, fetchFn)
+    ).resolves.toEqual({
+      replayed: 0,
+      dropped: 2,
+      remaining: 0,
+      impacts: [],
+      freePlayResults: [],
+      securedPendingSessionIds: [],
+      completedWithoutImpactSessionIds: [],
+      leaseConflictSessionIds: ['stale-legacy'],
+      permanentlyRejectedSessionIds: ['invalid-legacy'],
+    });
+    expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();
+    consoleError.mockRestore();
   });
 
   it('never rewrites or deletes a legacy queue while settlement is transient', async () => {
@@ -413,7 +760,11 @@ describe('tab-memory settlement retry queue', () => {
       dropped: 0,
       remaining: 0,
       impacts: [],
+      freePlayResults: [],
       securedPendingSessionIds: [],
+      completedWithoutImpactSessionIds: [],
+      leaseConflictSessionIds: [],
+      permanentlyRejectedSessionIds: [],
     });
     expect(fetchFn).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(LEGACY_REWARD_OUTBOX_KEY)).toBeNull();

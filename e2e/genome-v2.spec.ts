@@ -78,6 +78,21 @@ test.describe('Genome v2 live player journey', () => {
     await expect(page.getByTestId('flick-surface')).toHaveCount(0);
     await expect(initialResumeGate).toBeHidden();
 
+    const panel = page.getByTestId('tactical-loom-panel');
+    const scrollRegion = page.getByTestId('loom-scroll-region');
+    const actionRow = page.getByTestId('loom-action-row');
+    const panelBeforeDetails = await panel.boundingBox();
+    expect(panelBeforeDetails).not.toBeNull();
+    expect(panelBeforeDetails!.x).toBeGreaterThanOrEqual(0);
+    expect(panelBeforeDetails!.x + panelBeforeDetails!.width).toBeLessThanOrEqual(391);
+    expect(panelBeforeDetails!.y).toBeGreaterThanOrEqual(0);
+    expect(panelBeforeDetails!.y + panelBeforeDetails!.height).toBeLessThanOrEqual(845);
+    await expect(loom).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(loom).toHaveCSS('backdrop-filter', 'none');
+    await expect(scrollRegion).toHaveCSS('overflow-y', 'auto');
+    await expect(actionRow).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(actionRow).toBeVisible();
+
     const phoenix = page.getByTestId('gene-option-0');
     await expect(phoenix).toContainText('Phoenix');
     await expect(phoenix).toContainText('UMBRA');
@@ -109,6 +124,13 @@ test.describe('Genome v2 live player journey', () => {
     await details.click();
     await expect(details).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByTestId('loom-full-reaction-map')).toBeVisible();
+    const panelAfterDetails = await panel.boundingBox();
+    expect(panelAfterDetails).not.toBeNull();
+    expect(panelAfterDetails!.x).toBeCloseTo(panelBeforeDetails!.x, 0);
+    expect(panelAfterDetails!.y).toBeCloseTo(panelBeforeDetails!.y, 0);
+    expect(panelAfterDetails!.width).toBeCloseTo(panelBeforeDetails!.width, 0);
+    expect(panelAfterDetails!.height).toBeCloseTo(panelBeforeDetails!.height, 0);
+    await expect(actionRow).toBeVisible();
 
     // The choice names the immediate Strain crossing and the next threshold;
     // the player is never expected to memorize either ladder.

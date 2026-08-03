@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { GenomeYieldRecap } from './GenomeYieldRecap';
 
 describe('GenomeYieldRecap', () => {
@@ -30,6 +30,17 @@ describe('GenomeYieldRecap', () => {
     expect(screen.getByTestId('results-genome-recap')).toHaveTextContent('×2.64');
     expect(screen.getByTestId('results-genome-row-route')).toHaveTextContent('4 of 5 completed');
     expect(screen.getByTestId('results-genome-row-escrow')).toHaveTextContent('-160');
+    const details = screen.getByTestId('results-genome-details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    expect(screen.getByTestId('results-genome-receipt-counts')).toHaveTextContent(
+      '2 genes · 1 Splice'
+    );
+    fireEvent.click(screen.getByText('Full Genome receipt'));
+    expect(details.open).toBe(true);
+    expect(screen.getByLabelText('Active run Genome')).toHaveTextContent('Live Wire');
+    expect(screen.getByTestId('results-genome-outcome-rule')).toHaveTextContent(
+      'BANK converted Bonds'
+    );
     expect(screen.getByTestId('results-genome-recap')).not.toHaveTextContent(/best|recommended|optimal/i);
   });
 });

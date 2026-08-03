@@ -197,6 +197,27 @@ function driveTo(
 }
 
 describe('SnakeGameLogic Genome v2 authority boundary', () => {
+  it('keeps the large reducer cold across an ordinary movement tick', () => {
+    const game = new SnakeGameLogic({
+      gridSize: 80,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'genome-frame-revision',
+      genome: physicalRelicConfig('PRIMAL'),
+    });
+    game.start();
+
+    expect(game.hasGenome()).toBe(true);
+    expect(game.isGameOver()).toBe(false);
+    expect(game.getState().genomeV2).not.toBeNull();
+    expect(game.getState({ includeGenomeV2: false }).genomeV2).toBeNull();
+    const beforeRevision = game.getGenomeV2Revision();
+
+    game.tick();
+
+    expect(game.getGenomeV2Revision()).toBe(beforeRevision);
+    expect(game.getGenomeV2State()).not.toBeNull();
+  });
+
   it('keeps missing rulesVersion on v1 and rejects incomplete fresh v2 stamps', () => {
     const legacy = new SnakeGameLogic({
       ruleset: RULESETS.PRIMAL,

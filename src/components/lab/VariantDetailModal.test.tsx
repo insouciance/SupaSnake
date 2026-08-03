@@ -326,6 +326,22 @@ describe('VariantDetailModal equip errors', () => {
 });
 
 describe('VariantDetailModal dialog behaviour', () => {
+  it('keeps actions accessible outside the scroller without a second dark tray', () => {
+    renderModal();
+
+    const dialog = screen.getByTestId('variant-detail-modal');
+    const scrollOwner = screen.getByTestId('variant-detail-scroll');
+    const actions = screen.getByTestId('variant-action-row');
+    expect(dialog).toContainElement(scrollOwner);
+    expect(dialog).toContainElement(actions);
+    expect(scrollOwner).not.toContainElement(actions);
+    expect(actions).toHaveAttribute('data-action-surface', 'integrated');
+    expect(actions).toHaveClass('bg-transparent');
+    expect(actions).not.toHaveClass('bg-void/80');
+    expect(actions).toContainElement(screen.getByLabelText('Equip this snake'));
+    expect(actions).toContainElement(screen.getByLabelText('Breed this snake'));
+  });
+
   it('moves focus into the sheet when opened', () => {
     renderModal();
 

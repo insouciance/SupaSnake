@@ -855,9 +855,17 @@ export function RunResults({
   ascendanceProgression = null,
   collisionDetail = null,
 }: RunResultsProps) {
-  const head = headline(outcome, practice);
+  const awaitingCanonicalImpact = !practice && settlementPending && !impact;
+  const head = awaitingCanonicalImpact
+    ? {
+        testId: 'gameover-finalizing',
+        title: 'Run Secured',
+        tone: 'text-[#7df9ff]',
+        detail: 'Outcome finalizing on the server',
+      }
+    : headline(outcome, practice);
   const receipt = impact?.receipt;
-  const settledScore = receipt?.score ?? score;
+  const settledScore = Math.round(receipt?.score ?? score);
   const settledYield = receipt?.yieldDna ?? yieldDna ?? dnaCredited ?? 0;
   const credited = receipt?.dnaCredited ?? dnaCredited;
   const committed = receipt?.energyCommitted ?? energyCommitted;
@@ -895,7 +903,7 @@ export function RunResults({
           <p className="font-body text-sm uppercase tracking-wide text-beige/60">
             {head.detail}
           </p>
-          {outcome === 'crashed' && collisionDetail ? (
+          {!awaitingCanonicalImpact && outcome === 'crashed' && collisionDetail ? (
             <p
               className="font-mono text-sm text-beige/75"
               data-testid="results-collision-diagnostic"
@@ -905,7 +913,7 @@ export function RunResults({
           ) : null}
         </div>
 
-        {personalBest && (
+        {!awaitingCanonicalImpact && personalBest && (
           <p className="inline-flex items-center justify-center gap-2 rounded-arcade border border-venom-orange/60 bg-venom-orange/10 px-4 py-2 font-body text-sm font-bold text-venom-orange" data-testid="results-personal-best">
             <IconMedal size={18} /> Personal best
           </p>
@@ -937,12 +945,15 @@ export function RunResults({
             {takeMessage(takeState, take) && <p className="font-body text-xs text-beige/70" data-testid="results-take-status">{takeMessage(takeState, take)}</p>}
           </div>
         )}
-        {shareArtifact}
+        {!awaitingCanonicalImpact ? shareArtifact : null}
       </section>
 
       <section data-testid="results-layer-2" aria-label="The two numbers" className="space-y-2 font-body">
         <p className="text-2xl text-bone-white" data-testid="results-score">
-          Score: <span className="font-bold text-venom-orange">{settledScore.toLocaleString()}</span>
+          Score:{' '}
+          <span className="font-bold text-venom-orange">
+            {awaitingCanonicalImpact ? 'Finalizing…' : settledScore.toLocaleString()}
+          </span>
         </p>
         <p className="flex items-center justify-center gap-2 text-2xl text-bone-white" data-testid="results-yield">
           <IconDna size={22} className="text-venom-orange" /> Yield:{' '}
@@ -1021,6 +1032,44 @@ export function RunResults({
         ) : null}
       </section>
 
+      {/*
+        The two ways out of Results sit here - directly under the outcome and
+        the two numbers, above the progression ceremony - and they flow in
+        normal document order with no pinning and no backing tray.
+
+        Layer 3 is by far the tallest thing on this screen: at 320x568 its
+        recognition digest alone measures ~640px, which used to push Replay and
+        Setup to a first-viewport bottom of ~1362px. The ceremony is worth
+        reading, but it may not stand between a player and their next run
+        (Constitution: "<=2 taps from Results to the next run via REPLAY").
+        Putting the actions before it costs the ceremony nothing - it still
+        runs, in full, immediately below - and it holds in both the finalizing
+        and the settled state, since everything Layer 2 adds after settlement
+        renders below the two numbers.
+
+        The dock stays outside all three layers, and the layers keep their
+        constitutional order and contents; only these two nodes moved.
+      */}
+      <p className="mx-auto max-w-lg text-center font-body text-xs leading-relaxed text-beige/55">
+        {practice
+          ? 'Replay or return to Setup at any time. Practice creates no persistent reward.'
+          : impact || settlementPending
+            ? 'Replay or return to Setup at any time. Leaving never forfeits a secured prize.'
+            : 'Settlement recovery is still in progress; this screen never invents an unverified prize.'}
+      </p>
+      <div
+        className="mx-auto grid w-full max-w-lg grid-cols-2 gap-2 bg-transparent pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] pt-2 sm:flex sm:items-center sm:justify-center sm:pb-3 sm:pt-3"
+        data-testid="results-action-dock"
+        data-action-surface="integrated"
+      >
+        <button type="button" onClick={onReplay} disabled={replayDisabled} data-testid="results-replay" className={`btn-go inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-8 py-4 text-xl sm:w-auto ${replayDisabled ? 'cursor-wait' : 'animate-glow-pulse shadow-venom-orange/50'}`}>
+          <IconPlay size={20} /> {replayPending ? 'Starting…' : replayEnergy > 0 ? `Replay · ${replayEnergy} Energy` : 'Replay · Lean'}
+        </button>
+        <button type="button" onClick={onSetup} data-testid="results-setup" className="btn-neutral inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-6 py-3 sm:w-auto">
+          <IconReset size={18} /> Setup
+        </button>
+      </div>
+
       <section data-testid="results-layer-3" aria-label="Progression" className="space-y-4">
         <div
           className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg p-4 text-left"
@@ -1067,22 +1116,6 @@ export function RunResults({
           </button>
         )}
       </section>
-
-      <p className="mx-auto max-w-lg text-center font-body text-xs leading-relaxed text-beige/55">
-        {practice
-          ? 'Replay or return to Setup at any time. Practice creates no persistent reward.'
-          : impact || settlementPending
-            ? 'Replay or return to Setup at any time. Leaving never forfeits a secured prize.'
-            : 'Settlement recovery is still in progress; this screen never invents an unverified prize.'}
-      </p>
-      <div className="sticky bottom-0 z-20 -mx-2 grid grid-cols-2 gap-2 border-t border-scale-blue-light/25 bg-void-deep/90 px-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] pt-2 backdrop-blur-md sm:mx-0 sm:flex sm:items-center sm:justify-center sm:rounded-full sm:border sm:px-3 sm:pb-3 sm:pt-3" data-testid="results-action-dock">
-        <button type="button" onClick={onReplay} disabled={replayDisabled} data-testid="results-replay" className={`btn-go inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-8 py-4 text-xl sm:w-auto ${replayDisabled ? 'cursor-wait' : 'animate-glow-pulse shadow-venom-orange/50'}`}>
-          <IconPlay size={20} /> {replayPending ? 'Starting…' : replayEnergy > 0 ? `Replay · ${replayEnergy} Energy` : 'Replay · Lean'}
-        </button>
-        <button type="button" onClick={onSetup} data-testid="results-setup" className="btn-neutral inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-6 py-3 sm:w-auto">
-          <IconReset size={18} /> Setup
-        </button>
-      </div>
     </div>
   );
 }

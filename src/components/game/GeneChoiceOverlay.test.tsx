@@ -512,6 +512,42 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByTestId('loom-focused-gene-name')).toHaveTextContent('Compound Interest');
   });
 
+  it('keeps one stable panel while optional analysis expands only inside its scroll owner', () => {
+    render(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={model()}
+        onChoose={jest.fn()}
+        onDecline={jest.fn()}
+      />
+    );
+
+    const overlay = screen.getByTestId('gene-choice-overlay');
+    const panel = screen.getByTestId('tactical-loom-panel');
+    const scrollOwner = screen.getByTestId('loom-scroll-region');
+    const actionRow = screen.getByTestId('loom-action-row');
+    expect(overlay).toHaveAttribute('data-surface', 'tactical-loom');
+    expect(overlay).toHaveAttribute('data-backdrop', 'transparent');
+    expect(overlay).not.toHaveClass('bg-gradient-to-t');
+    expect(overlay).not.toHaveClass('backdrop-blur-sm');
+    expect(panel).toHaveAttribute('data-layout', 'stable-shell');
+    expect(panel).toHaveAttribute('data-panel-surface', 'opaque');
+    expect(scrollOwner).toHaveAttribute('data-scroll-owner', 'tactical-loom');
+    expect(scrollOwner).toContainElement(screen.getByTestId('loom-choice-rail'));
+    expect(scrollOwner).toContainElement(screen.getByTestId('gene-decline'));
+    expect(scrollOwner).not.toContainElement(actionRow);
+    expect(panel).toContainElement(scrollOwner);
+    expect(panel).toContainElement(actionRow);
+    expect(actionRow).toHaveAttribute('data-action-surface', 'integrated');
+
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(screen.getByTestId('gene-option-0'));
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
+    expect(screen.getByTestId('tactical-loom-panel')).toBe(panel);
+    expect(scrollOwner).toContainElement(screen.getByTestId('loom-full-reaction-map'));
+    expect(scrollOwner).not.toContainElement(actionRow);
+  });
+
   it('keeps already-started v1 sessions honest through the legacy adapter', () => {
     render(
       <GeneChoiceOverlay

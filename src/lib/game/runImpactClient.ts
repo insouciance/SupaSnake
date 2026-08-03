@@ -292,20 +292,23 @@ export function parseImpactFromSettlement(value: unknown): RunImpactEnvelope | n
 export async function recoverRunImpact(
   sessionId: string,
   token: string,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
+  signal?: AbortSignal
 ): Promise<RunImpactEnvelope | null> {
   const response = await fetchFn(
     `/api/progression/impact?sessionId=${encodeURIComponent(sessionId)}`,
     {
       cache: 'no-store',
       headers: { Authorization: `Bearer ${token}` },
+      ...(signal ? { signal } : {}),
     }
   );
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(`Impact recovery failed (${response.status})`);
   }
-  return parseImpactFromSettlement(await response.json());
+  const impact = parseImpactFromSettlement(await response.json());
+  return impact?.sessionId === sessionId ? impact : null;
 }
 
 /**
@@ -332,7 +335,8 @@ export async function advancePendingRunImpact(
   if (!response.ok) {
     throw new Error(`Impact recovery failed (${response.status})`);
   }
-  return parseImpactFromSettlement(await response.json());
+  const impact = parseImpactFromSettlement(await response.json());
+  return impact?.sessionId === sessionId ? impact : null;
 }
 
 /**

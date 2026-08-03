@@ -60,7 +60,7 @@ describe('a lethal primitive is connected to a renderer', () => {
     // run with invisible blocks again — the same bug, narrower.
     const page = read('src/app/game/page.tsx');
     const setAt = page.indexOf('setTerrain(state.terrain)');
-    const gateAt = page.indexOf('if (gameRef.current.getGenome()) {', setAt - 2000);
+    const gateAt = page.indexOf('if (gameRef.current.hasGenome()) {', setAt);
     expect(setAt).toBeGreaterThan(-1);
     expect(gateAt).toBeGreaterThan(setAt);
   });

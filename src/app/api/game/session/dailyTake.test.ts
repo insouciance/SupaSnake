@@ -167,7 +167,10 @@ describe('PART 2 — the settlement route reads the Take and nothing more', () =
     expect(settlementUpdate).not.toMatch(/take/i);
 
     // The `validation` block of the earning-path response.
-    const responseStart = ROUTE.lastIndexOf('return NextResponse.json({\n        success: true,');
+    const responseStart = ROUTE.lastIndexOf(
+      'return progressionJson({\n        success: true,\n        player: updatedPlayer,'
+    );
+    expect(responseStart).toBeGreaterThan(-1);
     const validation = ROUTE.slice(
       ROUTE.indexOf('validation: {', responseStart),
       ROUTE.indexOf('...(identityInfo', responseStart)

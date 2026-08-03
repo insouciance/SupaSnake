@@ -378,7 +378,7 @@ export function VariantDetailModal({
         </div>
 
         {/* Scrollable content area */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" data-testid="variant-detail-scroll">
           {/* Character-first identity: art and the only run-critical facts. */}
           <div className="grid grid-cols-[minmax(112px,0.85fr)_minmax(0,1.15fr)] gap-3 px-3 pt-3 sm:grid-cols-[190px_minmax(0,1fr)] sm:px-4 sm:pt-4">
             <div
@@ -676,10 +676,12 @@ export function VariantDetailModal({
           </div>
         </div>
 
-        {/* Action buttons - fixed at bottom */}
+        {/* Actions remain outside the content scroller, but inherit the opaque
+            sheet instead of sitting on a second dark tray. */}
         <div
-          className="px-4 py-4 flex flex-wrap gap-3 border-t bg-void/80"
-          style={{ borderColor: hexToRgba(theme.glow, 0.3) }}
+          className="flex flex-wrap gap-3 bg-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4"
+          data-testid="variant-action-row"
+          data-action-surface="integrated"
         >
           {/*
             Equip failures belong here, beside the control that caused them -

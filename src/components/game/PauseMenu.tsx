@@ -93,7 +93,7 @@ export function PauseMenu({
         <div className="space-y-3 mb-8 p-4 rounded-arcade border border-scale-blue-light/40 bg-void/60">
           <div className="flex justify-between items-center">
             <span className="label-arcade">Score</span>
-            <span className="font-display text-2xl text-bone-white">{score}</span>
+            <span className="font-display text-2xl text-bone-white">{Math.round(score).toLocaleString()}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="label-arcade inline-flex items-center gap-1.5">

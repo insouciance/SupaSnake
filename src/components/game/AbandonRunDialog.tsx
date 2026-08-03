@@ -60,7 +60,7 @@ export function AbandonRunDialog({
           className="mt-3 space-y-2 text-center font-body text-sm text-beige/75"
         >
           <p>
-            This ends the run now. Score {score.toLocaleString('en-US')} and{' '}
+            This ends the run now. Score {Math.round(score).toLocaleString('en-US')} and{' '}
             {dnaCollected.toLocaleString('en-US')} run DNA will not be recorded.
           </p>
           {costsCharge && (

@@ -214,11 +214,13 @@ complete affected run-stamped Strain route, directly connected Splices, changed
 locus, and material ledgers. The detail state resets closed for every offer;
 focus or hover is navigation, never consent.
 
-Connection loss is an integrity state, not a death. When the most recent verified
-checkpoint becomes older than the configured safety budget, the client enters a
-board-visible connection hold before accumulating an unbounded amount of
-unrecoverable simulation. Recovery resumes from server truth after the connection
-returns.
+Connection loss is an integrity state, not a death, and never steals control from a
+live board. When the most recent verified checkpoint becomes older than the
+configured safety budget, the cockpit may report that saving is catching up while
+movement continues. The last accepted server checkpoint remains the recovery base;
+a later valid proposal advances it. A deterministic checkpoint rejection is likewise
+nonblocking and must not be retried as the same proposal. Only a verified exclusive-
+lease conflict proves that another window owns the run and may stop this copy.
 
 ### 3.4 Resolve — verified outcome, then presentation
 
@@ -239,6 +241,13 @@ freeze the reward ledger, Career impact receipt, clan consequence, and permanent
 moments. If either response is lost, recovery resumes from the already-secured
 terminal or settling phase and produces the same canonical receipt. The client never
 guesses progress from the last number it happened to display.
+
+This post-physics wait is categorically different from an active checkpoint warning.
+The snake has already died or extracted, so the cockpit says that the outcome is
+being verified and retries with bounded backoff. Results remain closed until a
+canonical terminal acknowledgement exists. A permanent proof rejection or newer
+lease offers **Load secured run** from the latest server checkpoint; it never leaves
+an inert board claiming that play continues.
 
 ### 3.5 Celebrate — the victory lap
 
@@ -384,9 +393,12 @@ The server accepts only replay-valid checkpoints for the current lease. Resuming
 a new lease and invalidates the old client, preventing two tabs from forking one stake.
 Critical decision boundaries checkpoint immediately. Routine checkpoints use a
 configurable cadence; the initial target is no more than three seconds of simulation
-between accepted checkpoints. If interruption occurs between them, the UI states the
-bounded rollback honestly. It never duplicates food, rerolls an offer, escapes a
-verified death, or grants unverified provisional harvest.
+between accepted checkpoints. Periodic work may pause on a frozen decision, but
+`pagehide` and hidden-page flushing remain armed for every active lease so closing on
+a Loom, portal, or tactical hold does not discard that boundary. If interruption
+occurs between accepted checkpoints, the UI states the bounded rollback honestly. It
+never duplicates food, rerolls an offer, escapes a verified death, or grants
+unverified provisional harvest.
 
 Checkpoint writes are compare-and-swap and idempotent over a stable gameplay digest.
 Before presenting a terminal result, the client drains its latest-checkpoint barrier.
@@ -408,8 +420,9 @@ ordinary opportunity cursor, and any live relic resume from the authoritative
 cell and remaining lifetime; food collected before recovery cannot accelerate a
 second cadence interval. A pending revealed gene/portal decision resumes as that
 same decision, not a reroll. A checkpoint rejected by validation leaves the prior
-valid checkpoint available and raises an integrity event; it does not silently
-erase the session.
+valid checkpoint available and raises a nonblocking integrity event; it does not
+silently erase the session, stop movement, consume input, or masquerade as a
+connection outage. Only an exclusive-lease conflict blocks the superseded copy.
 
 `SNAKE_RULES_VERSION` is therefore a release gate, not a routine cache key. The first
 continuity release has no older-version continuity rows. Before any later rules-version
@@ -425,8 +438,9 @@ start physical-relic v2. A flag or deploy never reinterprets an open run. Resume
 restores the canonical checkpoint under a newly issued lease, and a healthy
 checkpoint/lease acknowledgement becomes the continuity freshness basis for that
 resumed client rather than inheriting a stale pre-quit timer. Failed renewal or
-true loss of server verification still enters the bounded board-visible connection
-hold; this rule refreshes healthy continuity, not its safety budget.
+true loss of server verification may change the board-visible save status, but may
+not interrupt an otherwise controllable run. This rule refreshes healthy continuity,
+not its safety budget.
 
 ### 5.3 Recovery surface
 
