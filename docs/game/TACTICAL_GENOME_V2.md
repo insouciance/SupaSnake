@@ -92,6 +92,32 @@ what activated and what it boosts. Later trigger feedback remains legible withou
 consuming steering input. During ordinary live play, notifications and
 celebration are likewise pointer-transparent.
 
+The reducer is also the sole authority for the live board picture. Every active
+exclusive target receives an in-world identity and, where relevant, its current
+movement budget; a future Crown star is visibly ghosted and remains explicitly
+non-edible and non-colliding. Phase Gate entry and exit cells are visible before
+traversal. Coilkeeper Seals and used-gate Scars are rendered as raised solid
+cells for exactly as long as they remain in `permanentTerrain`; they also enter
+the Pathline obstacle inventory and the snake's packing read. A reducer-authored
+lethal cell may never exist outside the rendered obstacle inventory.
+
+Gilded Fork is represented by two honest physical food cells under one target
+identity: a neutral **SAFE** branch and a gold **GREED** branch. Both are edible
+and colliding; eating either atomically removes the other. The entered cell is
+the decision, so no modal, hidden toggle, or touch target participates. The two
+cells, immutable target identity, and branch geometry survive checkpoint and
+deterministic replay. If the board cannot fit two reachable, escape-capable
+cells, the transform defers rather than presenting an unsafe or false choice.
+Legacy Genome-v1 VOLT Arc is not part of the v2 ladder (v2 uses Relay), so it
+cannot auto-collect, choose, or orphan any v2 target—especially a Fork branch.
+
+The fixed cockpit rail carries only the highest-value live facts—such as a route
+budget, Stake, Escrow, Bond count, Phoenix readiness, body-pressure rule, or
+Anchor charge—and short acknowledgements when a canonical trigger resolves.
+This feedback does not create, infer, or settle an effect. It explains the
+effect already present in the reducer and never adds a pointer target over the
+mobile flick surface.
+
 At six occupied loci, FORK becomes a two-step **Recode**: select the incoming
 gene, then select the held locus to replace. The pane previews the exact
 before/after gain, loss, Strain delta, formed/broken Splice, and permanent growth
@@ -214,6 +240,12 @@ window leaves the target ordinary rather than adding a hidden penalty. The
 description always says the trigger recurs. The engine converts the window to
 ticks from the stamped speed, so the rule is deterministic while Dynasty and
 speed fit remain meaningful.
+
+When Gold Trail fuses with Overgrowth into **Gilded Fork**, the timed target is
+replaced—not stacked—with the two-cell SAFE/GREED rule above. SAFE pays the
+ordinary ×1 target value and adds no Fork growth; GREED pays ×4 and adds two
+permanent segments. There is no timer. The unchosen branch disappears on the
+same simulation boundary.
 
 ### Compound Interest
 
@@ -438,6 +470,12 @@ Every save and completion is idempotent. A duplicate request cannot consume an
 offer twice, add growth twice, release Escrow twice, settle twice, or write a
 second Codex discovery. Invalid client-authored Genome multipliers, target
 resolutions, or reward totals are rejected; the server derives them from replay.
+
+Terminal presentation retains a non-economic contact diagnostic alongside the
+persisted wall/self cause: exact cell plus border, own body, ordinary permanent
+terrain source, Coilkeeper Seal, or Phase Gate Scar. It changes neither
+collision rules nor settlement; it makes a reported "invisible crash"
+falsifiable and gives board-render regressions a precise source to investigate.
 
 ## 11. Required telemetry and balance proof
 

@@ -300,11 +300,24 @@ lighting role:
   distinction and a clean rim against every floor quadrant;
 - food: compact target/beacon silhouette with a readable base contact point;
 - mutation: unmistakable helix/double form, never a recolored food block;
+- Genome target: the ordinary objective silhouette remains learned while a
+  gene-specific halo/sigil and finite route-budget ring explain the transformed
+  rule; inactive history is never drawn as a live target; Gilded Fork draws a
+  neutral SAFE cube and a gold GREED diamond as two distinct edible cells,
+  never as an overlay choice;
+- Genome permanent terrain: raised solidity is primary, while FERAL Seal and
+  FLUX Scar runes explain cause; every lethal reducer cell has exactly one
+  rendered obstacle and participates in Pathline danger;
 - extraction portal: vertical doorway/beam and radial footprint, categorically
   different from food and board corners;
 - hazard or lethal wall: rose structural warning plus solidity/pattern change;
 - aim assist: thin tactical projection below entity luminance and never
   confused with a wall.
+
+After a crash, Results may show one quiet contact line with the exact source
+and board cell. This is diagnostic recognition, not a new result layer or
+reward fact. It distinguishes border, self, arena/calcified/Fortress terrain,
+Coilkeeper Seal, and Phase Gate Scar without placing anything over live play.
 
 The grayscale test must still separate snake, food, mutation, portal, boundary,
 and aim telegraph. Bright background points under the arena are suppressed
@@ -993,6 +1006,9 @@ device in portrait and landscape.
 - Keyboard/flick capacities, reversal rejection, pause rearm, and engine holds
   retain their specified behavior.
 - HUD DOM updates do not run on every engine tick.
+- Pointer-transparent Genome status copy may refresh from canonical simulation
+  facts, but its reserved rail never changes the board rectangle or receives a
+  mobile steering gesture.
 - Layout shift caused by the active HUD is zero.
 - Visual-regression snapshots cover background, chassis, arena, and instruments
   as one image rather than testing those layers only in isolation.
