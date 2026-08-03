@@ -4805,7 +4805,7 @@ export class SnakeGameLogic {
     for (const food of foods) {
       const target = runtime.targetAt(food);
       if (!target) continue;
-      if (target.kind === 'gold_trail' && target.forkChoice === null) {
+      if (runtime.gildedForkChoiceAvailable(target.targetId)) {
         runtime.chooseGildedFork(target.targetId, 'ordinary', this.replayTicks);
       }
       const deferredUnits = runtime.collectedUnitsForTargetResolution(
@@ -4884,7 +4884,10 @@ export class SnakeGameLogic {
       target.kind === 'gold_trail'
         ? (target.forkChoice ?? choice ?? 'ordinary')
         : null;
-    if (target.kind === 'gold_trail' && target.forkChoice === null) {
+    // Only the Gilded Fork Splice draws a branch. Gold Trail Gene golden food
+    // has none, so it owes no choice; the runtime and the reducer answer that
+    // from one shared predicate, leaving the throw a true last-resort guard.
+    if (runtime.gildedForkChoiceAvailable(target.targetId)) {
       if (
         !runtime.chooseGildedFork(
           target.targetId,

@@ -16,6 +16,7 @@ import {
   createGenomeV2State,
   genomeV2BodyGrowthDelta,
   genomeV2EventId,
+  genomeV2GildedForkChoiceAvailable,
   genomeV2HasGene,
   genomeV2HasLadderTier,
   genomeV2HasSplice,
@@ -1240,13 +1241,20 @@ export class GenomeV2Runtime {
     return expired;
   }
 
+  /**
+   * Whether this target still owes a Gilded Fork branch. Only the Splice draws
+   * one; Gold Trail Gene golden food has no branch to commit.
+   */
+  gildedForkChoiceAvailable(targetId: string): boolean {
+    return genomeV2GildedForkChoiceAvailable(this.state, targetId);
+  }
+
   chooseGildedFork(
     targetId: string,
     choice: 'ordinary' | 'gilded',
     tick: number
   ): boolean {
-    const target = this.state.targets[targetId];
-    if (!target || target.forkChoice !== null) return false;
+    if (!this.gildedForkChoiceAvailable(targetId)) return false;
     try {
       this.apply({ type: 'gilded_fork_chosen', targetId, choice }, tick);
       return true;
