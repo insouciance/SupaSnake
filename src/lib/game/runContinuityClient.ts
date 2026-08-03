@@ -54,6 +54,52 @@ export function matchesContinuityAuthority(
     (expectedSessionId === undefined || currentSessionId === expectedSessionId);
 }
 
+export interface ActiveCheckpointAuthority {
+  accessToken: string;
+  userId: string;
+  sessionId: string;
+  leaseToken: string;
+}
+
+export interface CurrentActiveCheckpointAuthority {
+  accessToken: string | null | undefined;
+  userId: string | null | undefined;
+  sessionId: string | null | undefined;
+  leaseToken: string | null | undefined;
+}
+
+export type ActiveCheckpointReceiptDisposition =
+  | 'ignored'
+  | 'accepted'
+  | 'connection_recovered';
+
+/**
+ * Classify a checkpoint response against authority and hold state read when
+ * the response arrives. Both values are deliberately live: an async writer
+ * must not use the render-time state it captured before awaiting the network.
+ */
+export function classifyActiveCheckpointReceipt(
+  expected: ActiveCheckpointAuthority,
+  current: CurrentActiveCheckpointAuthority,
+  currentHold: 'connection' | 'stale' | null
+): ActiveCheckpointReceiptDisposition {
+  if (
+    current.leaseToken !== expected.leaseToken ||
+    !matchesContinuityAuthority(
+      expected.accessToken,
+      current.accessToken,
+      expected.sessionId,
+      current.sessionId,
+      expected.userId,
+      current.userId
+    )
+  ) return 'ignored';
+
+  return currentHold === 'connection'
+    ? 'connection_recovered'
+    : 'accepted';
+}
+
 export interface ActiveRunView {
   sessionId: string;
   phase: RunContinuityPhase;
