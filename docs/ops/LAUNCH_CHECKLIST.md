@@ -13,7 +13,7 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] `npm audit --audit-level=high` reports no blocking advisory
 - [ ] `npm run build` succeeds
 - [ ] All migrations apply from 001 through the release's highest numbered
-      migration (065 for the Genome v2 release) on a clean database; the
+      migration, currently 065, on a clean database; the
       062–065 reviewed bridge chain and its ordinary/concurrency contracts are
       also exercised
 - [ ] `supabase db push --linked --include-all --dry-run` is a no-op for the
@@ -31,10 +31,11 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
       `NEXT_PUBLIC_CAREER_SPINE_V1=true`. Genome v2 production additionally
       requires exact `NEXT_PUBLIC_GENOME_V2=true`; new starts use v1 for every
       other value while already-stamped v2 sessions remain resumable. The
-      production workflow and its E2E
-      matrix additionally compile `NEXT_PUBLIC_RUN_FLOW_V1=true` and prove it
-      through `/api/health`; the ordinary Build workflow may retain its
-      deliberate flag-off rollback compile. Career settlement and earned
+      production workflow and its E2E matrix additionally compile
+      `NEXT_PUBLIC_RUN_FLOW_V1=true` and prove it through `/api/health`. The E2E
+      matrix must cover production-on, all-off rollback, Genome-on/Workbench-off,
+      and Genome-off/Workbench-on shapes; the ordinary Build workflow may retain
+      its deliberate flag-off rollback compile. Career settlement and earned
       progress must never depend on either presentation flag.
       `NEXT_PUBLIC_GROWTH_LAB_V1` is retired and must not be required by
       current behavior.
@@ -138,9 +139,9 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 
 - [ ] Backups/PITR and current Vercel production deployment ID are recorded
 - [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (including exact outgoing inspection
-      → zero-v2 proof → cron snapshot → Preview contract → reviewed migration
-      065 → linked probe → repeated zero-v2 proof → exact application SHA
-      cutover)
+      → cron snapshot → Preview contract → exact migration plan → linked probe
+      → exact application SHA cutover; the two zero-v2 proofs apply only on the
+      legacy-origin/recovery path while outgoing lacks the exact v2 marker)
 - [ ] Post-release health and core smoke checks pass on `supasnake.com`
 - [ ] Every configured cron route rejects no/incorrect bearer tokens
 - [ ] Discord outbox, Analyst daily job and deletion worker appear in Vercel logs

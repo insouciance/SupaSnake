@@ -1,17 +1,27 @@
 # Production Release Runbook
 
-Current pre-Genome baseline: cohesive UX runtime
-`23ba6e6fd95029cd9da4cea5b78a998b55aac782`, independently verified on
-2 August 2026 as production deployment `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`,
-with hosted migrations 001–064. Canonical health reports the exact release SHA,
-healthy database, Career phase `ready`, cohesive capability version 1, and
-21/21 public surfaces enabled. Stripe remains in sandbox/test mode.
+Current production baseline: player-pulled Tactical Genome v2 runtime
+`8bb3ef9561c959b1b0683f3436ac68f8159e89d7`, independently verified on
+3 August 2026 by successful production workflow `30814673700` as deployment
+`dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ`
+(`supasnake-i9d5do4ix-josef-bells-projects.vercel.app`). Hosted migrations are
+aligned through 065 with no pending plan. Canonical health reports the exact
+release SHA, healthy database, 22/22 public surfaces, public hash
+`8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, and
+Genome schema/catalog/Ascendance 2/2/2 with eight Splices, rules version 2, and
+neutral 2/3/4 Strain thresholds. Canonical alias, cron owner, and every cron host
+name the same READY production deployment; cron is enabled and its normalized
+definition hash remains
+`a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
+Stripe remains in sandbox/test mode.
 
-The deployment above is the outgoing application for the Genome v2 cutover.
-Migration 065 is additive, but once any v2 session starts the outgoing
-application is not a safe rollback target because it cannot resume or settle
-that immutable v2 contract. Keep this volatile paragraph current in the
-release-record change; do not copy its IDs into workflow code.
+The live interaction-v2 contract uses optional physical Gene relics on a
+deterministic 6 ± 2-food cadence; already-issued or omitted interaction stamps
+retain automatic-offer v1 compatibility. The retired pre-Genome deployment
+`dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` is not a safe rollback target for issued v2
+sessions because it cannot resume or settle that immutable contract. Use the
+dual-version, flag-off forward procedure below. Keep this volatile paragraph
+current in each release-record change; do not copy its IDs into workflow code.
 
 ## Release law
 
@@ -136,7 +146,13 @@ and exercise fixture state.
 
 ## Cohesive release states
 
-The Genome v2 release is allowed only through these observable states.
+The A/B/C state machine below records the completed first Genome v2 cutover and
+remains the recovery and incident-classification contract for a linked project
+that genuinely lacks migration 065. It is not the ordinary state machine for
+later application-only releases. Future releases start from the current 001–065
+baseline and follow the Release law and Automated sequence in this runbook;
+their linked migration plan is `none` unless an exact reviewed suffix is named
+at dispatch.
 
 ### A. Pre-bridge
 
@@ -180,9 +196,9 @@ while the new release is still only Preview.
 
 If the workflow stops here, production traffic and cron remain outgoing. Do not
 reverse migrations; forward-fix and retry with the exact ordered pending suffix
-(`065` from the current baseline, or `none` after it commits). The workflow also
-recognizes the longer ordered suffixes only for a host that genuinely missed an
-earlier bridge; the linked dry-run, never operator memory, decides.
+(`none` on the current linked baseline; only an independently reviewed recovery
+of a linked project that genuinely lacks 065 may name `065`). The linked dry-run,
+never operator memory, decides.
 
 ### C. Post-cutover
 
