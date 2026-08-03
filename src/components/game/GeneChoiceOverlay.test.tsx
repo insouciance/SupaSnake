@@ -60,6 +60,7 @@ function consequence(name: string): TacticalLoomConsequence {
 
 function model(): TacticalLoomDecisionModel {
   return {
+    decisionId: 'test-offer-1',
     rulesVersion: 2,
     title: 'Tactical Loom',
     sourceLabel: 'Cadence offer · 18 foods',
@@ -173,7 +174,11 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.click(screen.getByTestId('loom-details-toggle'));
     expect(screen.getByTestId('loom-full-reaction-map')).toBeInTheDocument();
 
-    const next = { ...model(), sourceLabel: 'Cadence offer · 24 foods' };
+    const next = {
+      ...model(),
+      decisionId: 'test-offer-2',
+      sourceLabel: 'Cadence offer · 24 foods',
+    };
     rerender(
       <GeneChoiceOverlay
         {...baseProps}
@@ -186,6 +191,35 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByTestId('loom-confirm')).toBeDisabled();
     expect(screen.queryByTestId('loom-details-toggle')).toBeNull();
     expect(screen.queryByTestId('loom-full-reaction-map')).toBeNull();
+  });
+
+  it('preserves a deliberate choice across presentation refreshes for the same offer', () => {
+    const first = model();
+    const { rerender } = render(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={first}
+        onChoose={jest.fn()}
+        onDecline={jest.fn()}
+      />
+    );
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(screen.getByTestId('gene-option-0'));
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
+
+    rerender(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={{ ...model(), sourceLabel: 'Cadence offer · refreshed facts' }}
+        onChoose={jest.fn()}
+        onDecline={jest.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('gene-option-0')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('loom-confirm')).toBeEnabled();
+    expect(screen.getByTestId('loom-details-toggle')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('loom-full-reaction-map')).toBeInTheDocument();
   });
 
   it('spells out dual Strains and preserves every immediate and future Splice branch', () => {

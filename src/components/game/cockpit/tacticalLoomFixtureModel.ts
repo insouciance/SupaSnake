@@ -457,6 +457,7 @@ export function tacticalLoomFixtureModel(
 ): TacticalLoomDecisionModel {
   if (mode === 'recode') {
     return {
+      decisionId: 'fixture-recode-offer',
       rulesVersion: 2,
       title: 'Tactical Loom · Full Genome',
       sourceLabel: 'Cadence offer · 43 foods · Recode 1',
@@ -484,6 +485,7 @@ export function tacticalLoomFixtureModel(
   }
 
   return {
+    decisionId: 'fixture-thread-offer',
     rulesVersion: 2,
     title: 'Tactical Loom',
     sourceLabel: 'Cadence offer · 18 foods · 2 open loci',

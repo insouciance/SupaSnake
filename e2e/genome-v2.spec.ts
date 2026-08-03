@@ -50,9 +50,9 @@ test.describe('Genome v2 live player journey', () => {
     await expect(recovery).toBeVisible({ timeout: 60_000 });
     const loom = page.getByTestId('gene-choice-overlay');
     // React replaces the entire recovery tree synchronously. Schedule the
-    // actual DOM click, then use the Loom as the completion signal instead of
-    // asking an action locator to remain attached to a button whose successful
-    // click deliberately destroys it.
+    // actual DOM click, then use the restored board as the completion signal
+    // instead of asking an action locator to remain attached to a button whose
+    // successful click deliberately destroys it.
     await page.evaluate(() => {
       window.setTimeout(() => {
         const button = document.querySelector<HTMLButtonElement>(
@@ -61,10 +61,22 @@ test.describe('Genome v2 live player journey', () => {
         button?.click();
       }, 0);
     });
+    const initialResumeGate = page.getByTestId('resume-gate');
+    await expect(page.getByTestId('game-board-viewport')).toBeVisible({ timeout: 60_000 });
+    await expect(initialResumeGate).toBeVisible();
+    await expect(loom).toHaveCount(0);
+    const initialFlickSurface = page.getByTestId('flick-surface');
+    await expect(initialFlickSurface).toBeVisible();
+
+    // The recovered board contains a visible, still-uncollected physical
+    // relic one cell ahead. Only the player's deliberate movement collects it
+    // and opens the Loom; resume itself never interrupts with an automatic
+    // offer.
+    await flickRight(initialFlickSurface);
     await expect(loom).toBeVisible({ timeout: 60_000 });
     await expect(loom).toHaveAttribute('data-rules-version', '2');
     await expect(page.getByTestId('flick-surface')).toHaveCount(0);
-    await expect(page.getByTestId('game-board-viewport')).toBeVisible();
+    await expect(initialResumeGate).toBeHidden();
 
     const phoenix = page.getByTestId('gene-option-0');
     await expect(phoenix).toContainText('Phoenix');
@@ -135,16 +147,18 @@ test.describe('Genome v2 live player journey', () => {
       contentType: 'image/png',
     });
 
-    // Confirmation never leaks into movement. The held-state Abandon control
+    // Confirmation never leaks into movement. The held-state direction gate
     // proves the engine is still waiting; the pointer-transparent celebration
     // deliberately occupies the shared status rail while the first deliberate
-    // flick releases that hold.
-    const heldAbandon = page.getByRole('button', { name: 'Abandon run' });
-    await expect(heldAbandon).toBeVisible();
+    // flick releases that hold. Abandon now lives one deliberate level deeper
+    // in the pause menu, so it is not a valid signal for this cockpit state.
+    const resumeGate = page.getByTestId('resume-gate');
+    await expect(resumeGate).toBeVisible();
+    await expect(resumeGate).toContainText('Choose Your Line');
     const flickSurface = page.getByTestId('flick-surface');
     await expect(flickSurface).toBeVisible();
     await flickRight(flickSurface);
-    await expect(heldAbandon).toBeHidden();
+    await expect(resumeGate).toBeHidden();
     await expect(callout).toBeVisible();
 
     await expect

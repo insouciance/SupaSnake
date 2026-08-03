@@ -211,6 +211,7 @@ export function buildLegacyTacticalLoomModel(
 ): TacticalLoomDecisionModel {
   const discovered = new Set(input.discoveredSplices);
   return {
+    decisionId: `legacy:${input.source ?? 'gene_food'}:${input.options.join(':')}:${input.held.length}`,
     rulesVersion: 1,
     title: 'Tactical Loom',
     sourceLabel: input.source === 'infuse' ? 'Portal infusion' : 'Genome offer',

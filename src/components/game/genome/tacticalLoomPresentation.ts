@@ -137,6 +137,8 @@ export interface TacticalLoomDeclineOption {
  * tuning change from making the Loom disagree with settlement.
  */
 export interface TacticalLoomDecisionModel {
+  /** Stable identity for one offer; presentation refreshes must not reset consent. */
+  decisionId: string;
   rulesVersion: 1 | 2;
   title: string;
   sourceLabel: string;

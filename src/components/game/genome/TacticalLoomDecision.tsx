@@ -50,6 +50,7 @@ export function TacticalLoomDecision({
   const [declineOptionId, setDeclineOptionId] = useState<string | null>(
     model.decline.options?.[0]?.id ?? null
   );
+  const defaultDeclineOptionId = model.decline.options?.[0]?.id ?? null;
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstChoiceRef = useRef<HTMLButtonElement>(null);
   useDialogFocusTrap(dialogRef, !locked);
@@ -89,8 +90,8 @@ export function TacticalLoomDecision({
     setDetailsOpen(false);
     setRecodePhase(false);
     setReplacementSlot(null);
-    setDeclineOptionId(model.decline.options?.[0]?.id ?? null);
-  }, [model]);
+    setDeclineOptionId(defaultDeclineOptionId);
+  }, [defaultDeclineOptionId, model.decisionId]);
 
   useEffect(() => {
     if (!locked) {

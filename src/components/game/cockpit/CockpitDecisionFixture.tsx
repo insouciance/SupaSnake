@@ -202,6 +202,7 @@ function hardCaseLoomModel(): TacticalLoomDecisionModel {
     }],
   };
   return {
+    decisionId: 'fixture-hard-case-offer',
     rulesVersion: 2,
     title: 'Tactical Loom',
     sourceLabel: 'Dev truth case · dual Strain + two recipes',
@@ -275,6 +276,7 @@ function recodeLoomModel(): TacticalLoomDecisionModel {
     }],
   };
   return {
+    decisionId: 'fixture-recode-case-offer',
     rulesVersion: 2,
     title: 'Tactical Loom',
     sourceLabel: 'Dev truth case · Recode break/form',

@@ -26,6 +26,7 @@ function mutationLoomModel(): TacticalLoomDecisionModel {
     dynastyFacts: ['PRIMAL gains more room pressure from the same growth.'],
   });
   return {
+    decisionId: 'portal-mutation-offer',
     rulesVersion: 2,
     title: 'Mutation Loom',
     sourceLabel: 'Portal mutation · +3 growth',

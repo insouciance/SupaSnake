@@ -57,15 +57,19 @@ const ENERGY = {
   commitmentMultiplierBps: 22_000,
 };
 
-const RUN_SEED = 'playwright-genome-v2-tactical-loom';
+// This seed makes the first physical-relic offer after the authored Mirror
+// Wager prehistory resolve to Phoenix / Loan Shark. The candidate pair is
+// still rolled by the production runtime only after the relic is collected.
+const RUN_SEED = 'physical-e2e-2';
 const SIMULATION_SEED = 'playwright-genome-v2-board';
 const SESSION_ID = 'playwright-genome-v2-session';
 
 /**
- * Build one legal reducer moment with a meaningful reaction map:
+ * Build one legal reducer prehistory with a meaningful reaction map:
  *
  * - Mirror Wager is already held;
- * - Phoenix forms Styx Contract immediately;
+ * - collecting the next physical relic rolls Phoenix, which forms Styx
+ *   Contract immediately;
  * - the same Phoenix candidate visibly closes the competing Ashen Stake path.
  *
  * The browser still mounts the production SnakeGameLogic, restores its real
@@ -73,7 +77,7 @@ const SESSION_ID = 'playwright-genome-v2-session';
  * Only the prehistory is authored so the journey never depends on random food
  * placement or a lucky offer roll.
  */
-function tacticalLoomReducer(): GenomeV2State {
+function tacticalRelicReducer(): GenomeV2State {
   const pool = [...genomeV2ActivePool('PRIMAL')];
   let state = createGenomeV2State('PRIMAL', {
     runSeed: RUN_SEED,
@@ -98,12 +102,7 @@ function tacticalLoomReducer(): GenomeV2State {
     slot: 0,
     source: 'offer',
   });
-  return applyGenomeEvent(state, {
-    type: 'offer_opened',
-    offerId: 'fixture-offer-phoenix',
-    source: 'cadence',
-    candidates: ['phoenix', 'loan_shark'],
-  });
+  return state;
 }
 
 export interface GenomeV2BrowserFixture {
@@ -130,18 +129,38 @@ export async function installGenomeV2BrowserFixture(
     strainThresholdDelta: {},
   } satisfies GenomeEngineConfig;
   const game = new SnakeGameLogic({
+    gridSize: 40,
     ruleset: RULESETS.PRIMAL,
     simulationSeed: SIMULATION_SEED,
     genome: {
       ...publicGenome,
-      reducerState: tacticalLoomReducer(),
+      reducerState: tacticalRelicReducer(),
     },
   });
   game.setGrowthProfile('dynasty');
-  game.prepare();
+  game.startDriven({
+    snake: [
+      { x: 5, y: 0, z: 5 },
+      { x: 4, y: 0, z: 5 },
+      { x: 3, y: 0, z: 5 },
+    ],
+    direction: 'RIGHT',
+    foods: [{ x: 6, y: 0, z: 5 }],
+  });
+  const relicDueAt = game.getState().nextMutationAtFood;
+  if (relicDueAt < 4 || relicDueAt > 8) {
+    throw new Error(`Genome v2 browser fixture rolled invalid relic cadence ${relicDueAt}.`);
+  }
+  for (let eaten = 0; eaten < relicDueAt; eaten += 1) {
+    const head = game.getState().snake[0];
+    game.placeFood({ x: head.x + 1, y: 0, z: head.z });
+    game.tick();
+  }
+  const head = game.getState().snake[0];
+  game.placeMutation({ x: head.x + 1, y: 0, z: head.z }, 40);
   const checkpoint = game.exportCheckpoint(Date.now());
-  if (!checkpoint.state.genomeV2?.offer) {
-    throw new Error('Genome v2 browser fixture did not preserve its Loom offer.');
+  if (checkpoint.state.genomeV2?.offer || !checkpoint.state.mutationTile) {
+    throw new Error('Genome v2 browser fixture did not preserve its uncollected relic.');
   }
   // A real manifest never repeats mutable reducer state inside its immutable
   // capability block. Restoration gets that state from checkpoint.state and
