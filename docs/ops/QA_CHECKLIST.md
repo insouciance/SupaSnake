@@ -891,22 +891,29 @@ Check both benefit and counterweight when encountered.
       same sanitized lineage shape: one or two known strains, strength 0–2, and
       a primary only when it belongs to a dual lineage.
 
-### Codex
+### Genome Workbench and Research Record
 
-- [ ] Before 15 banked runs the Lab does not expose the Codex link and `/codex`
-      gives a correct locked-progress message.
-- [ ] Once unlocked, Codex displays completion, all five strain milestone
-      tracks, splice discoveries, and per-gene pick/bank stats.
+- [ ] The Lab always exposes Genome Research, and `/codex` always reaches the
+      same free Genome Workbench. Neither rules nor experimentation are gated by
+      banked-run progress.
+- [ ] Before 15 banked runs, only the subordinate personal Research Record is
+      pending. Its message states when discovery history begins and explicitly
+      confirms that every rule and Workbench experiment above is already open.
+- [ ] Once personal history unlocks, the Research Record displays completion,
+      all five Strain milestone tracks, Splice discoveries, and per-Gene
+      pick/bank stats without becoming a second rules catalog.
 - [ ] First Expression per strain grants 150 DNA once; first Apex per strain
       grants 400 once; first splice grants 250 once.
-- [ ] Undiscovered genes/splices conceal intended information while discovered
-      entries reveal name, effect, cost, strains, and accurate stats.
-- [ ] Refreshing, replaying, or submitting the same run cannot duplicate Codex
-      rewards.
+- [ ] Undiscovered Genes and Splices remain fully researchable in the Workbench;
+      the personal Record may distinguish discovery state but never conceal
+      rules, recipes, costs, Strains, or consequences.
+- [ ] Refreshing, replaying, or submitting the same run cannot duplicate
+      Research Record rewards.
 - [ ] 100% completion grants Genome Weaver once and displays it as unlocked.
-- [ ] Codex is free for every eligible player and has no Premium power gate.
+- [ ] The Workbench and Research Record have no Premium power gate.
 - [ ] **Feel:** breeding creates a meaningful starting strategy and the Codex
-      encourages experimentation rather than checklist grinding.
+      compatibility route encourages experimentation rather than checklist
+      grinding or memorisation.
 
 ## Focused regression — FTUE v2 player flow and interruptions
 
