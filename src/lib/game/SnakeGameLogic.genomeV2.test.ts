@@ -16,9 +16,11 @@ import {
 import { RULESETS, type DynastyName } from '@/shared/game/rulesets';
 import {
   SnakeGameLogic,
+  type Direction,
   type GameOverData,
   type GenomeEngineConfig,
 } from './SnakeGameLogic';
+import { shortestGenomeV2Route } from './genomeV2Runtime';
 
 type EventFacts = GenomeV2Event extends infer Event
   ? Event extends GenomeV2Event
@@ -41,30 +43,58 @@ function reducerWithGene(
   primeEligibleTargets = 0
 ): GenomeV2State {
   const pool = genomeV2ActivePool(dynasty);
-  const alternative = pool.find((candidate) => candidate !== geneId);
-  if (!alternative) throw new Error('Fixture pool has no alternative gene.');
   let state = createGenomeV2State(dynasty, {
     runSeed: `engine-${dynasty.toLowerCase()}-${geneId}`,
     genePool: pool,
     ftue: deriveGenomeV2Ftue(10, 3),
   });
-  state = apply(state, {
+  state = acquireReducerGene(state, geneId, 0);
+  return primeReducerTargets(state, primeEligibleTargets);
+}
+
+function acquireReducerGene(
+  state: GenomeV2State,
+  geneId: GenomeV2ActiveGeneId,
+  slot: 0 | 1 | 2 | 3 | 4 | 5,
+  reserved: readonly GenomeV2ActiveGeneId[] = []
+): GenomeV2State {
+  const alternative = state.genePool.find(
+    (candidate) =>
+      candidate !== geneId &&
+      !reserved.includes(candidate) &&
+      !Object.values(state.instances).some(
+        (instance) => instance.geneId === candidate
+      )
+  );
+  if (!alternative) throw new Error('Fixture pool has no unseen alternative gene.');
+  const offerId = `engine-offer-${geneId}-${slot}`;
+  let next = apply(state, {
     type: 'offer_opened',
-    offerId: `engine-offer-${geneId}`,
+    offerId,
     source: 'cadence',
     candidates: [geneId, alternative],
   });
-  state = apply(state, {
+  next = apply(next, {
     type: 'gene_acquired',
-    offerId: `engine-offer-${geneId}`,
+    offerId,
     instanceId: `engine-instance-${geneId}`,
     geneId,
-    slot: 0,
+    slot,
     source: 'offer',
   });
-  for (let ordinal = 1; ordinal <= primeEligibleTargets; ordinal += 1) {
+  return next;
+}
+
+function primeReducerTargets(
+  state: GenomeV2State,
+  primeEligibleTargets: number
+): GenomeV2State {
+  let next = state;
+  const firstOrdinal = state.eligibleTargetCount + 1;
+  for (let offset = 0; offset < primeEligibleTargets; offset += 1) {
+    const ordinal = firstOrdinal + offset;
     const targetId = `primed-target-${ordinal}`;
-    state = apply(state, {
+    next = apply(next, {
       type: 'target_spawned',
       targetId,
       cell: { x: ordinal, z: 1 },
@@ -72,7 +102,7 @@ function reducerWithGene(
       shortestSafeMoves: 2,
       cadenceEligible: true,
     });
-    state = apply(state, {
+    next = apply(next, {
       type: 'target_resolved',
       targetId,
       resolution: 'expired',
@@ -82,7 +112,7 @@ function reducerWithGene(
       collectedUnits: 0,
     });
   }
-  return state;
+  return next;
 }
 
 function configForState(state: GenomeV2State): GenomeEngineConfig {
@@ -106,6 +136,44 @@ function freshConfig(dynasty: DynastyName): GenomeEngineConfig {
 function gameplayState(game: SnakeGameLogic) {
   const { startTime: _startTime, ...state } = game.getState();
   return state;
+}
+
+function directionBetween(
+  from: { x: number; z: number },
+  to: { x: number; z: number }
+): Direction {
+  if (to.x === from.x + 1 && to.z === from.z) return 'RIGHT';
+  if (to.x === from.x - 1 && to.z === from.z) return 'LEFT';
+  if (to.x === from.x && to.z === from.z + 1) return 'DOWN';
+  if (to.x === from.x && to.z === from.z - 1) return 'UP';
+  throw new Error('Fixture route contains a non-adjacent step.');
+}
+
+function driveTo(
+  game: SnakeGameLogic,
+  destination: { x: number; z: number },
+  additionallyBlocked: readonly { x: number; z: number }[] = []
+): void {
+  const state = game.getState();
+  const route = shortestGenomeV2Route(
+    20,
+    state.snake[0],
+    destination,
+    [
+      ...state.snake.slice(1).map((cell) => ({ x: cell.x, z: cell.z })),
+      ...additionallyBlocked,
+    ],
+    false
+  );
+  if (!route) throw new Error('Fixture target has no route.');
+  for (const next of route.slice(1)) {
+    const current = game.getState();
+    const direction = directionBetween(current.snake[0], next);
+    if (direction !== current.direction) {
+      expect(game.setDirection(direction)).toBe('accepted');
+    }
+    game.tick();
+  }
 }
 
 describe('SnakeGameLogic Genome v2 authority boundary', () => {
@@ -242,6 +310,266 @@ describe('SnakeGameLogic Genome v2 authority boundary', () => {
 });
 
 describe('SnakeGameLogic Genome v2 board mechanics', () => {
+  it('makes Gilded Fork a deterministic two-cell route choice and removes the unchosen branch', () => {
+    const pool = genomeV2ActivePool('PRIMAL');
+    let reducer = createGenomeV2State('PRIMAL', {
+      runSeed: 'engine-primal-gilded-fork',
+      genePool: pool,
+      ftue: deriveGenomeV2Ftue(10, 3),
+    });
+    reducer = acquireReducerGene(reducer, 'gold_trail', 0, ['overgrowth']);
+    reducer = acquireReducerGene(reducer, 'overgrowth', 1);
+    reducer = primeReducerTargets(reducer, 4);
+
+    const makeGame = () => {
+      const game = new SnakeGameLogic({
+        gridSize: 20,
+        ruleset: RULESETS.PRIMAL,
+        simulationSeed: 'gilded-fork-board-seed',
+        genome: configForState(reducer),
+      });
+      game.startDriven({
+        snake: [
+          { x: 5, y: 0, z: 5 },
+          { x: 4, y: 0, z: 5 },
+          { x: 3, y: 0, z: 5 },
+        ],
+        direction: 'RIGHT',
+        foods: [
+          { x: 8, y: 0, z: 5 },
+          { x: 17, y: 0, z: 17 },
+        ],
+      });
+      return game;
+    };
+
+    const gilded = makeGame();
+    const initial = gilded.getState();
+    const fork = Object.values(initial.genomeV2?.targets ?? {}).find(
+      (target) => target.kind === 'gold_trail'
+    );
+    expect(fork).toMatchObject({
+      lifecycle: 'active',
+      forkChoice: null,
+      cell: { x: 8, z: 5 },
+      forkCell: expect.objectContaining({
+        x: expect.any(Number),
+        z: expect.any(Number),
+      }),
+    });
+    expect(initial.foods).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining(fork!.cell),
+        expect.objectContaining(fork!.forkCell!),
+      ])
+    );
+
+    const checkpointAt = Date.now();
+    const checkpoint = gilded.exportCheckpoint(checkpointAt);
+    driveTo(gilded, fork!.forkCell!, [fork!.cell, { x: 17, z: 17 }]);
+    const gildedState = gilded.getState();
+    const resolvedFork = gildedState.genomeV2?.targets[fork!.targetId];
+    expect(resolvedFork).toMatchObject({
+      lifecycle: 'completed',
+      forkChoice: 'gilded',
+    });
+    expect(gildedState.foods).toEqual([
+      expect.objectContaining({ x: 17, z: 17 }),
+    ]);
+    expect(gildedState.genomeV2?.bodyGrowthAdded).toBe(2);
+
+    const trace = gilded.getReplayTrace();
+    expect(trace.actions).not.toContainEqual(
+      expect.objectContaining({ kind: 'genome_v2_target' })
+    );
+    const replayed = new SnakeGameLogic();
+    replayed.restoreCheckpoint(checkpoint, checkpointAt);
+    replayed.applyReplayTrace(
+      trace,
+      checkpoint.privateState.replay.actions.length
+    );
+    expect(gameplayState(replayed)).toEqual(gameplayState(gilded));
+
+    const ordinary = makeGame();
+    const ordinaryFork = Object.values(
+      ordinary.getState().genomeV2?.targets ?? {}
+    ).find((target) => target.kind === 'gold_trail')!;
+    driveTo(ordinary, ordinaryFork.cell, [
+      ordinaryFork.forkCell!,
+      { x: 17, z: 17 },
+    ]);
+    const ordinaryState = ordinary.getState();
+    expect(ordinaryState.genomeV2?.targets[ordinaryFork.targetId]).toMatchObject({
+      lifecycle: 'completed',
+      forkChoice: 'ordinary',
+    });
+    expect(ordinaryState.genomeV2?.bodyGrowthAdded).toBe(0);
+    expect(gildedState.genomeV2!.ledger.bankableYield).toBe(
+      ordinaryState.genomeV2!.ledger.bankableYield * 4
+    );
+  });
+
+  it('keeps retired v1 Arc out of the v2 VOLT ladder and leaves its transformed target live', () => {
+    const pool = genomeV2ActivePool('CYBER');
+    let reducer = createGenomeV2State('CYBER', {
+      runSeed: 'engine-cyber-arc-target',
+      genePool: pool,
+      ftue: deriveGenomeV2Ftue(10, 3),
+      startingStrainPoints: { VOLT: 3 },
+    });
+    reducer = acquireReducerGene(reducer, 'live_wire', 0);
+    reducer = primeReducerTargets(reducer, 1);
+    const game = new SnakeGameLogic({
+      gridSize: 20,
+      ruleset: RULESETS.CYBER,
+      simulationSeed: 'arc-target-board-seed',
+      genome: configForState(reducer),
+    });
+    game.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [
+        { x: 6, y: 0, z: 5 },
+        { x: 8, y: 0, z: 5 },
+      ],
+    });
+    const liveWire = Object.values(game.getState().genomeV2?.targets ?? {}).find(
+      (target) => target.kind === 'live_wire'
+    );
+    expect(liveWire).toBeDefined();
+
+    game.tick();
+
+    const state = game.getState();
+    expect(state.foodEaten).toBe(1);
+    expect(state.genomeV2?.foodCount).toBe(1);
+    expect(state.genomeV2?.targets[liveWire!.targetId]).toMatchObject({
+      lifecycle: 'active',
+      resolvedBaseYield: 0,
+    });
+    expect(state.foods).toContainEqual({ x: 8, y: 0, z: 5 });
+    expect(state.genomeV2!.ledger.exclusiveTargetDelta).toBe(0);
+  });
+
+  it('reports the exact permanent Genome terrain source at a fatal contact', () => {
+    let reducer = reducerWithGene('COSMIC', 'phase_gate', 4);
+    reducer = apply(reducer, {
+      type: 'target_spawned',
+      targetId: 'diagnostic-gate-target',
+      cell: { x: 12, z: 12 },
+      optionalRouteCells: [
+        { x: 6, z: 5 },
+        { x: 11, z: 12 },
+      ],
+      speedAtSpawnMs: 170,
+      shortestSafeMoves: 8,
+      cadenceEligible: true,
+    });
+    reducer = apply(reducer, {
+      type: 'phase_gate_used',
+      terrainId: 'diagnostic-phase-scar',
+      targetId: 'diagnostic-gate-target',
+      cells: [
+        { x: 6, z: 5 },
+        { x: 11, z: 12 },
+      ],
+    });
+    reducer = apply(reducer, {
+      type: 'target_resolved',
+      targetId: 'diagnostic-gate-target',
+      resolution: 'expired',
+      movesUsed: 8,
+      baseYield: 0,
+      pressureBps: 0,
+      usedOptionalRoute: true,
+      collectedUnits: 0,
+    });
+    const game = new SnakeGameLogic({
+      gridSize: 20,
+      ruleset: RULESETS.COSMIC,
+      simulationSeed: 'phase-scar-diagnostic-seed',
+      genome: configForState(reducer),
+    });
+    let terminal: GameOverData | null = null;
+    game.on('gameOver', (data) => {
+      terminal = data as GameOverData;
+    });
+    game.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 15, y: 0, z: 15 }],
+    });
+
+    game.tick();
+
+    expect(terminal).toMatchObject({
+      deathCause: 'wall',
+      collisionDiagnostic: {
+        contact: 'permanent_terrain',
+        cell: { x: 6, y: 0, z: 5 },
+        terrainSource: 'phase_gate_scar',
+      },
+    });
+  });
+
+  it('keeps border and self contact diagnostics distinct', () => {
+    const crash = (
+      snake: Array<{ x: number; y: number; z: number }>,
+      direction: Direction
+    ): GameOverData => {
+      const game = new SnakeGameLogic({
+        gridSize: 20,
+        ruleset: RULESETS.PRIMAL,
+        rng: () => 0.5,
+      });
+      let terminal: GameOverData | null = null;
+      game.on('gameOver', (data) => {
+        terminal = data as GameOverData;
+      });
+      game.startDriven({
+        snake,
+        direction,
+        foods: [{ x: 10, y: 0, z: 10 }],
+      });
+      game.tick();
+      if (!terminal) throw new Error('Fixture collision did not terminate.');
+      return terminal;
+    };
+
+    expect(
+      crash(
+        [
+          { x: 19, y: 0, z: 5 },
+          { x: 18, y: 0, z: 5 },
+          { x: 17, y: 0, z: 5 },
+        ],
+        'RIGHT'
+      ).collisionDiagnostic
+    ).toMatchObject({ contact: 'border', terrainSource: null });
+    expect(
+      crash(
+        [
+          { x: 5, y: 0, z: 5 },
+          { x: 4, y: 0, z: 5 },
+          { x: 4, y: 0, z: 6 },
+          { x: 5, y: 0, z: 6 },
+          { x: 6, y: 0, z: 6 },
+          { x: 6, y: 0, z: 5 },
+          { x: 7, y: 0, z: 5 },
+        ],
+        'RIGHT'
+      ).collisionDiagnostic
+    ).toMatchObject({ contact: 'self', terrainSource: null });
+  });
+
   it('checkpoints Circuit between relay and destination and resumes exactly', () => {
     const reducer = reducerWithGene('CYBER', 'circuit_run', 3);
     const original = new SnakeGameLogic({

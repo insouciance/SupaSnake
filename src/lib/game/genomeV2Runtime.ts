@@ -102,6 +102,12 @@ export interface GenomeV2SpawnFacts {
   projection: GenomeV2NextTargetProjection;
 }
 
+export interface GenomeV2TargetChoice {
+  target: GenomeV2TargetState;
+  /** Null for every target that is not a two-cell Gilded Fork. */
+  choice: 'ordinary' | 'gilded' | null;
+}
+
 export interface GenomeV2TargetResolutionResult {
   targetId: string;
   kind: GenomeV2TargetState['kind'];
@@ -988,6 +994,7 @@ export class GenomeV2Runtime {
     tick: number,
     facts: {
       cell: GenomeV2Cell;
+      forkCell?: GenomeV2Cell | null;
       secondaryCell?: GenomeV2Cell | null;
       optionalRouteCells?: readonly [GenomeV2Cell, GenomeV2Cell] | null;
       speedAtSpawnMs: number;
@@ -1005,6 +1012,7 @@ export class GenomeV2Runtime {
         type: 'target_spawned',
         targetId,
         cell: facts.cell,
+        forkCell: facts.forkCell ?? null,
         secondaryCell: facts.secondaryCell ?? null,
         optionalRouteCells: facts.optionalRouteCells ?? null,
         speedAtSpawnMs: Math.max(1, Math.floor(facts.speedAtSpawnMs)),
@@ -1028,20 +1036,35 @@ export class GenomeV2Runtime {
   }
 
   targetAt(cell: GenomeV2Cell): GenomeV2TargetState | null {
-    return (
-      activeTargets(this.state)
-        .filter((target) => target.edible && target.collidable)
-        .find((target) => {
-          const progress = this.targetProgress.get(target.targetId);
-          const liveCell =
-            target.kind === 'circuit_run' &&
-            progress?.circuitLegsCompleted === 1 &&
-            target.secondaryCell
-              ? target.secondaryCell
-              : target.cell;
-          return sameCell(liveCell, cell);
-        }) ?? null
-    );
+    return this.targetChoiceAt(cell)?.target ?? null;
+  }
+
+  /**
+   * Resolve board geometry to its one canonical target and, for Gilded Fork,
+   * the branch the player's head physically entered. This is a read only:
+   * the explicit choice event is committed immediately before collection.
+   */
+  targetChoiceAt(cell: GenomeV2Cell): GenomeV2TargetChoice | null {
+    for (const target of activeTargets(this.state)) {
+      if (!target.edible || !target.collidable) continue;
+      const progress = this.targetProgress.get(target.targetId);
+      const liveCell =
+        target.kind === 'circuit_run' &&
+        progress?.circuitLegsCompleted === 1 &&
+        target.secondaryCell
+          ? target.secondaryCell
+          : target.cell;
+      if (sameCell(liveCell, cell)) {
+        return {
+          target,
+          choice: target.forkCell ? 'ordinary' : null,
+        };
+      }
+      if (target.forkCell && sameCell(target.forkCell, cell)) {
+        return { target, choice: 'gilded' };
+      }
+    }
+    return null;
   }
 
   advanceCircuitLegAt(cell: GenomeV2Cell): GenomeV2CircuitAdvance | null {
