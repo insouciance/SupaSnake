@@ -198,6 +198,7 @@ import {
   type AscendanceYieldBreakdown,
 } from '@/shared/game/ascendance';
 import {
+  CURRENT_GENOME_V2_INTERACTION_VERSION,
   GENOME_V2_SPLICES,
   GENOME_V2_STRAIN_THRESHOLDS,
   projectGenomeV2Ladders,
@@ -3033,6 +3034,7 @@ export default function GamePage() {
       snakeId: equippedSnake.id,
       commitment,
       ladderRung: LADDER_ENABLED ? ladderRung : null,
+      genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
     });
     if (startRequestRef.current?.fingerprint !== startFingerprint) {
       startRequestRef.current = {
@@ -3049,6 +3051,7 @@ export default function GamePage() {
         mode, // 'free' = rewardless practice run (§7.4)
         snake_id: equippedSnake.id, // Server validates ownership + equipped
         energyCommitment: commitment,
+        genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
         ...(commitment === GAME_CONFIG.economy.energy.capacity
           ? { confirmMaxEnergy: true }
           : {}),
@@ -4822,7 +4825,7 @@ export default function GamePage() {
           <p className="label-arcade text-cosmic">Build Seed</p>
           {genomeFtue.splicesUnlocked && (
             <Link href="/codex" className="text-xs font-body text-cosmic underline">
-              Open Codex
+              Open Genome Research
             </Link>
           )}
         </div>
