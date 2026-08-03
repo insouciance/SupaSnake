@@ -2510,7 +2510,7 @@ export default function GamePage() {
                     ? ` · +${discovery.rewardDna} DNA`
                     : '';
                   showToast(
-                    `Codex: ${codexEntryName(discovery.type, discovery.entryId, discovery.rulesVersion)}${reward}${worldFirst}`,
+                    `Genome discovery: ${codexEntryName(discovery.type, discovery.entryId, discovery.rulesVersion)}${reward}${worldFirst}`,
                     'triumph',
                     5000
                   );
@@ -5837,7 +5837,7 @@ export default function GamePage() {
 
                 {codexDiscoveries.length > 0 && (
                   <div className="panel p-3 text-left" data-testid="codex-discoveries">
-                    <p className="label-arcade mb-2 text-cosmic">New Codex discoveries</p>
+                    <p className="label-arcade mb-2 text-cosmic">New Genome discoveries</p>
                     <div className="flex flex-wrap gap-2">
                       {codexDiscoveries.map((discovery) => (
                         <span

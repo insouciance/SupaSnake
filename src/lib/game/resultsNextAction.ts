@@ -73,7 +73,7 @@ const IMPACT_DESTINATION: Record<ProgressionDestination, {
   chronicle: { href: '/profile', label: 'Chronicle' },
   mastery: { href: '/profile#mastery', label: 'Mastery' },
   records: { href: '/profile#records', label: 'Records' },
-  codex: { href: '/codex', label: 'Codex' },
+  codex: { href: '/codex', label: 'Genome Research' },
   signal: { href: '/#signal', label: 'World Signal' },
   clan: { href: '/clan', label: 'Clan' },
   lab: { href: '/lab', label: 'Lab' },
@@ -132,8 +132,8 @@ export function chooseNextAction(
   if (context.codexDiscoveries > 0) {
     return {
       id: 'open-codex',
-      label: 'Open the Codex',
-      description: 'This run added entries you have not read yet.',
+      label: 'Study your discoveries',
+      description: 'This run added new pieces to Genome Research.',
       href: '/codex',
     };
   }

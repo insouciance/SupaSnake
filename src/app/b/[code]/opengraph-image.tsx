@@ -36,7 +36,7 @@ export default async function BuildOpengraphImage({
       title: 'Plan the hunt before you take it',
       subtitle: 'Your own snakes, this week’s conditions, and a floor rather than a forecast',
       provenance: 'verified',
-      callToAction: 'Open the Workbench in the Codex',
+      callToAction: 'Open the Genome Workbench',
     });
   }
   return artifactImageResponse(buildCardModelFor(model));

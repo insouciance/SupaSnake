@@ -97,7 +97,7 @@ it('renders one quiet private view of the three pillars and own clan threshold',
     screen.getByRole('link', { name: 'Open verified artifact for PRIMAL M4 reached' })
   ).toHaveAttribute('href', '/profile#mastery-PRIMAL');
   expect(screen.getByText('Gen 11')).toBeInTheDocument();
-  expect(screen.getByText('12 Codex entries')).toBeInTheDocument();
+  expect(screen.getByText('12 Genome discoveries')).toBeInTheDocument();
   expect(screen.getByText(/Beat 600 Yield to improve your five/)).toBeInTheDocument();
   expect(screen.getByText(/Clan 9,500 · Rival 9,100/)).toBeInTheDocument();
   expect(screen.getByTestId('career-ladder-archive')).toBeInTheDocument();
