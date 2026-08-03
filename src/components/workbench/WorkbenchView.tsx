@@ -702,6 +702,7 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
   const ownerId = typeof session?.user?.id === 'string' && session.user.id.length > 0
     ? session.user.id
     : null;
+  const hasAuthenticatedOwner = Boolean(isAuthenticated && ownerId && token);
 
   // Account-derived state is renderable only under the identity that loaded or
   // created it. This render-time gate closes the gap before effects run during
@@ -712,13 +713,15 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
   const panel = ownedPanelResource?.panel ?? null;
   const isLoading = ownedPanelResource?.isLoading ?? Boolean(ownerId && token);
   const error = ownedPanelResource?.error ?? null;
+  const panelFailed = ownedPanelResource !== null && ownedPanelResource.error !== null;
+  const usesPublicResearch = !hasAuthenticatedOwner || panelFailed;
   const ownedExperiment = ownerId && experiment?.ownerId === ownerId
     ? experiment
     : null;
   const snakeId = ownedExperiment?.snakeId ?? null;
-  const plan = ownerId
-    ? ownedExperiment?.plan ?? EMPTY_V2_EXPERIMENT
-    : publicPlan;
+  const plan = usesPublicResearch
+    ? publicPlan
+    : ownedExperiment?.plan ?? EMPTY_V2_EXPERIMENT;
   const ownedStudyResource = ownerId && studyResource?.ownerId === ownerId
     ? studyResource
     : null;
@@ -732,7 +735,7 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
   const studyError = ownedStudyResource?.error ?? null;
 
   const setPlan = useCallback((next: GenomeV2ExperimentPlan) => {
-    if (!ownerId) {
+    if (usesPublicResearch || !ownerId) {
       setPublicPlan(next);
       return;
     }
@@ -741,16 +744,16 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
       snakeId: current?.ownerId === ownerId ? current.snakeId : null,
       plan: next,
     }));
-  }, [ownerId]);
+  }, [ownerId, usesPublicResearch]);
 
   const setSnakeId = useCallback((next: string | null) => {
-    if (!ownerId) return;
+    if (usesPublicResearch || !ownerId) return;
     setExperiment((current) => ({
       ownerId,
       snakeId: next,
       plan: current?.ownerId === ownerId ? current.plan : EMPTY_V2_EXPERIMENT,
     }));
-  }, [ownerId]);
+  }, [ownerId, usesPublicResearch]);
 
   useEffect(() => {
     if (!isAuthenticated || !token || !ownerId) {
@@ -886,10 +889,12 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
   }, [isAuthenticated, ownerId, studyRef, token]);
 
   const ownedRoster = useMemo(() => compactRoster(panel?.snakes ?? []), [panel?.snakes]);
-  const roster = ownedRoster.length > 0 ? ownedRoster : PUBLIC_RESEARCH_SPECIMENS;
-  const selectedSnakeId = ownerId
-    ? snakeId
-    : `research-${plan.dynasty.toLowerCase()}`;
+  const roster = usesPublicResearch || ownedRoster.length === 0
+    ? PUBLIC_RESEARCH_SPECIMENS
+    : ownedRoster;
+  const selectedSnakeId = usesPublicResearch
+    ? `research-${plan.dynasty.toLowerCase()}`
+    : snakeId;
   const snake = roster.find((entry) => entry.id === selectedSnakeId)
     ?? roster.find((entry) => entry.dynasty === plan.dynasty)
     ?? roster.find((entry) => entry.equipped)
@@ -905,10 +910,6 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
 
   if (isLoading && !panel && !study) {
     return <div className={styles.loading} data-testid="workbench-loading">Lighting the runes…</div>;
-  }
-
-  if (error && !study) {
-    return <div className={styles.error} data-testid="workbench-error">{error}</div>;
   }
 
   return (
@@ -938,14 +939,19 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
         </nav>
       </header>
 
-      {!isAuthenticated || !ownerId || !token ? (
+      {panelFailed ? (
+        <p
+          className={`${styles.error} ${styles.panelFallback}`}
+          role="alert"
+          data-testid="workbench-error"
+        >
+          <strong>Personal specimens are closed.</strong>
+          <span>{error || 'The Workbench could not read your collection.'} Public research specimens remain available below.</span>
+        </p>
+      ) : !hasAuthenticatedOwner ? (
         <p className={styles.researchInvitation} data-testid="workbench-public-research">
           Every rule is open. <Link href="/login">Sign in</Link> to place your own specimens and settled runs on the table.
         </p>
-      ) : null}
-
-      {error && study ? (
-        <div className={styles.error}>Your settled run is safe to study, but the current collection could not be loaded.</div>
       ) : null}
 
       {studyLoading ? (

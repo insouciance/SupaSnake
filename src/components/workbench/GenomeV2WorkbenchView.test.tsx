@@ -254,7 +254,7 @@ describe('Genome v2 Research table', () => {
     expect(screen.queryByTestId('workbench-snake-cyber')).not.toBeInTheDocument();
   });
 
-  it('shows player B load failures without falling back to player A data', async () => {
+  it('keeps a panel failure fail-closed while public Research remains playable', async () => {
     let authState = {
       session: { access_token: 'token-a', user: { id: 'user-a' } },
       isAuthenticated: true,
@@ -271,6 +271,10 @@ describe('Genome v2 Research table', () => {
     await waitFor(() => {
       expect(screen.getByTestId('workbench-snake-cyber')).toBeInTheDocument();
     });
+    fireEvent.click(screen.getByTestId('workbench-gene-gold_trail'));
+    fireEvent.click(screen.getByTestId('workbench-thread'));
+    expect(screen.getByText('1 move')).toBeInTheDocument();
+
     authState = {
       session: { access_token: 'token-b', user: { id: 'user-b' } },
       isAuthenticated: true,
@@ -282,8 +286,21 @@ describe('Genome v2 Research table', () => {
         'Player B collection is unavailable.'
       );
     });
-    expect(screen.queryByTestId('workbench-snake-cyber')).not.toBeInTheDocument();
+    expect(screen.getByTestId('workbench-error')).toHaveTextContent(
+      'Public research specimens remain available below.'
+    );
+    expect(screen.getByTestId('workbench-snake-cyber')).toHaveTextContent('Gen 1');
+    expect(screen.getByTestId('workbench-snake-primal')).toHaveTextContent('Gen 1');
+    expect(screen.getByTestId('workbench-snake-cosmic')).toHaveTextContent('Gen 1');
+    expect(screen.queryByText('Gen 4')).not.toBeInTheDocument();
+    expect(screen.queryByText('Gen 2')).not.toBeInTheDocument();
     expect(screen.queryByText('1 move')).not.toBeInTheDocument();
+    expect(screen.getByText('0 moves')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('workbench-snake-primal'));
+    fireEvent.click(screen.getByTestId('workbench-gene-time_dilation'));
+    fireEvent.click(screen.getByTestId('workbench-thread'));
+    expect(screen.getByText('1 move')).toBeInTheDocument();
   });
 
   it('preserves the current experiment across a same-owner token refresh', async () => {
