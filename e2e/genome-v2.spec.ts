@@ -73,6 +73,31 @@ test.describe('Genome v2 live player journey', () => {
     await expect(page.getByTestId('gene-option-0-strain-UMBRA')).toBeVisible();
     await expect(page.getByTestId('gene-option-0-strain-FERAL')).toBeVisible();
 
+    // A fresh Loom is deliberately neutral. Reading or keyboard focus is not
+    // consent, and the deeper reaction map stays out of the first mobile read.
+    const confirm = page.getByTestId('loom-confirm');
+    await expect(phoenix).toHaveAttribute('aria-checked', 'false');
+    await expect(page.getByTestId('gene-option-1')).toHaveAttribute('aria-checked', 'false');
+    await expect(confirm).toBeDisabled();
+    await expect(page.getByTestId('loom-empty-prompt')).toBeVisible();
+    await expect(page.getByTestId('loom-details-toggle')).toHaveCount(0);
+    await expect(page.getByTestId('loom-full-reaction-map')).toHaveCount(0);
+
+    await phoenix.click();
+    await expect(phoenix).toHaveAttribute('aria-checked', 'true');
+    await expect(confirm).toBeEnabled();
+    await expect(confirm).toContainText('THREAD Phoenix');
+    await expect(page.getByTestId('loom-quick-read')).toBeVisible();
+    const details = page.getByTestId('loom-details-toggle');
+    await expect(details).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('loom-full-reaction-map')).toHaveCount(0);
+
+    // Experts can deliberately unfold the n-order consequences without
+    // making the beginner-facing choice itself look like a dashboard.
+    await details.click();
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('loom-full-reaction-map')).toBeVisible();
+
     // The choice names the immediate Strain crossing and the next threshold;
     // the player is never expected to memorize either ladder.
     await expect(page.getByTestId('loom-strain-UMBRA')).toContainText('UMBRA');
@@ -97,10 +122,6 @@ test.describe('Genome v2 live player journey', () => {
     // Selection and commitment remain two explicit actions even on a phone;
     // the missing flick surface above proves gameplay input cannot leak into
     // the held decision.
-    const confirm = page.getByTestId('loom-confirm');
-    await expect(confirm).toBeEnabled({ timeout: 5_000 });
-    await phoenix.click();
-    await expect(confirm).toContainText('THREAD Phoenix');
     await confirm.click();
 
     await expect(loom).toHaveCount(0);

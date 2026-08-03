@@ -7,6 +7,7 @@ import {
 } from '../../src/lib/game/SnakeGameLogic';
 import { genomeV2ActivePool } from '../../src/shared/game/genes';
 import {
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_RULES_V2,
   createGenomeV2State,
   deriveGenomeV2Ftue,
@@ -119,6 +120,7 @@ export async function installGenomeV2BrowserFixture(
   const ftuePresentation = deriveGenomeV2FtuePresentation(10, 3);
   const publicGenome = {
     rulesVersion: GENOME_RULES_V2,
+    interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
     runSeed: RUN_SEED,
     v2GenePool: genePool,
     heirloom: { UMBRA: 1, FERAL: 1 },
