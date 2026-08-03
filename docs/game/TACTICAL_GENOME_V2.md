@@ -1,11 +1,11 @@
 # SupaSnake — Tactical Genome v2
 
-**Version:** 2.2
+**Version:** 2.3
 
-**Date:** 2 August 2026
+**Date:** 3 August 2026
 
 **Status:** APPROVED for production by the Product Owner; governed by Product
-Constitution v1.12.
+Constitution v1.13.
 
 This contract supersedes the active catalog, tuning, FTUE, portal-Genome,
 Strain, Splice, and outcome-cap rules in `BUILDCRAFT_GENOME_DESIGN.md` v1.1.
@@ -111,7 +111,27 @@ inspect every Strain rung in Research without receiving every verb immediately.
 The server returns the unmet condition and progress for every locked action.
 The UI does not reproduce thresholds from literals.
 
-### 3.1 Research: Codex + Workbench
+### 3.1 Gene offer eligibility (v1.13 follow-on)
+
+Feature activation and Gene offer eligibility are separate. The table above decides
+whether a verb or reaction may operate; the account eligibility contract decides
+which current-ruleset Genes may enter a new live offer. The complete roster and its
+rules remain inspectable from run one.
+
+A new account begins with a server-authored six-Gene Dynasty starter pool [H]. After
+the first BANK it may choose a legal trial in Research. That trial occupies one
+bounded candidate position alongside an ordinary alternative and DECLINE; resolving
+its versioned learning event through success or failure grants ordinary eligibility.
+The exact starter lists, trial order, guarantee, migration, pool-health proof, and
+rollout contract are owned by `PLAYER_EVOLUTION_ONBOARDING.md`.
+
+The run-start manifest stamps the actual eligible pool. Unlocking a Gene never changes
+an in-flight run, and Codex history never substitutes for server eligibility. Existing
+authoritative use grants migration credit; graduated veterans keep the complete legal
+roster. Until the curriculum is explicitly rolled out—and whenever reviewed legacy
+state is absent under rollback—the server retains the prior complete-pool behavior.
+
+### 3.2 Research: Codex + Workbench
 
 Codex and Workbench are two modes of one free Research destination reached from
 the Home chamber's Codex relic. They reveal depth without turning a live decision
@@ -153,10 +173,13 @@ deliberate wildcard and deterministic surprise.
 
 ## 4. Active v2 gene roster
 
-A v2 run receives the 13 shared genes plus its Dynasty signature. CYBER excludes
-Time Dilation, so its total pool is 13; PRIMAL and COSMIC each have 14. Rotation
-may replace catalog entries inside the constitutional 12–16 bound, never append
-past it. Magnetism and magnet-derived mechanics are not active in v2.
+The v2 ruleset roster contains 13 shared genes plus each Dynasty signature. CYBER
+excludes Time Dilation, so its legal roster is 13; PRIMAL and COSMIC each have 14.
+Under the v1.13 follow-on, a new run receives the server-stamped intersection of
+that legal roster, current rotation/World Condition, and the account's offer-eligible
+subset; existing full-pool behavior remains the rollout and malformed-state fallback.
+Rotation may replace catalog entries inside the constitutional 12–16 bound, never
+append past it. Magnetism and magnet-derived mechanics are not active in v2.
 
 | Gene | Strain | Primary identity |
 |---|---|---|
@@ -396,9 +419,10 @@ to v1, never to the newest default. New history never rewrites old payouts.
 
 ## 10. Authority, continuity, and validation
 
-The server stamps Genome rules version, active pool, FTUE, Ascendance curve and
-multiplier, Dynasty, build seed, and all immutable run facts. The client cannot
-change them after start.
+The server stamps Genome rules version, eligibility-contract version, actual eligible
+pool, account curriculum provenance, FTUE, Ascendance curve and multiplier, Dynasty,
+build seed, and all immutable run facts. The client cannot add a locked Gene or change
+any of them after start. A later eligibility change applies only to a later run.
 
 The live engine and authoritative replay consume the same deterministic event
 journal. Stable IDs bind offers, instances, targets, portal decisions, terrain,
@@ -415,11 +439,12 @@ resolutions, or reward totals are rejected; the server derives them from replay.
 
 ## 11. Required telemetry and balance proof
 
-Track offer category diversity, THREAD/FORK/DECLINE, Recode source/target and
-cost, Strain and Splice paths, gene state activation/miss, target queue depth,
-body/committed occupancy, terrain creation, portal actions, Carry, Bonds,
-Escrow, Stake, Phoenix/Ash, BANK/crash, Genome contribution, Ascendance, and
-final Yield.
+Track offer category diversity, eligibility prefix/version, trial invitation,
+Show me/Later, trial selection/switch, guarantee use, learning-event resolution,
+full-roster graduation, THREAD/FORK/DECLINE, Recode source/target and cost, Strain
+and Splice paths, gene state activation/miss, target queue depth, body/committed
+occupancy, terrain creation, portal actions, Carry, Bonds, Escrow, Stake,
+Phoenix/Ash, BANK/crash, Genome contribution, Ascendance, and final Yield.
 
 Balance tests must model early, middle, and late runs across all Dynasties and
 skill bands. The intended observed spread is deliberately broad:

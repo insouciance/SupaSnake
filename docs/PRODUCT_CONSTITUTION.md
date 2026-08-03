@@ -1,6 +1,30 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.12 · amended 2 August 2026
+**Version:** 1.13 · amended 3 August 2026
+**v1.13 amendment (explicit owner ruling, 3 August 2026):** the Genome's full
+current-ruleset catalog remains visible from run one, but a new account no longer
+receives the complete catalog in live offers immediately. Discovery now separates
+three truths: the bounded ruleset roster, the account's server-authoritative
+offer-eligible subset, and its factual Codex history. A six-Gene Dynasty starter
+pool [H] expands through chosen, contextual Gene trials in ordinary play; resolving
+the defining learning event through success or failure grants ordinary offer
+eligibility. Trials preserve a normal alternative and DECLINE, and no payment,
+currency, account level, tutorial XP, or browser state may accelerate them.
+
+This is progressive vocabulary, not progressive power. Every locked Gene remains
+fully inspectable in Research, later Genes are horizontal options rather than rarity
+tiers, and the implementation must prove that completing eligibility cannot make a
+player strategically worse through pool dilution. Active sessions retain their
+start-stamped pool; authoritative history grants migration credit; veterans above
+the graduation threshold receive the complete legal roster rather than being moved
+backward. Major systems use one shared, skippable, replayable contextual reveal
+grammar. At the eight-bank Clan unlock, Results strongly invites the player to a
+real directory, founding, or a clan of one, explains best-five contribution, and
+offers Later; it never auto-enrols or fabricates social activity. The binding journey,
+research plan, rollout gates, and follow-on implementation packages live in
+`docs/game/PLAYER_EVOLUTION_ONBOARDING.md`. The owner commissioned this amendment
+as the first post-Genome-v2 progression release and waived the cooling period; the
+trade-off is recorded in §15.
 **v1.12 amendment (explicit owner ruling, 2 August 2026):** Genome v2 Strain
 ladders activate at **2/3/4 points**, mapped to Minor, Expression, and Apex.
 With only six loci, the previously approved 3/4/5 ladder delayed the first
@@ -841,6 +865,22 @@ commercial (Rule 7); and PWA installability for the retained (§11.4).
 Only three concepts are allowed to feel like "my progress." Daily play feeds them; it
 never becomes a fourth tree (audit spine, adopted).
 
+### 8.0 The learning journey — vocabulary before mastery (v1.13)
+
+The three pillars are not presented at full density on the first day. SupaSnake's
+journey moves from immediate control, to a first deliberate BANK, to one useful
+Genome decision, to combination-building, to clan responsibility, and finally to
+Mastery and Legacy. These are stages of understanding, not a fourth progress bar:
+there is no account level, tutorial XP, course, or checklist attached to them.
+
+The product shows the whole strategic future while teaching only the next useful
+decision. System reveals are contextual, skippable through **Later**, replayable,
+and proven through ordinary authoritative play. Results recommends at most one new
+lesson or destination while Replay and Setup remain available. The complete contract,
+including the day-to-day evolution, Genome curriculum, clan handoff, research plan,
+compatibility rules, and implementation sequence, is
+`docs/game/PLAYER_EVOLUTION_ONBOARDING.md`.
+
 ### 8.1 Mastery — *how good am I with this dynasty?*
 
 The strongest shipped lane (GT §3.4) and the account's spine. Per-dynasty, fed only by
@@ -899,15 +939,33 @@ Lineage is where Depth gets its teeth: the snake you bred is the snake you hunt 
 
 ### 8.3 Discovery — *what do I know how to use?*
 
-The genome is the strategic vocabulary, and it has outgrown its readers: 34 active
-genes produce over a million six-gene combinations (F6). Rulings:
+The Genome is the strategic vocabulary, and it has outgrown its readers: the
+preserved catalog's 34 Genes produce over a million six-Gene combinations (F6),
+while the current v2 ruleset deliberately exposes a bounded subset. Rulings:
 
-- **Active pool: 14 genes** [H], hard cap 16, floor 12 (decision 3). Curation
+- **Dynasty-legal ruleset roster: target 14 Genes** [H], hard cap 16, floor 12
+  (decision 3). The current v2 roster is 13 for CYBER and 14 for PRIMAL/COSMIC.
+  Curation
   criteria, which are binding on the implementation spec: every active gene represents
   a distinct *decision category*; every strain retains ≥2 active genes so thresholds
   stay reachable; the three dynasty signatures stay. The catalog is preserved —
   inactive genes are shelved, not deleted, and may rotate in via seasons *within the
   cap*.
+- **Live offer eligibility grows deliberately.** A new account begins with a
+  server-authored six-Gene Dynasty starter pool [H]. The complete current roster,
+  every rule, and every reaction remain inspectable in Research. After the first
+  validated BANK, the player may choose among up to two legal next trials [H]; the
+  selected trial receives one bounded candidate position alongside an ordinary
+  alternative and DECLINE. Resolving its defining journal event through success or
+  failure grants ordinary offer eligibility. One Gene may complete per run, and the
+  target for the full active vocabulary is 18–25 validated banks [H]. Exact starter
+  lists, lesson order, and events require simulation plus novice comprehension tests.
+- **Eligibility is horizontal and monotonic.** No rarity, payment, Energy, research
+  currency, account level, or successful-only grind accelerates it. Existing
+  authoritative Gene use grants migration credit; graduated veterans keep the full
+  legal roster; active sessions retain the pool stamped at start. Before rollout,
+  every eligibility prefix must preserve viable categories, Strain routes, Splice
+  reachability, and complete-pool fairness so avoiding an unlock is never optimal.
 - The FTUE remains server-enforced, but v1.9 replaces hidden depth with a visible
   activation ramp: Strain tags and every 2/3/4 rung are visible immediately;
   CONTINUE activates after 1 validated bank, Expressions after 2, MUTATE after 4,
@@ -1100,9 +1158,14 @@ elaboration on being noticed.
   Depth, appears in the directory, and pairs when a rival enters the same cycle. If no
   rival forms, its run history remains real and settlement records participation rather
   than fabricating a win.
-- **Founding flow:** at Serpent unlock (8 banks), one skippable prompt: found your
-  clan (name it, pick preset heraldry) or discover one through the live directory.
-  Founding costs a single, clearly quoted, server-authoritative DNA amount [H]; the
+- **Founding flow:** at Serpent unlock (8 banks), Results explains that the player's
+  Yield can now strengthen a Clan and strongly recommends one skippable handoff into
+  Compete. It explains positive-Energy contribution, best-five replacement, and BANK;
+  then offers real directory choices, founding (name plus preset heraldry), a clan of
+  one, or **Later**. It never auto-enrols, invents members/activity, or reduces solo
+  progression. The first eligible settlement names whether the result entered or
+  replaced the player's five and shows the exact clan-total delta. Founding costs a
+  single, clearly quoted, server-authoritative DNA amount [H]; the
   price is a commitment to the institution, not a monetized gate. The directory is
   searchable and shows current size, open/application/invite-only policy, available
   places, and recent activity without fabricating population or activity.
@@ -1737,6 +1800,18 @@ identity (GT §9.3), stale-session lifecycle (GT §9.6), QA-cohort separation
 
 Dependency-ordered. "Launch" means the first campus seeding — not a press moment.
 
+**Next approved product release after Genome v2 — Player evolution and onboarding.**
+Before further Genome complexity or endgame expansion, implement the versioned
+Discovery curriculum and guided system reveals in
+`docs/game/PLAYER_EVOLUTION_ONBOARDING.md`. The order is: production compatibility
+inventory and roster simulation; eligibility/API/migration contract; server authority
+and active-run stamping; Research curriculum; contextual Gene teaching; clan handoff;
+then a bounded new-account experiment. Gates are comprehension, eligibility-prefix
+pool health, veteran/history continuity, rollback to the legacy full-pool behavior,
+and a correctly understood first clan contribution. This release adds no mode,
+currency, account level, paid acceleration, or automatic clan membership. Hosted
+migration and rollout remain separately authorized production operations.
+
 **Phase 0 — Truth and subtraction** *(before anything else)*
 Kill-list items 1–9, 13, 16, 18, 21 (one large subtraction-and-redefinition release;
 item 1 is the §8.6 Energy semantic migration (now superseded by v1.5 commitment);
@@ -1844,6 +1919,7 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 31 | **Every affected ladder, one-step Splice path, liability ledger, and BANK/crash projection belongs in the live Tactical Loom** (v1.9) | **v1.10:** intuition in-run, Research outside. The live Loom shows only the immediate actionable delta and irreversible consequences; Codex/Workbench carries the complete visible future, direct experimentation, and on-demand arithmetic. No in-run expert expander. Explicit owner ruling, 2 August 2026; cooling period waived | The guarantee that every n-order possibility is visible without leaving the run. Gained: a mobile-legible decision beat, lower working-memory load, and preservation of flow. The permanent guardrail is that a player is never blind about what the current choice activates, breaks, costs, or exposes |
 | 32 | **v1.10's live surface shows only a newly activated or lost rung/Splice** | **v1.11:** the focused choice shows its complete affected 3/4/5 route and all directly connected Splice branches as a compact rune reaction map; unrelated systems and exhaustive research remain outside the run. Explicit owner ruling, 2 August 2026; cooling period waived | The smallest possible live consequence pane. Gained: visible second-/third-order strategy, explicit Strain identity, and learnable buildcraft without recreating a table, solver, or expert dashboard |
 | 33 | **Genome v2 Strain ladders activate at 3/4/5 points** | **v1.12:** the v2 ladder activates at 2/3/4, mapped to Minor/Expression/Apex; FTUE gates remain semantic, v1 remains unchanged, and every Loom/Workbench gene exposes rune + color + written Strain badge at first read. Explicit owner ruling, 2 August 2026; cooling period waived | The wider delay before a run's first Strain effect and the stricter concentration needed to reach Apex. Gained: meaningful family identity after two points within a six-locus Genome, earlier build feedback, and immediate legibility without requiring Codex memorisation. Pre-release compatibility condition: no production v2 session may exist before this correction ships |
+| 34 | **Every Gene in the active ruleset roster is eligible for a new account's live offers from its first run** | **v1.13:** the full catalog remains transparent, while a server-authored six-Gene Dynasty starter pool [H] expands through chosen contextual trials resolved in ordinary play; existing use grants migration credit and graduated veterans retain the full roster. Explicit owner ruling, 3 August 2026; cooling period waived | Immediate universal live-choice parity and unrestricted first-session experimentation. Gained: a learnable vocabulary, player-chosen sequencing, and a stronger bridge from Snake competence to Genome mastery. The permanent guardrails are horizontal—not power—ordering, visible future depth, no paid acceleration, active-run continuity, and proof that full eligibility is not strategically worse than an earlier pool |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
@@ -2064,10 +2140,30 @@ deliberately undecided pending data.
     acceleration across the same pressure horizon. *Regression test:* compare
     late-run steering errors, intentional portal/gene detours, deaths the player
     calls “my mistake,” and enjoyment. Do not tune from the HUD number alone.
+33. **Dynasty starter pools** (v1.13). Six eligible Genes per Dynasty [H], including
+    the signature and the decision categories in §8.3. *Test:* deterministic pool
+    and offer simulation plus novice comprehension across all three Dynasties. No
+    starter list ships unless it supports two coherent directions, a reachable Minor,
+    viable two-choice offers, and observable early-run events without presenting one
+    Dynasty as the neutral tutorial.
+34. **Vocabulary pacing** (v1.13). Up to two next-trial choices, guarantee for up to
+    three eligible runs, and complete eligibility in 18–25 validated banks [H].
+    *Test:* trial choice, DECLINE, learning-event resolution, voluntary later pick,
+    comprehension, D1/D7, and graduation distribution. Shorten or lengthen the
+    curriculum before adding urgency, rewards, or successful-only requirements.
+35. **Eligibility pool health** (v1.13). *Test:* every prefix by Dynasty for category
+    diversity, legal alternatives, 2/3/4 routes, Splice reachability, and comparative
+    offer value. If a smaller pool retains an advantage, fix ordering, roster, or the
+    offer algorithm before rollout; never make declining an unlock optimal.
+36. **Guided reveal and clan handoff** (v1.13). Eight banks, one recommended Results
+    action, Show me/Later, and the first best-five delta are the initial dials [H].
+    *Test:* feature comprehension, guide replay, join/found/solo/Later, first eligible
+    contribution understanding, and D30 by clan status. Improve the explanation
+    before increasing prominence; never auto-enrol or create an obligation loop.
 
 ---
 
-*Ratified 25 July 2026; amended through v1.12 on 2 August 2026. The owner should be able to read this and recognize their own
+*Ratified 25 July 2026; amended through v1.13 on 3 August 2026. The owner should be able to read this and recognize their own
 game — better organized, with the avoided decisions made and priced. Where it is
 wrong, amend it honestly: name the rule, pay the cost, record the overturn. What it
 must never become is a document that is merely agreed with.*

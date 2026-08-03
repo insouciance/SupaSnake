@@ -2,7 +2,7 @@
 
 **For:** the implementing agents (Opus 5 max, GPT 5.6 max) running in parallel on
 feature branches. **Prepared:** 25 July 2026 from Constitution v1.3; maintained
-under the current `docs/PRODUCT_CONSTITUTION.md` (v1.12) and
+under the current `docs/PRODUCT_CONSTITUTION.md` (v1.13) and
 `docs/GROUND_TRUTH.md` (code-verified baseline @ `main` fd22c0c era).
 **Owner:** available for escalations; batch them.
 
@@ -66,7 +66,7 @@ stale; when code and GT disagree, the code is the truth and the WP spec is the g
 ## 4. Kickoff briefing — paste this at the top of each agent session
 
 > You are implementing SupaSnake work packages. Authority:
-> `docs/PRODUCT_CONSTITUTION.md` v1.12 (design law — its §4 Rules and §12.2 caps
+> `docs/PRODUCT_CONSTITUTION.md` v1.13 (design law — its §4 Rules and §12.2 caps
 > are inviolable). Process: `docs/IMPLEMENTATION_HANDOFF.md` (your WP, the branch
 > and migration protocol, the decision/escalation rules). Baseline facts:
 > `docs/GROUND_TRUTH.md` (pre-implementation; code outranks it once WPs land).
@@ -244,6 +244,28 @@ Highest-priority defect in the wave: the validation bug is a **live DNA-loss
 path**, not only lost progression — plus a downward write of three player
 scalars and a 404 that makes the reward outbox delete a run's payout. See
 §WP-2.05 of the wave document.
+
+## 6c. Queued follow-on — Player Evolution & Onboarding
+
+This is the first approved product release after the current Genome v2 update.
+Do not open its implementation branches until that update is complete on `main`
+and Package A has inventoried the actual shipped roster, telemetry, manifest,
+history, and compatibility behavior.
+
+The binding scope is `docs/game/PLAYER_EVOLUTION_ONBOARDING.md`; Constitution
+v1.13 and Tactical Genome v2.3 carry its protected boundaries. Execute its
+Packages A–F in order: contracts/evidence → server eligibility authority →
+Research curriculum → contextual Gene teaching → system reveals/clan handoff →
+experiment/rollout. Contract work may prepare independent server and surface
+packages, but migration-bearing work remains Track A and the real migration
+number is claimed only at merge time. No package may deploy, mutate hosted state,
+or enable the curriculum for production without a separate owner instruction.
+
+**First CLI pickup:** use the copyable Package A briefing in that contract. Its
+deliverable is the evidence-backed starter pools, learning events, prefix
+simulations, compatibility inventory, and proposed API/data boundary—not a
+production migration or player-visible rollout. Only after the owner accepts
+those hypotheses should the remaining packages receive numbered WP branches.
 
 ## 7. Phases 2–5
 

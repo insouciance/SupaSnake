@@ -7,7 +7,7 @@ documents remain useful context but do not override the files listed here.
 
 | Need | Document |
 |---|---|
-| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.12) |
+| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.13) |
 | What to build next, and how | [Implementation Handoff](IMPLEMENTATION_HANDOFF.md) |
 | The gate every PR passes | [Constitution Checklist](CONSTITUTION_CHECKLIST.md) |
 | The verified state of the game as built | [Ground Truth](GROUND_TRUTH.md) |
@@ -35,6 +35,7 @@ with the Constitution, the Constitution wins and the contract is the stale docum
 | Complete game direction | [Game Design v2](game/GAME_DESIGN_V2.md) |
 | Progress recognition, career memory, and social proof | [Career Spine](game/CAREER_SPINE.md) |
 | Player flow, onboarding, and interruptions | [Player Flow & Interruption Policy](game/PLAYER_FLOW_INTERRUPTION_POLICY.md) |
+| Player evolution, staged Genome vocabulary, guided unlocks, and clan handoff | [Player Evolution & Onboarding](game/PLAYER_EVOLUTION_ONBOARDING.md) |
 | Genome/buildcraft | [Tactical Genome v2](game/TACTICAL_GENOME_V2.md); [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) is the historical foundation |
 | Active game screen and camera | [Run Cockpit & Arena](game/HUD_COCKPIT_REDESIGN.md) |
 | Energy Commitment and Clan Energy Battles | [Energy Commitment & Clan Battles](game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md) |
@@ -49,6 +50,11 @@ with the Constitution, the Constitution wins and the contract is the stale docum
   end-to-end journey, information architecture, continuity UX, and attention
   hierarchy. It becomes authoritative only after the owner validates the local
   review build.
+- [Player Evolution & Onboarding](game/PLAYER_EVOLUTION_ONBOARDING.md) — approved
+  3 August 2026; the first post-Genome-v2 progression release. It owns the
+  day-to-day learning journey, staged Gene offer eligibility, guided reveals,
+  clan handoff, research plan, compatibility contract, and CLI implementation
+  packages. It does not authorize hosted migration or rollout.
 
 **Superseded:** `game/MONETIZATION_DESIGN.md` — replaced by Constitution §10, with
 the ruling recorded in its §15 Overturn Record. It is kept as the historical v1.0

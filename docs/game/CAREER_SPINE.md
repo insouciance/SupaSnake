@@ -1,10 +1,13 @@
 # SupaSnake Career Spine
 
 **Status:** Owner-approved product contract · amended 31 July 2026
-**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.12 remains design law. This
+**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.13 remains design law. This
 contract defines the recognition, attention, career-memory, and social-witness
 projection of its three progression pillars. Where an older identity or flow
-document conflicts, this contract wins.
+document conflicts, this contract wins. `PLAYER_EVOLUTION_ONBOARDING.md` owns
+which new lesson or system reveal may be recommended after settlement; the Career
+Spine still owns the receipt, ceremony budget, attention state, and permanent
+memory used to present it.
 
 ## 1. Purpose
 

@@ -98,8 +98,9 @@ are:
 
 - [Game Design v2](docs/game/GAME_DESIGN_V2.md)
 - [Career Spine](docs/game/CAREER_SPINE.md)
+- [Player Evolution & Onboarding](docs/game/PLAYER_EVOLUTION_ONBOARDING.md)
 - [Player Flow & Interruption Policy](docs/game/PLAYER_FLOW_INTERRUPTION_POLICY.md)
-- [Genome design](docs/game/BUILDCRAFT_GENOME_DESIGN.md)
+- [Tactical Genome v2](docs/game/TACTICAL_GENOME_V2.md)
 - [Energy Commitment & Clan Battles](docs/game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md)
 - [Monetization Strategy](docs/game/MONETIZATION_STRATEGY.md)
 - [Run Cockpit & Arena](docs/game/HUD_COCKPIT_REDESIGN.md)
