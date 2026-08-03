@@ -15,6 +15,7 @@ import {
   type LaunchHandoff,
 } from './launchFlow';
 import type { FtueBootstrapResponse } from './types';
+import { CURRENT_GENOME_V2_INTERACTION_VERSION } from '@/shared/game/genomeV2';
 
 const bootstrap: FtueBootstrapResponse = {
   ftueV2: true,
@@ -113,6 +114,7 @@ describe('FTUE v2 launch flow', () => {
       startRequestId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       mode: 'earn',
       snake_id: 'snake-1',
+      genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
     });
   });
 
@@ -139,6 +141,7 @@ describe('FTUE v2 launch flow', () => {
       mode: 'signal',
       signalObjectiveId: 'signal_extract',
       snake_id: 'snake-1',
+      genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
     });
     // Client-side a Signal run is an ordinary EARNING run; only the server
     // knows it is the day's attempt, and only because it derived the day.
@@ -161,6 +164,7 @@ describe('FTUE v2 launch flow', () => {
       startRequestId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       mode: 'earn',
       snake_id: 'snake-1',
+      genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
     });
     expect(body).not.toHaveProperty('signalObjectiveId');
   });

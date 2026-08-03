@@ -1,5 +1,6 @@
 import type { FtueBootstrapResponse } from './types';
 import { createRunStartRequestId } from '@/lib/game/runContinuityClient';
+import { CURRENT_GENOME_V2_INTERACTION_VERSION } from '@/shared/game/genomeV2';
 
 export type LaunchPhase =
   | 'idle'
@@ -210,7 +211,12 @@ async function startSession(
   // One UUID names this deliberate start. If the response disappears, the
   // server returns the persisted manifest instead of spending Energy twice.
   // It lives only for this request; authenticated recovery is server-held.
-  const startFingerprint = JSON.stringify({ mode, snakeId, signalObjectiveId: signalObjectiveId ?? null });
+  const startFingerprint = JSON.stringify({
+    mode,
+    snakeId,
+    signalObjectiveId: signalObjectiveId ?? null,
+    genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
+  });
   const startRequestId = launchStartRequestId(startFingerprint);
   const request: RequestInit = {
     method: 'POST',
@@ -226,8 +232,15 @@ async function startSession(
             mode: 'signal',
             signalObjectiveId,
             snake_id: snakeId,
+            genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
           }
-        : { action: 'start', startRequestId, mode, snake_id: snakeId }
+        : {
+            action: 'start',
+            startRequestId,
+            mode,
+            snake_id: snakeId,
+            genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
+          }
     ),
   };
   let response: Response | null = null;
