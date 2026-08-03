@@ -1,6 +1,7 @@
 # SupaSnake Player Flow & Interruption Policy
 
-Status: master product direction and FTUE v2 implementation record
+Status: FTUE/onboarding and interruption contract subordinate to the Cohesive
+Player Journey; historical FTUE v2 implementation record
 Supersedes: previous onboarding, starter-selection, popup, and player-flow plans
 
 ## Product contract
@@ -24,13 +25,16 @@ Automatic interruption is reserved for legal obligations, destructive confirmati
 
 With `NEXT_PUBLIC_FTUE_V2=true`, the authoritative journey is:
 
-1. Home renders with Launch unobscured by consent UI.
+1. Home renders as a full-viewport Specimen Chamber with the equipped snake's
+   head plus exactly two body pieces, Launch unobscured, and the five-rune
+   Research relic contextual rather than primary.
 2. One Launch action authenticates anonymously when necessary.
 3. The server atomically creates or repairs the player, grants and equips the catalog's active PRIMAL starter only when the player owns no snake, and returns onboarding state.
-4. The launch flow creates the run before navigation.
-5. The board opens held in a Ready state with only “Swipe or press an arrow to move.”
-6. A deliberate safe direction starts the simulation.
-7. Results explain earned rewards and offer optional next actions.
+4. Launch navigates to a fully preset Setup without creating a run or spending Energy.
+5. Deliberate **Start run** creates exactly the shown committed session.
+6. The board opens held in a Ready state with only “Swipe or press an arrow to move.”
+7. A deliberate safe direction starts the simulation.
+8. Results explain earned rewards and offer optional next actions.
 
 The existing deliberate-direction resume gate and the reserved HUD/board layout are part of this contract. They are not parallel onboarding work: FTUE v2 consumes them so first movement is intentional and the board does not shift beneath the player.
 
@@ -39,7 +43,7 @@ The existing deliberate-direction resume gate and the reserved HUD/board layout 
 | Flow | Previous trigger | Decision | FTUE v2 behavior |
 | --- | --- | --- | --- |
 | Starter selection | Automatic when collection was empty | Remove | Atomic bootstrap grants/equips PRIMAL; starter browsing remains an optional Lab activity. |
-| Home-to-game preflight | Launch navigated before auth/bootstrap, then game required Play | Remove | Explicit launch state machine waits for auth, bootstrap, and run creation before one navigation. |
+| Home-to-game preflight | Launch navigated before auth/bootstrap, then game required Play | Remove | Home waits for auth/bootstrap before one navigation to fully preset Setup; only Setup's deliberate Start creates the run and spends Energy. |
 | Direct-game missing-snake fallback | Blocking “choose in Lab” CTA after failed/incomplete setup | Replace | Treat as a critical setup failure and return to Home Retry; Lab never becomes the repair path. |
 | Daily Contracts board | Automatic once per day when offers or claims existed | Replace | Persistent numeric/exclamation notification and optional mission entry; never auto-opens. |
 | Home progression hint | Automatic FTUE overlay | Replace | First results explain DNA and offer an optional Lab CTA. |
@@ -48,7 +52,7 @@ The existing deliberate-direction resume gate and the reserved HUD/board layout 
 | Identity/handle claim | Automatic after first banked extraction | Replace | Notification plus explicit Player Card action. |
 | Lab account upgrade | Automatic after first unlock | Replace | Subtle success toast/notification; account creation remains optional. |
 | Results | Automatic at the end of a run | Keep | It is the required boundary between gameplay and rewards and contains only contextual, player-chosen next actions. |
-| In-run Gene relic / portal MUTATE / surge choices | Player collects a physical relic or deliberately opens a gameplay verb | Keep as strategic modal only after the deliberate action | Ordinary Gene cadence never opens a modal by itself. A 40-tick physical relic appears at the deterministic 6 ± 2-food cadence; ignore/expiry reveals nothing and is not DECLINE. Collection or explicit MUTATE owns the frozen arena, focus, and input. The Loom starts neutral with two equal choices, written Strain badges, one salient consequence each, and optional contained details. |
+| In-run Gene relic / portal MUTATE / surge choices | Player collects a physical relic or deliberately opens a gameplay verb | Keep as strategic modal only after the deliberate action | Ordinary Gene cadence never opens a modal or creates an offer by itself. A 40-tick physical relic appears after the deterministic 6 ± 2-food interval; the next interval begins only when collection or expiry resolves it, and food eaten while it is live does not count forward. Ignore/expiry reveals nothing and is not DECLINE, PASS, or a Bond. Collection or explicit MUTATE owns the frozen arena, focus, and input. The Loom starts neutral with two equal choices, written Strain badges, and one salient consequence each; focus/hover never consents. Selection reveals trigger/gain/risk, and **UNFOLD DETAILS** alone exposes the affected route, connected Splices, changed locus, and material ledgers. |
 | First portal EXTRACT label | Once-per-device in-run visual teaching moment | Keep | It is nonblocking, contextual, and teaches the required extraction action without opening an overlay. |
 | Pause menu | Explicit player action | Replace | Pause immediately enters a board-visible tactical hold with no redundant modal or Resume button. Accepted movement resumes; Abandon Run is a secondary destructive action with confirmation. |
 | COSMIC constellation planning window | Automatic on each new wave | Remove | Constellations, portals, and offers arrive during uninterrupted real-time play. COSMIC receives a larger but finite voluntary hold budget; only the player can stop the board. |
@@ -60,6 +64,7 @@ The existing deliberate-direction resume gate and the reserved HUD/board layout 
 | Critical run/session recovery | Blocking technical failure | Keep | Only shown when play cannot continue safely; Retry stays in context. |
 | Explicit Lab details, breeding picker/reveal, Contracts, Season | Player opens the feature | Keep | These are player-pulled overlays or destination screens. |
 | Achievement/Genome Research feedback | In-run discovery | Keep as toast | Nonblocking, time-limited feedback with no forced action. |
+| Home Research relic | Explicit contextual world object | Keep as secondary navigation | Its five runes open the same one free Genome Workbench reached by the legacy `/codex` compatibility route. It never auto-opens, competes with Launch as a primary command, or creates a parallel Archive/Codex choice; the Research Record is subordinate. |
 
 Legacy `StarterSelection`, `SaveProgressBanner`, and generic `OverlayHint`
 components remain available for rollback or reuse, but FTUE v2 does not mount
@@ -122,14 +127,27 @@ The migration backfill invokes this operation for existing player rows, then add
 ## Launch state machine
 
 ```text
-idle → authenticating → bootstrapping → loading-run → board-ready
-  ↑                                                   │
-  └──────────────── retry ← failed ←──────────────────┘
+Home:  idle → authenticating → bootstrapping → setup-ready
+         ↑                                  │
+         └──────── retry ← failed ←─────────┘
+
+Setup: ready → creating committed run → held board
+          ↑                 │
+          └── retry ← failed┘
 ```
 
-Only one transition chain may run at a time. Errors remain on Home with an actionable Retry. Initialization never redirects to the Lab. The route handoff contains transient run initialization only; it is not player progress and is consumed once by the game page.
+Only one transition chain may run at a time. Authentication/bootstrap errors
+remain on Home with an actionable Retry; committed-start errors remain in Setup
+with the shown draft intact. Initialization never redirects to the Lab. Home's
+handoff contains only transient bootstrap/setup context, not a run, Energy spend,
+or player progress. Setup's Start owns idempotent session creation and opens the
+held board.
 
-## Rollout phases
+## Historical rollout record
+
+The following rollout phases and deployment evidence describe the July 2026
+FTUE launch. They do not override the current Home → Setup → Start ownership
+above.
 
 1. Bootstrap RPC/API and Primal defaults
 2. Existing-player repair/backfill
@@ -178,7 +196,9 @@ or false FTUE value still selects its coherent rollback path, and deployment
 - A direct authenticated guest session start repairs a missing player through
   the same idempotent bootstrap before rate, Energy, or session writes.
 - Existing ownership, equipped choice, dynasty, resources, and progress are preserved.
-- A fresh guest reaches a held board with one Launch action and PRIMAL equipped.
+- A fresh guest reaches fully preset Setup with one Launch action and PRIMAL
+  equipped, then reaches the held board through deliberate Start within the
+  Cohesive Journey's three-action cap; Launch itself creates no run.
 - The first safe keyboard or flick direction starts movement; no timer advances beforehand.
 - No Lab, Contracts, collection, account, offline-reward, or optional tutorial modal appears before the first result.
 - Consent and Launch bounding boxes never overlap in supported portrait or landscape viewports.
@@ -187,4 +207,4 @@ or false FTUE value still selects its coherent rollback path, and deployment
 
 ## Adjacent improvements admitted by this policy
 
-Changes discovered during implementation may be included when they directly reduce interruption or inconsistent state: atomic equip with dynasty synchronization, unlock-and-equip, Play with this Snake, a clear Lab-to-Home path, reduced-motion badges, and replacing Cyber onboarding fallbacks with Primal. New progression scope, economy tuning, catalog redesign, or gameplay-rule changes remain outside this plan.
+Changes discovered during implementation may be included when they directly reduce interruption or inconsistent state: atomic equip with dynasty synchronization, unlock-and-equip, Play with this Snake, context-preserving Lab-to-Setup return when Setup opened the Lab (or Lab-to-Home when Home did), reduced-motion badges, and replacing Cyber onboarding fallbacks with Primal. New progression scope, economy tuning, catalog redesign, or gameplay-rule changes remain outside this plan.

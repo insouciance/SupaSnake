@@ -1,6 +1,6 @@
 # SupaSnake — Tactical Genome v2
 
-**Version:** 2.3
+**Version:** 2.4
 
 **Date:** 3 August 2026
 
@@ -10,7 +10,7 @@ Constitution v1.13.
 This contract supersedes the active catalog, tuning, FTUE, portal-Genome,
 Strain, Splice, and outcome-cap rules in `BUILDCRAFT_GENOME_DESIGN.md` v1.1.
 That document remains the historical foundation for the Genome vocabulary,
-lineage, offer gravity, body expression, Codex, and server-verification model.
+lineage, offer gravity, body expression, Research, and server-verification model.
 Where the two disagree, this document and the Constitution win. Historical
 Genome v1 sessions, records, and discoveries remain readable under their
 original rules.
@@ -40,10 +40,12 @@ every run.
 
 ## 2. Tactical Loom
 
-An ordinary Gene Offer begins as a physical board relic, not a modal. The
-simulation freezes only when the snake collects that relic; portal MUTATE
-freezes only after the player deliberately opens MUTATE. In both cases the
-board remains visible as decision context. The three verbs are:
+An ordinary cadence opportunity begins as a physical board relic, not an offer
+or modal. Only deliberate collection creates the Gene Offer and rolls its
+candidates; merely reaching the food threshold never does either. The simulation
+freezes only when the snake collects that relic; portal MUTATE freezes only after
+the player deliberately opens MUTATE. In both cases the board remains visible as
+decision context. The three offer verbs are:
 
 - **THREAD** — take the focused candidate into an open locus;
 - **FORK** — pursue the focused candidate through an explicit replacement when
@@ -99,7 +101,10 @@ non-edible and non-colliding. Phase Gate entry and exit cells are visible before
 traversal. Coilkeeper Seals and used-gate Scars are rendered as raised solid
 cells for exactly as long as they remain in `permanentTerrain`; they also enter
 the Pathline obstacle inventory and the snake's packing read. A reducer-authored
-lethal cell may never exist outside the rendered obstacle inventory.
+lethal cell may never exist outside the rendered obstacle inventory. Every
+collidable or lethal Genome-authored board cell is visible before contact.
+Target, gate, route, and permanent-terrain visuals derive only from authoritative
+reducer state, never from client-inferred decoration.
 
 Gilded Fork is represented by two honest physical food cells under one target
 identity: a neutral **SAFE** branch and a gold **GREED** branch. Both are edible
@@ -174,6 +179,12 @@ analytics dashboard. The authoritative Genome engine remains the single source
 for every displayed reaction and calculation, and Workbench code remains outside
 the live `/game` dependency graph.
 
+Player-facing copy calls this instrument **Workbench** or **Genome Research**.
+`Codex` survives only where compatibility requires it—the `/codex` route and
+legacy/internal vocabulary such as `player_codex` and `CodexDiscoveryType`—and
+never names a second player-facing product surface. This contract does not
+require broad renaming of those compatibility identifiers.
+
 Research discovery identity includes the Genome rules version. Existing discovery
 history is retained as v1; it is never rewritten or bulk-promoted into v2. A v2
 run can therefore discover a semantically revised entry whose stable text ID was
@@ -194,10 +205,12 @@ Only collecting the relic rolls and reveals the candidate pair. Ignoring it or
 letting it expire advances the separate opportunity cursor without creating an
 offer, DECLINE, PASS, Bond, or hidden candidate history. Portal MUTATE still
 opens its candidates immediately after the player deliberately chooses that
-verb. A revealed DECLINE is a
-real lost build opportunity; the offer algorithm must therefore normally
-present two viable but strategically different categories, while preserving a
-deliberate wildcard and deterministic surprise.
+verb. The next ordinary interval is sampled and begins only when the current
+relic resolves through collection or expiry; foods eaten during the relic's
+lifetime do not count toward that next interval. A revealed DECLINE is a real
+lost build opportunity; the offer algorithm must therefore normally present two
+viable but strategically different categories, while preserving a deliberate
+wildcard and deterministic surprise.
 
 ## 4. Active v2 gene roster
 
@@ -226,7 +239,7 @@ past it. Magnetism and magnet-derived mechanics are not active in v2.
 | Constellation Crown | FLUX | COSMIC perfect-wave planning with explicit star states |
 
 The TypeScript runtime catalog is the arithmetic/copy source used by engine,
-projection, Codex, and results. SQL carries a versioned mirror for durable
+projection, Workbench, and results. SQL carries a versioned mirror for durable
 history and deployment compatibility. A parity test must reject ID, recipe,
 tag, or rules-version drift.
 
@@ -366,7 +379,7 @@ Recipes and effects may be discovered, but rules and consequences are never
 hidden. The live Loom shows every directly connected branch for the focused
 choice and its exact current fate; Research exposes the complete catalog,
 unrelated recipes, experiments, and arithmetic so players can prepare without
-memorizing the Codex.
+memorizing a reference catalog.
 
 Dynasty signatures are always part of their run's pool:
 
@@ -460,16 +473,20 @@ checkpoint recovery.
 
 The live engine and authoritative replay consume the same deterministic event
 journal. Stable IDs bind offers, instances, targets, portal decisions, terrain,
-and settlement. Reconnect and recovery restore all six loci, retired/Ash state,
-outstanding offers, target queue, Bonds, Escrow, Stake, Carry, permanent terrain,
-RNG cursor, and latest accepted active-play elapsed time. Offline wall time is a
-validation ceiling, not run progress; resuming after hours offline cannot make
-the next legitimate checkpoint appear to rewind.
+and settlement. Reconnect and recovery restore the stamped interaction
+sub-version; the ordinary opportunity cursor and next-due food; any outstanding
+relic's authoritative cell, placement/spawn state, and remaining expiry ticks;
+all six loci; retired/Ash state; any revealed outstanding offer; target queue;
+Bonds, Escrow, Stake, Carry, permanent terrain, RNG cursor, and latest accepted
+active-play elapsed time. Offline wall time is a validation ceiling, not run
+progress; resuming after hours offline cannot make the next legitimate checkpoint
+appear to rewind.
 
 Every save and completion is idempotent. A duplicate request cannot consume an
 offer twice, add growth twice, release Escrow twice, settle twice, or write a
-second Codex discovery. Invalid client-authored Genome multipliers, target
-resolutions, or reward totals are rejected; the server derives them from replay.
+second version-scoped Research discovery record. Invalid client-authored Genome
+multipliers, target resolutions, or reward totals are rejected; the server
+derives them from replay.
 
 Terminal presentation retains a non-economic contact diagnostic alongside the
 persisted wall/self cause: exact cell plus border, own body, ordinary permanent
@@ -479,11 +496,14 @@ falsifiable and gives board-render regressions a precise source to investigate.
 
 ## 11. Required telemetry and balance proof
 
-Track offer category diversity, THREAD/FORK/DECLINE, Recode source/target and
-cost, Strain and Splice paths, gene state activation/miss, target queue depth,
-body/committed occupancy, terrain creation, portal actions, Carry, Bonds,
-Escrow, Stake, Phoenix/Ash, BANK/crash, Genome contribution, Ascendance, and
-final Yield.
+Track the start-stamped interaction sub-version; sampled opportunity interval and
+cursor; relic placement attempt, retry, and success; relic collection and expiry;
+foods eaten during each live relic lifetime; offer category diversity;
+THREAD/FORK/DECLINE; UNFOLD DETAILS open/close and focused reaction; Recode
+source/target and cost; Strain and Splice paths; gene state activation/miss;
+target queue depth; body/committed occupancy; terrain creation; portal actions;
+Carry, Bonds, Escrow, Stake, Phoenix/Ash, BANK/crash, Genome contribution,
+Ascendance, and final Yield.
 
 Balance tests must model early, middle, and late runs across all Dynasties and
 skill bands. The intended observed spread is deliberately broad:

@@ -3,7 +3,7 @@
 **Status:** cockpit refinement live in production
 
 **Date:** 2026-07-24; rate-event/touch amendments 2026-07-29; control-grace and
-COSMIC hold amendment 2026-07-30
+COSMIC hold amendment 2026-07-30; Genome v1.13 reconciliation 2026-08-03
 
 **Implementation checkpoint:** the 2026-07-24 refinement is live behind
 `NEXT_PUBLIC_HUD_COCKPIT_V1` from final release commit `fc0fea4`, Vercel
@@ -39,8 +39,9 @@ history; where they conflict, this contract is authoritative.
   and five graphical strain gauges occupy the lower deck. Runtime values never
   resize or move the arena.
 - Active-run gene and strain identity is graphical and accessible. Full names
-  and consequences belong in strategic decisions, results, Codex, accessible
-  names, and pointer titles—not unreadable permanent microtext.
+  and consequences belong in strategic decisions, results, Genome Research/the
+  Workbench, accessible names, and pointer titles—not unreadable permanent
+  microtext.
 - Telemetry, prompts, controls, tactical-hold guidance, and rate changes never
   overlay the playable board. Strategic gene, mutation, portal, infusion, and
   strain-surge decisions are the intentional frozen-arena exception. Growth and
@@ -51,6 +52,21 @@ history; where they conflict, this contract is authoritative.
 - A strategic dialog owns focus and input atomically. Directions, flick, pause,
   and camera shortcuts cannot leak through. BANK ends the run;
   non-terminal choices return to a deliberate tactical hold.
+- An ordinary Genome opportunity appears in the arena as a physical Gene relic
+  after a deterministic 6 ± 2 foods and lives for 40 resolved movement ticks.
+  Appearance and expiry are uninterrupted play, never an automatic offer or
+  hold. Only deliberate collection creates the offer, rolls candidates, and
+  opens the strategic dialog. The next interval begins at collection/expiry
+  resolution; foods eaten during the relic lifetime do not count toward it.
+- The collected-relic Loom opens neutral and simple: two equal rune choices show
+  written Strain identity and one salient consequence, with DECLINE quiet.
+  Selection reveals trigger/gain/risk; only per-offer **UNFOLD DETAILS** exposes
+  the complete affected run-stamped route, connected Splices, changed locus,
+  and material ledgers. It resets closed for the next offer.
+- Persistent on-demand Genome detail lives in one free player-facing Workbench.
+  Results, Lab links, and the historical `/codex` compatibility route enter that
+  same instrument; the Research Record is subordinate, never a second archive or
+  rules surface.
 - Pause has no menu. Space is the primary desktop pause key; P and Escape remain
   secondary. Pause immediately freezes the simulation while preserving the
   visible board for tactical planning. A later accepted safe direction,
@@ -97,7 +113,7 @@ The run cockpit must be:
   microcopy;
 - **stable:** telemetry updates never resize, shift, or cover the board;
 - **learnable:** a gene uses the same icon in its offer, held slot, strategic
-  decision, results, and Codex;
+  decision, results, and Workbench Research;
 - **premium:** restrained materials, precise alignment, controlled motion, and
   strong hierarchy replace rows of generic glowing chips;
 - **competitive:** a spectator can read score, run value, mode, build, and strain
@@ -299,7 +315,8 @@ lighting role:
 - snake: the largest continuous form, dynasty-authored body, strong head/body
   distinction and a clean rim against every floor quadrant;
 - food: compact target/beacon silhouette with a readable base contact point;
-- mutation: unmistakable helix/double form, never a recolored food block;
+- physical Gene relic: unmistakable rune/helix form, never a recolored food
+  block; its finite lifetime is visible without becoming an off-board prompt;
 - Genome target: the ordinary objective silhouette remains learned while a
   gene-specific halo/sigil and finite route-budget ring explain the transformed
   rule; inactive history is never drawn as a live target; Gilded Fork draws a
@@ -319,9 +336,13 @@ and board cell. This is diagnostic recognition, not a new result layer or
 reward fact. It distinguishes border, self, arena/calcified/Fortress terrain,
 Coilkeeper Seal, and Phase Gate Scar without placing anything over live play.
 
-The grayscale test must still separate snake, food, mutation, portal, boundary,
+The grayscale test must still separate snake, food, Gene relic, portal, boundary,
 and aim telegraph. Bright background points under the arena are suppressed
 before compensating by making every gameplay object glow more.
+
+Every collidable or lethal Genome-authored cell is visible before contact.
+Target, gate, route, and permanent-terrain visuals derive from authoritative
+reducer state, never client-inferred decoration.
 
 ### Camera, framing, and screen composition
 
@@ -411,7 +432,7 @@ and make another element jump.
 | 3 | Pause/reset controls | Compact command deck, 44px targets, never over the arena |
 | 3 | Energy | Compact context beside mode; visually secondary but available during a run |
 | 4 | Snake name/generation | Pre-run and results, not primary during a live run |
-| 4 | Gene effects/costs and tier names | Strategic decisions, results, and Codex only |
+| 4 | Gene effects/costs and tier names | Strategic decisions, results, and Workbench Research only |
 
 ## 7. Cockpit composition
 
@@ -545,16 +566,19 @@ The six held slots become a visual loadout rack.
   render splice initials.
 - Hover/focus may reveal a tooltip on pointer devices, but no gameplay
   information may be hover-only.
-- Strategic choices show icon, full name, effect, cost, strain, and state at
-  readable sizes.
+- A strategic choice's first read shows the icon, full name, written Strain
+  badge, and one highest-salience consequence at readable sizes. Selection
+  reveals trigger, gain, and risk; full affected route/Splice/locus/ledger state
+  stays behind explicit UNFOLD DETAILS except Recode's forced exact preview.
 
 ### Offer-to-rack learning loop
 
-1. A gene offer shows the icon at 48–64px beside its full readable name.
-2. Choosing it produces one short icon-to-socket transition while the board is
-   held.
-3. The same icon persists in the rack, results, Genome Card, and Codex.
-4. Results and Codex remain the player's persistent on-demand legend.
+1. Collecting the physical relic opens a neutral Loom whose two equal choices
+   show the icon at 48–64px beside the full readable name and Strain badge.
+2. Selecting and confirming a choice produces one short icon-to-socket
+   transition while the board is held.
+3. The same icon persists in the rack, results, Genome Card, and Workbench.
+4. Results and Workbench Research remain the player's persistent on-demand legend.
 
 ### Icon brief for all offerable genes
 
@@ -678,16 +702,24 @@ pause telemetry, replay after a strategic overlay, or become an ambient pulse.
 
 ### Gene, portal, and surge choices
 
-- Present each choice as a dominant centered modal over the visibly frozen
-  arena on desktop, landscape, and portrait.
+- Ordinary cadence renders only the physical Gene relic in-world. Placement and
+  expiry never freeze, reveal candidates, or open a modal. Deliberate collection
+  creates the offer; explicit portal MUTATE and surge choices likewise begin only
+  after the player opens their gameplay verb.
+- Present each resulting choice as a dominant centered modal over the visibly
+  frozen arena on desktop, landscape, and portrait. The ordinary Loom opens with
+  no selection: equal A/B choices show written Strain identity and one salient
+  consequence, DECLINE stays quiet, and focus/hover is navigation rather than
+  consent. Selection reveals trigger/gain/risk; UNFOLD DETAILS alone expands the
+  affected route, connected Splices, changed locus, and material ledgers.
 - Use a full-cockpit scrim, restrained backdrop blur, readable consequence
   copy, and enough panel width for side-by-side comparison where space permits.
   The smallest portrait may scroll inside the dialog rather than shrink copy.
 - Preserve focus trap, visible focus, advertised keyboard shortcuts, and the
   atomic engine hold. No directional, flick, pause, or camera input may
   leak through.
-- BANK proceeds to Results. PASS, decline, pick, INFUSE→gene, and
-  INFUSE→surge resolve fully before entering the deliberate tactical hold.
+- BANK proceeds to Results. CONTINUE, DECLINE, confirmed gene choice, MUTATE, and
+  surge choice resolve fully before entering the deliberate tactical hold.
 
 ## 12. Visual system
 
@@ -835,7 +867,7 @@ Implementation rules:
   capacity without explanatory prose.
 - Strain array appears only after strain tags unlock.
 - Portal risk instrument is introduced contextually at the first portal.
-- Full labels live in strategic choices, results, and Codex, not in motion.
+- Full labels live in strategic choices, results, and Workbench Research, not in motion.
 
 After the default is proven, add optional settings:
 
@@ -909,7 +941,7 @@ portal/combo/anomaly transitions do not move the board or neighboring modules.
 
 - Create all gene, splice, and strain SVGs.
 - Replace `MutationHUD` with `GeneRack` and `StrainMeterHUD` with `StrainArray`.
-- Integrate icons into choice cards, results, Genome Card, and Codex.
+- Integrate icons into choice cards, results, Genome Card, and Workbench.
 - Add spent, dual-strain, splice, suppressed, tier, and empty states.
 
 **Exit:** no monograms or 8–11px gene/strain labels remain in active gameplay;

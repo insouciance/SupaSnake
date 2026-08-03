@@ -2,7 +2,7 @@
 
 **For:** the implementing agents (Opus 5 max, GPT 5.6 max) running in parallel on
 feature branches. **Prepared:** 25 July 2026 from Constitution v1.3; maintained
-under the current `docs/PRODUCT_CONSTITUTION.md` (v1.12) and
+under the current `docs/PRODUCT_CONSTITUTION.md` (v1.13) and
 `docs/GROUND_TRUTH.md` (code-verified baseline @ `main` fd22c0c era).
 **Owner:** available for escalations; batch them.
 
@@ -66,7 +66,7 @@ stale; when code and GT disagree, the code is the truth and the WP spec is the g
 ## 4. Kickoff briefing — paste this at the top of each agent session
 
 > You are implementing SupaSnake work packages. Authority:
-> `docs/PRODUCT_CONSTITUTION.md` v1.12 (design law — its §4 Rules and §12.2 caps
+> `docs/PRODUCT_CONSTITUTION.md` v1.13 (design law — its §4 Rules and §12.2 caps
 > are inviolable). Process: `docs/IMPLEMENTATION_HANDOFF.md` (your WP, the branch
 > and migration protocol, the decision/escalation rules). Baseline facts:
 > `docs/GROUND_TRUTH.md` (pre-implementation; code outranks it once WPs land).
@@ -239,6 +239,16 @@ whole wave:
 5. **WP-2.10b** strain-interactive weeks
 6. **WP-2.09** tuning trio (Molt shed+speed, hold budget, PASS copy)
 7. **WP-2.08** the Workbench
+
+**WP-2.08 surface supersession (owner ruling, 3 August 2026):** the execution
+order above remains historical fact, but its paired Codex/Workbench package shape
+does not remain current scope. Constitution v1.13 and
+`docs/game/TACTICAL_GENOME_V2.md` §3.1 require one free player-facing Genome
+Workbench. `/codex` is a compatibility adapter into that same instrument;
+personal discovery and history form a subordinate Research Record, never a
+parallel Archive/Codex primary choice or duplicate rules surface. Any remaining
+WP-2.08 follow-up implements that singular shape while preserving legacy/internal
+compatibility identifiers.
 
 Highest-priority defect in the wave: the validation bug is a **live DNA-loss
 path**, not only lost progression — plus a downward write of three player
