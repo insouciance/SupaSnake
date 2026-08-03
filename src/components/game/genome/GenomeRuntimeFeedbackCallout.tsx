@@ -35,7 +35,7 @@ export function GenomeRuntimeFeedbackCallout({
       role="status"
       aria-live="polite"
     >
-      <strong className="truncate font-display text-[10px] uppercase tracking-[0.1em] sm:text-xs">
+      <strong className="truncate font-display text-[clamp(12px,2.8vw,14px)] uppercase tracking-[0.04em]">
         {feedback.label}
       </strong>
     </div>

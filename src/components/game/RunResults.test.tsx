@@ -204,7 +204,7 @@ describe('Layer 1', () => {
       <RunResults
         {...props({
           outcome: 'crashed',
-          collisionDetail: 'Contact confirmed: Phase Gate Scar · cell 8,12',
+          collisionDetail: 'Recorded impact: Phase Gate Scar · cell 8,12',
         })}
       />
     );
@@ -215,7 +215,7 @@ describe('Layer 1', () => {
       <RunResults
         {...props({
           outcome: 'extracted',
-          collisionDetail: 'Contact confirmed: Phase Gate Scar · cell 8,12',
+          collisionDetail: 'Recorded impact: Phase Gate Scar · cell 8,12',
         })}
       />
     );

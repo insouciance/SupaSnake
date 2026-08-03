@@ -897,7 +897,7 @@ export function RunResults({
           </p>
           {outcome === 'crashed' && collisionDetail ? (
             <p
-              className="font-mono text-xs text-beige/75"
+              className="font-mono text-sm text-beige/75"
               data-testid="results-collision-diagnostic"
             >
               {collisionDetail}

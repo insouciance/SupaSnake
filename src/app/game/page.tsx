@@ -282,10 +282,10 @@ function collisionDiagnosticLabel(
   if (!diagnostic) return null;
   const coordinate = `${diagnostic.cell.x},${diagnostic.cell.z}`;
   if (diagnostic.contact === 'border') {
-    return `Contact confirmed: outer border · cell ${coordinate}`;
+    return `Recorded impact: outer border · cell ${coordinate}`;
   }
   if (diagnostic.contact === 'self') {
-    return `Contact confirmed: own body · cell ${coordinate}`;
+    return `Recorded impact: own body · cell ${coordinate}`;
   }
   const source = diagnostic.terrainSource === 'phase_gate_scar'
     ? 'Phase Gate Scar'
@@ -298,7 +298,7 @@ function collisionDiagnosticLabel(
           : diagnostic.terrainSource === 'fortress'
             ? 'FERAL Fortress block'
             : 'solid terrain';
-  return `Contact confirmed: ${source} · cell ${coordinate}`;
+  return `Recorded impact: ${source} · cell ${coordinate}`;
 }
 
 const DIRECTION_BY_KEY: Record<string, Direction> = {
