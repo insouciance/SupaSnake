@@ -62,15 +62,65 @@ async function auditLoom(browser, viewport) {
   await overlay.waitFor({ state: 'visible' });
   await page.waitForTimeout(350);
 
+  // First prove the simple-first contract before opening any analysis. The
+  // Loom must begin neutral: equal candidates, no hidden recommendation, no
+  // confirmable answer, and no detailed reaction map competing with Snake.
+  const neutral = await page.evaluate(() => {
+    const optionA = document.querySelector('[data-testid="gene-option-0"]');
+    const optionB = document.querySelector('[data-testid="gene-option-1"]');
+    const confirm = document.querySelector('[data-testid="loom-confirm"]');
+    return {
+      optionASelected: optionA?.getAttribute('aria-checked'),
+      optionBSelected: optionB?.getAttribute('aria-checked'),
+      confirmDisabled: confirm instanceof HTMLButtonElement ? confirm.disabled : null,
+      hasPrompt: document.querySelector('[data-testid="loom-empty-prompt"]') !== null,
+      hasDetailsToggle: document.querySelector('[data-testid="loom-details-toggle"]') !== null,
+      hasReactionMap: document.querySelector('[data-testid="loom-full-reaction-map"]') !== null,
+    };
+  });
+  invariant(
+    neutral.optionASelected === 'false' && neutral.optionBSelected === 'false',
+    `loom/${viewport.name}: a fresh offer preselected an answer ${JSON.stringify(neutral)}`
+  );
+  invariant(neutral.confirmDisabled === true, `loom/${viewport.name}: neutral offer can confirm`);
+  invariant(neutral.hasPrompt, `loom/${viewport.name}: neutral first-read prompt missing`);
+  invariant(!neutral.hasDetailsToggle, `loom/${viewport.name}: details exist before a choice`);
+  invariant(!neutral.hasReactionMap, `loom/${viewport.name}: reaction map opened before a choice`);
+
   // The fixture's real names verify component wiring. This deliberately long
   // replacement verifies that the same rendered slots remain readable when a
   // catalog label reaches the width that previously became an ellipsis.
   await page.evaluate(() => {
     const longName = 'Compound Interest';
     const candidate = document.querySelector('[data-testid="gene-option-0-name"]');
-    const focused = document.querySelector('[data-testid="loom-focused-gene-name"]');
     if (candidate) candidate.textContent = longName;
-    if (focused) focused.textContent = longName;
+  });
+  await settle(page);
+
+  await page.locator('[data-testid="gene-option-0"]').click();
+  const selected = await page.evaluate(() => {
+    const toggle = document.querySelector('[data-testid="loom-details-toggle"]');
+    return {
+      optionASelected: document.querySelector('[data-testid="gene-option-0"]')?.getAttribute('aria-checked'),
+      confirmDisabled: (document.querySelector('[data-testid="loom-confirm"]') instanceof HTMLButtonElement)
+        ? document.querySelector('[data-testid="loom-confirm"]').disabled
+        : null,
+      hasQuickRead: document.querySelector('[data-testid="loom-quick-read"]') !== null,
+      toggleExpanded: toggle?.getAttribute('aria-expanded') ?? null,
+      hasReactionMap: document.querySelector('[data-testid="loom-full-reaction-map"]') !== null,
+    };
+  });
+  invariant(selected.optionASelected === 'true', `loom/${viewport.name}: candidate selection did not register`);
+  invariant(selected.confirmDisabled === false, `loom/${viewport.name}: selected candidate cannot confirm`);
+  invariant(selected.hasQuickRead, `loom/${viewport.name}: trigger/gain/risk quick read missing`);
+  invariant(selected.toggleExpanded === 'false', `loom/${viewport.name}: details did not start folded`);
+  invariant(!selected.hasReactionMap, `loom/${viewport.name}: details opened without UNFOLD`);
+
+  await page.locator('[data-testid="loom-details-toggle"]').click();
+  await page.locator('[data-testid="loom-full-reaction-map"]').waitFor({ state: 'visible' });
+  await page.evaluate(() => {
+    const focused = document.querySelector('[data-testid="loom-focused-gene-name"]');
+    if (focused) focused.textContent = 'Compound Interest';
   });
   await settle(page);
 
@@ -105,6 +155,7 @@ async function auditLoom(browser, viewport) {
       .filter((button) => getComputedStyle(button).display !== 'none')
       .map((button) => ({ id: button.getAttribute('data-testid') ?? button.textContent?.trim().slice(0, 30) ?? 'button', ...rect(button) }));
     const material = [
+      ...document.querySelectorAll('[data-testid="loom-quick-read"] p'),
       ...document.querySelectorAll('[data-testid="loom-lite"] p'),
       ...document.querySelectorAll('[data-testid="loom-lite"] button'),
     ].map((element) => ({
