@@ -277,8 +277,22 @@ describe('GenomeV2Runtime deterministic decisions', () => {
       interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
       cadenceMultiplier: 2,
     });
-    expect(runtime.nextCadenceOpportunityAtFood()).toBeGreaterThanOrEqual(8);
-    expect(runtime.nextCadenceOpportunityAtFood()).toBeLessThanOrEqual(16);
+    const firstAt = runtime.nextCadenceOpportunityAtFood();
+    expect(firstAt).toBeGreaterThanOrEqual(8);
+    expect(firstAt).toBeLessThanOrEqual(16);
+
+    const collectedAt = firstAt + 3;
+    expect(runtime.openCadenceOffer(1, collectedAt)).not.toBeNull();
+    expect(runtime.declineOffer(2)).toBe(true);
+    const afterCollection = runtime.nextCadenceOpportunityAtFood();
+    expect(afterCollection - collectedAt).toBeGreaterThanOrEqual(8);
+    expect(afterCollection - collectedAt).toBeLessThanOrEqual(16);
+
+    const expiredAt = afterCollection + 2;
+    expect(runtime.expireCadenceRelic(expiredAt)).toBe(true);
+    const afterExpiry = runtime.nextCadenceOpportunityAtFood();
+    expect(afterExpiry - expiredAt).toBeGreaterThanOrEqual(8);
+    expect(afterExpiry - expiredAt).toBeLessThanOrEqual(16);
   });
 
   it('expires a physical portal without consuming an offer roll', () => {

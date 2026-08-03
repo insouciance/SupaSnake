@@ -147,18 +147,22 @@ test.describe('Genome v2 live player journey', () => {
       contentType: 'image/png',
     });
 
-    // Confirmation never leaks into movement. The held-state direction gate
-    // proves the engine is still waiting; the pointer-transparent celebration
-    // deliberately occupies the shared status rail while the first deliberate
-    // flick releases that hold. Abandon now lives one deliberate level deeper
-    // in the pause menu, so it is not a valid signal for this cockpit state.
-    const resumeGate = page.getByTestId('resume-gate');
-    await expect(resumeGate).toBeVisible();
-    await expect(resumeGate).toContainText('Choose Your Line');
+    // Confirmation never leaks into movement. The pointer-transparent
+    // celebration deliberately occupies the cockpit's shared status rail, so
+    // the rail's `resume-gate` is temporarily not rendered. The authoritative
+    // cockpit state still has to remain held until the first deliberate flick.
+    const cockpit = page.getByTestId('game-hud');
+    await expect(cockpit).toHaveAttribute('data-state', 'held');
+    await expect(page.getByTestId('tactical-hold')).toContainText(
+      'Choose a safe direction to resume'
+    );
+    await expect(page.getByRole('button', { name: 'Abandon run' })).toBeVisible();
     const flickSurface = page.getByTestId('flick-surface');
     await expect(flickSurface).toBeVisible();
     await flickRight(flickSurface);
-    await expect(resumeGate).toBeHidden();
+    await expect(cockpit).toHaveAttribute('data-state', 'active');
+    await expect(page.getByTestId('tactical-hold')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Pause game (Space)' })).toBeVisible();
     await expect(callout).toBeVisible();
 
     await expect

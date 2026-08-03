@@ -40,9 +40,18 @@ export function GenomeCommitCallout({
             <strong className="truncate font-display text-xs uppercase tracking-[0.1em] text-cosmic sm:text-sm">
               {model.title}
             </strong>
-            <span className="hidden truncate font-body text-[10px] text-beige/60 sm:block">
-              {model.rule}
-            </span>
+            {held ? (
+              <span
+                className="shrink-0 whitespace-nowrap font-mono text-[8px] uppercase tracking-[0.06em] text-venom-orange sm:text-[9px]"
+                data-testid="tactical-hold"
+              >
+                Choose a safe direction to resume
+              </span>
+            ) : (
+              <span className="hidden truncate font-body text-[10px] text-beige/60 sm:block">
+                {model.rule}
+              </span>
+            )}
           </div>
           {model.strains && model.strains.length > 0 ? (
             <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2">

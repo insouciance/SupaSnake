@@ -129,7 +129,12 @@ test.describe('Genome capability UI', () => {
     // ramp, which is the regression that made Ascetic unknowable on a phone.
     await expect(page.getByTestId('heirloom-summary')).toContainText(/heirlooms/i);
     await expect(page.getByTestId('build-seed')).not.toContainText(/heirlooms/i);
-    await expect(page.getByRole('link', { name: /open codex/i })).toBeVisible();
+    const researchLink = page.getByRole('link', {
+      name: 'Open Genome Research',
+      exact: true,
+    });
+    await expect(researchLink).toBeVisible();
+    await expect(researchLink).toHaveAttribute('href', '/codex');
 
     const freeMode = page.getByTestId('mode-free');
     await freeMode.click();
