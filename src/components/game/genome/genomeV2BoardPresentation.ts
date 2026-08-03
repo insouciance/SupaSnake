@@ -1,0 +1,504 @@
+import {
+  GENOME_V2_CONFIG,
+  GENOME_V2_SPLICES,
+  GENOME_V2_YIELD_SCALE,
+  genomeV2HasGene,
+  genomeV2HasSplice,
+  type GenomeV2Cell,
+  type GenomeV2ExclusiveTargetKind,
+  type GenomeV2State,
+  type GenomeV2TargetLifecycle,
+} from '@/shared/game/genomeV2';
+
+export type GenomeV2BoardTerrainSource =
+  | 'coilkeeper_seal'
+  | 'phase_gate_scar';
+
+export interface GenomeV2BoardTarget {
+  targetId: string;
+  kind: 'crown_future' | GenomeV2ExclusiveTargetKind;
+  lifecycle: GenomeV2TargetLifecycle;
+  cell: GenomeV2Cell;
+  /** Physical branch identity for the mutually exclusive Gilded Fork. */
+  branchChoice: 'ordinary' | 'gilded' | null;
+  /** Circuit leg two occupies the original destination after the relay. */
+  leg: 1 | 2;
+  edible: boolean;
+  collidable: boolean;
+  remainingMoves: number | null;
+  totalMoveBudget: number | null;
+  budgetFraction: number | null;
+  budgetExpired: boolean;
+  rewardLabel: string;
+  statusLabel: string;
+}
+
+export interface GenomeV2BoardGate {
+  targetId: string;
+  entry: GenomeV2Cell;
+  exit: GenomeV2Cell;
+}
+
+export interface GenomeV2BoardTerrainCell extends GenomeV2Cell {
+  source: GenomeV2BoardTerrainSource;
+  terrainId: string;
+}
+
+export interface GenomeV2BoardProjection {
+  targets: GenomeV2BoardTarget[];
+  gates: GenomeV2BoardGate[];
+  permanentTerrain: GenomeV2BoardTerrainCell[];
+  /** Exact lethal cells for pathline danger and trail-packing presentation. */
+  occupiedCells: GenomeV2Cell[];
+}
+
+export interface GenomeV2RuntimeSignal {
+  id:
+    | 'target'
+    | 'mirror'
+    | 'loan'
+    | 'bonds'
+    | 'phoenix'
+    | 'overgrowth'
+    | 'dilation'
+    | 'anchor';
+  label: string;
+  tone: 'objective' | 'risk' | 'ready' | 'pressure';
+}
+
+export interface GenomeV2BoardFeedback {
+  eventId: string;
+  label: string;
+  tone: 'success' | 'warning' | 'risk';
+}
+
+function cellKey(cell: GenomeV2Cell): string {
+  return `${cell.x}:${cell.z}`;
+}
+
+function sameCell(left: GenomeV2Cell, right: GenomeV2Cell): boolean {
+  return left.x === right.x && left.z === right.z;
+}
+
+function targetName(kind: GenomeV2ExclusiveTargetKind): string {
+  switch (kind) {
+    case 'gold_trail':
+      return 'GILDED';
+    case 'live_wire':
+      return 'LIVE WIRE';
+    case 'circuit_run':
+      return 'CIRCUIT';
+    case 'coilkeeper':
+      return 'COILKEEPER';
+    case 'wall_rush':
+      return 'WALL RUSH';
+    case 'phase_gate':
+      return 'PHASE GATE';
+  }
+}
+
+function targetRewardLabel(
+  state: GenomeV2State,
+  kind: GenomeV2ExclusiveTargetKind,
+  sealedAreaCells: number
+): string {
+  switch (kind) {
+    case 'gold_trail':
+      return genomeV2HasSplice(state, 'splice_gilded_fork')
+        ? '×4 GREED'
+        : '×3 YIELD';
+    case 'live_wire':
+      return '×3 YIELD';
+    case 'circuit_run':
+      return genomeV2HasSplice(state, 'splice_perfect_circuit')
+        ? '×5 YIELD'
+        : '×4 YIELD';
+    case 'coilkeeper': {
+      const tier = [...GENOME_V2_CONFIG.coilkeeper.rewardTiers]
+        .reverse()
+        .find((entry) => sealedAreaCells >= entry.minimumCells);
+      const bps = genomeV2HasSplice(state, 'splice_worldcoil')
+        ? Math.min(
+            GENOME_V2_CONFIG.splices.worldcoilMaximumMultiplierBps,
+            (tier?.multiplierBps ?? 0) + sealedAreaCells * 1_000
+          )
+        : (tier?.multiplierBps ?? 0);
+      return bps > 0 ? `×${bps / GENOME_V2_YIELD_SCALE} YIELD` : 'SEAL PAYOUT';
+    }
+    case 'wall_rush':
+      return genomeV2HasSplice(state, 'splice_riftline')
+        ? '×4 YIELD'
+        : '×2.5 YIELD';
+    case 'phase_gate':
+      return '×3 VIA GATE';
+  }
+}
+
+function liveTargetCell(
+  target: GenomeV2State['targets'][string],
+  foods: readonly GenomeV2Cell[]
+): { cell: GenomeV2Cell; leg: 1 | 2 } {
+  const secondaryCell = target.secondaryCell;
+  if (
+    target.kind === 'circuit_run' &&
+    secondaryCell &&
+    foods.some((food) => sameCell(food, secondaryCell)) &&
+    !foods.some((food) => sameCell(food, target.cell))
+  ) {
+    return { cell: { ...secondaryCell }, leg: 2 };
+  }
+  return { cell: { ...target.cell }, leg: 1 };
+}
+
+/**
+ * One renderer-facing inventory derived entirely from the canonical reducer.
+ * It does not infer mechanics from held gene IDs, so reconnects and Recode
+ * cannot produce a picture that disagrees with the live run.
+ */
+export function projectGenomeV2Board(
+  state: GenomeV2State | null,
+  foods: readonly GenomeV2Cell[],
+  simulationTick: number
+): GenomeV2BoardProjection {
+  if (!state) {
+    return { targets: [], gates: [], permanentTerrain: [], occupiedCells: [] };
+  }
+
+  const permanentTerrain: GenomeV2BoardTerrainCell[] = [];
+  const occupied = new Map<string, GenomeV2Cell>();
+  const terrainSource = new Map<string, GenomeV2BoardTerrainSource>();
+  const terrainId = new Map<string, string>();
+  for (const fact of state.permanentTerrain) {
+    for (const cell of fact.cells) {
+      const key = cellKey(cell);
+      // An overlap is invalid authority, but choosing Scar here keeps the
+      // more dangerous traversal consequence visible if malformed history is
+      // ever inspected instead of drawing two coplanar blocks.
+      const source = fact.source === 'phase_gate_scar'
+        ? 'phase_gate_scar'
+        : (terrainSource.get(key) ?? 'coilkeeper_seal');
+      terrainSource.set(key, source);
+      if (fact.source === 'phase_gate_scar' || !terrainId.has(key)) {
+        terrainId.set(key, fact.terrainId);
+      }
+      occupied.set(key, { ...cell });
+    }
+  }
+  occupied.forEach((cell, key) => {
+    const source = terrainSource.get(key) ?? 'coilkeeper_seal';
+    permanentTerrain.push({
+      ...cell,
+      source,
+      terrainId: terrainId.get(key) ?? `terrain:${key}`,
+    });
+  });
+
+  const targets: GenomeV2BoardTarget[] = [];
+  const gates: GenomeV2BoardGate[] = [];
+  const active = Object.values(state.targets).filter(
+    (target) => target.lifecycle === 'active' || target.lifecycle === 'armed'
+  );
+  for (const target of active) {
+    if (target.crownRole === 'future') {
+      targets.push({
+        targetId: target.targetId,
+        kind: 'crown_future',
+        lifecycle: target.lifecycle,
+        cell: { ...target.cell },
+        branchChoice: null,
+        leg: 1,
+        edible: false,
+        collidable: false,
+        remainingMoves: null,
+        totalMoveBudget: null,
+        budgetFraction: null,
+        budgetExpired: false,
+        rewardLabel: 'FUTURE STAR',
+        statusLabel: 'GHOST · NOT EDIBLE',
+      });
+      continue;
+    }
+    if (target.kind === 'ordinary') continue;
+
+    const elapsed = Math.max(0, Math.floor(simulationTick) - target.spawnTick);
+    const remainingMoves = target.moveBudget === null
+      ? null
+      : Math.max(0, target.moveBudget - elapsed);
+    const budgetFraction = target.moveBudget === null
+      ? null
+      : target.moveBudget <= 0
+        ? 0
+        : Math.max(0, Math.min(1, remainingMoves! / target.moveBudget));
+    const budgetExpired = target.moveBudget !== null && elapsed > target.moveBudget;
+    const current = liveTargetCell(target, foods);
+    const name = targetName(target.kind);
+    const rewardLabel = targetRewardLabel(state, target.kind, target.sealedAreaCells);
+    if (
+      target.kind === 'gold_trail' &&
+      target.forkCell &&
+      genomeV2HasSplice(state, 'splice_gilded_fork')
+    ) {
+      const statusLabel = 'GILDED FORK · SAFE ×1 OR GREED ×4 / +2 BODY';
+      targets.push(
+        {
+          targetId: target.targetId,
+          kind: target.kind,
+          lifecycle: target.lifecycle,
+          cell: { ...target.cell },
+          branchChoice: 'ordinary',
+          leg: 1,
+          edible: target.edible,
+          collidable: target.collidable,
+          remainingMoves: null,
+          totalMoveBudget: null,
+          budgetFraction: null,
+          budgetExpired: false,
+          rewardLabel: 'SAFE · ×1 YIELD',
+          statusLabel,
+        },
+        {
+          targetId: target.targetId,
+          kind: target.kind,
+          lifecycle: target.lifecycle,
+          cell: { ...target.forkCell },
+          branchChoice: 'gilded',
+          leg: 1,
+          edible: target.edible,
+          collidable: target.collidable,
+          remainingMoves: null,
+          totalMoveBudget: null,
+          budgetFraction: null,
+          budgetExpired: false,
+          rewardLabel: 'GREED · ×4 YIELD · +2 BODY',
+          statusLabel,
+        }
+      );
+      continue;
+    }
+    targets.push({
+      targetId: target.targetId,
+      kind: target.kind,
+      lifecycle: target.lifecycle,
+      cell: current.cell,
+      branchChoice: null,
+      leg: current.leg,
+      edible: target.edible,
+      collidable: target.collidable,
+      remainingMoves,
+      totalMoveBudget: target.moveBudget,
+      budgetFraction,
+      budgetExpired,
+      rewardLabel,
+      statusLabel: budgetExpired
+        ? `${name} · BONUS MISSED`
+        : remainingMoves === null
+          ? `${name} · ${rewardLabel}`
+          : `${name} · ${remainingMoves} MOVE${remainingMoves === 1 ? '' : 'S'} · ${rewardLabel}`,
+    });
+
+    if (
+      target.optionalRouteCells &&
+      target.optionalRouteCells.every((cell) => !occupied.has(cellKey(cell)))
+    ) {
+      gates.push({
+        targetId: target.targetId,
+        entry: { ...target.optionalRouteCells[0] },
+        exit: { ...target.optionalRouteCells[1] },
+      });
+    }
+  }
+
+  return {
+    targets,
+    gates,
+    permanentTerrain,
+    occupiedCells: Array.from(occupied.values()),
+  };
+}
+
+function scaledYield(value: number): string {
+  const units = Math.max(0, value) / GENOME_V2_YIELD_SCALE;
+  return Number.isInteger(units) ? `${units}Y` : `${units.toFixed(1)}Y`;
+}
+
+/** Highest-value live facts for the fixed, non-interactive status rail. */
+export function buildGenomeV2RuntimeSignals(
+  state: GenomeV2State | null,
+  board: GenomeV2BoardProjection
+): GenomeV2RuntimeSignal[] {
+  if (!state) return [];
+  const signals: GenomeV2RuntimeSignal[] = [];
+  const target = board.targets.find((entry) => entry.kind !== 'crown_future');
+  if (target) {
+    signals.push({
+      id: 'target',
+      label: target.statusLabel,
+      tone: target.budgetExpired ? 'risk' : 'objective',
+    });
+  }
+  if (state.mirrorLeg) {
+    signals.push({
+      id: 'mirror',
+      label: `MIRROR ARMED · STAKE ${scaledYield(state.ledger.mirrorStake)}`,
+      tone: 'risk',
+    });
+  }
+  if (state.loan) {
+    signals.push({
+      id: 'loan',
+      label: `LOAN ${state.loan.foodsRemaining} LEFT · ESCROW ${scaledYield(state.loan.escrowYield)}`,
+      tone: 'risk',
+    });
+  }
+  if (state.bonds > 0) {
+    const bankBonus = state.bonds
+      * GENOME_V2_CONFIG.compoundInterest.bankBonusPerBondBps
+      / 100;
+    signals.push({
+      id: 'bonds',
+      label: `COMPOUND · ${state.bonds}/${GENOME_V2_CONFIG.compoundInterest.maxBonds} BONDS · BANK +${bankBonus}%`,
+      tone: 'ready',
+    });
+  }
+  if (state.secondLife && !state.secondLife.consumed) {
+    signals.push({ id: 'phoenix', label: 'PHOENIX READY', tone: 'ready' });
+  }
+  if (genomeV2HasGene(state, 'overgrowth') || genomeV2HasSplice(state, 'splice_worldcoil')) {
+    signals.push({
+      id: 'overgrowth',
+      label: 'OVERGROWTH · +1 BODY / FOOD · ×1.4–2.5',
+      tone: 'pressure',
+    });
+  }
+  if (genomeV2HasGene(state, 'time_dilation')) {
+    signals.push({
+      id: 'dilation',
+      label: 'TIME DILATION · SPEED ×0.88 · +1 BODY / 4 FOOD',
+      tone: 'pressure',
+    });
+  }
+  if (genomeV2HasGene(state, 'loom_anchor')) {
+    signals.push({
+      id: 'anchor',
+      label: state.anchor.pinnedGeneId
+        ? `ANCHOR PINNED · ${state.anchor.pinnedGeneId.replaceAll('_', ' ').toUpperCase()}`
+        : `LOOM ANCHOR · ${state.anchor.charges} CHARGE${state.anchor.charges === 1 ? '' : 'S'}`,
+      tone: state.anchor.charges > 0 ? 'ready' : 'pressure',
+    });
+  }
+  return signals.slice(0, 3);
+}
+
+/**
+ * The latest unseen canonical board event, formatted for the cockpit's
+ * pointer-transparent status rail. The event ID is the dedupe key; animation
+ * never controls authority or acknowledgement.
+ */
+export function latestGenomeV2BoardFeedback(
+  state: GenomeV2State | null,
+  seenEventId: string | null
+): GenomeV2BoardFeedback | null {
+  if (!state) return null;
+  for (let index = state.journal.length - 1; index >= 0; index -= 1) {
+    const event = state.journal[index];
+    if (event.eventId === seenEventId) return null;
+    if (event.type === 'target_resolved') {
+      const target = state.targets[event.targetId];
+      if (!target || target.kind === 'ordinary') continue;
+      const success = target.lifecycle === 'completed';
+      return {
+        eventId: event.eventId,
+        label: success
+          ? target.kind === 'gold_trail' &&
+            genomeV2HasSplice(state, 'splice_gilded_fork')
+            ? target.forkChoice === 'gilded'
+              ? 'GILDED FORK · GREED SECURED · ×4 / +2 BODY'
+              : 'GILDED FORK · SAFE BRANCH SECURED · ×1'
+            : `${targetName(target.kind)} COMPLETE · ${targetRewardLabel(state, target.kind, target.sealedAreaCells)}`
+          : `${targetName(target.kind)} · BONUS MISSED`,
+        tone: success ? 'success' : 'warning',
+      };
+    }
+    if (event.type === 'target_window_expired') {
+      return {
+        eventId: event.eventId,
+        label: 'GILDED WINDOW CLOSED · TARGET IS ORDINARY',
+        tone: 'warning',
+      };
+    }
+    if (event.type === 'phase_gate_used') {
+      return {
+        eventId: event.eventId,
+        label: 'PHASE GATE USED · 2 SCARS NOW SOLID',
+        tone: 'risk',
+      };
+    }
+    if (event.type === 'coil_sealed') {
+      return {
+        eventId: event.eventId,
+        label: `COIL SEALED · ${event.cells.length} CELLS NOW SOLID`,
+        tone: 'risk',
+      };
+    }
+    if (event.type === 'phoenix_triggered') {
+      return {
+        eventId: event.eventId,
+        label: `PHOENIX FIRED · +${GENOME_V2_CONFIG.phoenix.growthCost} BODY · ${GENOME_V2_CONFIG.phoenix.phaseTicks}-MOVE PHASE`,
+        tone: 'risk',
+      };
+    }
+    if (event.type === 'offer_declined') {
+      if (event.pinGeneId) {
+        return {
+          eventId: event.eventId,
+          label: `LOOM ANCHORED · ${event.pinGeneId.replaceAll('_', ' ').toUpperCase()}`,
+          tone: 'success',
+        };
+      }
+      if (state.bonds > 0) {
+        return {
+          eventId: event.eventId,
+          label: `COMPOUND BOND ${state.bonds}/${GENOME_V2_CONFIG.compoundInterest.maxBonds} · BANK BONUS ARMED`,
+          tone: 'success',
+        };
+      }
+    }
+    if (event.type === 'wall_redirected') {
+      return {
+        eventId: event.eventId,
+        label: 'WALL RUSH REDIRECT · TARGET BONUS ARMED',
+        tone: 'success',
+      };
+    }
+    if (event.type === 'crown_wave_closed') {
+      return {
+        eventId: event.eventId,
+        label: event.outcome === 'perfect'
+          ? 'CONSTELLATION PERFECT · CROWN PAYOUT SECURED'
+          : 'CONSTELLATION BROKEN · CROWN PAYOUT LOST',
+        tone: event.outcome === 'perfect' ? 'success' : 'warning',
+      };
+    }
+    if (event.type === 'overclock_started') {
+      return {
+        eventId: event.eventId,
+        label: `${event.source === 'zenith_protocol' ? 'REDLINE' : 'OVERCLOCK'} ARMED · YIELD WINDOW LIVE`,
+        tone: 'risk',
+      };
+    }
+    if (event.type === 'overclock_ended') {
+      return {
+        eventId: event.eventId,
+        label: 'OVERCLOCK WINDOW COMPLETE',
+        tone: 'warning',
+      };
+    }
+  }
+  return null;
+}
+
+export const genomeV2BoardLabels = {
+  targetName,
+  targetRewardLabel,
+  spliceName: (id: keyof typeof GENOME_V2_SPLICES) => GENOME_V2_SPLICES[id].name,
+};

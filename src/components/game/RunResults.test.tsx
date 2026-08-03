@@ -199,6 +199,29 @@ describe('Layer 1', () => {
     expect(screen.getByTestId('gameover-practice')).toBeInTheDocument();
   });
 
+  it('shows an exact non-economic contact fact only for a crashed run', () => {
+    const { rerender } = render(
+      <RunResults
+        {...props({
+          outcome: 'crashed',
+          collisionDetail: 'Contact confirmed: Phase Gate Scar · cell 8,12',
+        })}
+      />
+    );
+    expect(screen.getByTestId('results-collision-diagnostic')).toHaveTextContent(
+      'Phase Gate Scar · cell 8,12'
+    );
+    rerender(
+      <RunResults
+        {...props({
+          outcome: 'extracted',
+          collisionDetail: 'Contact confirmed: Phase Gate Scar · cell 8,12',
+        })}
+      />
+    );
+    expect(screen.queryByTestId('results-collision-diagnostic')).toBeNull();
+  });
+
   it('keeps share and the one literal Daily Take collect in Layer 1', () => {
     const onCollectTake = jest.fn();
     render(<RunResults {...props({

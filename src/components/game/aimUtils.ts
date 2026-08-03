@@ -163,7 +163,8 @@ export function projectDangerPath(
   direction: Direction,
   snake: readonly Position[],
   gridSize: number,
-  length = 5
+  length = 5,
+  obstacles: readonly { x: number; z: number }[] = []
 ): DangerPath {
   const cells: Array<{ x: number; z: number }> = [];
   const delta = DIRECTION_DELTAS[direction];
@@ -178,8 +179,11 @@ export function projectDangerPath(
       // far lead up to it
       return { cells, impact: true };
     }
-    if (snake.some((s) => s.x === x && s.z === z)) {
-      // Body impact: include the impact cell as the hottest tint
+    if (
+      snake.some((s) => s.x === x && s.z === z)
+      || obstacles.some((cell) => cell.x === x && cell.z === z)
+    ) {
+      // Body or solid-terrain impact: include the impact cell as the hottest tint
       cells.push({ x, z });
       return { cells, impact: true };
     }

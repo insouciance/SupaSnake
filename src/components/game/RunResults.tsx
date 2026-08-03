@@ -111,6 +111,8 @@ export interface RunResultsProps {
   studyGenomeHref?: string | null;
   /** Exact run-stamped Ascendance presentation, including honest v1 labels. */
   ascendanceProgression?: AscendanceProgressionModel | null;
+  /** Exact local collision fact; display/debug only, never settlement input. */
+  collisionDetail?: string | null;
 }
 
 function headline(outcome: RunResultsOutcome, practice: boolean) {
@@ -851,6 +853,7 @@ export function RunResults({
   genomeRecap = null,
   studyGenomeHref = null,
   ascendanceProgression = null,
+  collisionDetail = null,
 }: RunResultsProps) {
   const head = headline(outcome, practice);
   const receipt = impact?.receipt;
@@ -892,6 +895,14 @@ export function RunResults({
           <p className="font-body text-sm uppercase tracking-wide text-beige/60">
             {head.detail}
           </p>
+          {outcome === 'crashed' && collisionDetail ? (
+            <p
+              className="font-mono text-xs text-beige/75"
+              data-testid="results-collision-diagnostic"
+            >
+              {collisionDetail}
+            </p>
+          ) : null}
         </div>
 
         {personalBest && (

@@ -102,12 +102,16 @@ export const ARENA_EDGE_WASH_FRAGMENT_SHADER = /* glsl */ `
   varying vec2 vUv;
 
   void main() {
-    // Analytic distance keeps the wash smooth at every canvas size and DPR.
-    // The previous 256px CanvasTexture was enlarged across the whole board,
-    // exposing its raster grain/banding around this circular transition.
-    float radius = length(vUv - vec2(0.5)) / 0.70710678;
-    float edge = smoothstep(0.28, 1.0, radius);
-    float alpha = edge * 0.70 * uStrength;
+    // A soft superellipse follows the square arena instead of drawing a foggy
+    // circle across its centre. It is analytic, so there is no raster grain at
+    // any DPR; the low alpha leaves objectives and the snake in command.
+    vec2 edgeVector = abs(vUv * 2.0 - vec2(1.0));
+    float boardDistance = pow(
+      pow(edgeVector.x, 6.0) + pow(edgeVector.y, 6.0),
+      1.0 / 6.0
+    );
+    float edge = smoothstep(0.76, 1.08, boardDistance);
+    float alpha = edge * 0.32 * uStrength;
     gl_FragColor = vec4(uAccent, alpha);
   }
 `;
