@@ -76,17 +76,16 @@ export const ENERGY_MIN = 0.94;
  * This is the whole "fusion is earned" ruling made visible. See
  * `src/lib/game/trailFusion.ts` for the metric itself.
  *
- *   0 - running free: a 0.38 gap on every side, unmistakably discrete voxels
+ *   0 - running free: a 0.34 gap, unmistakably discrete voxels
  *   1 - fusing at the edges: a 0.20 gap, cells reading as neighbours
- *   2 - fully fused: a 0.04 hairline, so the field reads solid while the grid
- *       stays countable - the player must still be able to tell WHICH tiles
- *       are blocked, which is the trail's first job.
+ *   2 - fully fused: a 0.10 seam, still close enough to read as a packed field
+ *       without widening each segment into a flat tile.
  *
  * The old flat BODY_SIZE (0.75) sits between levels 0 and 1, so a snake that
  * is packing averagely looks about like it always did.
  *
  * A NOTE ON CORNERS, because it was nearly "fixed" by mistake. Mid-tick through
- * a turn two cells compress well inside 1.0 apart, so at 0.96 their boxes
+ * a turn two cells compress well inside 1.0 apart, so at 0.90 their boxes
  * INTERPENETRATE. That is not the rendering defect it looks like on paper:
  * intersecting opaque solids of the same material render as a clean union,
  * because their surfaces meet at an angle rather than sharing a depth. The
@@ -94,7 +93,7 @@ export const ENERGY_MIN = 0.94;
  * had this exact overlap and came back clean. Coplanar is the condition that
  * breaks; overlapping is not.
  */
-export const TRAIL_FOOTPRINT: readonly number[] = [0.62, 0.8, 0.96];
+export const TRAIL_FOOTPRINT: readonly number[] = [0.66, 0.8, 0.9];
 
 export function getTrailFootprint(level: number): number {
   if (level <= 0) return TRAIL_FOOTPRINT[0];
@@ -145,17 +144,16 @@ export function getTrailTone(level: number): number {
  * body was a uniform 0.75 cube, and the trunk needs to stay near that or the
  * step down from the head stops being a step and becomes a collapse.
  *
- * 0.58 preserves the OTHER constraint this file commits to and tests: the
- * trunk stays categorically below a 0.72 solid terrain cell, so terrain reads
- * as a raised wall and the trail as a settled field. The trunk is 0.58 against
- * a footprint of 0.62 when unfused, which remains cubic where it matters; at
- * 0.96 when fully fused it becomes the broad packed field the design asks for.
- * Head and tail are unchanged; the flatness was the trunk.
+ * 0.70 keeps the trunk visibly below a 0.72 solid terrain cell while restoring
+ * enough side-face area to read as a rounded cube at the arena camera angle.
+ * The maximum footprint is narrowed in concert, so tight coils gain density
+ * without turning the snake into a low ribbon. The tail keeps a real taper but
+ * no longer collapses into a blinking floor chip.
  */
 export const TRAIL_HEAD_ZONE = 5;
 export const TRAIL_HEIGHT_HEAD = 0.86;
-export const TRAIL_HEIGHT_TRUNK = 0.58;
-export const TRAIL_HEIGHT_TAIL = 0.26;
+export const TRAIL_HEIGHT_TRUNK = 0.7;
+export const TRAIL_HEIGHT_TAIL = 0.44;
 
 /**
  * The tail zone encodes IMMINENT VACANCY, and it is denominated in TICKS, not

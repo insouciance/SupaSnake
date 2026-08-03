@@ -117,11 +117,13 @@ describe('the game scene threads what the metric needs', () => {
   it('terrain reaches BOTH snake variants', () => {
     // Terrain packs like a wall. If only the GLB variant got it, the metric
     // would silently change meaning for the first few hundred milliseconds of
-    // every run, while the model streams.
+    // every run, while the model streams. The combined inventory also includes
+    // reducer-authored Genome seals/scars, which are just as solid.
     const page = read(PAGE);
-    expect(page).toMatch(/<InstancedSnake[\s\S]{0,400}terrain=\{terrain\}/);
+    expect(page).toContain('for (const cell of genomeV2Board.occupiedCells)');
+    expect(page).toMatch(/<InstancedSnake[\s\S]{0,400}terrain=\{snakeTerrain\}/);
     expect(page).toMatch(
-      /<InstancedSnakeFallback[\s\S]{0,400}terrain=\{terrain\}/
+      /<InstancedSnakeFallback[\s\S]{0,400}terrain=\{snakeTerrain\}/
     );
   });
 

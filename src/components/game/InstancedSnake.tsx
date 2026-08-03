@@ -501,9 +501,9 @@ export function writeTrailInstances(
   // links were the whole defect, not the way they were sized.
   //
   // They are not missed, which is the part worth recording. The fusion ruling
-  // is carried by FOOTPRINT and BRIGHTNESS: at level 2 a cell claims 0.96 of
-  // its tile, so neighbours sit a 0.04 hairline apart and already read as one
-  // solid field, and at level 0 the 0.38 gap is the point. A link bridging
+  // is carried by FOOTPRINT and BRIGHTNESS: at level 2 a cell claims 0.90 of
+  // its tile, so neighbours sit a narrow seam apart and already read as one
+  // packed field, and at level 0 the 0.34 gap is the point. A link bridging
   // that gap was arguing with the metric it was supposed to express.
   //
   // If a continuous form is ever wanted again, the honest way is one mesh for
