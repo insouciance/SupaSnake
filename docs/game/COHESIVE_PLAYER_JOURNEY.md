@@ -230,7 +230,7 @@ Results explains what changed now. Persistent destinations explain what it means
 - Mastery and Records live in You/Chronicle;
 - active lineage and build decisions live in Lab;
 - ancestry and retired leaves live in the snake dossier;
-- gene discovery lives in Lab/Codex;
+- gene discovery lives in Lab/Genome Research;
 - clan contribution, rank, Glory, and rivalry live in Compete;
 - calendar consequence lives in its existing Signal, Ascension, or battle view.
 
@@ -420,7 +420,7 @@ only. Recognition never inflates that urgent count.
 | Earned event | Destination badge |
 |---|---|
 | Mastery level, Record/achievement tier, PB artifact | You |
-| New gene/Codex entry or Discovery milestone | Lab |
+| New gene/Genome discovery or Research milestone | Lab |
 | New active lineage stage, ancestry chapter, unlock, or retired leaf | Lab |
 | Clan top-five entry, battle result, rank change, Glory, or rivalry milestone | Compete |
 | Daily Take or identity/integrity action | More/inbox plus its exact action surface |

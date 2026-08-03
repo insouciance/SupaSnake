@@ -3,9 +3,15 @@
   --cyan: #22d3ee;
   --gold: #f5c542;
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 16px;
   animation: researchEnter .42s ease-out both;
+  container-name: research;
+  container-type: inline-size;
 }
+
+.workbench > * { min-width: 0; }
 
 .intro {
   display: flex;
@@ -47,10 +53,10 @@
 .snakeMarks {
   display: flex;
   max-width: 55%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 7px;
-  overflow-x: auto;
   padding: 4px;
-  scrollbar-width: thin;
 }
 
 .snakeMarks button {
@@ -155,7 +161,7 @@
 .locusArc {
   display: grid;
   width: min(100%, 720px);
-  grid-template-columns: repeat(6, minmax(72px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   align-items: center;
 }
@@ -287,8 +293,8 @@
 .lenses button { display: inline-flex; min-height: 44px; align-items: center; gap: 4px; border: 0; background: transparent; padding: 5px 8px; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .lenses button[aria-selected='true'] { color: var(--gold); text-shadow: 0 0 9px rgb(245 197 66 / 42%); }
 .lenses i { font-size: 14px; font-style: normal; }
-.geneRail { display: flex; gap: 6px; overflow-x: auto; padding: 7px 1px 4px; scroll-snap-type: x proximity; scrollbar-width: thin; }
-.geneRail button { display: flex; min-width: 164px; min-height: 72px; align-items: center; gap: 7px; scroll-snap-align: start; border: 1px solid color-mix(in srgb, var(--gene-strain), transparent 78%); border-radius: 12px; background: linear-gradient(120deg, color-mix(in srgb, var(--gene-strain), transparent 93%), rgb(4 8 20 / 66%)); padding: 7px; color: rgb(237 233 223 / 58%); text-align: left; }
+.geneRail { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 164px), 1fr)); gap: 6px; padding: 7px 1px 4px; }
+.geneRail button { display: flex; width: 100%; min-width: 0; min-height: 72px; align-items: center; gap: 7px; border: 1px solid color-mix(in srgb, var(--gene-strain), transparent 78%); border-radius: 12px; background: linear-gradient(120deg, color-mix(in srgb, var(--gene-strain), transparent 93%), rgb(4 8 20 / 66%)); padding: 7px; color: rgb(237 233 223 / 58%); text-align: left; }
 .geneRail button[aria-pressed='true'] { border-color: rgb(168 85 247 / 66%); background: radial-gradient(circle at 22% 50%, rgb(168 85 247 / 25%), rgb(4 8 20 / 82%)); color: #f7f0ff; box-shadow: 0 0 14px rgb(168 85 247 / 13%); }
 .geneRail button > i { width: 29px; height: 29px; flex: none; color: var(--gene-strain, var(--cyan)); filter: drop-shadow(0 0 7px color-mix(in srgb, var(--gene-strain), transparent 48%)); }
 .geneRailCopy { min-width: 0; flex: 1; }
@@ -398,9 +404,9 @@
 .recodeNotice { background: rgb(245 197 66 / 8%); color: rgb(245 197 66 / 78%); text-align: center; }
 .error { border: 1px solid rgb(245 66 99 / 36%); background: rgb(245 66 99 / 9%); color: #ff8ca3; }
 .honesty { margin: 0; padding: 0 5px; color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 10px; text-align: center; }
-.signedOut, .loading { border: 1px solid rgb(168 85 247 / 28%); border-radius: 18px; background: radial-gradient(circle at 50% 10%, rgb(168 85 247 / 18%), rgb(4 8 20 / 78%)); padding: 28px; color: rgb(237 233 223 / 68%); font-family: var(--font-body); text-align: center; }
-.signedOut > span { display: block; color: var(--violet); font-size: 34px; }
-.signedOut a { display: inline-flex; min-height: 44px; align-items: center; margin-top: 12px; border: 1px solid rgb(245 197 66 / 60%); border-radius: 999px; padding: 6px 16px; color: var(--gold); font-family: var(--font-display); font-size: 10px; }
+.researchInvitation { margin: 0; border-left: 1px solid rgb(245 197 66 / 42%); padding: 7px 10px; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 11px; }
+.researchInvitation a { color: var(--gold); font-weight: 800; }
+.loading { border: 1px solid rgb(168 85 247 / 28%); border-radius: 18px; background: radial-gradient(circle at 50% 10%, rgb(168 85 247 / 18%), rgb(4 8 20 / 78%)); padding: 28px; color: rgb(237 233 223 / 68%); font-family: var(--font-body); text-align: center; }
 
 .study {
   position: relative;
@@ -460,9 +466,9 @@
 .studyCore small { color: rgb(125 249 255 / 70%); font-family: var(--font-body); font-size: 9px; text-transform: uppercase; }
 .studyFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; border-top: 1px solid rgb(168 85 247 / 17%); padding-top: 8px; }
 
-@media (max-width: 720px) {
+@container research (max-width: 860px) {
   .intro { align-items: flex-start; flex-direction: column; }
-  .snakeMarks { width: 100%; max-width: none; padding-left: 0; }
+  .snakeMarks { width: 100%; max-width: none; justify-content: flex-start; padding-left: 0; }
   .table { border-radius: 17px; padding: 11px; }
   .tableHeader { align-items: flex-start; }
   .tableHeader h3 { max-width: 220px; }
@@ -472,7 +478,7 @@
   .locus:nth-child(n) { transform: none; }
   .locus:nth-child(2), .locus:nth-child(5) { transform: translateY(-18px); }
   .reactionCore { top: 91px; }
-  .strainRail { grid-template-columns: repeat(5, minmax(144px, 1fr)); overflow-x: auto; padding-bottom: 3px; scrollbar-width: thin; }
+  .strainRail { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .rungs button { width: 44px; height: 44px; }
   .strainName b, .strainName em { font-size: 11px; }
   .strain > small, .strainHint { font-size: 11px; }
@@ -482,7 +488,6 @@
   .paletteHeader small { font-size: 11px; line-height: 1.35; }
   .lenses { width: 100%; justify-content: space-between; }
   .lenses button { flex: 1; justify-content: center; font-size: 10px; }
-  .geneRail button { min-width: 172px; }
   .geneRail strong { font-size: 11px; }
   .geneRail small { font-size: 10px; }
   .focusReaction { grid-template-columns: 1fr; }
@@ -505,6 +510,20 @@
   .studyGenome .locusArc { grid-template-columns: repeat(3, minmax(76px, 1fr)); gap: 62px 4px; }
   .studyCore { bottom: 92px; }
   .studyFacts { grid-template-columns: 1fr; }
+}
+
+@container research (max-width: 540px) {
+  .tableHeader { flex-direction: column; }
+  .historyControls { align-self: stretch; justify-content: flex-end; }
+  .snakeMarks button { flex: 1 1 104px; min-width: 0; }
+  .strainRail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .geneRail { grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr)); }
+  .geneStrainBadge b { font-size: 9px; }
+}
+
+@container research (max-width: 350px) {
+  .strainRail { grid-template-columns: 1fr; }
+  .geneRail { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -149,17 +149,22 @@ describe('Genome v2 Research table', () => {
     expect(text).not.toMatch(/\bscore\b|recommended|ranking|best build/i);
   });
 
-  it('invites a signed-out player without exposing a dead surface', async () => {
+  it('keeps the complete research instrument playable before sign-in', async () => {
     mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
     const view = await renderResearch();
-    expect(screen.getByTestId('workbench-signed-out')).toBeInTheDocument();
+    expect(screen.getByTestId('workbench-public-research')).toBeInTheDocument();
+    expect(screen.getByTestId('workbench-loci').children).toHaveLength(6);
+    fireEvent.click(screen.getByTestId('workbench-snake-primal'));
+    expect(screen.getByTestId('workbench-gene-time_dilation')).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
 
     mockUseAuth.mockReturnValue({
       session: { access_token: 'token', user: {} },
       isAuthenticated: true,
     });
     view.rerender(<GenomeV2WorkbenchView />);
-    expect(screen.getByTestId('workbench-signed-out')).toBeInTheDocument();
+    expect(screen.getByTestId('workbench-public-research')).toBeInTheDocument();
+    expect(screen.getByTestId('workbench-loci').children).toHaveLength(6);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -187,8 +192,8 @@ describe('Genome v2 Research table', () => {
 
     authState = { session: null, isAuthenticated: false } as unknown as typeof authState;
     view.rerender(<GenomeV2WorkbenchView />);
-    expect(screen.getByTestId('workbench-signed-out')).toBeInTheDocument();
-    expect(screen.queryByTestId('workbench-snake-cyber')).not.toBeInTheDocument();
+    expect(screen.getByTestId('workbench-public-research')).toBeInTheDocument();
+    expect(screen.getByTestId('workbench-snake-cyber')).toBeInTheDocument();
     expect(screen.queryByText('1 move')).not.toBeInTheDocument();
 
     authState = {

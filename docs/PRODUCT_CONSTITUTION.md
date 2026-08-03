@@ -47,16 +47,20 @@ research do not occupy the live decision surface. A full-locus Recode is the
 narrow exception: its exact gain/loss and permanent growth cost must be visible
 before confirmation. There is no in-run expert expander.
 
-Complete future depth remains visible from run one through the Codex and
-Workbench. Together they form one free, game-like Research instrument: browse one
-rule at a time, manipulate the six loci directly, and see the immediate visual
-chain from gene to Strain rung to Splice. Yield, Risk, and Space are optional
-lenses; exact arithmetic appears on demand in one focused readout. Research never
-ranks Dynasties, recommends an optimum, hides tactical truth behind payment, or
-resembles compulsory coursework. Post-choice feedback identifies what activated
-and what it boosts without intercepting steering; Results can load the run's exact
-terminal Genome into Research. This narrows v1.9's live disclosure requirement,
-not its visible-depth, strategic-mastery, authority, or large-Yield-spread goals.
+Complete future depth remains visible from run one through one free, game-like
+**Genome Workbench**. The historical `/codex` URL is a compatibility route into
+that same Research instrument, never a parallel Archive/Codex choice. Players
+manipulate the six loci directly and see the immediate visual chain from gene to
+Strain rung to Splice. Personal discovery, Genome Weaver progress, world-first
+history, and legacy records remain an optional subordinate Research Record; they
+do not duplicate the rules catalog or gate the instrument. Yield, Risk, and Space
+are optional lenses; exact arithmetic appears on demand in one focused readout.
+Research never ranks Dynasties, recommends an optimum, hides tactical truth behind
+payment, or resembles compulsory coursework. Post-choice feedback identifies what
+activated and what it boosts without intercepting steering; Results can load the
+run's exact terminal Genome into Research. This narrows v1.9's live disclosure
+requirement, not its visible-depth, strategic-mastery, authority, or
+large-Yield-spread goals.
 The owner approved this correction during the active Genome v2 build and waived
 the cooling period; the trade-off is recorded in §15.
 **v1.9 amendment (explicit owner ruling, 1 August 2026):** the Genome becomes

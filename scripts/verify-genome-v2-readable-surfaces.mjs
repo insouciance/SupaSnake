@@ -190,6 +190,10 @@ async function auditWorkbench(browser, viewport) {
   await settle(page);
 
   const metrics = await page.evaluate(() => {
+    const rect = (element) => {
+      const value = element.getBoundingClientRect();
+      return { x: value.x, width: value.width, right: value.right };
+    };
     const focused = document.querySelector('[data-testid="workbench-focused-gene-name"]');
     const strainRail = document.querySelector('[data-testid="workbench-strains"]');
     const geneRail = document.querySelector('[data-testid="workbench-gene-palette"]');
@@ -220,6 +224,14 @@ async function auditWorkbench(browser, viewport) {
       dualGeneBadges: badge('[data-testid^="workbench-locus-1-strain-"]'),
       strainOverflowX: getComputedStyle(strainRail).overflowX,
       geneOverflowX: getComputedStyle(geneRail).overflowX,
+      strainBox: rect(strainRail),
+      geneBox: rect(geneRail),
+      strainItems: [...strainRail.children].map(rect),
+      geneItems: [...geneRail.children].map(rect),
+      strainScrollWidth: strainRail.scrollWidth,
+      strainClientWidth: strainRail.clientWidth,
+      geneScrollWidth: geneRail.scrollWidth,
+      geneClientWidth: geneRail.clientWidth,
       pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     };
   });
@@ -236,7 +248,24 @@ async function auditWorkbench(browser, viewport) {
     ),
     `workbench/${viewport.name}: Strain target below 44px`
   );
-  invariant(metrics.geneOverflowX === 'auto', `workbench/${viewport.name}: gene rail is not contained`);
+  invariant(
+    metrics.geneScrollWidth <= metrics.geneClientWidth + TARGET_EPSILON,
+    `workbench/${viewport.name}: gene palette still requires horizontal scrolling`
+  );
+  invariant(
+    metrics.strainScrollWidth <= metrics.strainClientWidth + TARGET_EPSILON,
+    `workbench/${viewport.name}: Strain ladder still requires horizontal scrolling`
+  );
+  invariant(
+    metrics.geneItems.every(({ x, right }) => x >= metrics.geneBox.x - TARGET_EPSILON
+      && right <= metrics.geneBox.right + TARGET_EPSILON),
+    `workbench/${viewport.name}: gene escaped the responsive palette`
+  );
+  invariant(
+    metrics.strainItems.every(({ x, right }) => x >= metrics.strainBox.x - TARGET_EPSILON
+      && right <= metrics.strainBox.right + TARGET_EPSILON),
+    `workbench/${viewport.name}: Strain escaped the responsive ladder`
+  );
   invariant(
     metrics.focusedBadges.map(({ text }) => text).join(' · ') === 'AURUM',
     `workbench/${viewport.name}: focused Strain identity missing ${JSON.stringify(metrics.focusedBadges)}`
@@ -250,9 +279,8 @@ async function auditWorkbench(browser, viewport) {
       .every(({ fontSize, clipped }) => fontSize >= 9 && !clipped),
     `workbench/${viewport.name}: Strain badge is clipped or below 9px`
   );
-  if (viewport.name !== 'desktop') {
-    invariant(metrics.strainOverflowX === 'auto', `workbench/${viewport.name}: mobile Strain rail is not contained`);
-  }
+  invariant(metrics.geneOverflowX !== 'auto', `workbench/${viewport.name}: gene palette retained a scroll rail`);
+  invariant(metrics.strainOverflowX !== 'auto', `workbench/${viewport.name}: Strain ladder retained a scroll rail`);
   invariant(!metrics.pageOverflow, `workbench/${viewport.name}: horizontal page overflow`);
 
   await capture(page, 'research-workbench', viewport);

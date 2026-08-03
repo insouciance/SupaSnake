@@ -111,14 +111,13 @@ inspect every Strain rung in Research without receiving every verb immediately.
 The server returns the unmet condition and progress for every locked action.
 The UI does not reproduce thresholds from literals.
 
-### 3.1 Research: Codex + Workbench
+### 3.1 Research: the Genome Workbench
 
-Codex and Workbench are two modes of one free Research destination reached from
-the Home chamber's Codex relic. They reveal depth without turning a live decision
-into coursework:
+The Workbench is the one free Research destination reached from the Home
+chamber's five-rune relic. The historical `/codex` path remains a compatibility
+URL into it; players never choose between a duplicate Codex and Workbench. It
+reveals depth without turning a live decision into coursework:
 
-- **Codex** focuses one gene, Strain, or Splice at a time: rule, cost, trigger,
-  tags, recipe connections, discovery, and clear unlock progress.
 - **Workbench** is a direct-manipulation build toy. The player places genes into
   the six loci and immediately sees the reaction chain `locus → Strain rung →
   Splice`. Only the selected object and changed connections demand attention.
@@ -127,6 +126,9 @@ into coursework:
   one shared readout rather than spread across permanent panels.
 - Locked entries stay visible and can be explored. The system never recommends,
   ranks, solves, or declares an optimal Genome or Dynasty.
+- Personal discovery, Genome Weaver progress, world-firsts, and legacy records
+  remain available in one optional subordinate **Research Record**. It preserves
+  ownership and history without reproducing the rules catalog.
 - Results offers **Study this Genome**, loading the exact terminal build and run
   context into Workbench so play, feedback, and the next experiment form one loop.
 
@@ -136,7 +138,7 @@ analytics dashboard. The authoritative Genome engine remains the single source
 for every displayed reaction and calculation, and Workbench code remains outside
 the live `/game` dependency graph.
 
-Codex discovery identity includes the Genome rules version. Existing discovery
+Research discovery identity includes the Genome rules version. Existing discovery
 history is retained as v1; it is never rewritten or bulk-promoted into v2. A v2
 run can therefore discover a semantically revised entry whose stable text ID was
 also used by v1, while both histories remain independently readable. The v1

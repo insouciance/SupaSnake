@@ -59,7 +59,7 @@ The existing deliberate-direction resume gate and the reserved HUD/board layout 
 | Age gate | Explicit signup/legal flow | Keep | Legal requirement, never placed in front of guest gameplay. |
 | Critical run/session recovery | Blocking technical failure | Keep | Only shown when play cannot continue safely; Retry stays in context. |
 | Explicit Lab details, breeding picker/reveal, Contracts, Season | Player opens the feature | Keep | These are player-pulled overlays or destination screens. |
-| Achievement/Codex feedback | In-run discovery | Keep as toast | Nonblocking, time-limited feedback with no forced action. |
+| Achievement/Genome Research feedback | In-run discovery | Keep as toast | Nonblocking, time-limited feedback with no forced action. |
 
 Legacy `StarterSelection`, `SaveProgressBanner`, and generic `OverlayHint`
 components remain available for rollback or reuse, but FTUE v2 does not mount
