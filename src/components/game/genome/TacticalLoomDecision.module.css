@@ -11,6 +11,20 @@
   backdrop-filter: none;
 }
 
+/*
+ * The stable shell is a fixed outer geometry: details expand inside it, and
+ * nothing the player does may move or resize it. Every dimension below is
+ * therefore content-independent - an explicit height, `min-width: 0` so the
+ * flex base shrinks to the backdrop rather than to the widest child, and
+ * `overflow: hidden` so an expanded reaction map can only scroll the body.
+ *
+ * The entrance is opacity-only and this element must never carry a transform.
+ * A measured box is the *visual* box: a scale-based entrance (the shared
+ * `animate-pop-in`, whose 0.35s back-out easing dips fractionally below
+ * scale(1) before settling) leaves the shell reporting a slightly narrower,
+ * slightly off-centre rectangle for as long as it runs. That is invisible to
+ * a player and fatal to pixel-invariance, so the panel animates alpha only.
+ */
 .decisionPanel {
   box-sizing: border-box;
   display: grid;
@@ -33,6 +47,8 @@
     inset 0 1px 0 rgb(196 181 253 / 13%),
     0 18px 70px rgb(0 0 0 / 42%),
     0 0 42px rgb(168 85 247 / 10%);
+  transform: none;
+  animation: loom-shell-reveal 180ms ease-out both;
 }
 
 .decisionHeader {
@@ -452,7 +468,20 @@
   }
 }
 
+/* Alpha only - see `.decisionPanel`. Adding a transform here would silently
+   reintroduce the geometry drift this keyframe exists to avoid. */
+@keyframes loom-shell-reveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .choiceCore { transition: none; }
   .reactionMap { animation: none; }
+  .decisionPanel { animation: none; }
 }

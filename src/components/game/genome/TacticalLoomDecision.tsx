@@ -222,8 +222,13 @@ export function TacticalLoomDecision({
       data-backdrop="transparent"
       data-rules-version={model.rulesVersion}
     >
+      {/*
+        No `animate-pop-in` here: the shared entrance scales, and a scaling
+        stable shell is a contradiction - it reports a moving box while it
+        settles. `.decisionPanel` carries its own alpha-only entrance instead.
+      */}
       <div
-        className={`${decisionStyles.decisionPanel} animate-pop-in`}
+        className={decisionStyles.decisionPanel}
         style={{ '--glow': '#a855f7' } as CSSProperties}
         data-testid="tactical-loom-panel"
         data-layout="stable-shell"
