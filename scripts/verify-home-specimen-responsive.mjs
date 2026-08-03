@@ -29,6 +29,7 @@ try {
     });
     await context.addInitScript(() => {
       // Legal preference only; no player, economy, or progression state.
+      // constitution-allow: local-progress isolated test consent fixture contains no player state
       localStorage.setItem('cookie-consent', JSON.stringify({
         essential: true,
         functional: false,
