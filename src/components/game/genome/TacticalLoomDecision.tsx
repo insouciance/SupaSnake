@@ -216,15 +216,20 @@ export function TacticalLoomDecision({
       aria-modal="true"
       aria-labelledby="tactical-loom-title"
       tabIndex={-1}
-      className="absolute inset-0 z-30 flex items-end justify-center bg-gradient-to-t from-void-deep/40 via-void-deep/10 to-transparent sm:items-center sm:justify-end sm:bg-gradient-to-l"
+      className={`${decisionStyles.decisionBackdrop} absolute inset-0 z-30 flex items-end justify-center`}
       data-testid="gene-choice-overlay"
+      data-surface="tactical-loom"
+      data-backdrop="transparent"
       data-rules-version={model.rulesVersion}
     >
       <div
-        className={`${decisionStyles.decisionPanel} panel-elevated flex h-auto max-h-[min(66dvh,680px)] w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 animate-pop-in sm:ml-auto sm:max-h-[min(88dvh,720px)] sm:w-[min(36rem,48vw)] sm:max-w-none sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5`}
+        className={`${decisionStyles.decisionPanel} animate-pop-in`}
         style={{ '--glow': '#a855f7' } as CSSProperties}
+        data-testid="tactical-loom-panel"
+        data-layout="stable-shell"
+        data-panel-surface="opaque"
       >
-        <header className="flex shrink-0 flex-col items-stretch gap-1.5 border-b border-scale-blue-light/20 pb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <header className={`${decisionStyles.decisionHeader} flex flex-col items-stretch gap-1.5 border-b border-scale-blue-light/20 pb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3`}>
           <div className="flex min-w-0 items-start gap-2">
             <div className="min-w-0">
             <p className="font-body text-sm font-bold uppercase tracking-[0.14em] text-cosmic">
@@ -241,97 +246,98 @@ export function TacticalLoomDecision({
         </header>
 
         <div
-          role="radiogroup"
-          aria-label="Genome decision"
-          className={`${decisionStyles.choiceWeave} shrink-0`}
-          data-testid="loom-choice-rail"
-          data-responsive-composition="portrait-bottom landscape-side"
-        >
-          {choices.map((choice, index) => {
-            const active = selected === choice.key;
-            const testId = `gene-option-${index}`;
-            const accent = choice.strains[0]
-              ? STRAINS[choice.strains[0]].color
-              : '#a855f7';
-            return (
-              <button
-                key={choice.key}
-                ref={index === 0 ? firstChoiceRef : undefined}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                aria-label={`${index === 0 ? 'A' : 'B'}, ${choice.action} ${choice.name}${choice.strains.length > 0 ? `, Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}`}
-                aria-keyshortcuts={index === 0 ? '1' : '2'}
-                disabled={locked || Boolean(choice.disabledReason)}
-                onClick={() => select(choice.key)}
-                data-testid={testId}
-                data-active={active ? 'true' : 'false'}
-                className={decisionStyles.choiceToken}
-                style={{ '--choice-accent': accent } as CSSProperties}
-              >
-                <span className={decisionStyles.choiceCore} aria-hidden="true">
-                  <i className={decisionStyles.choiceGlyph}>
-                    <GeneGlyph id={choice.geneId ?? 'loom-decline'} />
-                  </i>
-                </span>
-                <span className={decisionStyles.choiceAction}>
-                  {index === 0 ? 'A' : 'B'} · {choice.action}
-                </span>
-                <span className={decisionStyles.choiceName} data-testid={`${testId}-name`}>
-                  {choice.name}
-                </span>
-                {choice.strains.length > 0 ? (
-                  <span className={decisionStyles.choiceStrains} aria-label={`Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}`}>
-                    {choice.strains.map((id) => (
-                      <span
-                        key={id}
-                        className={decisionStyles.choiceStrain}
-                        style={{ color: STRAINS[id].color }}
-                        data-testid={`${testId}-strain-${id}`}
-                      >
-                        <i aria-hidden="true"><StrainGlyph id={id} /></i>
-                        {STRAINS[id].name.toUpperCase()}
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
-                <span className={decisionStyles.choiceSignal} data-testid={`${testId}-salience`}>
-                  {choice.salience}
-                </span>
-                {choice.disabledReason ? (
-                  <span className={decisionStyles.choiceDisabled} title={choice.disabledReason}>
-                    {choice.disabledReason}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className={decisionStyles.quietActions}>
-          <button
-            type="button"
-            onClick={() => {
-              if (onBack) {
-                onBack();
-                return;
-              }
-              select('decline');
-            }}
-            disabled={locked}
-            className={decisionStyles.quietAction}
-            data-testid={onBack ? 'loom-back-to-portal' : 'gene-decline'}
-            data-active={declineSelected ? 'true' : 'false'}
-          >
-            {onBack ? '‹ Back to Portal' : 'Decline · keep this Genome'}
-          </button>
-        </div>
-
-        <div
           id="tactical-loom-consequences"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [touch-action:pan-y]"
+          className={`${decisionStyles.decisionBody} overscroll-contain [touch-action:pan-y]`}
           data-testid="loom-scroll-region"
+          data-scroll-owner="tactical-loom"
         >
+          <div
+            role="radiogroup"
+            aria-label="Genome decision"
+            className={decisionStyles.choiceWeave}
+            data-testid="loom-choice-rail"
+            data-responsive-composition="portrait-bottom landscape-side"
+          >
+            {choices.map((choice, index) => {
+              const active = selected === choice.key;
+              const testId = `gene-option-${index}`;
+              const accent = choice.strains[0]
+                ? STRAINS[choice.strains[0]].color
+                : '#a855f7';
+              return (
+                <button
+                  key={choice.key}
+                  ref={index === 0 ? firstChoiceRef : undefined}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  aria-label={`${index === 0 ? 'A' : 'B'}, ${choice.action} ${choice.name}${choice.strains.length > 0 ? `, Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}`}
+                  aria-keyshortcuts={index === 0 ? '1' : '2'}
+                  disabled={locked || Boolean(choice.disabledReason)}
+                  onClick={() => select(choice.key)}
+                  data-testid={testId}
+                  data-active={active ? 'true' : 'false'}
+                  className={decisionStyles.choiceToken}
+                  style={{ '--choice-accent': accent } as CSSProperties}
+                >
+                  <span className={decisionStyles.choiceCore} aria-hidden="true">
+                    <i className={decisionStyles.choiceGlyph}>
+                      <GeneGlyph id={choice.geneId ?? 'loom-decline'} />
+                    </i>
+                  </span>
+                  <span className={decisionStyles.choiceAction}>
+                    {index === 0 ? 'A' : 'B'} · {choice.action}
+                  </span>
+                  <span className={decisionStyles.choiceName} data-testid={`${testId}-name`}>
+                    {choice.name}
+                  </span>
+                  {choice.strains.length > 0 ? (
+                    <span className={decisionStyles.choiceStrains} aria-label={`Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}`}>
+                      {choice.strains.map((id) => (
+                        <span
+                          key={id}
+                          className={decisionStyles.choiceStrain}
+                          style={{ color: STRAINS[id].color }}
+                          data-testid={`${testId}-strain-${id}`}
+                        >
+                          <i aria-hidden="true"><StrainGlyph id={id} /></i>
+                          {STRAINS[id].name.toUpperCase()}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                  <span className={decisionStyles.choiceSignal} data-testid={`${testId}-salience`}>
+                    {choice.salience}
+                  </span>
+                  {choice.disabledReason ? (
+                    <span className={decisionStyles.choiceDisabled} title={choice.disabledReason}>
+                      {choice.disabledReason}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className={decisionStyles.quietActions}>
+            <button
+              type="button"
+              onClick={() => {
+                if (onBack) {
+                  onBack();
+                  return;
+                }
+                select('decline');
+              }}
+              disabled={locked}
+              className={decisionStyles.quietAction}
+              data-testid={onBack ? 'loom-back-to-portal' : 'gene-decline'}
+              data-active={declineSelected ? 'true' : 'false'}
+            >
+              {onBack ? '‹ Back to Portal' : 'Decline · keep this Genome'}
+            </button>
+          </div>
+
           {recodePhase && selectedCandidate ? (
             <section className="mb-4 rounded-[14px] border border-venom-orange/40 bg-venom-orange/7 p-3" data-testid="loom-recode-step">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -457,7 +463,11 @@ export function TacticalLoomDecision({
               ) : null}
 
               {detailsOpen || recodePhase ? (
-                <div id="loom-full-reaction-map" data-testid="loom-full-reaction-map">
+                <div
+                  id="loom-full-reaction-map"
+                  className={decisionStyles.reactionMap}
+                  data-testid="loom-full-reaction-map"
+                >
                   <TacticalLoomLite
                     consequence={consequence}
                     action={action}
@@ -473,7 +483,11 @@ export function TacticalLoomDecision({
           )}
         </div>
 
-        <footer className={`${decisionStyles.decisionFooter} mt-3 flex shrink-0 items-center justify-between gap-3 border-t border-scale-blue-light/20 pt-3`}>
+        <footer
+          className={`${decisionStyles.decisionFooter} flex items-center justify-between gap-3 pt-3`}
+          data-testid="loom-action-row"
+          data-action-surface="integrated"
+        >
           <p className="hidden font-body text-sm text-beige/45 sm:block">
             1 / 2 chooses · Esc {onBack ? 'returns to Portal' : 'selects DECLINE'} · Enter confirms
           </p>

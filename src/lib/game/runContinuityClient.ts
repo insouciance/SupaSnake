@@ -7,6 +7,10 @@ import {
 } from '@/lib/game/SnakeGameLogic';
 import { isCanonicalCompletedSettlement } from '@/lib/game/settlementResponse';
 import {
+  isSessionEndReason,
+  SETTLED_END_REASON,
+} from '@/lib/session/lifecycle';
+import {
   GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   isGenomeV2InteractionVersion,
   type GenomeV2InteractionVersion,
@@ -30,6 +34,45 @@ export class RunContinuityClientError extends Error {
     super(message);
     this.name = 'RunContinuityClientError';
   }
+}
+
+export type ActiveCheckpointFailureDisposition =
+  | 'retryable_transport'
+  | 'stale_lease'
+  | 'deterministic_rejection';
+
+const ACTIVE_CHECKPOINT_INTEGRITY_REASONS = new Set([
+  'invalid_checkpoint',
+  'checkpoint_conflict',
+  'not_prepared',
+  'not_found',
+]);
+
+/**
+ * Decide whether a failed active-checkpoint write may safely repeat the exact
+ * local proposal. Transport failures have not authoritatively rejected it, a
+ * lease conflict belongs to a newer client, and every other non-retryable HTTP
+ * rejection is deterministic: never loop the identical proposal. The live
+ * simulation may continue and submit a genuinely newer boundary while the
+ * last accepted server checkpoint remains the recovery base.
+ */
+export function classifyActiveCheckpointFailure(
+  error: unknown
+): ActiveCheckpointFailureDisposition {
+  if (!(error instanceof RunContinuityClientError)) {
+    return 'retryable_transport';
+  }
+  if (error.reason === 'lease_conflict') return 'stale_lease';
+  if (
+    error.reason !== null &&
+    ACTIVE_CHECKPOINT_INTEGRITY_REASONS.has(error.reason)
+  ) {
+    return 'deterministic_rejection';
+  }
+  if (error.reason === 'unavailable' || error.status >= 500) {
+    return 'retryable_transport';
+  }
+  return 'deterministic_rejection';
 }
 
 /**
@@ -81,7 +124,7 @@ export type ActiveCheckpointReceiptDisposition =
 export function classifyActiveCheckpointReceipt(
   expected: ActiveCheckpointAuthority,
   current: CurrentActiveCheckpointAuthority,
-  currentHold: 'connection' | 'stale' | null
+  currentHold: 'connection' | 'stale' | 'integrity' | null
 ): ActiveCheckpointReceiptDisposition {
   if (
     current.leaseToken !== expected.leaseToken ||
@@ -95,7 +138,7 @@ export function classifyActiveCheckpointReceipt(
     )
   ) return 'ignored';
 
-  return currentHold === 'connection'
+  return currentHold === 'connection' || currentHold === 'integrity'
     ? 'connection_recovered'
     : 'accepted';
 }
@@ -106,6 +149,7 @@ export interface ActiveRunView {
   startedAt: string;
   activatedAt: string | null;
   energyCommitted: number;
+  freePlay: boolean;
   canContinue: boolean;
   requiresAbandon: boolean;
   manifest: GameSessionStartPayload | null;
@@ -152,6 +196,7 @@ function parseActiveRun(value: unknown): ActiveRunView | null {
     startedAt: typeof row.startedAt === 'string' ? row.startedAt : '',
     activatedAt: typeof row.activatedAt === 'string' ? row.activatedAt : null,
     energyCommitted: Math.max(0, Number(row.energyCommitted) || 0),
+    freePlay: row.freePlay === true,
     canContinue: row.canContinue === true,
     requiresAbandon: row.requiresAbandon === true,
     manifest:
@@ -268,28 +313,52 @@ export function buildTerminalReplayProof(
   };
 }
 
-export type TerminalRecoveryDisposition = 'settling' | 'completed' | 'retry';
+export type TerminalRecoveryDisposition =
+  | 'settling'
+  | 'completed'
+  | 'recover'
+  | 'retry';
 
 /** Generic HTTP 409 is not an idempotency receipt. Classify only explicit
  * durable/canonical contracts as safe to leave the terminal recovery state. */
 export function classifyTerminalRecoveryResponse(
   status: number,
-  value: unknown
+  value: unknown,
+  expectedSessionId: string,
+  expectedFreePlay: boolean = false
 ): TerminalRecoveryDisposition {
   const body = responseRecord(value);
-  const hasImpact = responseRecord(body.impact).sessionId !== undefined;
+  const impact = responseRecord(body.impact);
+  const hasImpact = impact.sessionId === expectedSessionId;
+  const sessionMatches = body.sessionId === expectedSessionId;
   const pending =
+    status === 202 &&
+    sessionMatches &&
     body.accepted === true &&
     body.pendingSettlement === true &&
     body.clientRetryRequired === false;
-  if (status === 202 && pending) return 'settling';
+  if (pending) return 'settling';
   if (status >= 200 && status < 300) {
-    if (pending || hasImpact) return 'settling';
-    return 'completed';
-  }
-  if (status === 409 && body.alreadyEnded === true) {
     if (hasImpact) return 'settling';
-    return isCanonicalCompletedSettlement(body) ? 'completed' : 'retry';
+    if (
+      expectedFreePlay &&
+      sessionMatches &&
+      body.success === true &&
+      body.freePlay === true
+    ) return 'completed';
+    return 'retry';
+  }
+  if (
+    status === 409 &&
+    sessionMatches &&
+    body.alreadyEnded === true
+  ) {
+    if (hasImpact) return 'settling';
+    if (isCanonicalCompletedSettlement(body)) return 'completed';
+    if (
+      isSessionEndReason(body.endReason) &&
+      body.endReason !== SETTLED_END_REASON
+    ) return 'recover';
   }
   return 'retry';
 }
@@ -316,11 +385,13 @@ function responseError(
 
 export async function fetchActiveRun(
   accessToken: string,
-  fetcher: typeof fetch = fetch
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal
 ): Promise<ActiveRunView | null> {
   const response = await fetcher('/api/game/session', {
     cache: 'no-store',
     headers: { Authorization: `Bearer ${accessToken}` },
+    ...(signal ? { signal } : {}),
   });
   const body = await jsonRecord(response);
   if (!response.ok) {

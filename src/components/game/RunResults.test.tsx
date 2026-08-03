@@ -180,6 +180,19 @@ describe('RunResults constitutional hierarchy', () => {
     expect(onSetup).toHaveBeenCalledTimes(1);
   });
 
+  it('places Replay and Setup in the normal results flow without a sticky backing tray', () => {
+    render(<RunResults {...props()} />);
+    const actions = screen.getByTestId('results-action-dock');
+    expect(actions).toHaveAttribute('data-action-surface', 'integrated');
+    expect(actions).toHaveClass('bg-transparent');
+    expect(actions).not.toHaveClass('sticky');
+    expect(actions).not.toHaveClass('fixed');
+    expect(actions).not.toHaveClass('backdrop-blur-md');
+    expect(actions).not.toHaveClass('rounded-full');
+    expect(actions).not.toHaveClass('bg-void-deep/90');
+    expect(actions.previousElementSibling?.tagName).toBe('P');
+  });
+
   it('has no commercial copy or destination', () => {
     const { container } = render(<RunResults {...props()} />);
     expect(container.textContent ?? '').not.toMatch(/buy|purchase|subscribe|keeper|season pass|€/i);
@@ -265,15 +278,25 @@ describe('Layer 2', () => {
 
   it('distinguishes durable acceptance from a completed reward receipt', () => {
     render(<RunResults {...props({
+      outcome: 'crashed',
+      score: 999,
       impact: null,
       dnaCredited: null,
       yieldDna: null,
       settlementPending: true,
+      collisionDetail: 'self at 3,4',
+      shareArtifact: <div>Unverified share card</div>,
     })} />);
     expect(screen.getByTestId('results-settlement-pending')).toHaveTextContent(
       /Run secured/i
     );
     expect(screen.getByTestId('results-yield')).toHaveTextContent('Finalizing');
+    expect(screen.getByTestId('results-score')).toHaveTextContent('Finalizing');
+    expect(screen.getByTestId('gameover-finalizing')).toHaveTextContent('Run Secured');
+    expect(screen.queryByTestId('gameover-crashed')).toBeNull();
+    expect(screen.queryByText('999')).toBeNull();
+    expect(screen.queryByTestId('results-collision-diagnostic')).toBeNull();
+    expect(screen.queryByText('Unverified share card')).toBeNull();
     expect(screen.getByTestId('results-energy')).toHaveTextContent('reward secured');
     expect(screen.queryByText(/DNA credited/i)).toBeNull();
     expect(screen.getByTestId('impact-summary')).toHaveTextContent(

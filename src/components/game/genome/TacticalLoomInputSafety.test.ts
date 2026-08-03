@@ -16,9 +16,17 @@ describe('Tactical Loom mobile input boundary', () => {
     expect(choiceBoundary).toContain('choiceOptions !== null');
     expect(choiceBoundary).toContain('portalChoicePending');
     expect(choiceBoundary).toContain('surgeChoicePending');
-    expect(source).toMatch(
-      /const blockingOverlayActive =\s*choiceActive \|\| showAbandonConfirm \|\| continuitySafetyHold !== null;/
-    );
+    const blockingBoundary = source.match(
+      /const blockingOverlayActive =[\s\S]*?;/
+    )?.[0];
+    expect(blockingBoundary).toBeDefined();
+    expect(blockingBoundary).toContain('choiceActive');
+    expect(blockingBoundary).toContain('showAbandonConfirm');
+    expect(blockingBoundary).toContain('runEngineFault');
+    expect(blockingBoundary).toContain("continuitySafetyHold === 'stale'");
+    expect(blockingBoundary).toContain("terminalRecoveryState !== 'idle'");
+    expect(blockingBoundary).not.toContain("continuitySafetyHold === 'connection'");
+    expect(blockingBoundary).not.toContain("continuitySafetyHold === 'integrity'");
     expect(source).toMatch(
       /isMobile && isPlaying && !isGameOver && \(!isPaused \|\| awaitingResumeInput\) && !blockingOverlayActive && \(\s*<FlickSurface/
     );

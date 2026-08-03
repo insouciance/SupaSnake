@@ -1052,6 +1052,31 @@ describe('run continuity server contract', () => {
     });
   });
 
+  it('retains the immutable Free Play class when a terminal manifest is hidden', async () => {
+    await expect(readActiveRun(clientWithRowAndRpc({
+      id: 'terminal-free-run',
+      start_request_id: START_ID,
+      start_manifest: { sessionId: 'terminal-free-run', freePlay: true },
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      continuity_phase: 'terminal',
+      continuity_checkpoint: null,
+      continuity_checkpoint_revision: 4,
+      continuity_terminal_facts: { score: 12 },
+      continuity_terminal_digest: 'a'.repeat(64),
+      continuity_lease_epoch: 1,
+      energy_committed: 0,
+      started_at: '2026-07-31T10:00:00.000Z',
+      ended_at: null,
+      end_reason: null,
+    }, jest.fn()), 'player-1')).resolves.toMatchObject({
+      phase: 'terminal',
+      freePlay: true,
+      manifest: null,
+      canContinue: false,
+      requiresAbandon: false,
+    });
+  });
+
   it('classifies a legacy open completed row as settling, not abandonable', async () => {
     await expect(readActiveRun(clientWithRowAndRpc({
       id: 'legacy-pending',

@@ -188,6 +188,77 @@ function pendingSettlementJson(sessionId: string) {
   );
 }
 
+function storedNonNegativeNumber(value: unknown): number | null {
+  const parsed = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim().length > 0
+      ? Number(value)
+      : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+/**
+ * Free Play deliberately has no Career impact envelope, so its completed
+ * game-session row is the terminal receipt authority. Keep this payload
+ * reconstructable from persisted facts: the first response, an HTTP retry,
+ * and a concurrent completion race must all identify the same run result.
+ */
+function freePlaySettlementResult(
+  row: Record<string, unknown>,
+  playerState?: unknown
+): Record<string, unknown> | null {
+  if (
+    typeof row.id !== 'string' ||
+    row.is_free_play !== true ||
+    row.end_reason !== SETTLED_END_REASON ||
+    (row.extracted !== true && row.extracted !== false)
+  ) return null;
+
+  const score = storedNonNegativeNumber(row.score);
+  const yieldDna = storedNonNegativeNumber(row.yield_dna);
+  if (score === null || yieldDna === null) return null;
+
+  // This is the same stamped envelope fold used by the first completion.
+  // Missing pre-envelope fields preserve the historical full-strength rule.
+  const chargeState: ChargeState = isChargeState(row.charge_state)
+    ? row.charge_state
+    : 'charged';
+  const rawCommitmentBps = storedNonNegativeNumber(
+    row.energy_harvest_multiplier_bps
+  );
+  const commitmentMultiplierBps =
+    rawCommitmentBps !== null && Number.isInteger(rawCommitmentBps)
+      ? rawCommitmentBps
+      : chargeState === 'lean'
+        ? energyCommitmentMultiplierBps(0)
+        : 10_000;
+
+  return {
+    success: true,
+    sessionId: row.id,
+    freePlay: true,
+    ...(playerState !== undefined ? { player: playerState } : {}),
+    validation: {
+      valid: row.validated === true,
+      adjustedDna: 0,
+      score,
+      extracted: row.extracted,
+      yieldDna,
+      // Ascendance's exact breakdown was not historically stored for
+      // practice, so retries expose the canonical total without inventing a
+      // component split. New direct responses retain the richer breakdown.
+      ascendance: null,
+      chargeState,
+    },
+    hypotheticalDna: applyEnergyHarvestMultiplier(
+      yieldDna,
+      commitmentMultiplierBps,
+      chargeState
+    ),
+    genome: row.genome ?? null,
+  };
+}
+
 function isMissingRewardProtocolInfra(error: {
   code?: string;
   message?: string;
@@ -197,6 +268,47 @@ function isMissingRewardProtocolInfra(error: {
     ['42703', 'PGRST204'].includes(error.code ?? '') &&
     /reward_protocol|progression_settlement_payload/i.test(error.message ?? '')
   );
+}
+
+function checkpointDiagnostic(value: unknown): Record<string, unknown> {
+  const record = (candidate: unknown): Record<string, unknown> | null =>
+    candidate !== null && typeof candidate === 'object' && !Array.isArray(candidate)
+      ? candidate as Record<string, unknown>
+      : null;
+  const root = record(value);
+  const config = record(root?.config);
+  const state = record(root?.state);
+  const privateState = record(root?.privateState);
+  const replay = record(privateState?.replay);
+  const rng = record(root?.rng);
+  const genome = record(config?.genome);
+  const genomeState = record(state?.genomeV2);
+  let encodedBytes: number | null = null;
+  try {
+    encodedBytes = Buffer.byteLength(JSON.stringify(value), 'utf8');
+  } catch {
+    // The validator reports non-serializable state; the diagnostic remains
+    // useful without ever logging the player-authored payload itself.
+  }
+  return {
+    encodedBytes,
+    version: root?.version ?? null,
+    engineVersion: root?.engineVersion ?? null,
+    rulesVersion: root?.rulesVersion ?? null,
+    ruleset: config?.ruleset ?? null,
+    genomeRulesVersion: genome?.rulesVersion ?? null,
+    genomeInteractionVersion: genome?.interactionVersion ?? null,
+    foodEaten: state?.foodEaten ?? null,
+    score: state?.score ?? null,
+    snakeLength: Array.isArray(state?.snake) ? state.snake.length : null,
+    terrainCount: Array.isArray(state?.terrain) ? state.terrain.length : null,
+    replayTicks: replay?.ticks ?? null,
+    replayActions: Array.isArray(replay?.actions) ? replay.actions.length : null,
+    elapsedMs: privateState?.elapsedMs ?? null,
+    rngDraws: rng?.draws ?? null,
+    hasGenomeOffer: record(genomeState?.offer) !== null,
+    hasGenomePortal: record(genomeState?.portal) !== null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -557,6 +669,26 @@ export async function POST(request: NextRequest) {
                   error.reason === 'lease_conflict'
                 ? 409
                 : 503;
+          if (error.reason === 'invalid_checkpoint') {
+            const diagnostic = checkpointDiagnostic(checkpoint);
+            console.error('Active checkpoint validation rejected:', {
+              playerId: player.id,
+              sessionId,
+              expectedRevision,
+              message: error.message,
+              ...diagnostic,
+            });
+            Sentry.captureException(error, {
+              level: 'warning',
+              fingerprint: ['active-checkpoint-rejected', error.message],
+              extra: {
+                playerId: player.id,
+                sessionId,
+                expectedRevision,
+                ...diagnostic,
+              },
+            });
+          }
           return progressionJson(
             {
               error: error.message,
@@ -1823,6 +1955,7 @@ export async function POST(request: NextRequest) {
             {
               error: 'Session already ended',
               alreadyEnded: true,
+              sessionId,
               endReason: SETTLED_END_REASON,
               impact: recovered.impact,
             },
@@ -1943,6 +2076,9 @@ export async function POST(request: NextRequest) {
       // already banked this" from "that run timed out and paid nothing".
       if (session.ended_at) {
         const priorReason = (session as Record<string, unknown>).end_reason;
+        const isCompletedFreePlay =
+          priorReason === SETTLED_END_REASON &&
+          (session as Record<string, unknown>).is_free_play === true;
         let impact: Awaited<ReturnType<typeof resumeOrRecoverRunImpact>> | null = null;
         if (
           priorReason === SETTLED_END_REASON &&
@@ -1958,6 +2094,7 @@ export async function POST(request: NextRequest) {
               {
                 error: 'Run settled; its impact receipt is still pending',
                 alreadyEnded: true,
+                sessionId,
                 impactPending: true,
                 retryable: true,
               },
@@ -1985,12 +2122,30 @@ export async function POST(request: NextRequest) {
             { extra: { playerId: player.id, sessionId } }
           );
         }
+        const freePlayResult = isCompletedFreePlay
+          ? freePlaySettlementResult(
+              session as Record<string, unknown>,
+              currentPlayer ?? null
+            )
+          : null;
+        if (isCompletedFreePlay && freePlayResult === null) {
+          return progressionJson(
+            {
+              error: 'Free Play result is temporarily unavailable',
+              sessionId,
+              retryable: true,
+            },
+            { status: 503 }
+          );
+        }
         return progressionJson(
           {
             error: 'Session already ended',
             alreadyEnded: true,
+            sessionId,
             ...(typeof priorReason === 'string' ? { endReason: priorReason } : {}),
             player: currentPlayer ?? null,
+            ...(freePlayResult ?? {}),
             ...(impact?.status === 'found' ? { impact: impact.impact } : {}),
           },
           { status: 409 }
@@ -2679,6 +2834,46 @@ export async function POST(request: NextRequest) {
             endedRows = [{ id: sessionId }];
           } catch (error) {
             if (error instanceof RunContinuityError) {
+              // Another terminal request may have committed while this one
+              // was waiting for the row lock. `run_not_terminalizable` then
+              // describes a successful race, not a missing practice result.
+              if (error.reason === 'not_prepared') {
+                const { data: racedFreeSession, error: racedFreeError } =
+                  await supabase
+                    .from('game_sessions')
+                    .select(
+                      'id, ended_at, end_reason, is_free_play, score, yield_dna, extracted, validated, genome, charge_state, energy_harvest_multiplier_bps'
+                    )
+                    .eq('id', sessionId)
+                    .eq('player_id', player.id)
+                    .maybeSingle();
+                if (racedFreeError) {
+                  return progressionJson(
+                    {
+                      error: 'Free Play race state is temporarily unavailable',
+                      sessionId,
+                      retryable: true,
+                    },
+                    { status: 503 }
+                  );
+                }
+                const racedResult = racedFreeSession
+                  ? freePlaySettlementResult(
+                      racedFreeSession as Record<string, unknown>
+                    )
+                  : null;
+                if (racedResult) {
+                  return progressionJson(
+                    {
+                      error: 'Session already ended',
+                      alreadyEnded: true,
+                      endReason: SETTLED_END_REASON,
+                      ...racedResult,
+                    },
+                    { status: 409 }
+                  );
+                }
+              }
               const status = error.reason === 'not_found' ? 404
                 : error.reason === 'lease_conflict' || error.reason === 'not_prepared'
                   ? 409
@@ -2779,6 +2974,7 @@ export async function POST(request: NextRequest) {
             {
               error: 'Session already ended',
               alreadyEnded: true,
+              sessionId,
               endReason: SETTLED_END_REASON,
             },
             { status: 409 }
@@ -2826,6 +3022,7 @@ export async function POST(request: NextRequest) {
               {
                 error: 'Session already ended',
                 alreadyEnded: true,
+                sessionId,
                 endReason: SETTLED_END_REASON,
               },
               { status: 409 }
@@ -2863,7 +3060,7 @@ export async function POST(request: NextRequest) {
         const { data: racedSession, error: racedSessionError } = await supabase
           .from('game_sessions')
           .select(
-            'ended_at, end_reason, is_free_play, atomic_reward_observed_at'
+            'id, ended_at, end_reason, is_free_play, atomic_reward_observed_at, score, yield_dna, extracted, validated, genome, charge_state, energy_harvest_multiplier_bps'
           )
           .eq('id', sessionId)
           .eq('player_id', player.id)
@@ -2875,10 +3072,36 @@ export async function POST(request: NextRequest) {
           );
         }
         const racedReason = (racedSession as Record<string, unknown>).end_reason;
+        if (
+          (racedSession as Record<string, unknown>).is_free_play === true &&
+          racedReason === SETTLED_END_REASON
+        ) {
+          const result = freePlaySettlementResult(
+            racedSession as Record<string, unknown>
+          );
+          if (result === null) {
+            return progressionJson(
+              {
+                error: 'Free Play result is temporarily unavailable',
+                sessionId,
+                retryable: true,
+              },
+              { status: 503 }
+            );
+          }
+          return progressionJson(
+            {
+              error: 'Session already ended',
+              alreadyEnded: true,
+              endReason: racedReason,
+              ...result,
+            },
+            { status: 409 }
+          );
+        }
         const careerApplicable =
           typeof (racedSession as Record<string, unknown>).atomic_reward_observed_at === 'string';
         if (
-          (racedSession as Record<string, unknown>).is_free_play === true ||
           racedReason !== SETTLED_END_REASON ||
           !careerApplicable
         ) {
@@ -2886,10 +3109,8 @@ export async function POST(request: NextRequest) {
             {
               error: 'Session already ended',
               alreadyEnded: true,
+              sessionId,
               ...(typeof racedReason === 'string' ? { endReason: racedReason } : {}),
-              ...((racedSession as Record<string, unknown>).is_free_play === true
-                ? { freePlay: true }
-                : {}),
             },
             { status: 409 }
           );
@@ -2903,6 +3124,7 @@ export async function POST(request: NextRequest) {
             {
               error: 'Run settlement is finishing; retry for its impact receipt',
               alreadyEnded: true,
+              sessionId,
               impactPending: true,
               retryable: true,
             },
@@ -2913,6 +3135,7 @@ export async function POST(request: NextRequest) {
           {
             error: 'Session already ended',
             alreadyEnded: true,
+            sessionId,
             impact: impact.impact,
           },
           { status: 409 }
@@ -2985,6 +3208,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
           success: true,
+          sessionId,
           freePlay: true,
           player: freePlayerState,
           validation: {
@@ -3182,6 +3406,7 @@ export async function POST(request: NextRequest) {
           {
             error: 'Session already ended',
             alreadyEnded: true,
+            sessionId,
             endReason: openSession.end_reason ?? null,
           },
           { status: 409 }
@@ -3256,7 +3481,7 @@ export async function POST(request: NextRequest) {
 
       if (!forfeited || forfeited.length === 0) {
         return NextResponse.json(
-          { error: 'Session already ended', alreadyEnded: true },
+          { error: 'Session already ended', alreadyEnded: true, sessionId },
           { status: 409 }
         );
       }

@@ -652,8 +652,9 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await installRunFlowFixtures(page);
 
     const simulationSeed = 'e2e-resume-seed';
-    const activatedAt = Date.parse('2026-07-31T08:00:00.000Z');
+    const activatedAt = Date.now();
     const engine = new SnakeGameLogic({
+      gridSize: 80,
       ruleset: RULESETS.PRIMAL,
       simulationSeed,
     });
@@ -661,19 +662,14 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     engine.setLadderRung(0);
     engine.setTraits([]);
     engine.setMutationPool([]);
-    engine.prepare();
-    engine.activatePrepared(activatedAt);
-    const beforeFood = engine.getState();
-    const step = {
-      UP: { x: 0, z: -1 },
-      DOWN: { x: 0, z: 1 },
-      LEFT: { x: -1, z: 0 },
-      RIGHT: { x: 1, z: 0 },
-    }[beforeFood.direction];
-    engine.placeFood({
-      x: beforeFood.snake[0].x + step.x,
-      y: 0,
-      z: beforeFood.snake[0].z + step.z,
+    engine.startDriven({
+      snake: [
+        { x: 20, y: 0, z: 20 },
+        { x: 19, y: 0, z: 20 },
+        { x: 18, y: 0, z: 20 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 21, y: 0, z: 20 }],
     });
     engine.tick();
     const checkpoint = engine.exportCheckpoint(activatedAt + 2_000);
@@ -707,8 +703,8 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     const activeRun = {
       sessionId: 'resume-session',
       phase: 'active' as const,
-      startedAt: '2026-07-31T08:00:00.000Z',
-      activatedAt: '2026-07-31T08:00:00.000Z',
+      startedAt: new Date(activatedAt).toISOString(),
+      activatedAt: new Date(activatedAt).toISOString(),
       energyCommitted: 2,
       canContinue: true,
       requiresAbandon: false,
@@ -725,7 +721,11 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     let startRequests = 0;
     let resumeRequests = 0;
     let checkpointRequests = 0;
+    let checkpointReceipts = 0;
     const checkpointRequestTimes: number[] = [];
+    const checkpointReplayTicks: number[] = [];
+    const checkpointReplayActions: Array<Array<{ tick?: number; direction?: string }>> = [];
+    let checkpointOutageStartedAt: number | null = null;
     await page.route('**/api/game/session', async (route) => {
       const request = route.request();
       if (request.method() === 'GET') {
@@ -738,6 +738,14 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
       const body = request.postDataJSON() as {
         action?: string;
         sessionId?: string;
+        checkpoint?: {
+          privateState?: {
+            replay?: {
+              ticks?: number;
+              actions?: Array<{ tick?: number; direction?: string }>;
+            };
+          };
+        };
       } | null;
       if (body?.action === 'start') {
         startRequests += 1;
@@ -761,12 +769,45 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
       if (body?.action === 'checkpoint') {
         checkpointRequests += 1;
         checkpointRequestTimes.push(Date.now());
+        const replay = body.checkpoint?.privateState?.replay;
+        if (typeof replay?.ticks === 'number') checkpointReplayTicks.push(replay.ticks);
+        checkpointReplayActions.push(replay?.actions ?? []);
+        checkpointOutageStartedAt ??= Date.now();
+        // Reproduce the production failure sequence instead of pretending
+        // every save succeeds: one deterministic 400 must not be repeated as
+        // the same proposal, and a time-based outage longer than the freshness
+        // budget must not take steering away. A later receipt advances the
+        // same run regardless of how many proposals the browser happened to
+        // schedule.
+        if (checkpointRequests === 1) {
+          return route.fulfill({
+            status: 400,
+            contentType: 'application/json',
+            json: {
+              error: 'Run checkpoint does not equal its deterministic replay.',
+              reason: 'invalid_checkpoint',
+              retryable: false,
+            },
+          });
+        }
+        if (Date.now() - checkpointOutageStartedAt < 10_500) {
+          return route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            json: {
+              error: 'Run checkpoints are temporarily unavailable.',
+              reason: 'unavailable',
+              retryable: true,
+            },
+          });
+        }
+        checkpointReceipts += 1;
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
           json: {
             checkpoint: {
-              revision: 4 + checkpointRequests,
+              revision: 4 + checkpointReceipts,
               savedAt: '2026-07-31T08:00:03.000Z',
             },
           },
@@ -802,13 +843,33 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     expect(resumeRequests).toBe(1);
     expect(startRequests).toBe(0);
 
+    // Remember even a transient blocking surface. Final-state assertions alone
+    // would miss the unfair modal if it appeared for one frame and disappeared
+    // after the next successful receipt.
+    await page.evaluate(() => {
+      const marker = '__sawBlockingContinuitySurface';
+      (window as unknown as Record<string, unknown>)[marker] = false;
+      const inspect = () => {
+        const text = document.body.textContent ?? '';
+        if (/try connection|run held safely/i.test(text)) {
+          (window as unknown as Record<string, unknown>)[marker] = true;
+        }
+      };
+      inspect();
+      new MutationObserver(inspect).observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    });
+
     // The reported force-quit regression was causal, not cosmetic: before the
     // active-time fix, every resumed checkpoint was rejected after an offline
     // wall-clock gap and the ten-second safety watchdog repeatedly replaced
-    // play with “Try connection”. Resume movement, deliberately hold the board,
-    // and prove successful checkpoint receipts keep that watchdog disarmed for
-    // longer than its full bound. The server validator separately covers a
-    // three-hour offline gap with repeated accepted saves.
+    // play with “Try connection”. Keep this restored run actively steering
+    // through a real >10 s outage and prove the board continues to execute
+    // turns. The generous authored grid makes wall contact unrelated to the
+    // continuity behavior under test.
     const resumeKey: Record<string, string> = {
       UP: 'ArrowRight',
       RIGHT: 'ArrowDown',
@@ -819,25 +880,66 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     if (!safeKey) throw new Error(`No safe resume key for ${checkpoint.state.direction}`);
     await page.keyboard.press(safeKey);
     await expect(resumeGate).toHaveCount(0);
-    await expect.poll(() => checkpointRequests, { timeout: 5_000 })
-      .toBeGreaterThan(0);
+    const clockwiseKey: Record<string, string> = {
+      ArrowUp: 'ArrowRight',
+      ArrowRight: 'ArrowDown',
+      ArrowDown: 'ArrowLeft',
+      ArrowLeft: 'ArrowUp',
+    };
+    let nextTurn = safeKey;
+    let lateTurn: string | null = null;
+    const keyDirection: Record<string, string> = {
+      ArrowUp: 'UP',
+      ArrowRight: 'RIGHT',
+      ArrowDown: 'DOWN',
+      ArrowLeft: 'LEFT',
+    };
+    const lateTurnWasCheckpointed = () =>
+      lateTurn !== null && checkpointReplayActions.flat().some(
+        (action) => action.direction === keyDirection[lateTurn!]
+      );
+    const activeProofDeadline = Date.now() + 30_000;
+    while (
+      (checkpointReceipts === 0 || !lateTurnWasCheckpointed()) &&
+      Date.now() < activeProofDeadline
+    ) {
+      await page.waitForTimeout(1_200);
+      nextTurn = clockwiseKey[nextTurn];
+      if (!nextTurn) throw new Error('No clockwise E2E turn');
+      await page.keyboard.press(nextTurn);
+      if (
+        lateTurn === null &&
+        checkpointOutageStartedAt !== null &&
+        Date.now() - checkpointOutageStartedAt >= 10_250
+      ) {
+        lateTurn = nextTurn;
+      }
+      await expect(page.getByTestId('tactical-hold')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /try connection/i })).toHaveCount(0);
+      await expect(page.getByTestId('continuity-safety-hold')).toHaveCount(0);
+    }
+    expect(checkpointReceipts).toBeGreaterThan(0);
+    expect(lateTurn).not.toBeNull();
+    expect(checkpointReplayTicks.length).toBeGreaterThan(2);
+    expect(Math.max(...checkpointReplayTicks)).toBeGreaterThan(
+      Math.min(...checkpointReplayTicks) + 20
+    );
+    expect(lateTurnWasCheckpointed()).toBe(true);
 
     const pauseControl = page.getByRole('button', { name: 'Pause game (Space)' });
     await expect(pauseControl).toBeVisible();
     await pauseControl.click();
     await expect(page.getByTestId('tactical-hold')).toBeVisible();
-    await expect.poll(
-      () => checkpointRequestTimes.length < 2
-        ? 0
-        : checkpointRequestTimes.at(-1)! - checkpointRequestTimes[0],
-      { timeout: 16_000, intervals: [500] }
-    ).toBeGreaterThanOrEqual(10_000);
-    await expect(page.getByRole('button', { name: /try connection/i })).toHaveCount(0);
-    await expect(page.getByText(/latest position is still being secured/i)).toHaveCount(0);
+    await expect(page.getByText(/latest position pending verification/i)).toHaveCount(0);
+    await expect(page.getByText(/save catching up/i)).toHaveCount(0);
+    expect(await page.evaluate(() =>
+      (window as unknown as Record<string, unknown>).__sawBlockingContinuitySurface
+    )).toBe(false);
 
     // A successful resumed run still owns the next movement input after the
     // long checkpoint window; no stale overlay consumed it.
-    await page.keyboard.press(safeKey);
+    nextTurn = clockwiseKey[nextTurn];
+    await page.keyboard.press(nextTurn);
     await expect(page.getByTestId('tactical-hold')).toHaveCount(0);
   });
 

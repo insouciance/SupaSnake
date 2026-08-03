@@ -137,6 +137,8 @@ export interface ActiveRunContract {
   startedAt: string;
   activatedAt: string | null;
   energyCommitted: number;
+  /** Immutable run class retained even when terminal recovery hides manifest details. */
+  freePlay: boolean;
   canContinue: boolean;
   requiresAbandon: boolean;
   manifest: RunStartManifest | null;
@@ -253,6 +255,7 @@ function activeContract(
     startedAt: row.server_started_at ?? row.started_at,
     activatedAt: row.continuity_activated_at,
     energyCommitted: Math.max(0, Number(row.energy_committed ?? 0)),
+    freePlay: preparedManifest?.freePlay === true,
     canContinue,
     requiresAbandon: phase !== 'settling' && phase !== 'terminal' && !canContinue,
     manifest,

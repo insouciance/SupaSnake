@@ -14,9 +14,10 @@ interface RunContinuityWatchdogOptions {
 }
 
 /**
- * Hold an active run when its latest authoritative continuity receipt ages
- * past the rollback budget. A new heartbeat is an explicit re-arm signal,
- * even when two receipts happen to share the same millisecond timestamp.
+ * Report when an active run's latest authoritative continuity receipt ages
+ * past the rollback budget. The caller may expose nonblocking save status, but
+ * must never turn this timer alone into a gameplay hold. A new heartbeat is an
+ * explicit re-arm signal even when two receipts share one millisecond.
  */
 export function useRunContinuityWatchdog({
   enabled,

@@ -50,7 +50,7 @@ describe('useRunContinuityWatchdog', () => {
     expect(onExpired).toHaveBeenCalledTimes(1);
   });
 
-  it('holds at ten seconds when checkpoint renewal truly fails', () => {
+  it('reports staleness at ten seconds when checkpoint renewal truly fails', () => {
     const onExpired = jest.fn();
     const heartbeat: RunContinuityHeartbeat = { acceptedAt: Date.now() };
     renderHook(() => useRunContinuityWatchdog({

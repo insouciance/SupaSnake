@@ -2,6 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   activatePreparedRun,
   buildTerminalReplayProof,
+  classifyActiveCheckpointFailure,
   classifyActiveCheckpointReceipt,
   classifyTerminalRecoveryResponse,
   createRunStartRequestId,
@@ -9,6 +10,7 @@ import {
   LatestOnlyAsyncQueue,
   matchesContinuityAuthority,
   retryPreparingRunStart,
+  RunContinuityClientError,
   resumeCheckpointedRun,
   saveActiveRunCheckpoint,
 } from './runContinuityClient';
@@ -62,27 +64,89 @@ describe('run continuity client', () => {
       accepted: true,
       pendingSettlement: true,
       clientRetryRequired: false,
-    })).toBe('settling');
+      sessionId: 'run-1',
+    }, 'run-1')).toBe('settling');
     expect(classifyTerminalRecoveryResponse(409, {
       alreadyEnded: true,
+      sessionId: 'run-1',
       impact: { sessionId: 'run-1' },
-    })).toBe('settling');
+    }, 'run-1')).toBe('settling');
     expect(classifyTerminalRecoveryResponse(409, {
       alreadyEnded: true,
       endReason: 'completed',
-    })).toBe('completed');
+      sessionId: 'run-1',
+    }, 'run-1')).toBe('completed');
     expect(classifyTerminalRecoveryResponse(409, {
       alreadyEnded: true,
       endReason: 'abandoned',
-    })).toBe('retry');
+      sessionId: 'run-1',
+    }, 'run-1')).toBe('recover');
     expect(classifyTerminalRecoveryResponse(409, {
       alreadyEnded: true,
-    })).toBe('retry');
-    expect(classifyTerminalRecoveryResponse(200, { validation: {} }))
-      .toBe('completed');
+      sessionId: 'run-1',
+    }, 'run-1')).toBe('retry');
+    expect(classifyTerminalRecoveryResponse(
+      200,
+      { validation: {}, sessionId: 'run-1' },
+      'run-1'
+    )).toBe('retry');
+    expect(classifyTerminalRecoveryResponse(200, {
+      success: true,
+      freePlay: true,
+      sessionId: 'run-1',
+    }, 'run-1', true)).toBe('completed');
+    expect(classifyTerminalRecoveryResponse(409, {
+      alreadyEnded: true,
+      endReason: 'completed',
+      sessionId: 'other-run',
+    }, 'run-1')).toBe('retry');
     expect(classifyTerminalRecoveryResponse(409, {
       reason: 'checkpoint_conflict',
-    })).toBe('retry');
+    }, 'run-1')).toBe('retry');
+  });
+
+  it('retries only checkpoint failures without an authoritative rejection', () => {
+    expect(classifyActiveCheckpointFailure(new Error('offline')))
+      .toBe('retryable_transport');
+    expect(classifyActiveCheckpointFailure(new RunContinuityClientError(
+      'Run checkpoints are temporarily unavailable.',
+      'unavailable',
+      503
+    ))).toBe('retryable_transport');
+    expect(classifyActiveCheckpointFailure(new RunContinuityClientError(
+      'Upstream failed before returning a checkpoint receipt.',
+      null,
+      502
+    ))).toBe('retryable_transport');
+  });
+
+  it('classifies a superseded checkpoint lease separately', () => {
+    expect(classifyActiveCheckpointFailure(new RunContinuityClientError(
+      'This run is open in a newer session.',
+      'lease_conflict',
+      409
+    ))).toBe('stale_lease');
+  });
+
+  it.each([
+    ['invalid_checkpoint', 400],
+    ['checkpoint_conflict', 409],
+    ['not_prepared', 409],
+    ['not_found', 404],
+  ])('requires server-checkpoint recovery for %s', (reason, status) => {
+    expect(classifyActiveCheckpointFailure(new RunContinuityClientError(
+      'The local checkpoint cannot continue authoritatively.',
+      reason,
+      status
+    ))).toBe('deterministic_rejection');
+  });
+
+  it('fails closed to server recovery for an unknown non-retryable HTTP rejection', () => {
+    expect(classifyActiveCheckpointFailure(new RunContinuityClientError(
+      'Authentication must be refreshed.',
+      null,
+      401
+    ))).toBe('deterministic_rejection');
   });
 
   it('parses a durable terminal phase instead of making it legacy', async () => {
@@ -93,6 +157,7 @@ describe('run continuity client', () => {
         startedAt: '2026-07-31T08:00:00Z',
         activatedAt: '2026-07-31T08:00:02Z',
         energyCommitted: 6,
+        freePlay: true,
         canContinue: false,
         requiresAbandon: false,
         manifest: null,
@@ -105,6 +170,7 @@ describe('run continuity client', () => {
     })) as unknown as typeof fetch;
     await expect(fetchActiveRun('token', fetcher)).resolves.toMatchObject({
       phase: 'terminal',
+      freePlay: true,
       requiresAbandon: false,
     });
   });
@@ -392,10 +458,9 @@ describe('run continuity client', () => {
       leaseToken: 'resumed-exclusive-lease-token',
     };
     let currentAuthority = { ...authority };
-    let currentHold: 'connection' | 'stale' | null = null;
+    let currentHold: 'connection' | 'stale' | 'integrity' | null = null;
     let releaseResponse: (() => void) | null = null;
     let acceptedHeartbeats = 0;
-    let requiresDirection = false;
 
     const queue = new LatestOnlyAsyncQueue<typeof authority>(async (expected) => {
       await new Promise<void>((resolve) => {
@@ -410,7 +475,6 @@ describe('run continuity client', () => {
       acceptedHeartbeats += 1;
       if (disposition === 'connection_recovered') {
         currentHold = null;
-        requiresDirection = true;
       }
     });
 
@@ -425,7 +489,6 @@ describe('run continuity client', () => {
 
     expect(acceptedHeartbeats).toBe(1);
     expect(currentHold).toBeNull();
-    expect(requiresDirection).toBe(true);
 
     // A response from the superseded resume lease is never a heartbeat.
     currentAuthority = {
@@ -439,6 +502,20 @@ describe('run continuity client', () => {
     )).toBe('ignored');
   });
 
+  it('lets a later accepted snapshot clear a non-blocking integrity status', () => {
+    const authority = {
+      accessToken: 'token-a',
+      userId: 'user-a',
+      sessionId: 'run-1',
+      leaseToken: 'resumed-exclusive-lease-token',
+    };
+    expect(classifyActiveCheckpointReceipt(
+      authority,
+      authority,
+      'integrity'
+    )).toBe('connection_recovered');
+  });
+
   it('keeps the hold after automatic failure and lets manual retry recover through the same queue', async () => {
     const authority = {
       accessToken: 'token-a',
@@ -446,7 +523,7 @@ describe('run continuity client', () => {
       sessionId: 'run-1',
       leaseToken: 'resumed-exclusive-lease-token',
     };
-    let currentHold: 'connection' | 'stale' | null = 'connection';
+    let currentHold: 'connection' | 'stale' | 'integrity' | null = 'connection';
     let acceptedHeartbeats = 0;
     let failNext = true;
     const queue = new LatestOnlyAsyncQueue<typeof authority>(async (expected) => {

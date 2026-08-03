@@ -10,23 +10,31 @@ import {
   SnakeGameLogic,
   type Direction,
   type Position,
+  type SnakeCheckpointV1,
   type SnakeReplayAction,
 } from '@/lib/game/SnakeGameLogic';
 import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
 import { genomeV2ActivePool } from '@/shared/game/genes';
 import {
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_RULES_V2,
   deriveGenomeV2FtuePresentation,
+  genomeV2YieldFloor,
 } from '@/shared/game/genomeV2';
 import { RULESETS } from '@/shared/game/rulesets';
 
 const START_ID = '7a604a42-9f57-4f50-9a36-a7c7e85dbb28';
 
-function v2Genome(runSeed: string) {
+function v2Genome(
+  runSeed: string,
+  dynasty: keyof typeof RULESETS = 'PRIMAL',
+  interactionVersion?: typeof GENOME_V2_INTERACTION_PHYSICAL_RELIC
+) {
   const genome = sanitizeGenomeCapability({
     rulesVersion: GENOME_RULES_V2,
+    ...(interactionVersion ? { interactionVersion } : {}),
     runSeed,
-    v2GenePool: genomeV2ActivePool('PRIMAL'),
+    v2GenePool: genomeV2ActivePool(dynasty),
     heirloom: {},
     ftuePresentation: deriveGenomeV2FtuePresentation(10, 3),
     offerTiltStrain: null,
@@ -42,7 +50,8 @@ function v2Genome(runSeed: string) {
 function v2Manifest(
   sessionId: string,
   simulationSeed: string,
-  genome: ReturnType<typeof v2Genome>
+  genome: ReturnType<typeof v2Genome>,
+  dynasty: keyof typeof RULESETS = 'PRIMAL'
 ) {
   return {
     sessionId,
@@ -51,7 +60,7 @@ function v2Manifest(
       version: 1,
       rulesVersion: SNAKE_RULES_VERSION,
     },
-    runSnake: { dynasty: 'PRIMAL' },
+    runSnake: { dynasty },
     genome,
   };
 }
@@ -91,7 +100,7 @@ function moveToward(game: SnakeGameLogic, target: Position): void {
   const gridSize = game.exportCheckpoint().config.gridSize;
   const start = state.snake[0];
   const blocked = new Set(
-    state.snake.slice(0, -1).map(cellKey)
+    state.snake.map(cellKey)
   );
   for (const terrain of state.terrain) {
     if (terrain.solid) blocked.add(cellKey(terrain));
@@ -143,6 +152,30 @@ function moveToward(game: SnakeGameLogic, target: Position): void {
     expect(game.setDirection(first)).toBe('accepted');
   }
   game.tick();
+}
+
+function expectGenomeV2CheckpointInvariants(
+  checkpoint: SnakeCheckpointV1
+): void {
+  const reducer = checkpoint.state.genomeV2;
+  const runtime = checkpoint.privateState.genomeV2Runtime;
+  if (!reducer || !runtime) {
+    throw new Error('Fixture checkpoint lost its Genome v2 runtime.');
+  }
+  expect(reducer.foodCount).toBe(checkpoint.state.foodEaten);
+  expect(checkpoint.state.dnaCollected).toBe(
+    genomeV2YieldFloor(reducer.ledger.bankableYield)
+  );
+  const activeTargetIds = Object.values(reducer.targets)
+    .filter(
+      (target) =>
+        target.lifecycle === 'active' || target.lifecycle === 'armed'
+    )
+    .map((target) => target.targetId)
+    .sort();
+  expect(
+    runtime.targetProgress.map((entry) => entry.targetId).sort()
+  ).toEqual(activeTargetIds);
 }
 
 describe('Genome v2 continuity replay boundary', () => {
@@ -349,6 +382,206 @@ describe('Genome v2 continuity replay boundary', () => {
         opening: true,
       })
     ).toThrow('seeded opening');
+  });
+
+  it('keeps a physical COSMIC Loom valid across offline continuation and successive checkpoints', () => {
+    const activatedAt = Date.UTC(2026, 7, 3, 8, 0, 0);
+    const resumedAt = activatedAt + 3 * 60 * 60 * 1_000;
+    const simulationSeed = 'continuity-physical-cosmic-resume';
+    const genome = v2Genome(
+      'continuity-physical-cosmic-genome',
+      'COSMIC',
+      GENOME_V2_INTERACTION_PHYSICAL_RELIC
+    );
+    const manifest = v2Manifest(
+      'physical-cosmic-resume',
+      simulationSeed,
+      genome,
+      'COSMIC'
+    );
+    const game = new SnakeGameLogic({
+      ruleset: RULESETS.COSMIC,
+      genome,
+      simulationSeed,
+    });
+    game.prepare();
+    const opening = validateRunCheckpoint(game.exportCheckpoint(activatedAt), {
+      manifest,
+      startedAt: new Date(activatedAt).toISOString(),
+      now: activatedAt,
+      opening: true,
+    });
+    game.activatePrepared(activatedAt);
+
+    let steps = 0;
+    while (!game.getState().genomeV2?.offer && steps < 1_000) {
+      const state = game.getState();
+      moveToward(game, state.mutationTile ?? state.foods[0]);
+      expect(game.getState().isGameOver).toBe(false);
+      steps += 1;
+    }
+    const liveOffer = game.getState().genomeV2?.offer;
+    if (!liveOffer) throw new Error('Physical relic did not open its Loom.');
+
+    const openAt = activatedAt + 60_000;
+    const acceptedOpen = validateRunCheckpoint(game.exportCheckpoint(openAt), {
+      manifest,
+      startedAt: new Date(activatedAt).toISOString(),
+      now: openAt,
+      previous: opening,
+    });
+    expect(acceptedOpen).toMatchObject({
+      config: {
+        ruleset: 'COSMIC',
+        genome: {
+          interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+        },
+      },
+      state: {
+        genomeV2: {
+          offer: { offerId: liveOffer.offerId },
+        },
+      },
+    });
+    expectGenomeV2CheckpointInvariants(acceptedOpen);
+
+    // Resume reconstructs the latest canonical checkpoint under a rotated
+    // lease. The first held write must remain valid after a long wall-clock
+    // gap without charging that offline time to the active run.
+    const resumed = new SnakeGameLogic({
+      ruleset: RULESETS.COSMIC,
+      genome,
+      simulationSeed,
+    });
+    resumed.prepare();
+    resumed.restoreCheckpoint(acceptedOpen, resumedAt, {
+      replacePreparedOpening: true,
+    });
+    const acceptedHeld = validateRunCheckpoint(
+      resumed.exportCheckpoint(resumedAt + 3_000),
+      {
+        manifest,
+        startedAt: new Date(activatedAt).toISOString(),
+        now: resumedAt + 3_000,
+        previous: acceptedOpen,
+      }
+    );
+    expect(acceptedHeld.privateState.elapsedMs).toBe(
+      acceptedOpen.privateState.elapsedMs + 3_000
+    );
+    expect(acceptedHeld.state.genomeV2?.offer?.offerId).toBe(liveOffer.offerId);
+    expectGenomeV2CheckpointInvariants(acceptedHeld);
+
+    expect(resumed.resolveGenomeV2Offer({
+      action: 'choose',
+      offerId: liveOffer.offerId,
+      candidateIndex: 0,
+    })).toBe(true);
+    expect(resumed.pause('decision')).toBe(true);
+    const acceptedChoice = validateRunCheckpoint(
+      resumed.exportCheckpoint(resumedAt + 4_000),
+      {
+        manifest,
+        startedAt: new Date(activatedAt).toISOString(),
+        now: resumedAt + 4_000,
+        previous: acceptedHeld,
+      }
+    );
+    expect(acceptedChoice.state).toMatchObject({
+      isPaused: true,
+      genomeV2: { offer: null },
+    });
+    expectGenomeV2CheckpointInvariants(acceptedChoice);
+
+    expect(
+      resumed.resumeWithDirection(resumed.getState().direction)
+    ).toBe('duplicate');
+    const acceptedResumed = validateRunCheckpoint(
+      resumed.exportCheckpoint(resumedAt + 5_000),
+      {
+        manifest,
+        startedAt: new Date(activatedAt).toISOString(),
+        now: resumedAt + 5_000,
+        previous: acceptedChoice,
+      }
+    );
+    expect(acceptedResumed.state).toMatchObject({
+      isPaused: false,
+      genomeV2: { offer: null },
+    });
+    expectGenomeV2CheckpointInvariants(acceptedResumed);
+
+    // Checkpoint every legal post-resume move, including the first food eat.
+    // This is deliberately stricter than the three-second client cadence: a
+    // bad cursor, target-progress snapshot, reducer food count, or Yield fold
+    // is isolated to the exact tick on which it diverges.
+    const foodBeforeRoute = acceptedResumed.state.foodEaten;
+    const targetOrdinalBeforeRoute =
+      acceptedResumed.privateState.genomeV2Runtime!.targetOrdinal;
+    let acceptedAfterMove = acceptedResumed;
+    let checkpointAt = resumedAt + 5_000;
+    let postResumeMoves = 0;
+    while (
+      resumed.getState().foodEaten === foodBeforeRoute &&
+      postResumeMoves < 200
+    ) {
+      moveToward(resumed, resumed.getState().foods[0]);
+      expect(resumed.getState().isGameOver).toBe(false);
+      checkpointAt += 3_000;
+      acceptedAfterMove = validateRunCheckpoint(
+        resumed.exportCheckpoint(checkpointAt),
+        {
+          manifest,
+          startedAt: new Date(activatedAt).toISOString(),
+          now: checkpointAt,
+          previous: acceptedAfterMove,
+        }
+      );
+      expectGenomeV2CheckpointInvariants(acceptedAfterMove);
+      postResumeMoves += 1;
+    }
+    expect(postResumeMoves).toBeGreaterThan(0);
+    expect(acceptedAfterMove.state.foodEaten).toBe(foodBeforeRoute + 1);
+    expect(acceptedAfterMove.state.genomeV2?.offer).toBeNull();
+    expect(acceptedAfterMove.rng.draws).toBeGreaterThan(
+      acceptedResumed.rng.draws
+    );
+    expect(
+      acceptedAfterMove.privateState.genomeV2Runtime?.targetOrdinal
+    ).toBeGreaterThan(targetOrdinalBeforeRoute);
+    expect(
+      acceptedAfterMove.privateState.genomeV2Runtime
+        ?.nextCadenceOfferAtFood
+    ).toBeGreaterThan(acceptedAfterMove.state.foodEaten);
+
+    // Accept one more checkpoint after the food boundary as well. This proves
+    // that the newly folded target/ledger/RNG state is a usable replay base,
+    // rather than merely a proposal that validates once and poisons its
+    // successor.
+    moveToward(resumed, resumed.getState().foods[0]);
+    checkpointAt += 3_000;
+    const acceptedSuccessor = validateRunCheckpoint(
+      resumed.exportCheckpoint(checkpointAt),
+      {
+        manifest,
+        startedAt: new Date(activatedAt).toISOString(),
+        now: checkpointAt,
+        previous: acceptedAfterMove,
+      }
+    );
+    expectGenomeV2CheckpointInvariants(acceptedSuccessor);
+    expect(acceptedSuccessor.privateState.replay).toMatchObject({
+      ticks: acceptedAfterMove.privateState.replay.ticks + 1,
+      actions: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'genome_v2_offer',
+          offerId: liveOffer.offerId,
+          choice: 0,
+        }),
+        expect.objectContaining({ kind: 'pause', hold: 'decision' }),
+        expect.objectContaining({ kind: 'resume' }),
+      ]),
+    });
   });
 
   it('replays resolved v2 Loom and portal decisions into one canonical checkpoint', () => {

@@ -61,7 +61,7 @@ The existing deliberate-direction resume gate and the reserved HUD/board layout 
 | Lost anonymous progress confirmation | Destructive progress-loss boundary | Keep | Explicit confirmation is required before abandoning an unrecoverable local identity. |
 | Account deletion, purchase/unlock, reroll | Explicit destructive or economic action | Keep | Confirmation protects irreversible or currency-spending choices. |
 | Age gate | Explicit signup/legal flow | Keep | Legal requirement, never placed in front of guest gameplay. |
-| Critical run/session recovery | Blocking technical failure | Keep | Only shown when play cannot continue safely; Retry stays in context. |
+| Critical run/session recovery | Proven ownership conflict or terminal recovery | Keep narrowly | Nonterminal checkpoint/network failures stay nonblocking. Only a verified newer lease may stop this live copy; terminal recovery stays in context. |
 | Explicit Lab details, breeding picker/reveal, Contracts, Season | Player opens the feature | Keep | These are player-pulled overlays or destination screens. |
 | Achievement/Genome Research feedback | In-run discovery | Keep as toast | Nonblocking, time-limited feedback with no forced action. |
 | Home Research relic | Explicit contextual world object | Keep as secondary navigation | Its five runes open the same one free Genome Workbench reached by the legacy `/codex` compatibility route. It never auto-opens, competes with Launch as a primary command, or creates a parallel Archive/Codex choice; the Research Record is subordinate. |

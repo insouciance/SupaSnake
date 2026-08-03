@@ -128,13 +128,14 @@ describe('Run Impact client contract', () => {
   });
 
   it('recovers the canonical receipt from server authority', async () => {
+    const canonical = envelope({ sessionId: 'session/one' });
     const fetchFn = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ impact: envelope() }),
+      json: async () => ({ impact: canonical }),
     });
     await expect(recoverRunImpact('session/one', 'token', fetchFn)).resolves.toEqual(
-      envelope()
+      canonical
     );
     expect(fetchFn).toHaveBeenCalledWith(
       '/api/progression/impact?sessionId=session%2Fone',
@@ -157,14 +158,15 @@ describe('Run Impact client contract', () => {
   });
 
   it('uses an explicit write request to advance durable pending settlement', async () => {
+    const canonical = envelope({ sessionId: 'session/one' });
     const fetchFn = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ impact: envelope() }),
+      json: async () => ({ impact: canonical }),
     });
     await expect(
       advancePendingRunImpact('session/one', 'token', fetchFn)
-    ).resolves.toEqual(envelope());
+    ).resolves.toEqual(canonical);
     expect(fetchFn).toHaveBeenCalledWith(
       '/api/progression/impact?sessionId=session%2Fone',
       {
@@ -173,6 +175,20 @@ describe('Run Impact client contract', () => {
         headers: { Authorization: 'Bearer token' },
       }
     );
+  });
+
+  it('rejects a valid impact envelope bound to a different session', async () => {
+    const wrongSession = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ impact: envelope({ sessionId: 'other-session' }) }),
+    });
+    await expect(
+      recoverRunImpact('requested-session', 'token', wrongSession)
+    ).resolves.toBeNull();
+    await expect(
+      advancePendingRunImpact('requested-session', 'token', wrongSession)
+    ).resolves.toBeNull();
   });
 
   it('keeps an accepted but unfinished receipt pending without client authority', async () => {

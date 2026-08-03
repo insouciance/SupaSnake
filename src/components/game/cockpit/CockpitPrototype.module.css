@@ -814,6 +814,24 @@
   scrollbar-width: thin;
 }
 
+/* Tactical Loom is a board-context instrument, not a page modal. Its own
+ * opaque shell provides contrast; the viewport layer must leave the arena
+ * visible and own no outer scroller or glass veil. */
+.decisionDock > :global([data-surface='tactical-loom']) {
+  overflow: hidden !important;
+  padding:
+    max(8px, env(safe-area-inset-top, 0px))
+    max(8px, env(safe-area-inset-right, 0px))
+    max(8px, env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px)) !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+}
+
+.liveRoot:has(.decisionDock > :global([data-surface='tactical-loom'])) .arenaBay {
+  filter: none;
+}
+
 .decisionDock > :global([role='dialog']) > :global(.panel-elevated),
 .decisionDock > :global([role='dialog']) > :global(.panel-glow),
 .decisionDock > :global([role='alertdialog']) > :global(.panel-elevated),

@@ -6,7 +6,11 @@
 import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import Home from './page';
 import { clearLastUser, recordLastUser, readLastUser } from '@/lib/auth/lastUser';
-import { enqueueReward, readOutbox } from '@/lib/outbox/rewardOutbox';
+import {
+  clearOutbox,
+  enqueueReward,
+  readOutbox,
+} from '@/lib/outbox/rewardOutbox';
 import { useNotificationStore } from '@/lib/stores/notificationStore';
 import { clearLaunchHandoff, peekLaunchHandoff } from '@/lib/ftue/launchFlow';
 
@@ -201,7 +205,16 @@ function setupFetch(fixtures: FetchFixtures = {}) {
       const body = init?.body ? JSON.parse(String(init.body)) : {};
       return body.action === 'start'
         ? jsonResponse({ sessionId: 'session-1' })
-        : jsonResponse({ success: true });
+        : {
+            ok: true,
+            status: 202,
+            json: async () => ({
+              accepted: true,
+              pendingSettlement: true,
+              clientRetryRequired: false,
+              sessionId: body.sessionId,
+            }),
+          } as unknown as Response;
     }
     return jsonResponse({});
   }) as jest.Mock;
@@ -242,6 +255,7 @@ async function waitForStats() {
 describe('Home page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearOutbox();
     clearLaunchHandoff();
     window.localStorage.clear();
     window.sessionStorage.clear();

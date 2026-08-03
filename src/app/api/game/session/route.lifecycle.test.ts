@@ -89,6 +89,8 @@ let careerCapability: Row = {
 let pendingAdoptionError: Row | null = null;
 let pendingLookupError: Row | null = null;
 let snakeOwnershipCountError: Row | null = null;
+let loseNextFreeSessionUpdateRace = false;
+let loseNextFreeContinuityRace = false;
 
 function matches(row: Row, calls: Call[]): boolean {
   for (const [op, ...args] of calls) {
@@ -155,8 +157,30 @@ jest.mock('@supabase/supabase-js', () => ({
         const p = (params ?? {}) as Row;
         const target = db.game_sessions.find((row) => row.id === p.p_session_id);
         if (target) {
-          target.ended_at = new Date().toISOString();
-          target.end_reason = 'completed';
+          const facts = (p.p_facts ?? {}) as Row;
+          Object.assign(target, {
+            score: facts.score,
+            dna_earned: facts.dnaEarned,
+            yield_dna: facts.yieldDna,
+            duration_seconds: facts.durationSeconds,
+            died: facts.died,
+            victory: facts.victory,
+            extracted: facts.extracted,
+            ended_at: facts.endedAt ?? new Date().toISOString(),
+            end_reason: 'completed',
+            validated: facts.validated,
+            validation_errors: facts.validationErrors,
+            foods_collected: facts.foodsCollected,
+            mutations: facts.mutations,
+            genome: facts.genome,
+          });
+        }
+        if (loseNextFreeContinuityRace) {
+          loseNextFreeContinuityRace = false;
+          return {
+            data: null,
+            error: { message: 'run_not_terminalizable' },
+          };
         }
         return { data: { accepted: true }, error: null };
       }
@@ -246,6 +270,14 @@ jest.mock('@supabase/supabase-js', () => ({
         if (pendingUpdate) {
           for (const row of hit) Object.assign(row, pendingUpdate);
           pendingUpdate = null;
+          if (
+            loseNextFreeSessionUpdateRace &&
+            table === 'game_sessions' &&
+            hit.some((row) => row.is_free_play === true)
+          ) {
+            loseNextFreeSessionUpdateRace = false;
+            return { data: [], count: null, error: null };
+          }
         }
         return {
           data: hit,
@@ -471,6 +503,8 @@ beforeEach(() => {
   pendingAdoptionError = null;
   pendingLookupError = null;
   snakeOwnershipCountError = null;
+  loseNextFreeSessionUpdateRace = false;
+  loseNextFreeContinuityRace = false;
   seedPlayer();
   seedSession();
   mockSettleSessionReward = jest.fn(async (_client: unknown, rawInput: unknown) => {
@@ -901,6 +935,83 @@ describe('durable earning-end ingress', () => {
     );
     expect(mockSettleDurableRunProgression).not.toHaveBeenCalled();
     expect(session().ended_at).not.toBeNull();
+
+    const replay = await POST(
+      post({ action: 'end', sessionId: 'session-1' })
+    );
+    const replayBody = await replay.json();
+
+    expect(replay.status).toBe(409);
+    expect(replayBody).toMatchObject({
+      success: true,
+      alreadyEnded: true,
+      endReason: 'completed',
+      sessionId: 'session-1',
+      freePlay: true,
+      validation: {
+        valid: true,
+        score: body.validation.score,
+        extracted: body.validation.extracted,
+        yieldDna: body.validation.yieldDna,
+      },
+      hypotheticalDna: body.hypotheticalDna,
+      genome: body.genome ?? null,
+    });
+  });
+
+  it('returns the persisted Free Play result after losing the completion race', async () => {
+    seedSession({
+      is_free_play: true,
+      charge_state: 'lean',
+      energy_harvest_multiplier_bps: 2_500,
+    });
+    loseNextFreeSessionUpdateRace = true;
+
+    const response = await POST(post(endBody()));
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      success: true,
+      alreadyEnded: true,
+      endReason: 'completed',
+      sessionId: 'session-1',
+      freePlay: true,
+      validation: {
+        valid: true,
+        score: EXPECTED.score,
+        extracted: true,
+        yieldDna: expect.any(Number),
+        chargeState: 'lean',
+      },
+      hypotheticalDna: expect.any(Number),
+    });
+    expect(body.hypotheticalDna).toBeLessThan(body.validation.yieldDna);
+  });
+
+  it('returns the persisted result after losing an atomic continuity completion race', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal', freePlay: true });
+    loseNextFreeContinuityRace = true;
+
+    const response = await POST(
+      post({ action: 'end', sessionId: 'session-1' })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      success: true,
+      alreadyEnded: true,
+      endReason: 'completed',
+      sessionId: 'session-1',
+      freePlay: true,
+      validation: {
+        valid: true,
+        score: session().score,
+        extracted: session().extracted,
+        yieldDna: session().yield_dna,
+      },
+    });
   });
 
   it('never lets an older continuity rules stamp fall back to raw end facts', async () => {

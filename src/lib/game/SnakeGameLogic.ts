@@ -894,6 +894,12 @@ export class SnakeGameLogic {
   /** Reducer/event adapter, present only for an explicitly stamped v2 run. */
   private genomeV2Runtime: GenomeV2Runtime | null = null;
   /**
+   * Monotonic mirror revision. The renderer advances every movement tick, but
+   * the large reducer changes only at Genome boundaries. Keeping those clocks
+   * separate avoids serializing the complete reducer merely to move the head.
+   */
+  private genomeV2Revision = 0;
+  /**
    * The run's growth profile (WP-3.02), server-stamped into `run_context`.
    * NEVER read from a build-time flag: `computeLengthTrace` recomputes with
    * the stamped profile, so a client that chose its own would diverge on
@@ -1162,6 +1168,7 @@ export class SnakeGameLogic {
   private syncGenomeV2State(): void {
     const reducer = this.genomeV2Runtime?.getState() ?? null;
     this.state.genomeV2 = reducer;
+    this.genomeV2Revision += 1;
     if (reducer) {
       this.state.dnaCollected = genomeV2YieldFloor(
         reducer.ledger.bankableYield
@@ -1211,6 +1218,33 @@ export class SnakeGameLogic {
   /** The active genome config (or null in legacy mode). */
   getGenome(): GenomeEngineConfig | null {
     return this.genome ? checkpointClone(this.genome) : null;
+  }
+
+  /** Cheap capability predicate for the movement/render hot path. */
+  hasGenome(): boolean {
+    return this.genome !== null;
+  }
+
+  /** Small immutable presentation fact without cloning the full capability. */
+  getSuppressedStrains(): StrainId[] {
+    return [...(this.genome?.suppressedStrains ?? [])];
+  }
+
+  /** Cheap lifecycle predicate for the movement timer. */
+  isGameOver(): boolean {
+    return this.state.isGameOver;
+  }
+
+  /** Current reducer-mirror revision; changes only when the reducer changes. */
+  getGenomeV2Revision(): number {
+    return this.genomeV2Revision;
+  }
+
+  /** Immutable Genome v2 mirror for cold/UI consumers. */
+  getGenomeV2State(): GenomeV2State | null {
+    return this.state.genomeV2
+      ? checkpointClone(this.state.genomeV2)
+      : null;
   }
 
   /**
@@ -1784,7 +1818,7 @@ export class SnakeGameLogic {
   /**
    * Get current game state (immutable copy)
    */
-  getState(): GameState {
+  getState(options: { includeGenomeV2?: boolean } = {}): GameState {
     return {
       ...this.state,
       snake: this.state.snake.map((s) => ({ ...s })),
@@ -1803,7 +1837,7 @@ export class SnakeGameLogic {
       pendingChoice: this.state.pendingChoice
         ? [...this.state.pendingChoice]
         : null,
-      genomeV2: this.state.genomeV2
+      genomeV2: options.includeGenomeV2 !== false && this.state.genomeV2
         ? checkpointClone(this.state.genomeV2)
         : null,
       strainCounts: { ...this.state.strainCounts },
@@ -2700,8 +2734,8 @@ export class SnakeGameLogic {
     // the whole forming window to leave.
     this.tickTerrain();
     if (this.genomeV2Runtime) {
-      this.genomeV2Runtime.expireGoldWindows(this.replayTicks);
-      this.syncGenomeV2State();
+      const expired = this.genomeV2Runtime.expireGoldWindows(this.replayTicks);
+      if (expired.length > 0) this.syncGenomeV2State();
     }
 
     const head = this.state.snake[0];
@@ -4526,31 +4560,67 @@ export class SnakeGameLogic {
       runtime.getState().crownWave === null;
     const currentTargetIds: string[] = [];
     const baseBlocked = this.genomeV2RouteBlockedCells();
-    // A Gilded Fork appends one mutually exclusive physical branch to the
-    // wave. Only the foods that existed when registration began consume a
-    // cadence target; appended branches belong to that same target.
-    const cadenceFoodCount = foods.length;
-
-    for (let index = 0; index < cadenceFoodCount; index += 1) {
-      const food = foods[index];
-      const projection = runtime.projectNextTarget(true);
-      const blocked = [
-        ...baseBlocked,
-        ...foods
-          .filter((_, otherIndex) => otherIndex !== index)
-          .map((cell) => ({ x: cell.x, z: cell.z })),
-        ...this.genomeV2ReservedTargetCells(),
-      ];
+    // Preflight the whole wave before the reducer receives its first target.
+    // Sibling foods are triggers, not walls: a valid COSMIC route may collect
+    // one Star on the way to another. Treating every sibling as blocked made
+    // the first registration throw after `state.foods` and the body had
+    // already advanced, leaving a live but unreplayable half-spawned wave.
+    //
+    // Food placement has an unsafe last resort for a board that is already
+    // geometrically doomed. Genome state cannot use that escape hatch: every
+    // retained food needs a route through the actual physical board. Drop an
+    // unreachable candidate before any reducer mutation, and if the complete
+    // candidate wave was unsafe, make one deterministic survivable placement.
+    let routePlans = foods.flatMap((food) => {
       const route = shortestGenomeV2Route(
         this.gridSize,
         head,
         food,
-        blocked,
+        baseBlocked,
         this.ruleset.torus === true
       );
-      if (!route) {
-        throw new Error('Genome v2 food spawned without a safe target route.');
+      return route ? [{ food, route }] : [];
+    });
+    if (routePlans.length !== foods.length) {
+      foods.splice(
+        0,
+        foods.length,
+        ...routePlans.map(({ food }) => food)
+      );
+    }
+    if (routePlans.length === 0) {
+      const fallback = chooseSurvivableTargetCell(
+        this.gridSize,
+        head,
+        this.waveBlockedGrid(),
+        this.rng,
+        this.state.snake.length
+      );
+      if (fallback) {
+        const food = { ...fallback, y: 0 };
+        const route = shortestGenomeV2Route(
+          this.gridSize,
+          head,
+          food,
+          baseBlocked,
+          this.ruleset.torus === true
+        );
+        if (route) {
+          foods.push(food);
+          routePlans = [{ food, route }];
+        }
       }
+    }
+    // A Gilded Fork appends one mutually exclusive physical branch to the
+    // wave. Only the foods that existed when registration began consume a
+    // cadence target; appended branches belong to that same target.
+    const cadenceFoodCount = routePlans.length;
+
+    for (let index = 0; index < cadenceFoodCount; index += 1) {
+      const food = foods[index];
+      const projection = runtime.projectNextTarget(true);
+      const blocked = baseBlocked;
+      const route = routePlans[index].route;
 
       let cell = { x: food.x, z: food.z };
       let forkCell: { x: number; z: number } | null = null;

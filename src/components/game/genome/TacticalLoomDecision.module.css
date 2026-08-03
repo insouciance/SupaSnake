@@ -1,12 +1,52 @@
+.decisionBackdrop {
+  box-sizing: border-box;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  padding:
+    max(8px, env(safe-area-inset-top, 0px))
+    max(8px, env(safe-area-inset-right, 0px))
+    max(8px, env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px));
+  background: transparent;
+  backdrop-filter: none;
+}
+
 .decisionPanel {
+  box-sizing: border-box;
+  display: grid;
+  width: 100%;
+  height: min(72dvh, 45rem, 100%);
+  min-width: 0;
+  max-width: 100%;
+  max-height: 100%;
+  flex: 0 1 36rem;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgb(168 85 247 / 35%);
+  border-radius: 20px;
   background:
     radial-gradient(circle at 50% -12%, rgb(168 85 247 / 24%), transparent 31%),
     radial-gradient(circle at 104% 55%, rgb(34 211 238 / 9%), transparent 34%),
-    linear-gradient(165deg, rgb(8 13 27 / 98%), rgb(3 7 18 / 96%));
+    linear-gradient(165deg, rgb(8 13 27), rgb(3 7 18));
+  padding: 12px;
   box-shadow:
     inset 0 1px 0 rgb(196 181 253 / 13%),
-    -18px 0 70px rgb(0 0 0 / 42%),
+    0 18px 70px rgb(0 0 0 / 42%),
     0 0 42px rgb(168 85 247 / 10%);
+}
+
+.decisionHeader {
+  min-width: 0;
+}
+
+.decisionBody {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+  touch-action: pan-y;
 }
 
 .choiceWeave {
@@ -369,10 +409,20 @@
 }
 
 .decisionFooter {
-  padding-bottom: max(0px, env(safe-area-inset-bottom));
+  min-width: 0;
+  margin-top: 12px;
+  padding-bottom: 0;
+  background: transparent;
+}
+
+.reactionMap {
+  animation: reaction-map-reveal 150ms ease-out;
+  transform-origin: top center;
 }
 
 @media (min-width: 640px) {
+  .decisionBackdrop { align-items: center; }
+  .decisionPanel { padding: 20px; }
   .choiceWeave { gap: 18px; padding-block: 12px 8px; }
   .choiceWeave::before { top: 44px; }
   .choiceToken { min-height: 146px; }
@@ -385,6 +435,24 @@
   .quickConsequences { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 }
 
+@media (min-width: 900px) and (min-height: 560px) {
+  .decisionPanel {
+    height: min(86dvh, 45rem, 100%);
+  }
+}
+
+@keyframes reaction-map-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .choiceCore { transition: none; }
+  .reactionMap { animation: none; }
 }
