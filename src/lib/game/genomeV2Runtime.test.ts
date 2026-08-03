@@ -431,6 +431,53 @@ describe('GenomeV2Runtime target and signature bridges', () => {
     });
   });
 
+  it('owes no fork branch on Gold Trail Gene golden food without the Splice', () => {
+    const runtime = runtimeFromState(
+      stateWithGene('PRIMAL', 'gold_trail'),
+      GENOME_V2_INTERACTION_PHYSICAL_RELIC
+    );
+    expect(runtime.getState().activeSplices).toEqual([]);
+    for (let ordinal = 1; ordinal <= 4; ordinal += 1) {
+      collectOrdinary(runtime, ordinal);
+    }
+    expect(runtime.projectNextTarget(true)).toMatchObject({
+      kind: 'gold_trail',
+      requiresForkCell: false,
+    });
+    const spawned = runtime.spawnTarget(9, {
+      cell: { x: 5, z: 5 },
+      speedAtSpawnMs: 160,
+      shortestSafeMoves: 5,
+    });
+    expect(spawned.target).toMatchObject({
+      kind: 'gold_trail',
+      forkCell: null,
+      forkChoice: null,
+    });
+
+    // The Gene draws no branch, so the engine must not offer one. The reducer
+    // would refuse the event, and before this contract existed that refusal
+    // surfaced as a fatal engine throw on ordinary golden-food collection.
+    expect(runtime.gildedForkChoiceAvailable(spawned.targetId)).toBe(false);
+    expect(runtime.chooseGildedFork(spawned.targetId, 'ordinary', 10)).toBe(
+      false
+    );
+    expect(runtime.targetChoiceAt({ x: 5, z: 5 })).toMatchObject({
+      target: { targetId: spawned.targetId },
+      choice: null,
+    });
+    expect(
+      runtime.resolveTarget(spawned.targetId, 10, {
+        resolution: 'collected',
+        movesUsed: 5,
+        baseYield: genomeV2Yield(1),
+        pressureBps: 0,
+      })
+    ).toMatchObject({ lifecycle: 'completed' });
+    expect(runtime.getState().targets[spawned.targetId].forkChoice).toBeNull();
+    expect(runtime.getState().ledger.bankableYield).toBeGreaterThan(0);
+  });
+
   it('spends the single Wall Rush charge before allowing another redirect', () => {
     const runtime = runtimeFromState(stateWithGene('PRIMAL', 'wall_rush'));
 

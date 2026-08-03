@@ -618,6 +618,81 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
     );
   });
 
+  /**
+   * Regression: the Gold Trail Gene spawns golden food on its own cadence, but
+   * only the Gilded Fork Splice draws a branch. Collecting the Gene-only golden
+   * food must not try to commit a fork choice the reducer cannot legally accept.
+   */
+  it('collects Gold Trail Gene golden food that has no Splice branch', () => {
+    const pool = genomeV2ActivePool('PRIMAL');
+    let reducer = createGenomeV2State('PRIMAL', {
+      runSeed: 'engine-primal-gold-trail-gene',
+      genePool: pool,
+      ftue: deriveGenomeV2Ftue(10, 3),
+    });
+    // The Gene alone: acquiring Overgrowth as well would forge the Splice.
+    reducer = acquireReducerGene(reducer, 'gold_trail', 0, ['overgrowth']);
+    reducer = primeReducerTargets(reducer, 4);
+    expect(reducer.activeSplices).toEqual([]);
+
+    const game = new SnakeGameLogic({
+      gridSize: 20,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'gold-trail-gene-board-seed',
+      genome: configForState(reducer, GENOME_V2_INTERACTION_PHYSICAL_RELIC),
+    });
+    game.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [
+        { x: 8, y: 0, z: 5 },
+        { x: 17, y: 0, z: 17 },
+      ],
+    });
+
+    const initial = game.getState();
+    const golden = Object.values(initial.genomeV2?.targets ?? {}).find(
+      (target) => target.kind === 'gold_trail'
+    );
+    expect(golden).toMatchObject({
+      lifecycle: 'active',
+      forkChoice: null,
+      cell: { x: 8, z: 5 },
+      forkCell: null,
+    });
+
+    const checkpointAt = Date.now();
+    const checkpoint = game.exportCheckpoint(checkpointAt);
+    driveTo(game, golden!.cell, [{ x: 17, z: 17 }]);
+
+    const collected = game.getState();
+    // No branch was drawn, so no branch is committed; the Gene's own
+    // within-window multiplier is what pays.
+    expect(collected.genomeV2?.targets[golden!.targetId]).toMatchObject({
+      lifecycle: 'completed',
+      forkChoice: null,
+    });
+    expect(collected.genomeV2!.ledger.bankableYield).toBeGreaterThan(0);
+    expect(collected.genomeV2?.bodyGrowthAdded).toBe(0);
+
+    // Server replay of the identical inputs must reach the identical state.
+    const trace = game.getReplayTrace();
+    expect(trace.actions).not.toContainEqual(
+      expect.objectContaining({ kind: 'genome_v2_target' })
+    );
+    const replayed = new SnakeGameLogic();
+    replayed.restoreCheckpoint(checkpoint, checkpointAt);
+    replayed.applyReplayTrace(
+      trace,
+      checkpoint.privateState.replay.actions.length
+    );
+    expect(gameplayState(replayed)).toEqual(gameplayState(game));
+  });
+
   it('keeps retired v1 Arc out of the v2 VOLT ladder and leaves its transformed target live', () => {
     const pool = genomeV2ActivePool('CYBER');
     let reducer = createGenomeV2State('CYBER', {
