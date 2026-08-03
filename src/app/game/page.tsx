@@ -9,6 +9,7 @@ import {
   Direction,
   Position,
   GameOverData,
+  type CollisionDiagnostic,
   type DirectionInputTiming,
   type DirectionInputSource,
   type SetDirectionResult,
@@ -99,6 +100,14 @@ import { GeneChoiceOverlay } from '@/components/game/GeneChoiceOverlay';
 import { StrainMeterHUD } from '@/components/game/StrainMeterHUD';
 import { ExpressionFlourish } from '@/components/game/ExpressionFlourish';
 import { GenomeCommitCallout } from '@/components/game/genome/GenomeCommitCallout';
+import { GenomeRuntimeFeedbackCallout } from '@/components/game/genome/GenomeRuntimeFeedbackCallout';
+import {
+  buildGenomeV2RuntimeSignals,
+  latestGenomeV2BoardFeedback,
+  projectGenomeV2Board,
+  type GenomeV2BoardFeedback,
+  type GenomeV2BoardProjection,
+} from '@/components/game/genome/genomeV2BoardPresentation';
 import {
   PortalChoiceOverlay,
   StrainSurgeOverlay,
@@ -198,6 +207,7 @@ import {
   type AscendanceYieldBreakdown,
 } from '@/shared/game/ascendance';
 import {
+  CURRENT_GENOME_V2_INTERACTION_VERSION,
   GENOME_V2_SPLICES,
   GENOME_V2_STRAIN_THRESHOLDS,
   projectGenomeV2Ladders,
@@ -213,6 +223,7 @@ import {
   genomeV2RuntimeBridge,
   parseAscendanceRunPresentationStamp,
   parseGenomeV2ActivationPresentation,
+  parseLegacyHeldGenes,
   parseGenomeV2State,
   buildGenomeV2OverclockPresentation,
   type AscendanceRunPresentationStamp,
@@ -244,6 +255,7 @@ import {
 import {
   activatePreparedRun,
   buildTerminalReplayProof,
+  classifyActiveCheckpointReceipt,
   classifyTerminalRecoveryResponse,
   createRunStartRequestId,
   fetchActiveRun,
@@ -256,6 +268,10 @@ import {
   type ActiveRunView,
 } from '@/lib/game/runContinuityClient';
 import {
+  useRunContinuityWatchdog,
+  type RunContinuityHeartbeat,
+} from '@/hooks/useRunContinuityWatchdog';
+import {
   IconBolt,
   IconDna,
   IconFlame,
@@ -264,6 +280,31 @@ import {
   IconReset,
   IconSnake,
 } from '@/components/ui/icons';
+
+function collisionDiagnosticLabel(
+  diagnostic: CollisionDiagnostic | null
+): string | null {
+  if (!diagnostic) return null;
+  const coordinate = `${diagnostic.cell.x},${diagnostic.cell.z}`;
+  if (diagnostic.contact === 'border') {
+    return `Recorded impact: outer border · cell ${coordinate}`;
+  }
+  if (diagnostic.contact === 'self') {
+    return `Recorded impact: own body · cell ${coordinate}`;
+  }
+  const source = diagnostic.terrainSource === 'phase_gate_scar'
+    ? 'Phase Gate Scar'
+    : diagnostic.terrainSource === 'coilkeeper_seal'
+      ? 'Coilkeeper Seal'
+      : diagnostic.terrainSource === 'cyber'
+        ? 'CYBER arena block'
+        : diagnostic.terrainSource === 'cosmic'
+          ? 'COSMIC calcification'
+          : diagnostic.terrainSource === 'fortress'
+            ? 'FERAL Fortress block'
+            : 'solid terrain';
+  return `Recorded impact: ${source} · cell ${coordinate}`;
+}
 
 const DIRECTION_BY_KEY: Record<string, Direction> = {
   ArrowUp: 'UP',
@@ -579,6 +620,8 @@ export default function GamePage() {
   const [continuitySafetyHold, setContinuitySafetyHold] = useState<
     'connection' | 'stale' | null
   >(null);
+  const [continuityHeartbeat, setContinuityHeartbeat] =
+    useState<RunContinuityHeartbeat | null>(null);
   const [requiresDirectionalStart, setRequiresDirectionalStart] = useState(false);
   const [minimalFirstRunPrompt, setMinimalFirstRunPrompt] = useState(false);
   const [showFirstResultDiscovery, setShowFirstResultDiscovery] = useState(false);
@@ -604,6 +647,8 @@ export default function GamePage() {
   // Ref for the gameOver closure (registered once on mount), state for UI.
   const freeRunRef = useRef(false);
   const [lastRunFree, setLastRunFree] = useState(false);
+  const [collisionDiagnostic, setCollisionDiagnostic] =
+    useState<CollisionDiagnostic | null>(null);
   // What the free run WOULD have earned (server recompute x multipliers)
   const [hypotheticalDna, setHypotheticalDna] = useState<number | null>(null);
   // Weekly Anomaly board (Design v2 §7.2): this week's modifier + top 10 +
@@ -632,6 +677,9 @@ export default function GamePage() {
   const [genomeFtue, setGenomeFtue] = useState<GenomeFtueCapability | null>(null);
   const [genomeRulesVersion, setGenomeRulesVersion] = useState<1 | 2>(1);
   const [genomeV2State, setGenomeV2State] = useState<GenomeV2State | null>(null);
+  const [genomeV2SimulationTick, setGenomeV2SimulationTick] = useState(0);
+  const [genomeV2BoardFeedback, setGenomeV2BoardFeedback] =
+    useState<GenomeV2BoardFeedback | null>(null);
   const [genomeV2Activation, setGenomeV2Activation] =
     useState<GenomeV2ActivationPresentation | null>(null);
   const [activeAscendanceStamp, setActiveAscendanceStamp] =
@@ -688,6 +736,8 @@ export default function GamePage() {
   const currentSessionIdRef = useRef(currentSessionId);
   const equippedSnakeRef = useRef(equippedSnake);
   const firstRunAtStartRef = useRef(false);
+  const genomeV2FeedbackRunSeedRef = useRef<string | null>(null);
+  const genomeV2FeedbackEventRef = useRef<string | null>(null);
   const handoffAttemptedRef = useRef(false);
   const continuityCheckedRef = useRef(false);
   const continuityUserIdRef = useRef<string | null>(null);
@@ -700,6 +750,7 @@ export default function GamePage() {
   const checkpointBarrierRef = useRef<Promise<void>>(Promise.resolve());
   const checkpointFailureSinceRef = useRef<number | null>(null);
   const lastCheckpointAcceptedAtRef = useRef(0);
+  const continuitySafetyHoldRef = useRef(continuitySafetyHold);
   const checkpointWriterRef = useRef<
     (proposal: ActiveCheckpointProposal) => Promise<void>
   >(async () => undefined);
@@ -729,6 +780,13 @@ export default function GamePage() {
   sessionRef.current = session;
   currentSessionIdRef.current = currentSessionId;
   continuityPhaseRef.current = runContinuityPhase;
+  continuitySafetyHoldRef.current = continuitySafetyHold;
+
+  const recordContinuityReceipt = useCallback(() => {
+    const acceptedAt = Date.now();
+    lastCheckpointAcceptedAtRef.current = acceptedAt;
+    setContinuityHeartbeat({ acceptedAt });
+  }, []);
 
   // Retry an undelivered settlement when this tab regains connectivity. The
   // queue is memory-only; a settled duplicate recovers its canonical receipt.
@@ -903,12 +961,14 @@ export default function GamePage() {
     checkpointBarrierRef.current = Promise.resolve();
     checkpointFailureSinceRef.current = null;
     lastCheckpointAcceptedAtRef.current = 0;
+    continuitySafetyHoldRef.current = null;
     currentSessionIdRef.current = null;
     continuityPhaseRef.current = 'none';
     setCurrentSessionId(null);
     setInterruptedRun(null);
     setRunContinuityPhase('none');
     setContinuitySafetyHold(null);
+    setContinuityHeartbeat(null);
     setSettlingRecoveryState('idle');
     setSettlementSecuredPending(false);
     setStartError(null);
@@ -1614,6 +1674,45 @@ export default function GamePage() {
     () => [food, ...extraFoods].filter((cell) => cell != null),
     [food, extraFoods]
   );
+  const genomeV2Board = useMemo(
+    () => projectGenomeV2Board(
+      genomeRulesVersion === 2 ? genomeV2State : null,
+      litFoods,
+      genomeV2SimulationTick
+    ),
+    [genomeRulesVersion, genomeV2SimulationTick, genomeV2State, litFoods]
+  );
+  const genomeV2RuntimeSignals = useMemo(
+    () => buildGenomeV2RuntimeSignals(
+      genomeRulesVersion === 2 ? genomeV2State : null,
+      genomeV2Board
+    ),
+    [genomeRulesVersion, genomeV2Board, genomeV2State]
+  );
+
+  // Reconnects baseline their restored journal silently; only events that
+  // happen after this client sees the run receive a short acknowledgement.
+  useEffect(() => {
+    if (!genomeV2State || genomeRulesVersion !== 2) {
+      genomeV2FeedbackRunSeedRef.current = null;
+      genomeV2FeedbackEventRef.current = null;
+      setGenomeV2BoardFeedback(null);
+      return;
+    }
+    if (genomeV2FeedbackRunSeedRef.current !== genomeV2State.runSeed) {
+      genomeV2FeedbackRunSeedRef.current = genomeV2State.runSeed;
+      genomeV2FeedbackEventRef.current = genomeV2State.journal.at(-1)?.eventId ?? null;
+      setGenomeV2BoardFeedback(null);
+      return;
+    }
+    const feedback = latestGenomeV2BoardFeedback(
+      genomeV2State,
+      genomeV2FeedbackEventRef.current
+    );
+    if (!feedback) return;
+    genomeV2FeedbackEventRef.current = feedback.eventId;
+    setGenomeV2BoardFeedback(feedback);
+  }, [genomeRulesVersion, genomeV2State]);
 
   const theme = themeManager.getTheme(selectedDynasty);
 
@@ -1833,6 +1932,7 @@ export default function GamePage() {
     const bridge = genomeV2RuntimeBridge(gameRef.current);
     const next = bridge ? parseGenomeV2State(bridge.getState().genomeV2) : null;
     setGenomeV2State(next);
+    setGenomeV2SimulationTick(gameRef.current?.getSimulationTick() ?? 0);
     return next;
   }, []);
 
@@ -1985,6 +2085,10 @@ export default function GamePage() {
     setGenomeV2CommitCallout(null);
   }, []);
 
+  const handleGenomeV2BoardFeedbackDone = useCallback(() => {
+    setGenomeV2BoardFeedback(null);
+  }, []);
+
   // Calculate board center for camera
   const boardCenter = GAME_CONFIG.board.gridSize / 2;
 
@@ -2015,6 +2119,7 @@ export default function GamePage() {
       setGenomeV2State(parseGenomeV2State(
         (state as typeof state & { genomeV2?: unknown }).genomeV2
       ));
+      setGenomeV2SimulationTick(gameRef.current?.getSimulationTick() ?? 0);
       setStrains(state.strainCounts, state.strainTiers);
       setFusedSplices(state.fusedSplices);
       setGildedCells(state.gildedCells);
@@ -2097,7 +2202,8 @@ export default function GamePage() {
     });
 
     gameRef.current.on('mutationPicked', (data: any) => {
-      setHeldMutations(data.held);
+      const legacyHeld = parseLegacyHeldGenes(data?.held);
+      if (legacyHeld) setHeldMutations(legacyHeld);
       setChoiceOptions(null);
       mirrorGenomeState();
       audioManager.play('uiClick');
@@ -2198,6 +2304,7 @@ export default function GamePage() {
 
     gameRef.current.on('gameOver', async (rawData: unknown) => {
       const data = rawData as GameOverData;
+      setCollisionDiagnostic(data.collisionDiagnostic ?? null);
       // Freeze the cumulative play clock at the terminal simulation boundary.
       // Awaiting an in-flight checkpoint or settlement request must not turn
       // network time into run time. Resumes backdate this ref only by the last
@@ -2509,7 +2616,7 @@ export default function GamePage() {
                     ? ` · +${discovery.rewardDna} DNA`
                     : '';
                   showToast(
-                    `Codex: ${codexEntryName(discovery.type, discovery.entryId, discovery.rulesVersion)}${reward}${worldFirst}`,
+                    `Genome discovery: ${codexEntryName(discovery.type, discovery.entryId, discovery.rulesVersion)}${reward}${worldFirst}`,
                     'triumph',
                     5000
                   );
@@ -2733,6 +2840,7 @@ export default function GamePage() {
       setGenomeV2State(parseGenomeV2State(
         (state as typeof state & { genomeV2?: unknown }).genomeV2
       ));
+      setGenomeV2SimulationTick(gameRef.current.getSimulationTick());
       if (gameRef.current.getGenome()) {
         setStrains(state.strainCounts, state.strainTiers);
         setFusedSplices(state.fusedSplices);
@@ -2838,11 +2946,14 @@ export default function GamePage() {
     deathPresentationRef.current = null;
     lastCheckpointAcceptedAtRef.current = 0;
     checkpointFailureSinceRef.current = null;
+    continuitySafetyHoldRef.current = null;
     setContinuitySafetyHold(null);
+    setContinuityHeartbeat(null);
     setInterruptedRun(null);
     gameStartTime.current = 0;
     freeRunRef.current = mode === 'free';
     setLastRunFree(mode === 'free');
+    setCollisionDiagnostic(null);
     setHypotheticalDna(null);
     setMasteryResult(null);
     setLastGenomeCard(null);
@@ -2900,6 +3011,10 @@ export default function GamePage() {
     setGenomeRulesVersion(startedRulesVersion);
     setGenomeV2Activation(startedActivation);
     setGenomeV2State(null);
+    setGenomeV2SimulationTick(0);
+    setGenomeV2BoardFeedback(null);
+    genomeV2FeedbackRunSeedRef.current = null;
+    genomeV2FeedbackEventRef.current = null;
     const runContext = recordValue(data.runContext);
     const runContextSnake = recordValue(runContext?.snake);
     setActiveAscendanceStamp(parseAscendanceRunPresentationStamp(
@@ -3033,6 +3148,7 @@ export default function GamePage() {
       snakeId: equippedSnake.id,
       commitment,
       ladderRung: LADDER_ENABLED ? ladderRung : null,
+      genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
     });
     if (startRequestRef.current?.fingerprint !== startFingerprint) {
       startRequestRef.current = {
@@ -3049,6 +3165,7 @@ export default function GamePage() {
         mode, // 'free' = rewardless practice run (§7.4)
         snake_id: equippedSnake.id, // Server validates ownership + equipped
         energyCommitment: commitment,
+        genomeInteractionVersion: CURRENT_GENOME_V2_INTERACTION_VERSION,
         ...(commitment === GAME_CONFIG.economy.energy.capacity
           ? { confirmMaxEnergy: true }
           : {}),
@@ -3170,6 +3287,7 @@ export default function GamePage() {
       intervalRef.current = null;
     }
     setAwaitingResumeInput(false);
+    continuitySafetyHoldRef.current = kind;
     setContinuitySafetyHold(kind);
   }, []);
 
@@ -3177,17 +3295,17 @@ export default function GamePage() {
   // retried after a lost response, allowing the row-locked RPC's digest
   // idempotency to answer without inventing a new revision.
   checkpointWriterRef.current = async (proposal) => {
-    if (
-      runLeaseRef.current !== proposal.leaseToken ||
-      !matchesContinuityAuthority(
-        proposal.accessToken,
-        sessionRef.current?.access_token,
-        proposal.sessionId,
-        currentSessionIdRef.current,
-        proposal.userId,
-        sessionRef.current?.user?.id
-      )
-    ) return;
+    const classifyReceipt = () => classifyActiveCheckpointReceipt(
+      proposal,
+      {
+        accessToken: sessionRef.current?.access_token,
+        userId: sessionRef.current?.user?.id,
+        sessionId: currentSessionIdRef.current,
+        leaseToken: runLeaseRef.current,
+      },
+      continuitySafetyHoldRef.current
+    );
+    if (classifyReceipt() === 'ignored') return;
     const expectedRevision = checkpointRevisionRef.current;
     const saveOnce = async () => {
       const controller = proposal.keepalive ? null : new AbortController();
@@ -3221,37 +3339,19 @@ export default function GamePage() {
         ) throw error;
         receipt = await saveOnce();
       }
-      if (
-        runLeaseRef.current !== proposal.leaseToken ||
-        !matchesContinuityAuthority(
-          proposal.accessToken,
-          sessionRef.current?.access_token,
-          proposal.sessionId,
-          currentSessionIdRef.current,
-          proposal.userId,
-          sessionRef.current?.user?.id
-        )
-      ) return;
+      const receiptDisposition = classifyReceipt();
+      if (receiptDisposition === 'ignored') return;
       checkpointRevisionRef.current = receipt.revision;
       acceptedReplayRef.current = proposal.checkpoint.privateState.replay;
-      lastCheckpointAcceptedAtRef.current = Date.now();
+      recordContinuityReceipt();
       checkpointFailureSinceRef.current = null;
-      if (continuitySafetyHold === 'connection') {
+      if (receiptDisposition === 'connection_recovered') {
+        continuitySafetyHoldRef.current = null;
         setContinuitySafetyHold(null);
         setAwaitingResumeInput(true);
       }
     } catch (error) {
-      if (
-        runLeaseRef.current !== proposal.leaseToken ||
-        !matchesContinuityAuthority(
-          proposal.accessToken,
-          sessionRef.current?.access_token,
-          proposal.sessionId,
-          currentSessionIdRef.current,
-          proposal.userId,
-          sessionRef.current?.user?.id
-        )
-      ) return;
+      if (classifyReceipt() === 'ignored') return;
       if (
         error instanceof RunContinuityClientError &&
         error.reason === 'lease_conflict'
@@ -3357,39 +3457,20 @@ export default function GamePage() {
     return () => window.removeEventListener('online', retryContinuityCheckpoint);
   }, [continuitySafetyHold, retryContinuityCheckpoint]);
 
-  // The safety bound is measured from the last server receipt, independent of
-  // an individual fetch timeout or retry. A hung pair of HTTP attempts must
-  // not let the board continue beyond the promised ten-second rollback cap.
-  useEffect(() => {
-    if (
-      runContinuityPhase !== 'active' ||
-      !isPlaying ||
-      isGameOver ||
-      continuitySafetyHold !== null ||
-      !runLeaseRef.current ||
-      lastCheckpointAcceptedAtRef.current <= 0
-    ) return;
-    let timer: number | null = null;
-    const watch = () => {
-      const remaining = ACTIVE_RUN_CONNECTION_HOLD_MS -
-        (Date.now() - lastCheckpointAcceptedAtRef.current);
-      if (remaining <= 0) {
-        holdForContinuity('connection');
-        return;
-      }
-      timer = window.setTimeout(watch, remaining);
-    };
-    watch();
-    return () => {
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [
-    continuitySafetyHold,
-    holdForContinuity,
-    isGameOver,
-    isPlaying,
-    runContinuityPhase,
-  ]);
+  // The safety bound is measured from the latest server receipt, independent
+  // of an individual fetch timeout or retry. Resume lease rotation and every
+  // accepted checkpoint explicitly re-arm the deadline; failed writes do not.
+  useRunContinuityWatchdog({
+    enabled:
+      runContinuityPhase === 'active' &&
+      isPlaying &&
+      !isGameOver &&
+      continuitySafetyHold === null &&
+      runLeaseRef.current !== null,
+    heartbeat: continuityHeartbeat,
+    budgetMs: ACTIVE_RUN_CONNECTION_HOLD_MS,
+    onExpired: () => holdForContinuity('connection'),
+  });
 
   // A bounded cadence limits rollback after a browser or device failure.
   // Critical gameplay decisions additionally checkpoint through the event
@@ -3474,7 +3555,7 @@ export default function GamePage() {
           runLeaseRef.current = activated.leaseToken;
           checkpointRevisionRef.current = activated.checkpointRevision;
           acceptedReplayRef.current = activated.checkpoint.privateState.replay;
-          lastCheckpointAcceptedAtRef.current = Date.now();
+          recordContinuityReceipt();
           checkpointFailureSinceRef.current = null;
           setContinuitySafetyHold(null);
           game.activatePrepared();
@@ -3519,7 +3600,7 @@ export default function GamePage() {
       if (activationPromiseRef.current === task) activationPromiseRef.current = null;
     });
     return task;
-  }, [setReady, startGameLoop, syncState]);
+  }, [recordContinuityReceipt, setReady, startGameLoop, syncState]);
 
   const applyCheckpointedRun = useCallback((active: ActiveRunView): void => {
     if (!active.manifest || !active.checkpoint || !active.leaseToken) {
@@ -3548,8 +3629,9 @@ export default function GamePage() {
     runLeaseRef.current = active.leaseToken;
     checkpointRevisionRef.current = active.checkpointRevision;
     acceptedReplayRef.current = active.checkpoint.privateState.replay;
-    lastCheckpointAcceptedAtRef.current = Date.now();
+    recordContinuityReceipt();
     checkpointFailureSinceRef.current = null;
+    continuitySafetyHoldRef.current = null;
     setContinuitySafetyHold(null);
     gameStartTime.current = Date.now() - active.checkpoint.privateState.elapsedMs;
     setCurrentSessionId(active.sessionId);
@@ -3558,6 +3640,7 @@ export default function GamePage() {
       (state as typeof state & { genomeV2?: unknown }).genomeV2
     );
     setGenomeV2State(restoredGenomeV2);
+    setGenomeV2SimulationTick(game.getSimulationTick());
     setChoiceOptions(
       restoredGenomeV2?.offer ? null : state.pendingChoice,
       restoredGenomeV2?.offer ? null : state.choiceSource
@@ -3586,6 +3669,7 @@ export default function GamePage() {
     // pre-accept simulation tick can occur after reload.
   }, [
     applyStartedRun,
+    recordContinuityReceipt,
     setChoiceOptions,
     setHeldMutations,
     setPaused,
@@ -4488,6 +4572,8 @@ export default function GamePage() {
             ? `${STRAINS[expressionFlourish.strain].name} ${expressionFlourish.tier === 3 ? 'apex' : 'expression'} online`
             : exitTile
               ? 'Extraction window open'
+              : genomeV2RuntimeSignals.length > 0
+                ? genomeV2RuntimeSignals.map((signal) => signal.label).join(' · ')
               : 'Run stable';
   const cockpitGenes = genomeRulesVersion === 2 && genomeV2State
     ? genomeV2State.slots.flatMap((slot): RunCockpitModel['genes'][number][] => {
@@ -4738,7 +4824,7 @@ export default function GamePage() {
           onDone={handleGenomeV2CommitCalloutDone}
         />
       )
-    : HUD_COCKPIT_V1_ENABLED && expressionFlourish && isPlaying
+      : HUD_COCKPIT_V1_ENABLED && expressionFlourish && isPlaying
       ? (
         <ExpressionFlourish
           strain={expressionFlourish.strain}
@@ -4747,6 +4833,13 @@ export default function GamePage() {
           presentation="cockpit"
         />
         )
+      : genomeV2BoardFeedback && isPlaying
+        ? (
+            <GenomeRuntimeFeedbackCallout
+              feedback={genomeV2BoardFeedback}
+              onDone={handleGenomeV2BoardFeedbackDone}
+            />
+          )
       : undefined;
 
   const runRateCalloutNode: ReactNode =
@@ -4822,7 +4915,7 @@ export default function GamePage() {
           <p className="label-arcade text-cosmic">Build Seed</p>
           {genomeFtue.splicesUnlocked && (
             <Link href="/codex" className="text-xs font-body text-cosmic underline">
-              Open Codex
+              Open Genome Research
             </Link>
           )}
         </div>
@@ -5022,7 +5115,7 @@ export default function GamePage() {
           <div className="game-hud-telemetry grid grid-cols-3 gap-1.5 font-body">
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Score</span>
-              <span className="font-mono text-sm font-bold tabular-nums text-bone-white sm:text-base">{score}</span>
+              <span className="font-mono text-sm font-bold tabular-nums text-bone-white sm:text-base">{Math.round(score).toLocaleString()}</span>
             </div>
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <IconDna size={13} className="shrink-0 text-venom-orange" />
@@ -5557,6 +5650,7 @@ export default function GamePage() {
                     settlementPending: settlementSecuredPending,
                   })}
                   ascendanceProgression={settledAscendanceProgression}
+                  collisionDetail={collisionDiagnosticLabel(collisionDiagnostic)}
                 />
               ) : (
                 <RunSetupPanel
@@ -5672,6 +5766,14 @@ export default function GamePage() {
                     <p className="text-beige/60 font-body text-sm tracking-wide uppercase">
                       Crashed — salvaged {Math.round(outcomeMultipliers(heldMutations.filter((m): m is MutationPick => isMutationId(m.id)), phoenixTriggered, [], activeAnomalyId).death * 100)}%
                     </p>
+                    {collisionDiagnosticLabel(collisionDiagnostic) ? (
+                      <p
+                        className="font-mono text-xs text-beige/75"
+                        data-testid="gameover-collision-diagnostic"
+                      >
+                        {collisionDiagnosticLabel(collisionDiagnostic)}
+                      </p>
+                    ) : null}
                   </div>
                 )}
                 {settlementSecuredPending && !lastRunFree ? (
@@ -5699,7 +5801,7 @@ export default function GamePage() {
                 )}
                 <div className="space-y-2 font-body">
                   <p className="text-2xl text-bone-white">
-                    Score: <span className="font-bold text-venom-orange">{score}</span>
+                    Score: <span className="font-bold text-venom-orange">{Math.round(score).toLocaleString()}</span>
                   </p>
                   <p className="text-2xl text-bone-white flex items-center justify-center gap-2">
                     <IconDna size={22} className="text-venom-orange" />
@@ -5834,7 +5936,7 @@ export default function GamePage() {
 
                 {codexDiscoveries.length > 0 && (
                   <div className="panel p-3 text-left" data-testid="codex-discoveries">
-                    <p className="label-arcade mb-2 text-cosmic">New Codex discoveries</p>
+                    <p className="label-arcade mb-2 text-cosmic">New Genome discoveries</p>
                     <div className="flex flex-wrap gap-2">
                       {codexDiscoveries.map((discovery) => (
                         <span
@@ -6223,6 +6325,7 @@ export default function GamePage() {
             food={food}
             extraFoods={extraFoods}
             gildedCells={gildedCells}
+            genomeV2Board={genomeV2Board}
             terrain={terrain}
             revivePhaseTicksRemaining={revivePhaseTicksRemaining}
             constellationGlyph={constellationGlyph}
@@ -6298,6 +6401,7 @@ interface GameBoardProps {
   food: Position | null;
   extraFoods: Position[];
   gildedCells: readonly { x: number; z: number; ticks: number }[];
+  genomeV2Board: GenomeV2BoardProjection;
   terrain: readonly TerrainBlock[];
   revivePhaseTicksRemaining: number;
   constellationGlyph: number | null;
@@ -6330,6 +6434,7 @@ function GameBoard({
   food,
   extraFoods,
   gildedCells,
+  genomeV2Board,
   terrain,
   revivePhaseTicksRemaining,
   constellationGlyph,
@@ -6376,6 +6481,30 @@ function GameBoard({
     }
     return list;
   }, [food, extraFoods, exitTile, exitTile2, mutationTile]);
+  const snakeTerrain = useMemo<TerrainBlock[]>(() => {
+    const cells = new Set(terrain.map((cell) => `${cell.x}:${cell.z}`));
+    const combined = [...terrain];
+    for (const cell of genomeV2Board.occupiedCells) {
+      const key = `${cell.x}:${cell.z}`;
+      if (cells.has(key)) continue;
+      cells.add(key);
+      combined.push({
+        x: cell.x,
+        z: cell.z,
+        source: 'ladder',
+        formingTicks: 0,
+        formingTotal: 0,
+        solid: true,
+      });
+    }
+    return combined;
+  }, [genomeV2Board.occupiedCells, terrain]);
+  const aimObstacles = useMemo(
+    () => snakeTerrain
+      .filter((cell) => cell.solid)
+      .map((cell) => ({ x: cell.x, z: cell.z })),
+    [snakeTerrain]
+  );
 
   return (
     <group position={cameraShake}>
@@ -6412,6 +6541,7 @@ function GameBoard({
         direction={direction}
         queuedDirections={queuedDirections}
         snake={snake}
+        obstacles={aimObstacles}
         gridSize={GAME_CONFIG.board.gridSize}
         aimSystem={aimSystem}
         targets={aimTargets}
@@ -6424,7 +6554,7 @@ function GameBoard({
           : theme.primary}
       />
 
-      <GenomeBoardEffects gildedCells={gildedCells} />
+      <GenomeBoardEffects gildedCells={gildedCells} genomeV2={genomeV2Board} />
       <TerrainBlocks terrain={terrain} />
 
       {/* Snake - one instanced body draw + a head mesh with eyes, both
@@ -6451,7 +6581,7 @@ function GameBoard({
             dynasty={dynasty}
             direction={direction}
             strainBands={strainBands}
-            terrain={terrain}
+            terrain={snakeTerrain}
             wrapActive={torus}
             revivePhaseActive={revivePhaseTicksRemaining > 0}
           />
@@ -6462,7 +6592,7 @@ function GameBoard({
           dynasty={dynasty}
           direction={direction}
           strainBands={strainBands}
-          terrain={terrain}
+          terrain={snakeTerrain}
           wrapActive={torus}
           revivePhaseActive={revivePhaseTicksRemaining > 0}
         />

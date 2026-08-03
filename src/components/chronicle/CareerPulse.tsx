@@ -136,7 +136,7 @@ function DiscoverySummary({ pulse }: { pulse: CareerPulseData }) {
       </div>
       <p className="mt-2 font-display text-lg text-bone-white">
         {pulse.discovery.entries > 0
-          ? `${pulse.discovery.entries} Codex ${pulse.discovery.entries === 1 ? 'entry' : 'entries'}`
+          ? `${pulse.discovery.entries} Genome ${pulse.discovery.entries === 1 ? 'discovery' : 'discoveries'}`
           : 'First discovery ahead'}
       </p>
       <p className="mt-1 font-body text-xs text-beige/60">

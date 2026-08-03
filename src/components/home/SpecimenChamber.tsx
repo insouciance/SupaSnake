@@ -36,9 +36,8 @@ import {
 import { getSnakeRoundedGeometry } from '@/components/game/screen/gameRenderGeometry';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 import {
-  measureHomeSafeStage,
+  HOME_SPECIMEN_PIECES,
   specimenCameraDistance,
-  type HomeSafeStage,
 } from '@/components/home/specimenCameraFit';
 
 // -----------------------------------------------------------------------------
@@ -57,19 +56,19 @@ const REACTION_GLOW: Record<SpecimenReaction, string> = {
 const VOID_COLOR = '#06090d';
 
 /** Specimen body plan */
-const SEGMENT_COUNT = 10;
+const SEGMENT_COUNT = HOME_SPECIMEN_PIECES;
 /** Segment scale is deliberately small with spacing > scale: distinct voxel
  *  cubes with visible gaps are what makes it read as a SNAKE, not a wall. */
-const SPECIMEN_BODY_SCALE = 0.5;
-const SPECIMEN_HEAD_SCALE = 0.66;
-const SEGMENT_SPACING = 0.68;
+const SPECIMEN_BODY_SCALE = 0.68;
+const SPECIMEN_HEAD_SCALE = 0.88;
+const SEGMENT_SPACING = 0.82;
 // Body height must clear the floor slab even at the undulation's lowest
 // point (half-height 0.25 + sine amplitude 0.028 + margin) - segments
 // dipping below the floor clipped their bottom faces one by one (the
 // reported cyclic flicker).
-const BODY_Y = 0.38;
-const HEAD_LIFT = 0.3;
-const NECK_LIFT = 0.12;
+const BODY_Y = 0.48;
+const HEAD_LIFT = 0.34;
+const NECK_LIFT = 0.14;
 const HEAD_YAW = 0.5; // three-quarter turn toward the viewer
 
 /** Lissajous drift: +/-2% of camera distance, ~20s period */
@@ -79,13 +78,13 @@ const DRIFT_W2 = (2 * Math.PI) / 26;
 const CAMERA_ELEVATION = 0.46; // ~26 degrees above the specimen plane
 const CAMERA_AZIMUTH = 0.32; // slight three-quarter offset
 /** Fit margin: bounding radius is padded so the whole coil breathes */
-const FIT_MARGIN = 1.22;
+const FIT_MARGIN = 1.34;
 /** The near bound keeps the chamber portrait-like on very wide screens. */
-const MIN_CAMERA_DISTANCE = 5.5;
+const MIN_CAMERA_DISTANCE = 4.2;
 
 // -----------------------------------------------------------------------------
-// Base pose - a coiled serpentine S the eye instantly parses as a snake:
-// two pronounced bends, compact footprint, head lifted toward the camera.
+// Base pose - a short, alert comma the eye instantly parses as a creature:
+// head plus exactly two pieces, with one clean bend and a lifted neck.
 // Computed once at module scope.
 // -----------------------------------------------------------------------------
 
@@ -96,8 +95,9 @@ function buildBasePose(): [number, number, number][] {
   let heading = -Math.PI / 2; // recede straight back (-z) from the head
   for (let i = 0; i < SEGMENT_COUNT; i++) {
     points.push([x, BODY_Y, z]);
-    // Strong alternating curvature = clearly visible S-coil
-    heading += 0.78 * Math.sin(i * 0.92 + 0.4);
+    // A decisive first bend reads better than an attempted miniature coil
+    // when the portrait intentionally contains only three pieces.
+    heading += 0.86 * Math.sin(i * 1.08 + 0.48);
     x += Math.cos(heading) * SEGMENT_SPACING;
     z += Math.sin(heading) * SEGMENT_SPACING;
   }
@@ -288,6 +288,7 @@ function VoxelSpecimen(props: Omit<SpecimenBodyProps, 'headGeometry' | 'bodyGeom
 function CameraRig({ animate }: { animate: boolean }) {
   const camera = useThree((state) => state.camera);
   const size = useThree((state) => state.size);
+  const invalidate = useThree((state) => state.invalidate);
   const baseRef = useRef(new THREE.Vector3());
 
   useEffect(() => {
@@ -316,7 +317,12 @@ function CameraRig({ animate }: { animate: boolean }) {
     baseRef.current.copy(POSE_BOUNDS.center).addScaledVector(dir, distance);
     camera.position.copy(baseRef.current);
     camera.lookAt(POSE_BOUNDS.center);
-  }, [camera, size.width, size.height]);
+    camera.updateMatrixWorld();
+    // Reduced-motion uses frameloop="demand". Changing the camera in an
+    // effect does not schedule a frame by itself, so without this invalidation
+    // the portrait could remain rendered from R3F's close default camera.
+    invalidate();
+  }, [camera, invalidate, size.width, size.height]);
 
   useFrame(({ clock }) => {
     if (!animate) return;
@@ -409,64 +415,6 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-const EMPTY_SAFE_STAGE: HomeSafeStage = {
-  top: 0,
-  right: 0,
-  bottom: 0,
-  left: 0,
-};
-
-/** Measure the real HUD/dock rather than guessing their breakpoint heights. */
-function useHomeSafeStage(): HomeSafeStage {
-  const [stage, setStage] = useState<HomeSafeStage>(EMPTY_SAFE_STAGE);
-
-  useEffect(() => {
-    const root = document.querySelector<HTMLElement>('[data-home-chamber-root]');
-    const header = document.querySelector<HTMLElement>('[data-home-identity-hud]');
-    const dock = document.querySelector<HTMLElement>('[data-home-command-dock]');
-    const sync = () => {
-      const rootRect = root?.getBoundingClientRect() ?? {
-        top: 0,
-        right: window.innerWidth,
-        bottom: window.innerHeight,
-        left: 0,
-        width: window.innerWidth,
-        height: window.innerHeight,
-      };
-      const relativeRect = (element: HTMLElement | null) => {
-        if (!element) return null;
-        const rect = element.getBoundingClientRect();
-        return {
-          top: rect.top - rootRect.top,
-          right: rect.right - rootRect.left,
-          bottom: rect.bottom - rootRect.top,
-          left: rect.left - rootRect.left,
-        };
-      };
-      setStage(
-        measureHomeSafeStage(
-          rootRect.width,
-          rootRect.height,
-          relativeRect(header),
-          relativeRect(dock)
-        )
-      );
-    };
-    sync();
-    window.addEventListener('resize', sync);
-    const observer = new ResizeObserver(sync);
-    if (root) observer.observe(root);
-    if (header) observer.observe(header);
-    if (dock) observer.observe(dock);
-    return () => {
-      window.removeEventListener('resize', sync);
-      observer.disconnect();
-    };
-  }, []);
-
-  return stage;
-}
-
 export interface SpecimenChamberProps {
   /** Dynasty of the equipped snake (PRIMAL specimen for fresh visitors). */
   dynasty: DynastyId;
@@ -482,7 +430,6 @@ export function SpecimenChamber({
   onReady,
 }: SpecimenChamberProps) {
   const reducedMotion = usePrefersReducedMotion();
-  const safeStage = useHomeSafeStage();
   const [hidden, setHidden] = useState(false);
 
   // Pause the render loop entirely while the tab is hidden
@@ -498,17 +445,17 @@ export function SpecimenChamber({
 
   return (
     <div
-      className="absolute"
-      data-testid="home-specimen-safe-stage"
-      style={safeStage}
+      className="absolute inset-0"
+      data-testid="home-specimen-full-stage"
     >
       <Canvas
         frameloop={frameloop}
         dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
+        gl={{ antialias: true, alpha: false, powerPreference: 'low-power' }}
         camera={{ fov: 38, near: 0.1, far: 48 }}
         onCreated={() => onReady?.()}
       >
+        <color attach="background" args={[VOID_COLOR]} />
         <fog attach="fog" args={[VOID_COLOR, 7.5, 28]} />
         <CameraRig animate={animate} />
         <ChamberLights dynasty={dynasty} reaction={reaction} />

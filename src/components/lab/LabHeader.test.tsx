@@ -46,9 +46,9 @@ describe('LabHeader', () => {
    * not learned the words yet. The discovery archive inside is still
    * progressive; the way in is not.
    */
-  it('always links the Codex, at every banked-run count', () => {
+  it('always links Genome Research, at every banked-run count', () => {
     render(<LabHeader charge={null} dna={100} />);
-    expect(screen.getByRole('link', { name: /genome codex/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /genome research/i })).toHaveAttribute(
       'href',
       '/codex'
     );
@@ -67,7 +67,7 @@ describe('LabHeader', () => {
       createdAt: '2026-07-30T12:00:00.000Z',
     }]);
     render(<LabHeader charge={null} dna={100} />);
-    expect(screen.getByRole('link', { name: /genome codex/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /genome research/i })).toHaveAttribute(
       'href',
       '/codex#codex-gene-phase_shift'
     );

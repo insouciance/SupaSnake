@@ -1,15 +1,18 @@
 # SupaSnake Cohesive Player Journey
 
-**Status:** Product Owner approved · implementation contract · 31 July 2026
+**Status:** Product Owner approved · implementation contract · 31 July 2026;
+authority reconciled 3 August 2026
 
-**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.12 remains design law. This
+**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.13 remains design law. This
 contract defines the approved end-to-end player journey, information
 architecture, run-continuity presentation, and cross-system attention behavior;
-it is authoritative within the Constitution's protected bounds. The Career Spine,
-Run Cockpit, Energy Commitment, Player Flow, and clan contracts remain authoritative
-for their system calculations. Where an older document says a disconnect itself
-ends a run, or a Lab action silently starts one, this contract supersedes that
-journey language.
+it is the direct authority within the Constitution's protected bounds. The Career
+Spine, Run Cockpit, Energy Commitment, Player Flow, and clan contracts retain
+authority for their narrower calculations and implementation details. They do not
+override this document's Home, Setup/run-start ownership, end-to-end journey,
+continuity presentation, or attention hierarchy. Where another document says a
+disconnect itself ends a run, Home creates a run, or a Lab action silently starts
+one, this contract supersedes that journey language.
 
 ## 1. Outcome and design thesis
 
@@ -26,7 +29,7 @@ Each transition has one job:
 |---|---|---|
 | Prepare | What am I about to fly? | One preconfigured cockpit with the snake, mode, stake, and relevant risk visible. |
 | Launch | Did the shown commitment really start? | One idempotent server-authoritative start; no hidden second action. |
-| Play | Can I trust the controls and state? | An unobstructed protected run, with only gameplay decisions interrupting it. |
+| Play | Can I trust the controls and state? | An unobstructed protected run; only a deliberately collected Gene relic or another player-opened gameplay decision may interrupt it. |
 | Resolve | Was the result secured? | One verified, atomic, recoverable settlement. |
 | Celebrate | What did that run achieve? | A bounded, tactile Victory Lap over already-secured rewards. |
 | Progress | Where did it matter? | The exact Mastery, Lineage, Discovery, and clan destinations retain the memory. |
@@ -58,21 +61,31 @@ showing detail only when requested—not by deleting advanced play.
 
 ## 2. Information architecture
 
-The permanent navigation contains five stable positions. Labels do not move when
-the current route changes:
+Home is the full-viewport **Specimen Chamber**, not a dashboard or a persistent
+five-item app rail. Its living portrait shows exactly one unmistakable equipped
+snake—its head plus two body pieces—behind a stable hierarchy: identity and
+wallet at the top, one contextual mission line, and four equal player commands
+below the specimen. The command labels and order do not move:
 
-| Position | Destination | Contains |
+| Position | Home command | Contains |
 |---|---|---|
-| 1 | **Play** | Home/Launch and the path into Setup. |
-| 2 | **Lab** | Active snakes, collection, breeding, ancestry, Genome/buildcraft, and deep management. |
+| 1 | **Play** | Launch and the path into Setup. |
+| 2 | **Lab** | Active snakes, collection, breeding, ancestry, and deep management. |
 | 3 | **Compete** | Score leaderboard, Clan, Clan Energy Battle, Ascension, rivalry, and competitive history. |
 | 4 | **You** | Chronicle, Career Pulse, Mastery, Records, identity, and curated earned proof. |
-| 5 | **More** | Shop, Settings, notification inbox, account, accessibility, and infrequent utilities. |
+
+Settings, Shop, account, accessibility, notification review, and other infrequent
+utilities remain reachable without competing as a fifth equal command. Genome
+Research is likewise not a primary command: the chamber's contextual five-rune
+relic opens the single free Genome Workbench. The historical `/codex` route is
+only a compatibility entrance to that same instrument; its subordinate Research
+Record preserves personal discovery and history without becoming a duplicate
+Archive/Codex destination.
 
 Collection is a Lab view, not another primary destination. Clan and Serpent are
 views within Compete, not parallel menu islands. Career and rewards belong to You,
-while Results remains the immediate post-run expression of them. Shop deliberately
-lives under More so commerce never competes with Play.
+while Results remains the immediate post-run expression of them. Commerce and
+utilities remain subordinate so they never compete with Play.
 
 Setup, Run, and Results are transactional states in the Play journey, not extra
 permanent destinations:
@@ -107,6 +120,21 @@ the visible Back action, and successful completion of a side task all have
 predictable destinations.
 
 ## 3. The canonical journey
+
+### 3.0 Open — the Specimen Chamber
+
+Home fills the safe viewport with the living equipped-snake portrait: one head
+plus exactly two body pieces, responsive from narrow portrait through desktop.
+Server-fed identity and wallet sit above it; the contextual line and four equal
+Play/Lab/Compete/You commands stay below without turning the scene into a
+dashboard. Play/Launch remains the primary path. The Settings utility and
+five-rune Research relic remain labelled 44-pixel targets but do not compete as
+equal commands. The relic enters the same one free Workbench as `/codex`; it
+never auto-opens.
+
+Launch may authenticate and bootstrap the equipped snake, then opens fully preset
+Setup. It does not create a run, consume Energy, or persist a draft. Setup's
+deliberate Start owns those effects.
 
 ### 3.1 Prepare — the launch cockpit
 
@@ -145,8 +173,9 @@ player choices. The server:
 2. ensures the player has no other non-terminal run;
 3. consumes Energy and snapshots the immutable stake in the same transaction that
    secures the session;
-4. stamps server-derived rules, build, clan eligibility, content version, and RNG
-   manifest;
+4. stamps server-derived rules, build, clan eligibility, content version, Genome
+   interaction sub-version, and RNG manifest; physical-relic support must have
+   been explicitly advertised in the immutable start intent and fingerprint;
 5. returns the same prepared session for a duplicate identical invocation;
 6. rejects reuse of the invocation ID with different settings.
 
@@ -165,11 +194,25 @@ simulation tick.
 
 ### 3.3 Play — the protected core
 
-Normal play remains continuous and unobstructed. Only gameplay's own gene, portal,
-surge, infusion, voluntary tactical hold, and confirmed abandonment decisions may
-stop it. COSMIC never receives an automatic planning pause. Meta navigation,
-notifications, rewards, clan administration, and commerce do not render over a live
-run.
+Normal play remains continuous and unobstructed. An ordinary Genome cadence
+opportunity begins as a physical board relic after a deterministic 6 ± 2 foods
+and remains live for 40 resolved movement ticks. Its appearance or expiry never
+creates an offer or stops movement. Only deliberate collection creates the offer,
+rolls its candidates, and owns a frozen decision; an explicit portal MUTATE,
+surge, infusion, voluntary tactical hold, or confirmed abandonment may likewise
+stop play only after its player action. The next ordinary interval begins when
+the current relic resolves through collection or expiry, and foods eaten while
+the relic is live do not count toward that next interval. COSMIC never receives
+an automatic planning pause. Meta navigation, notifications, rewards, clan
+administration, and commerce do not render over a live run.
+
+The collected relic opens a simple-first Tactical Loom with no preselected
+answer: two equal rune choices expose written Strain identity and one salient
+consequence, while DECLINE remains quiet. Selecting a candidate reveals its
+trigger, gain, and risk. **UNFOLD DETAILS** may then reveal only that decision's
+complete affected run-stamped Strain route, directly connected Splices, changed
+locus, and material ledgers. The detail state resets closed for every offer;
+focus or hover is navigation, never consent.
 
 Connection loss is an integrity state, not a death. When the most recent verified
 checkpoint becomes older than the configured safety budget, the client enters a
@@ -215,7 +258,7 @@ The ceremony is not a reward transaction. Everything except Daily Take was secur
 at settlement. Collection state is Results-local presentation only; leaving, reload,
 or skipping cannot forfeit progress, and replaying the receipt cannot grant it twice.
 Exact destination highlights persist independently until the player views the changed
-Mastery, Codex, lineage, Records, or clan content. This preserves tactile payoff
+Mastery, Research Record, lineage, Records, or clan content. This preserves tactile payoff
 without creating claim debt or a tour through every menu.
 
 Routine progress is still named, but does not pretend to be a milestone. A failed or
@@ -230,7 +273,7 @@ Results explains what changed now. Persistent destinations explain what it means
 - Mastery and Records live in You/Chronicle;
 - active lineage and build decisions live in Lab;
 - ancestry and retired leaves live in the snake dossier;
-- gene discovery lives in Lab/Codex;
+- gene discovery and history live in the Workbench's subordinate Research Record;
 - clan contribution, rank, Glory, and rivalry live in Compete;
 - calendar consequence lives in its existing Signal, Ascension, or battle view.
 
@@ -330,7 +373,10 @@ The versioned checkpoint package includes at minimum:
 - the session's immutable Energy, snake, simulation, and clan-start manifest;
 - deterministic seed, RNG state/draw count, and elapsed simulation time;
 - snake/body, board, food, terrain, speed/growth, hold budget, and score/harvest state;
-- active genes, mutations, Genome/strain state, offers, portals, and pending decision;
+- active genes, mutations, Genome/strain state, interaction sub-version, ordinary
+  opportunity cursor and next-due food, any outstanding relic cell,
+  placement/spawn state and remaining expiry ticks, revealed offers, portals, and
+  pending decision;
 - checkpoint revision, digest, creation/acceptance time, and the lease that owns the
   next write and terminal action.
 
@@ -350,15 +396,20 @@ when the overlapping ticks and actions match exactly under the unchanged lease.
 Forked or oversized transcripts are rejected.
 
 Gameplay decision holds are replay facts, not arbitrary client pause claims. The
-engine grants a one-shot decision-hold entitlement when a genuine offer or portal
-decision resolves; only that entitlement may create the corresponding held state.
-Voluntary tactical pauses continue to use their explicit server-replayable budget.
+engine grants a one-shot decision-hold entitlement only when deliberate relic
+collection creates a genuine offer or the player explicitly opens a portal
+decision; relic appearance, failed placement, and expiry grant none. Only that
+entitlement may create the corresponding held state. Voluntary tactical pauses
+continue to use their explicit server-replayable budget.
 
 The resume package reconstructs the simulation from the latest accepted checkpoint,
-then opens held for a deliberate direction. A pending gene/portal decision resumes as
-that same decision, not a reroll. A checkpoint rejected by validation leaves the prior
-valid checkpoint available and raises an integrity event; it does not silently erase
-the session.
+then opens held for a deliberate direction. The stamped interaction sub-version,
+ordinary opportunity cursor, and any live relic resume from the authoritative
+cell and remaining lifetime; food collected before recovery cannot accelerate a
+second cadence interval. A pending revealed gene/portal decision resumes as that
+same decision, not a reroll. A checkpoint rejected by validation leaves the prior
+valid checkpoint available and raises an integrity event; it does not silently
+erase the session.
 
 `SNAKE_RULES_VERSION` is therefore a release gate, not a routine cache key. The first
 continuity release has no older-version continuity rows. Before any later rules-version
@@ -367,6 +418,15 @@ retain the prior deterministic interpreter until those runs resolve, or provide 
 server-authoritative compatibility/cancellation policy that preserves the player's
 secured stake and any already-secured outcome. Stranding an open run behind a
 no-refund **Abandon** action is not a compatibility policy and blocks the bump.
+
+The Genome interaction sub-version is the same kind of immutable start contract.
+Omitted/legacy stamps retain automatic interaction v1; an explicit capability may
+start physical-relic v2. A flag or deploy never reinterprets an open run. Resume
+restores the canonical checkpoint under a newly issued lease, and a healthy
+checkpoint/lease acknowledgement becomes the continuity freshness basis for that
+resumed client rather than inheriting a stale pre-quit timer. Failed renewal or
+true loss of server verification still enters the bounded board-visible connection
+hold; this rule refreshes healthy continuity, not its safety budget.
 
 ### 5.3 Recovery surface
 
@@ -420,10 +480,10 @@ only. Recognition never inflates that urgent count.
 | Earned event | Destination badge |
 |---|---|
 | Mastery level, Record/achievement tier, PB artifact | You |
-| New gene/Codex entry or Discovery milestone | Lab |
+| New gene/Genome discovery or Research milestone | Home Research relic → Workbench Research Record |
 | New active lineage stage, ancestry chapter, unlock, or retired leaf | Lab |
 | Clan top-five entry, battle result, rank change, Glory, or rivalry milestone | Compete |
-| Daily Take or identity/integrity action | More/inbox plus its exact action surface |
+| Daily Take or identity/integrity action | Settings/inbox utility plus its exact action surface |
 
 Items have one semantic ID, one server status, one destination, and when applicable
 one artifact reference. They aggregate by destination and pillar; visible numeric
@@ -526,8 +586,9 @@ Action language remains literal and consistent:
 
 ## 9. Mobile-first and accessibility contract
 
-- The five primary destinations fit supported portrait widths without scaling below
-  44 by 44 CSS pixels, clipping, horizontal scroll, or covering a primary action.
+- The four equal Home commands, Settings utility, and contextual Research relic
+  retain at least 44 by 44 CSS-pixel hit targets on supported portrait widths,
+  without clipping, horizontal scroll, or covering Play.
 - Safe-area insets protect navigation, Setup actions, sheets, pause, and Results.
 - Sheets and dialogs trap focus, restore it to their opener, have an explicit close,
   scroll internally at constrained heights, and close predictably with platform Back
@@ -576,12 +637,18 @@ half of the journey.
 This contract deliberately builds on current paths rather than inventing parallel
 systems:
 
+- `SpecimenChamber`, `HomeIdentityHud`, `HomeCommandRail`, and the internal
+  `HomeCodexRelic` compatibility-named component for the full-viewport Home,
+  head-plus-two portrait, four commands, and contextual Research entrance;
 - `RunSetupPanel`, `SnakePickerSheet`, and `src/lib/collection/roster.ts` for the
   cockpit and active-lineage projection;
+- `WorkbenchView` plus the `/codex` adapter for the one Genome Workbench and its
+  subordinate Research Record;
 - `RunResults`, the Run Impact envelope, and Career Spine APIs for recognition;
 - `notificationStore` and `/api/progression/attention` for server-backed attention;
-- `/api/game/session`, `runContinuity`, and validated deterministic-state checkpoints for run
-  recovery;
+- `/api/game/session`, `runContinuity`, the Genome runtime's immutable interaction
+  stamp/opportunity/relic state, and validated deterministic-state checkpoints for
+  run recovery;
 - the clan API/configuration and forward clan migration for directory, roles, and
   Glory.
 
@@ -601,7 +668,8 @@ teammate detail, and minimize player-identifying payloads.
 - Setup changes, snake-sheet opens, Lab detours, return success, and abandonment;
 - commitment distribution, maximum confirmation cancellation, and start rejection;
 - Results -> Replay/Setup/destination time;
-- navigation destination use, More opens, and dead-end/backtracking rate.
+- Home-command use, Settings/utility opens, contextual Research-relic use, and
+  dead-end/backtracking rate.
 
 ### Integrity
 
@@ -642,7 +710,7 @@ the design.
 
 | Decision | Benefit | Cost/risk | Guardrail |
 |---|---|---|---|
-| Five stable navigation groups | Strong memory and mobile fit | Shop/Settings take one extra action | More remains obvious; Play, Lab, Compete, and You stay direct. |
+| Full-viewport Home with four equal commands | The equipped snake remains the character and Play retains gravity | Utilities take one extra action; a contextual Research relic is less explicit than a fifth command | Head-plus-two portrait, stable command order, labelled 44px targets, obvious Settings utility, and one non-primary five-rune Workbench entrance. |
 | Setup-local snake chooser | Ordinary preparation stays in context | Narrow duplication of Lab selection | Chooser exposes active leaves only; all management remains in Lab. |
 | Active leaves replace generation cards | Roster remains legible and snake feels evolved | Ancestors are less immediately visible | One-tap dossier preserves lineage and history. |
 | Tactile Victory Lap | Strong trophy-raising payoff without claim debt | Can feel repetitive after routine runs | Three-beat cap, immediate Replay/Setup, one-action completion, significance gating. |
@@ -670,8 +738,10 @@ Do not advertise active-run recovery until verified checkpoints are live end to 
 - [ ] Choosing/equipping a snake never creates a session or spends Energy.
 - [ ] Maximum commitment requires an explicit labelled confirmation and works at 6/6.
 - [ ] Setup -> Lab -> Back to Setup preserves server choices and returns predictably.
-- [ ] Primary navigation has five stable, unscaled 44px destinations on supported
-      mobile viewports; Run remains immersive.
+- [ ] Home is a full-viewport chamber whose equipped-snake portrait contains one
+      head plus exactly two body pieces; four stable commands, Settings, and the
+      contextual five-rune Workbench relic retain unscaled 44px targets on
+      supported mobile viewports, while Run remains immersive.
 - [ ] Everyday selectors exclude lower generations but retain distinct active
       equal-generation builds; every omitted ancestor remains in the dossier.
 
@@ -685,8 +755,17 @@ Do not advertise active-run recovery until verified checkpoints are live end to 
 - [ ] Activation records the first verified checkpoint before simulation advances.
 - [ ] Preparing and the ready hold advance neither elapsed time nor gameplay ticks;
       activation occurs only after the opening checkpoint acknowledgement.
-- [ ] Active checkpoints reproduce deterministic future state, including RNG and
-      pending choices, after manifest, bound, monotonicity, and lease validation.
+- [ ] Active checkpoints reproduce deterministic future state, including RNG,
+      interaction sub-version, opportunity cursor, outstanding relic cell/spawn/
+      expiry state, and pending revealed choices, after manifest, bound,
+      monotonicity, and lease validation.
+- [ ] A due ordinary Genome opportunity places a 40-tick physical relic without
+      opening an offer or pausing play; only collection rolls candidates, while
+      collection/expiry starts the next 6 ± 2 interval and excludes foods eaten
+      during the prior relic lifetime.
+- [ ] The collected-relic Loom starts neutral and simple; selection reveals
+      trigger/gain/risk, and per-offer UNFOLD DETAILS alone exposes the complete
+      affected run-stamped route before resetting closed on the next offer.
 - [ ] A forged snapshot, pause, decision hold, or raw terminal payload cannot become
       checkpoint or payout authority without deterministic replay.
 - [ ] Resume invalidates the prior lease and cannot fork, reroll, duplicate, or evade a

@@ -29,6 +29,7 @@ import {
 } from '@/shared/game/offerGravity';
 import {
   GENOME_V2_GENE_OFFER_CADENCE,
+  rollGeneOfferInterval,
   rollGenomeV2GeneOfferInterval,
 } from '@/shared/game/geneCadence';
 
@@ -36,6 +37,30 @@ export const GENOME_RULES_V1 = 1 as const;
 export const GENOME_RULES_V2 = 2 as const;
 export const CURRENT_GENOME_RULES_VERSION = GENOME_RULES_V2;
 export type GenomeRulesVersion = typeof GENOME_RULES_V1 | typeof GENOME_RULES_V2;
+
+/**
+ * Rules v2 shipped briefly with cadence offers opening themselves after food.
+ * Keep that interaction readable for already-started sessions while new runs
+ * stamp the player-pulled relic contract explicitly. This is an interaction
+ * sub-version, not new Genome arithmetic: both versions use the same reducer,
+ * genes, settlement, and rulesVersion.
+ */
+export const GENOME_V2_INTERACTION_AUTO_OFFER = 1 as const;
+export const GENOME_V2_INTERACTION_PHYSICAL_RELIC = 2 as const;
+export const CURRENT_GENOME_V2_INTERACTION_VERSION =
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC;
+export type GenomeV2InteractionVersion =
+  | typeof GENOME_V2_INTERACTION_AUTO_OFFER
+  | typeof GENOME_V2_INTERACTION_PHYSICAL_RELIC;
+
+export function isGenomeV2InteractionVersion(
+  value: unknown
+): value is GenomeV2InteractionVersion {
+  return (
+    value === GENOME_V2_INTERACTION_AUTO_OFFER ||
+    value === GENOME_V2_INTERACTION_PHYSICAL_RELIC
+  );
+}
 
 export const GENOME_V2_YIELD_SCALE = 10_000;
 export const GENOME_V2_MAX_SLOTS = 6;
@@ -434,6 +459,13 @@ export interface GenomeV2TargetState {
   kind: 'ordinary' | GenomeV2ExclusiveTargetKind;
   lifecycle: GenomeV2TargetLifecycle;
   cell: GenomeV2Cell;
+  /**
+   * A mutually exclusive physical Gilded Fork destination. The ordinary
+   * branch remains `cell`; eating either branch removes both board objects.
+   * Optional for backward-compatible reads of checkpoints created before the
+   * two-cell fork existed.
+   */
+  forkCell?: GenomeV2Cell | null;
   secondaryCell: GenomeV2Cell | null;
   /** Optional route geometry (for example Phase Gate entry and exit). */
   optionalRouteCells: readonly [GenomeV2Cell, GenomeV2Cell] | null;
@@ -675,6 +707,9 @@ export type GenomeV2Event =
       type: 'target_spawned';
       targetId: string;
       cell: GenomeV2Cell;
+      /** Missing is the already-issued automatic-offer interaction. */
+      interactionVersion?: GenomeV2InteractionVersion;
+      forkCell?: GenomeV2Cell | null;
       secondaryCell?: GenomeV2Cell | null;
       optionalRouteCells?: readonly [GenomeV2Cell, GenomeV2Cell] | null;
       speedAtSpawnMs: number;
@@ -1213,6 +1248,7 @@ function cloneState(state: GenomeV2State): GenomeV2State {
         {
           ...target,
           cell: { ...target.cell },
+          forkCell: target.forkCell ? { ...target.forkCell } : null,
           secondaryCell: target.secondaryCell
             ? { ...target.secondaryCell }
             : null,
@@ -1822,6 +1858,7 @@ export interface GenomeV2NextTargetProjection {
   eligibleOrdinal: number | null;
   kind: 'ordinary' | GenomeV2ExclusiveTargetKind;
   contract: GenomeV2PendingTargetContract | null;
+  requiresForkCell: boolean;
   requiresSecondaryCell: boolean;
   requiresOptionalRouteCells: boolean;
 }
@@ -1832,7 +1869,11 @@ export interface GenomeV2NextTargetProjection {
  */
 export function projectGenomeV2NextTarget(
   state: GenomeV2State,
-  input: { cadenceEligible: boolean }
+  input: {
+    cadenceEligible: boolean;
+    /** Missing preserves the already-issued one-cell Gilded Fork. */
+    interactionVersion?: GenomeV2InteractionVersion;
+  }
 ): GenomeV2NextTargetProjection {
   if (!input.cadenceEligible) {
     return {
@@ -1840,6 +1881,7 @@ export function projectGenomeV2NextTarget(
       eligibleOrdinal: null,
       kind: 'ordinary',
       contract: null,
+      requiresForkCell: false,
       requiresSecondaryCell: false,
       requiresOptionalRouteCells: false,
     };
@@ -1857,6 +1899,10 @@ export function projectGenomeV2NextTarget(
     eligibleOrdinal,
     kind,
     contract,
+    requiresForkCell:
+      input.interactionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC &&
+      kind === 'gold_trail' &&
+      genomeV2HasSplice(state, 'splice_gilded_fork'),
     requiresSecondaryCell: kind === 'circuit_run',
     requiresOptionalRouteCells:
       kind === 'phase_gate' ||
@@ -2632,6 +2678,8 @@ export function reduceGenomeV2Event(
       assertSafeInteger(event.shortestSafeMoves, 'target route length');
       const spawnProjection = projectGenomeV2NextTarget(state, {
         cadenceEligible: event.cadenceEligible,
+        interactionVersion:
+          event.interactionVersion ?? GENOME_V2_INTERACTION_AUTO_OFFER,
       });
       const eligibleOrdinal = spawnProjection.eligibleOrdinal;
       if (eligibleOrdinal !== null) {
@@ -2673,6 +2721,26 @@ export function reduceGenomeV2Event(
         event.secondaryCell !== null
       ) {
         throw new Error('Genome v2 linked target geometry has no Circuit contract.');
+      }
+      const requiresForkCell = spawnProjection.requiresForkCell;
+      if (
+        requiresForkCell &&
+        (!event.forkCell ||
+          (event.forkCell.x === event.cell.x &&
+            event.forkCell.z === event.cell.z))
+      ) {
+        throw new Error(
+          'Genome v2 Gilded Fork requires two distinct visible cells.'
+        );
+      }
+      if (
+        !requiresForkCell &&
+        event.forkCell !== undefined &&
+        event.forkCell !== null
+      ) {
+        throw new Error(
+          'Genome v2 fork geometry has no active Gilded Fork contract.'
+        );
       }
       const requiresOptionalRoute = spawnProjection.requiresOptionalRouteCells;
       if (
@@ -2725,6 +2793,7 @@ export function reduceGenomeV2Event(
         kind,
         lifecycle: contract?.stage === 2 ? 'armed' : 'active',
         cell: { ...event.cell },
+        forkCell: event.forkCell ? { ...event.forkCell } : null,
         secondaryCell: event.secondaryCell ? { ...event.secondaryCell } : null,
         optionalRouteCells: event.optionalRouteCells
           ? [
@@ -3737,6 +3806,27 @@ export function genomeV2OfferInterval(
   return rollGenomeV2GeneOfferInterval(
     offerIndex,
     offerStream(`genome-v2-cadence:${state.runSeed}`, offerIndex)
+  );
+}
+
+/**
+ * Player-pulled relic cadence: deterministic 6 +/- 2 foods (4-8 inclusive).
+ * Opportunity identity is deliberately separate from offer identity: an
+ * ignored relic reveals and consumes no candidates, but its next appearance
+ * still follows a stable run-seed-frozen interval.
+ */
+export function genomeV2PhysicalRelicInterval(
+  state: Pick<GenomeV2State, 'runSeed'>,
+  opportunityIndex: number
+): number {
+  if (!Number.isSafeInteger(opportunityIndex) || opportunityIndex < 0) {
+    throw new Error('Genome v2 relic cadence index is malformed.');
+  }
+  return rollGeneOfferInterval(
+    offerStream(
+      `genome-v2-relic-cadence:${state.runSeed}`,
+      opportunityIndex
+    )
   );
 }
 

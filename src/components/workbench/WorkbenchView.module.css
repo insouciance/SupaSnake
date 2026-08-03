@@ -3,9 +3,15 @@
   --cyan: #22d3ee;
   --gold: #f5c542;
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 16px;
   animation: researchEnter .42s ease-out both;
+  container-name: research;
+  container-type: inline-size;
 }
+
+.workbench > * { min-width: 0; }
 
 .intro {
   display: flex;
@@ -21,9 +27,9 @@
   margin: 0;
   color: rgb(125 249 255 / 78%);
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 800;
-  letter-spacing: .16em;
+  letter-spacing: .11em;
   text-transform: uppercase;
 }
 
@@ -41,22 +47,23 @@
   margin-top: 5px;
   color: rgb(237 233 223 / 62%);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 16px;
+  line-height: 1.4;
 }
 
 .snakeMarks {
   display: flex;
   max-width: 55%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 7px;
-  overflow-x: auto;
   padding: 4px;
-  scrollbar-width: thin;
 }
 
 .snakeMarks button {
   display: flex;
-  min-width: 112px;
-  min-height: 44px;
+  min-width: 126px;
+  min-height: 48px;
   align-items: center;
   gap: 8px;
   border: 1px solid rgb(125 249 255 / 18%);
@@ -83,8 +90,8 @@
 .snakeMarks span { min-width: 0; text-align: left; }
 .snakeMarks strong,
 .snakeMarks small { display: block; white-space: nowrap; }
-.snakeMarks strong { font-family: var(--font-display); font-size: 10px; letter-spacing: .08em; }
-.snakeMarks small { margin-top: 1px; color: rgb(237 233 223 / 48%); font-family: var(--font-body); font-size: 9px; }
+.snakeMarks strong { font-family: var(--font-display); font-size: 14px; letter-spacing: .06em; }
+.snakeMarks small { margin-top: 1px; color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 14px; }
 
 .table {
   position: relative;
@@ -129,7 +136,7 @@
 }
 
 .historyControls { display: flex; align-items: center; gap: 6px; }
-.historyControls span { color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 9px; }
+.historyControls span { color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 14px; }
 .historyControls button,
 .stateVerbs button {
   min-height: 44px;
@@ -138,7 +145,7 @@
   padding: 6px 8px;
   color: rgb(196 181 253 / 68%);
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: .06em;
 }
@@ -147,7 +154,7 @@
 .genomeStage {
   position: relative;
   display: grid;
-  min-height: 228px;
+  min-height: 252px;
   place-items: center;
   margin-top: 6px;
 }
@@ -155,7 +162,7 @@
 .locusArc {
   display: grid;
   width: min(100%, 720px);
-  grid-template-columns: repeat(6, minmax(72px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   align-items: center;
 }
@@ -164,7 +171,7 @@
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 98px;
+  min-height: 128px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -208,15 +215,15 @@
 .locusRune { z-index: 1; width: 27px; height: 27px; color: var(--cyan); }
 .locusRune i { display: block; width: 13px; height: 13px; border: 1px dashed rgb(125 249 255 / 32%); border-radius: 50%; }
 .locusRune b { color: rgb(203 213 225 / 52%); font-size: 22px; font-weight: 400; }
-.locus strong { z-index: 1; max-width: 92%; overflow: hidden; color: #f7f0ff; font-family: var(--font-display); font-size: 9px; letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
-.locus small { z-index: 1; margin-top: 2px; color: rgb(237 233 223 / 52%); font-family: var(--font-body); font-size: 9px; letter-spacing: .1em; }
+.locus strong { z-index: 1; max-width: 100%; color: #f7f0ff; font-family: var(--font-display); font-size: 14px; letter-spacing: .025em; line-height: 1.15; overflow-wrap: anywhere; text-align: center; white-space: normal; }
+.locus small { z-index: 1; margin-top: 3px; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; letter-spacing: .08em; }
 
 .reactionCore {
   position: absolute;
   top: 93px;
   display: flex;
-  width: 118px;
-  height: 118px;
+  width: 136px;
+  height: 136px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -236,8 +243,8 @@
 }
 .reactionCore::after { inset: 16px; border-color: rgb(34 211 238 / 28%); background: transparent; transform: rotate(-18deg); }
 .reactionCore > i { z-index: 1; width: 31px; height: 31px; filter: drop-shadow(0 0 9px rgb(168 85 247 / 68%)); }
-.reactionCore > strong { z-index: 1; max-width: 100px; margin-top: 4px; color: #f7f0ff; font-family: var(--font-display); font-size: 12px; line-height: 1.08; overflow-wrap: anywhere; }
-.reactionCore > small { z-index: 1; max-width: 96px; margin-top: 2px; overflow: hidden; color: rgb(125 249 255 / 72%); font-family: var(--font-body); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.reactionCore > strong { z-index: 1; max-width: 116px; margin-top: 4px; color: #f7f0ff; font-family: var(--font-display); font-size: 14px; line-height: 1.2; overflow-wrap: anywhere; }
+.reactionCore > small { z-index: 1; max-width: 112px; margin-top: 2px; color: rgb(125 249 255 / 78%); font-family: var(--font-body); font-size: 14px; letter-spacing: .035em; line-height: 1.1; overflow-wrap: anywhere; text-transform: uppercase; white-space: normal; }
 .coreOrbit { position: absolute; inset: 0; border: 1px dashed rgb(196 181 253 / 26%); border-radius: 50%; animation: orbit 22s linear infinite; }
 
 .mathRibbon {
@@ -249,10 +256,11 @@
   margin: -2px auto 11px;
   color: #f7f0ff;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 14px;
+  line-height: 1.35;
 }
 .mathRibbon span { display: inline-flex; gap: 5px; }
-.mathRibbon b { color: rgb(125 249 255 / 68%); font-family: var(--font-body); font-size: 9px; letter-spacing: .09em; }
+.mathRibbon b { color: rgb(125 249 255 / 74%); font-family: var(--font-body); font-size: 14px; letter-spacing: .07em; }
 
 .strainRailGroup { display: grid; gap: 7px; }
 .strainRail {
@@ -264,37 +272,37 @@
 .strain[data-focused='true'] { opacity: 1; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--strain), transparent 65%)); }
 .strainName { display: flex; min-width: 0; align-items: center; gap: 4px; color: var(--strain); }
 .strainName i { width: 17px; height: 17px; flex: none; }
-.strainName b { min-width: 0; overflow: hidden; font-family: var(--font-display); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.strainName em { margin-left: auto; color: #f7f0ff; font-family: var(--font-mono); font-size: 10px; font-style: normal; }
+.strainName b { min-width: 0; font-family: var(--font-display); font-size: 14px; overflow-wrap: anywhere; }
+.strainName em { margin-left: auto; color: #f7f0ff; font-family: var(--font-mono); font-size: 14px; font-style: normal; }
 .rungs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-.rungs button { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; border: 1px solid color-mix(in srgb, var(--strain), transparent 68%); border-radius: 50%; background: rgb(4 8 20 / 45%); color: rgb(237 233 223 / 58%); font-family: var(--font-mono); font-size: 12px; }
+.rungs button { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; border: 1px solid color-mix(in srgb, var(--strain), transparent 68%); border-radius: 50%; background: rgb(4 8 20 / 45%); color: rgb(237 233 223 / 68%); font-family: var(--font-mono); font-size: 14px; }
 .rungs button[data-active='true'] { border-color: var(--strain); background: color-mix(in srgb, var(--strain), transparent 82%); color: #fff; box-shadow: 0 0 9px color-mix(in srgb, var(--strain), transparent 52%); }
 .rungs button[data-locked='true'] { border-style: dashed; border-color: color-mix(in srgb, var(--strain), transparent 36%); color: var(--strain); }
 .rungs button[aria-pressed='true'] { outline: 1px solid #fff; outline-offset: 2px; color: #fff; }
-.strain > small { display: block; margin-top: 4px; overflow: hidden; color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.strain > small { display: block; margin-top: 5px; color: rgb(237 233 223 / 64%); font-family: var(--font-body); font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
 .strainDisclosure { display: flex; min-height: 44px; align-items: center; gap: 9px; margin: 0; border: 1px solid color-mix(in srgb, var(--strain), transparent 66%); border-radius: 12px; background: color-mix(in srgb, var(--strain), transparent 92%); padding: 8px 10px; color: #f7f0ff; }
 .strainDisclosure > i { width: 24px; height: 24px; flex: none; color: var(--strain); filter: drop-shadow(0 0 7px color-mix(in srgb, var(--strain), transparent 48%)); }
 .strainDisclosure strong, .strainDisclosure small, .strainDisclosure em { display: block; font-family: var(--font-body); }
-.strainDisclosure strong { color: var(--strain); font-size: 10px; }
-.strainDisclosure small { margin-top: 2px; color: rgb(237 233 223 / 74%); font-size: 10px; line-height: 1.35; }
-.strainDisclosure em { margin-top: 3px; color: var(--gold); font-size: 9px; font-style: normal; }
-.strainHint { margin: 0; color: rgb(237 233 223 / 52%); font-family: var(--font-body); font-size: 10px; text-align: center; }
+.strainDisclosure strong { color: var(--strain); font-size: 14px; }
+.strainDisclosure small { margin-top: 2px; color: rgb(237 233 223 / 78%); font-size: 14px; line-height: 1.45; }
+.strainDisclosure em { margin-top: 3px; color: var(--gold); font-size: 14px; font-style: normal; }
+.strainHint { margin: 0; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: center; }
 
 .palette { margin-top: 14px; border-top: 1px solid rgb(168 85 247 / 22%); padding-top: 12px; }
 .paletteHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-.paletteHeader small { color: rgb(237 233 223 / 60%); font-family: var(--font-body); font-size: 9px; }
+.paletteHeader small { color: rgb(237 233 223 / 66%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
 .lenses { display: flex; gap: 4px; }
-.lenses button { display: inline-flex; min-height: 44px; align-items: center; gap: 4px; border: 0; background: transparent; padding: 5px 8px; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.lenses button { display: inline-flex; min-height: 44px; align-items: center; gap: 4px; border: 0; background: transparent; padding: 5px 8px; color: rgb(237 233 223 / 68%); font-family: var(--font-body); font-size: 14px; font-weight: 800; text-transform: uppercase; }
 .lenses button[aria-selected='true'] { color: var(--gold); text-shadow: 0 0 9px rgb(245 197 66 / 42%); }
 .lenses i { font-size: 14px; font-style: normal; }
-.geneRail { display: flex; gap: 6px; overflow-x: auto; padding: 7px 1px 4px; scroll-snap-type: x proximity; scrollbar-width: thin; }
-.geneRail button { display: flex; min-width: 164px; min-height: 72px; align-items: center; gap: 7px; scroll-snap-align: start; border: 1px solid color-mix(in srgb, var(--gene-strain), transparent 78%); border-radius: 12px; background: linear-gradient(120deg, color-mix(in srgb, var(--gene-strain), transparent 93%), rgb(4 8 20 / 66%)); padding: 7px; color: rgb(237 233 223 / 58%); text-align: left; }
+.geneRail { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 184px), 1fr)); gap: 7px; padding: 8px 1px 4px; }
+.geneRail button { display: flex; width: 100%; min-width: 0; min-height: 98px; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, var(--gene-strain), transparent 78%); border-radius: 12px; background: linear-gradient(120deg, color-mix(in srgb, var(--gene-strain), transparent 93%), rgb(4 8 20 / 66%)); padding: 9px; color: rgb(237 233 223 / 66%); text-align: left; }
 .geneRail button[aria-pressed='true'] { border-color: rgb(168 85 247 / 66%); background: radial-gradient(circle at 22% 50%, rgb(168 85 247 / 25%), rgb(4 8 20 / 82%)); color: #f7f0ff; box-shadow: 0 0 14px rgb(168 85 247 / 13%); }
 .geneRail button > i { width: 29px; height: 29px; flex: none; color: var(--gene-strain, var(--cyan)); filter: drop-shadow(0 0 7px color-mix(in srgb, var(--gene-strain), transparent 48%)); }
 .geneRailCopy { min-width: 0; flex: 1; }
-.geneRail strong, .geneRail small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.geneRail strong { font-family: var(--font-display); font-size: 10px; }
-.geneRail small { margin-top: 2px; color: rgb(237 233 223 / 54%); font-family: var(--font-body); font-size: 9px; text-transform: uppercase; }
+.geneRail strong, .geneRail small { display: block; overflow-wrap: anywhere; white-space: normal; }
+.geneRail strong { font-family: var(--font-display); font-size: 14px; line-height: 1.2; }
+.geneRail small { margin-top: 3px; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; line-height: 1.3; text-transform: uppercase; }
 
 .geneStrainBadges {
   position: relative;
@@ -315,92 +323,95 @@
   border: 1px solid color-mix(in srgb, var(--strain), transparent 48%);
   border-radius: 999px;
   background: color-mix(in srgb, var(--strain), transparent 88%);
-  padding: 2px 5px 2px 3px;
+  padding: 3px 6px 3px 4px;
   color: var(--strain);
   box-shadow: inset 0 0 8px color-mix(in srgb, var(--strain), transparent 88%);
 }
 
 .geneStrainBadge i {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   flex: none;
 }
 
 .geneStrainBadge b {
   overflow: visible;
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 900;
   letter-spacing: .055em;
-  line-height: 1;
+  line-height: 1.1;
   text-overflow: clip;
   white-space: nowrap;
 }
 
 .geneStrainBadges[data-compact='true'] {
-  max-width: 110px;
+  max-width: 100%;
   justify-content: center;
   gap: 2px;
   margin-top: 3px;
 }
 
 .geneStrainBadges[data-compact='true'] .geneStrainBadge {
-  padding: 1px 4px 1px 2px;
+  padding: 2px 5px 2px 3px;
 }
 
 .geneStrainBadges[data-compact='true'] .geneStrainBadge i {
-  width: 9px;
-  height: 9px;
+  width: 12px;
+  height: 12px;
 }
 
-.geneStrainBadges[data-compact='true'] .geneStrainBadge b { font-size: 9px; }
+.geneStrainBadges[data-compact='true'] .geneStrainBadge b { font-size: 14px; }
 
 .focusReaction { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, .7fr) auto; gap: 12px; align-items: center; margin-top: 10px; border: 1px solid rgb(168 85 247 / 24%); border-radius: 14px; background: rgb(8 8 24 / 46%); padding: 10px; }
 .focusRule { display: grid; gap: 6px; }
-.focusRule p { margin: 0; color: rgb(237 233 223 / 73%); font-family: var(--font-body); font-size: 10px; line-height: 1.3; }
-.focusRule b { display: block; margin-bottom: 2px; color: rgb(125 249 255 / 74%); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+.focusRule p { margin: 0; color: rgb(237 233 223 / 76%); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.focusRule b { display: block; margin-bottom: 2px; color: rgb(125 249 255 / 78%); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
 .spliceBranches { position: relative; display: grid; gap: 5px; }
 .spliceBranches > button { display: flex; min-width: 0; min-height: 44px; align-items: center; gap: 6px; border: 0; border-radius: 9px; background: transparent; padding: 5px; opacity: .68; color: inherit; text-align: left; }
 .spliceBranches > button[data-forms='true'], .spliceBranches > button[aria-expanded='true'] { background: rgb(168 85 247 / 9%); opacity: 1; }
 .spliceBranches > button > span:first-child { width: 10px; height: 10px; flex: none; border: 1px solid rgb(168 85 247 / 64%); border-radius: 50%; }
 .spliceBranches > button[data-forms='true'] > span:first-child { border-color: var(--gold); background: var(--gold); box-shadow: 0 0 9px rgb(245 197 66 / 62%); }
 .spliceLabel { min-width: 0; flex: 1; }
-.spliceBranches > button strong, .spliceBranches > button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.spliceBranches strong { color: #f7f0ff; font-family: var(--font-display); font-size: 10px; }
-.spliceBranches small { color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 9px; }
+.spliceBranches > button strong, .spliceBranches > button small { display: block; overflow-wrap: anywhere; white-space: normal; }
+.spliceBranches strong { color: #f7f0ff; font-family: var(--font-display); font-size: 14px; line-height: 1.25; }
+.spliceBranches small { color: rgb(237 233 223 / 64%); font-family: var(--font-body); font-size: 14px; line-height: 1.3; }
 .spliceBranches .spliceDisclosure { display: grid; gap: 5px; border-left: 1px solid rgb(245 197 66 / 48%); padding: 5px 7px; }
-.spliceDisclosure p { margin: 0; color: rgb(237 233 223 / 72%); font-family: var(--font-body); font-size: 10px; line-height: 1.3; white-space: normal; }
-.spliceDisclosure b { display: block; color: rgb(245 197 66 / 78%); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
-.noBranch { color: rgb(237 233 223 / 48%); font-family: var(--font-body); font-size: 10px; }
+.spliceDisclosure p { margin: 0; color: rgb(237 233 223 / 76%); font-family: var(--font-body); font-size: 14px; line-height: 1.45; white-space: normal; }
+.spliceDisclosure b { display: block; color: rgb(245 197 66 / 82%); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+.noBranch { color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 14px; }
 .commitControls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
-.commitControls button { min-height: 44px; border: 1px solid rgb(125 249 255 / 22%); border-radius: 999px; background: rgb(4 8 20 / 66%); padding: 7px 12px; color: rgb(237 233 223 / 62%); font-family: var(--font-display); font-size: 9px; letter-spacing: .06em; white-space: nowrap; }
+.commitControls button { min-height: 44px; border: 1px solid rgb(125 249 255 / 22%); border-radius: 999px; background: rgb(4 8 20 / 66%); padding: 7px 12px; color: rgb(237 233 223 / 68%); font-family: var(--font-display); font-size: 14px; letter-spacing: .05em; white-space: normal; }
 .commitControls .primaryCommit { border-color: rgb(245 197 66 / 68%); color: var(--gold); box-shadow: 0 0 12px rgb(245 197 66 / 12%); }
 .commitControls button:disabled { opacity: .3; }
 
 .reactionField { position: relative; margin-top: 10px; border-top: 1px solid rgb(125 249 255 / 17%); padding-top: 10px; }
 .reactionField > header { display: flex; align-items: baseline; gap: 6px; color: var(--gold); text-transform: uppercase; }
 .reactionField > header span { font-size: 16px; }
-.reactionField > header strong { font-family: var(--font-display); font-size: 10px; letter-spacing: .1em; }
-.reactionField > header small { color: rgb(237 233 223 / 52%); font-family: var(--font-body); font-size: 9px; }
+.reactionField > header strong { font-family: var(--font-display); font-size: 14px; letter-spacing: .09em; }
+.reactionField > header small { color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; }
 .reactionField > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; margin-top: 7px; }
 .reactionFact { position: relative; display: grid; grid-template-columns: 13px minmax(0, 1fr); gap: 7px; min-width: 0; padding: 5px 0; }
 .reactionFact::before { position: absolute; top: -7px; bottom: -7px; left: 6px; width: 1px; background: linear-gradient(rgb(168 85 247 / 45%), rgb(34 211 238 / 12%)); content: ''; }
 .factNode { z-index: 1; width: 13px; height: 13px; margin-top: 1px; border: 1px solid rgb(168 85 247 / 62%); border-radius: 50%; background: rgb(4 8 20); box-shadow: 0 0 7px rgb(168 85 247 / 20%); }
-.reactionFact strong { display: block; color: #f7f0ff; font-family: var(--font-display); font-size: 9px; }
-.reactionFact p { margin: 2px 0 0; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 9px; line-height: 1.28; }
-.reactionFact small { display: block; margin-top: 2px; color: rgb(255 189 100 / 74%); font-family: var(--font-body); font-size: 9px; line-height: 1.3; }
-.quietReaction { margin: 8px 0 0; color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 10px; }
+.reactionFact strong { display: block; color: #f7f0ff; font-family: var(--font-display); font-size: 14px; line-height: 1.3; }
+.reactionFact p { margin: 2px 0 0; color: rgb(237 233 223 / 68%); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.reactionFact small { display: block; margin-top: 2px; color: rgb(255 189 100 / 80%); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.quietReaction { margin: 8px 0 0; color: rgb(237 233 223 / 64%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
 
 .stateVerbs { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; margin-top: 10px; border-top: 1px solid rgb(168 85 247 / 16%); padding-top: 4px; }
 .stateVerbs button { color: rgb(125 249 255 / 54%); }
 .stateVerbs button:hover { color: var(--cyan); }
-.recodeNotice, .error { margin: 6px 0 0; border-radius: 10px; padding: 8px 10px; font-family: var(--font-body); font-size: 10px; }
+.recodeNotice, .error { margin: 6px 0 0; border-radius: 10px; padding: 8px 10px; font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
 .recodeNotice { background: rgb(245 197 66 / 8%); color: rgb(245 197 66 / 78%); text-align: center; }
 .error { border: 1px solid rgb(245 66 99 / 36%); background: rgb(245 66 99 / 9%); color: #ff8ca3; }
-.honesty { margin: 0; padding: 0 5px; color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 10px; text-align: center; }
-.signedOut, .loading { border: 1px solid rgb(168 85 247 / 28%); border-radius: 18px; background: radial-gradient(circle at 50% 10%, rgb(168 85 247 / 18%), rgb(4 8 20 / 78%)); padding: 28px; color: rgb(237 233 223 / 68%); font-family: var(--font-body); text-align: center; }
-.signedOut > span { display: block; color: var(--violet); font-size: 34px; }
-.signedOut a { display: inline-flex; min-height: 44px; align-items: center; margin-top: 12px; border: 1px solid rgb(245 197 66 / 60%); border-radius: 999px; padding: 6px 16px; color: var(--gold); font-family: var(--font-display); font-size: 10px; }
+.panelFallback { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; margin: 0; }
+.panelFallback strong { color: #ffd2da; font-family: var(--font-display); }
+.panelFallback span { min-width: 0; flex: 1 1 280px; }
+.honesty { margin: 0; padding: 0 5px; color: rgb(237 233 223 / 64%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: center; }
+.researchInvitation { margin: 0; border-left: 1px solid rgb(245 197 66 / 42%); padding: 7px 10px; color: rgb(237 233 223 / 68%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
+.researchInvitation a { color: var(--gold); font-weight: 800; }
+.loading { border: 1px solid rgb(168 85 247 / 28%); border-radius: 18px; background: radial-gradient(circle at 50% 10%, rgb(168 85 247 / 18%), rgb(4 8 20 / 78%)); padding: 28px; color: rgb(237 233 223 / 68%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: center; }
 
 .study {
   position: relative;
@@ -431,9 +442,9 @@
   border-bottom: 1px solid rgb(245 197 66 / 18%);
   padding: 14px 16px;
 }
-.studyHeader p { margin: 0; color: rgb(245 197 66 / 68%); font-family: var(--font-body); font-size: 9px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+.studyHeader p { margin: 0; color: rgb(245 197 66 / 74%); font-family: var(--font-body); font-size: 14px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
 .studyHeader h3 { margin: 2px 0 0; color: #fff9dc; font-family: var(--font-display); font-size: 18px; }
-.studyHeader span { display: block; max-width: 600px; margin-top: 3px; color: rgb(237 233 223 / 52%); font-family: var(--font-body); font-size: 9px; }
+.studyHeader span { display: block; max-width: 600px; margin-top: 3px; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
 .studyHeader > strong { flex: none; color: var(--gold); font-family: var(--font-mono); font-size: 16px; text-shadow: 0 0 12px rgb(245 197 66 / 32%); }
 .studyBody { position: relative; display: grid; gap: 12px; padding: 13px 15px 15px; }
 .studyGenome { position: relative; display: grid; min-height: 142px; place-items: center; }
@@ -456,55 +467,50 @@
   box-shadow: 0 0 20px rgb(168 85 247 / 15%);
 }
 .studyCore > i { width: 25px; height: 25px; }
-.studyCore strong { margin-top: 3px; color: #fff9dc; font-family: var(--font-display); font-size: 9px; }
-.studyCore small { color: rgb(125 249 255 / 70%); font-family: var(--font-body); font-size: 9px; text-transform: uppercase; }
+.studyCore strong { margin-top: 3px; color: #fff9dc; font-family: var(--font-display); font-size: 14px; line-height: 1.2; }
+.studyCore small { color: rgb(125 249 255 / 76%); font-family: var(--font-body); font-size: 14px; line-height: 1.2; text-transform: uppercase; }
 .studyFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; border-top: 1px solid rgb(168 85 247 / 17%); padding-top: 8px; }
 
-@media (max-width: 720px) {
+@container research (max-width: 860px) {
   .intro { align-items: flex-start; flex-direction: column; }
-  .snakeMarks { width: 100%; max-width: none; padding-left: 0; }
+  .snakeMarks { width: 100%; max-width: none; justify-content: flex-start; padding-left: 0; }
   .table { border-radius: 17px; padding: 11px; }
   .tableHeader { align-items: flex-start; }
   .tableHeader h3 { max-width: 220px; }
   .historyControls span { display: none; }
-  .genomeStage { min-height: 300px; }
+  .genomeStage { min-height: 350px; }
   .locusArc { grid-template-columns: repeat(3, minmax(76px, 1fr)); gap: 66px 4px; }
   .locus:nth-child(n) { transform: none; }
   .locus:nth-child(2), .locus:nth-child(5) { transform: translateY(-18px); }
-  .reactionCore { top: 91px; }
-  .strainRail { grid-template-columns: repeat(5, minmax(144px, 1fr)); overflow-x: auto; padding-bottom: 3px; scrollbar-width: thin; }
+  .reactionCore { top: 107px; }
+  .strainRail { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .rungs button { width: 44px; height: 44px; }
-  .strainName b, .strainName em { font-size: 11px; }
-  .strain > small, .strainHint { font-size: 11px; }
-  .strainDisclosure strong { font-size: 11px; }
-  .strainDisclosure small { font-size: 12px; line-height: 1.42; }
   .paletteHeader { align-items: flex-start; flex-direction: column; }
-  .paletteHeader small { font-size: 11px; line-height: 1.35; }
   .lenses { width: 100%; justify-content: space-between; }
-  .lenses button { flex: 1; justify-content: center; font-size: 10px; }
-  .geneRail button { min-width: 172px; }
-  .geneRail strong { font-size: 11px; }
-  .geneRail small { font-size: 10px; }
+  .lenses button { flex: 1; justify-content: center; }
   .focusReaction { grid-template-columns: 1fr; }
-  .focusRule p { font-size: 12px; line-height: 1.42; }
-  .focusRule b { font-size: 10px; }
-  .spliceBranches strong { font-size: 11px; }
-  .spliceBranches small { font-size: 10px; }
-  .spliceDisclosure p { font-size: 12px; line-height: 1.42; }
-  .spliceDisclosure b { font-size: 10px; }
   .commitControls { justify-content: flex-start; }
-  .commitControls button { font-size: 10px; }
   .reactionField > div { grid-template-columns: 1fr; }
-  .reactionFact strong { font-size: 11px; }
-  .reactionFact p { font-size: 11px; line-height: 1.4; }
-  .reactionFact small { font-size: 10px; line-height: 1.4; }
   .study { border-radius: 17px; }
   .studyHeader { align-items: flex-start; flex-direction: column; }
   .studyHeader > strong { align-self: flex-start; }
-  .studyGenome { min-height: 286px; }
+  .studyGenome { min-height: 340px; }
   .studyGenome .locusArc { grid-template-columns: repeat(3, minmax(76px, 1fr)); gap: 62px 4px; }
   .studyCore { bottom: 92px; }
   .studyFacts { grid-template-columns: 1fr; }
+}
+
+@container research (max-width: 540px) {
+  .tableHeader { flex-direction: column; }
+  .historyControls { align-self: stretch; justify-content: flex-end; }
+  .snakeMarks button { flex: 1 1 126px; min-width: 0; }
+  .strainRail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .geneRail { grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr)); }
+}
+
+@container research (max-width: 350px) {
+  .strainRail { grid-template-columns: 1fr; }
+  .geneRail { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

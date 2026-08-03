@@ -2,6 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   activatePreparedRun,
   buildTerminalReplayProof,
+  classifyActiveCheckpointReceipt,
   classifyTerminalRecoveryResponse,
   createRunStartRequestId,
   fetchActiveRun,
@@ -12,6 +13,7 @@ import {
   saveActiveRunCheckpoint,
 } from './runContinuityClient';
 import { SNAKE_RULES_VERSION, type SnakeCheckpointV1 } from './SnakeGameLogic';
+import { GENOME_V2_INTERACTION_PHYSICAL_RELIC } from '@/shared/game/genomeV2';
 
 function response(body: unknown, status = 200): Response {
   return {
@@ -169,6 +171,43 @@ describe('run continuity client', () => {
     );
   });
 
+  it('retains the physical-relic capability in a recoverable preparing intent', async () => {
+    const fetcher = jest.fn(async () => response({
+      activeRun: {
+        sessionId: 'run-preparing',
+        phase: 'preparing',
+        startedAt: '2026-08-03T08:00:00Z',
+        activatedAt: null,
+        energyCommitted: 0,
+        canContinue: true,
+        requiresAbandon: false,
+        manifest: null,
+        checkpoint: null,
+        checkpointRevision: 0,
+        checkpointSavedAt: null,
+        leaseToken: null,
+        leaseEpoch: 0,
+        startIntent: {
+          v: 1,
+          startRequestId: '2f515f00-908b-4f7d-86fb-721db70fed83',
+          mode: 'earn',
+          snakeId: 'snake-primal-1',
+          energyCommitment: 6,
+          confirmMaxEnergy: true,
+          signalObjectiveId: null,
+          ladderRung: null,
+          genomeInteractionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+        },
+      },
+    })) as unknown as typeof fetch;
+
+    await expect(fetchActiveRun('token', fetcher)).resolves.toMatchObject({
+      startIntent: {
+        genomeInteractionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+      },
+    });
+  });
+
   it('repairs a preparing shell with its exact server-stored start intent', async () => {
     const intent = {
       v: 1 as const,
@@ -179,6 +218,7 @@ describe('run continuity client', () => {
       confirmMaxEnergy: true,
       signalObjectiveId: 'signal-7',
       ladderRung: 3,
+      genomeInteractionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
     };
     const fetcher = jest.fn(async (_url, init) => {
       expect(JSON.parse(String(init?.body))).toEqual({
@@ -190,6 +230,7 @@ describe('run continuity client', () => {
         confirmMaxEnergy: true,
         signalObjectiveId: 'signal-7',
         ladderRung: 3,
+        genomeInteractionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
       });
       return response({
         sessionId: 'run-repaired',
@@ -341,5 +382,94 @@ describe('run continuity client', () => {
     expect(writes).toEqual([1, 3]);
     releases.shift()?.();
     await expect(Promise.all([second, third])).resolves.toEqual([undefined, undefined]);
+  });
+
+  it('uses live authority and hold state when an automatic heartbeat resolves late', async () => {
+    const authority = {
+      accessToken: 'token-a',
+      userId: 'user-a',
+      sessionId: 'run-1',
+      leaseToken: 'resumed-exclusive-lease-token',
+    };
+    let currentAuthority = { ...authority };
+    let currentHold: 'connection' | 'stale' | null = null;
+    let releaseResponse: (() => void) | null = null;
+    let acceptedHeartbeats = 0;
+    let requiresDirection = false;
+
+    const queue = new LatestOnlyAsyncQueue<typeof authority>(async (expected) => {
+      await new Promise<void>((resolve) => {
+        releaseResponse = resolve;
+      });
+      const disposition = classifyActiveCheckpointReceipt(
+        expected,
+        currentAuthority,
+        currentHold
+      );
+      if (disposition === 'ignored') return;
+      acceptedHeartbeats += 1;
+      if (disposition === 'connection_recovered') {
+        currentHold = null;
+        requiresDirection = true;
+      }
+    });
+
+    const automaticHeartbeat = queue.enqueue(authority);
+    await Promise.resolve();
+    // The watchdog can fire while the automatic request is awaiting its
+    // response. Receipt handling must observe this live value, not the null
+    // captured when the writer began.
+    currentHold = 'connection';
+    releaseResponse?.();
+    await automaticHeartbeat;
+
+    expect(acceptedHeartbeats).toBe(1);
+    expect(currentHold).toBeNull();
+    expect(requiresDirection).toBe(true);
+
+    // A response from the superseded resume lease is never a heartbeat.
+    currentAuthority = {
+      ...currentAuthority,
+      leaseToken: 'newer-exclusive-lease-token',
+    };
+    expect(classifyActiveCheckpointReceipt(
+      authority,
+      currentAuthority,
+      'connection'
+    )).toBe('ignored');
+  });
+
+  it('keeps the hold after automatic failure and lets manual retry recover through the same queue', async () => {
+    const authority = {
+      accessToken: 'token-a',
+      userId: 'user-a',
+      sessionId: 'run-1',
+      leaseToken: 'resumed-exclusive-lease-token',
+    };
+    let currentHold: 'connection' | 'stale' | null = 'connection';
+    let acceptedHeartbeats = 0;
+    let failNext = true;
+    const queue = new LatestOnlyAsyncQueue<typeof authority>(async (expected) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error('offline');
+      }
+      const disposition = classifyActiveCheckpointReceipt(
+        expected,
+        authority,
+        currentHold
+      );
+      if (disposition === 'ignored') return;
+      acceptedHeartbeats += 1;
+      if (disposition === 'connection_recovered') currentHold = null;
+    });
+
+    await expect(queue.enqueue(authority)).rejects.toThrow('offline');
+    expect(acceptedHeartbeats).toBe(0);
+    expect(currentHold).toBe('connection');
+
+    await expect(queue.enqueue(authority)).resolves.toBeUndefined();
+    expect(acceptedHeartbeats).toBe(1);
+    expect(currentHold).toBeNull();
   });
 });

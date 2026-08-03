@@ -5,10 +5,26 @@
 **Date:** 2026-07-18
 **Status:** APPROVED — implementation phased (see §12); supersedes the stat-bonus and generation-scaling portions of `systems/DYNASTY_SYSTEM_specification_v1.0.md`
 **Companion docs:** `systems/CLAN_DUELS_spec.md` (v1 duels — the base the Gauntlet builds on), approved plan + Phase-1 implementation mapping (plan archive)
-**Buildcraft note (2026-07-20):** `BUILDCRAFT_GENOME_DESIGN.md` evolves §5 (Mutation Food) and §6 (Traits) into the Genome system — strains, expressions, splices, infusion, lineage. All mechanics, ids and validation proofs in §5/§6 remain valid; the Genome doc layers on top and is authoritative where the two overlap (held cap, Compound Interest tuning, outcome clamps, offer algorithm).
+**Historical buildcraft note (2026-07-20):** `BUILDCRAFT_GENOME_DESIGN.md`
+evolved §5 (Mutation Food) and §6 (Traits) into the Genome system—strains,
+expressions, Splices, infusion, and lineage—and was then treated as authoritative
+where they overlapped. The current-rules notice below now controls that boundary.
+**Current Genome v2 notice (2026-08-03):** Product Constitution v1.13 and
+`TACTICAL_GENOME_V2.md` now govern all current Genome interaction, ladder,
+continuity, and Research rules. The older Buildcraft and Mutation Food sections
+remain historical foundations only where they agree. In current v2, a deterministic
+6 ± 2-food opportunity places a physical relic for 40 resolved movement ticks;
+only collection creates an offer and rolls candidates. Collection or expiry starts
+the next interval, and food eaten while the relic is live does not count toward it.
+Ignore/expiry reveals nothing and is not DECLINE, PASS, or a Bond. The Loom opens
+neutral and simple, with affected route/Splice/locus/ledger detail behind per-offer
+UNFOLD DETAILS. Strain thresholds are 2/3/4, and one free Genome Workbench—with
+`/codex` only a compatibility route and Research Record subordinate—is the sole
+player-facing Research instrument.
 **Current-rules notice (2026-07-29):** the Energy, Energy-commerce, clan-scoring,
 clan-schedule, and related economy projections in §§7.4–9 and the affected §11
-migration notes are historical. Product Constitution v1.5 and
+migration notes are historical. Product Constitution v1.5 introduced the
+replacement; current Product Constitution v1.13 and
 `ENERGY_COMMITMENT_AND_CLAN_BATTLES.md` supersede them: Energy recovers hourly to
 six, is committed 0–6 per ordinary run, is never sold, and active clan battles
 use each member's best five banked Energy runs across a three-day window.
@@ -258,11 +274,12 @@ account stack ceiling is a hard, auditable constant.
 
 ## 5. Mutation Food *(Phase 2)*
 
-> **Genome (2026-07-20):** mutations are now **genes** with strain tags — see
-> `BUILDCRAFT_GENOME_DESIGN.md` §1–§5 for the authoritative cadence, held cap (6),
-> Compound Interest retune (+0.05/held, cap +0.30), seeded offer gravity and
-> splice fusion. The interaction model below remains the base layer; numerical
-> conflicts and retired effects defer to the Genome contract.
+> **Historical Genome foundation (2026-07-20):** mutations became **genes** with
+> strain tags. `BUILDCRAFT_GENOME_DESIGN.md` §1–§5 records the original cadence,
+> held cap, Compound Interest tuning, seeded offer gravity, and splice fusion.
+> Product Constitution v1.13 and `TACTICAL_GENOME_V2.md` supersede the interaction,
+> active roster, tuning, ladder, and Research rules below wherever they differ;
+> this section is not the current implementation contract.
 
 Run-lasting build variance: rare timed spawns offering a choice of 2
 mutations, ~10 in the launch pool. Every mutation is an offer **with a cost**

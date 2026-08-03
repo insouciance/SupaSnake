@@ -8,6 +8,7 @@ import {
   parseAscendanceRunPresentationStamp,
   parseGenomeV2ActivationPresentation,
   parseGenomeV2State,
+  parseLegacyHeldGenes,
 } from './genomeV2RuntimeAdapter';
 
 describe('Genome v2 runtime presentation adapter', () => {
@@ -86,6 +87,18 @@ describe('Genome v2 runtime presentation adapter', () => {
       resolveGenomeV2Portal: () => true,
       activateGenomeV2Overclock: () => true,
     })).not.toBeNull();
+  });
+
+  it('keeps v2 pick events out of the legacy held-gene array', () => {
+    expect(parseLegacyHeldGenes(undefined)).toBeNull();
+    expect(parseLegacyHeldGenes([
+      { id: 'gold_trail', atFood: 4 },
+      { id: 'wall_rush', atFood: 9 },
+    ])).toEqual([
+      { id: 'gold_trail', atFood: 4 },
+      { id: 'wall_rush', atFood: 9 },
+    ]);
+    expect(parseLegacyHeldGenes([{ id: 'not-a-gene', atFood: 4 }])).toBeNull();
   });
 
   it('exposes VOLT Overclock only at the 4-point Apex with its FTUE gate open', () => {

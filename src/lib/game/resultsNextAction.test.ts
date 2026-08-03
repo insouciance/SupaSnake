@@ -84,8 +84,12 @@ describe('chooseNextAction', () => {
     })).id).toBe('save-progress');
   });
 
-  it('sends a discovering player to the Codex', () => {
-    expect(chooseNextAction(ctx({ codexDiscoveries: 2 })).id).toBe('open-codex');
+  it('sends a discovering player to Genome Research', () => {
+    expect(chooseNextAction(ctx({ codexDiscoveries: 2 }))).toMatchObject({
+      id: 'open-codex',
+      label: 'Study your discoveries',
+      href: '/codex',
+    });
   });
 
   it('routes everything else to the Chronicle (§5)', () => {

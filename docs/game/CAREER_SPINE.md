@@ -1,7 +1,7 @@
 # SupaSnake Career Spine
 
 **Status:** Owner-approved product contract · amended 31 July 2026
-**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.12 remains design law. This
+**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.13 remains design law. This
 contract defines the recognition, attention, career-memory, and social-witness
 projection of its three progression pillars. Where an older identity or flow
 document conflicts, this contract wins.
@@ -139,8 +139,9 @@ Requirements:
 - Settlement, duplicate completion, reconnect, and response-loss recovery all
   resolve to the same receipt.
 - The receipt includes the server-known transitions for Score/PB, Yield/DNA,
-  Mastery, Codex, Records, ladder, Signal, and Clan Energy Battle where those
-  systems applied.
+  Mastery, version-scoped Genome Research discovery, Records, ladder, Signal,
+  and Clan Energy Battle where those systems applied. Legacy/internal Codex
+  identifiers may carry that discovery data without naming a second surface.
 - A duplicate end request returns or points to the canonical receipt; it never
   forces the client to discard an unknown recognition outcome.
 - Receipt construction and significant-moment materialization are safe to
@@ -156,7 +157,7 @@ Significance is deterministic server product logic, not client taste:
 |---|---|---|---|
 | Routine | XP/DNA delta; progress inside a tier | Compact sentence | No |
 | Notable | PB; Signal completion; enters own clan five | Brief accent | Optional/current history |
-| Milestone | Mastery level; Record tier; Codex milestone; unlock; clan honor | Review beat + destination | Yes |
+| Milestone | Mastery level; Record tier; Genome Research milestone; unlock; clan honor | Review beat + destination | Yes |
 | Historic | M10; capstone; top ladder clear; rare verified lineage/clan event | Strong beat + artifact | Yes |
 
 Rules:
@@ -219,7 +220,8 @@ An unseen milestone may add a subtle destination dot. It does not make the
 global bell urgent. Routine progress creates no badge.
 
 - Mastery clears after the relevant dynasty progress is rendered.
-- Codex clears after the exact new entries are rendered.
+- Genome Research clears after the exact new entries render in the one Workbench's
+  subordinate Research Record.
 - Record clears after the reached record/tier is rendered.
 - Lineage clears after the new or retired specimen chapter is rendered.
 - Clan honor clears after the result/honor is rendered.
@@ -240,7 +242,7 @@ The owner Chronicle receives a private Career Pulse above its museum sections:
 
 A pursuit organizes existing goals; it grants no XP, reward, multiplier, timer,
 or obligation. Examples include the next Mastery rung, own fifth-best battle
-threshold, breeding cost, Record tier, ladder rung, or Codex completion. Public
+threshold, breeding cost, Record tier, ladder rung, or Genome Research completion. Public
 profiles never expose a player's uncompleted pursuit.
 
 The public Chronicle remains a curated museum. A new account reads as a

@@ -60,6 +60,7 @@ function consequence(name: string): TacticalLoomConsequence {
 
 function model(): TacticalLoomDecisionModel {
   return {
+    decisionId: 'test-offer-1',
     rulesVersion: 2,
     title: 'Tactical Loom',
     sourceLabel: 'Cadence offer · 18 foods',
@@ -110,7 +111,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('keeps the live decision intuitive while exposing the whole tappable 2/3/4 path', () => {
+  it('starts with two equal readable choices and unfolds the complete 2/3/4 path only on request', () => {
     render(
       <GeneChoiceOverlay
         {...baseProps}
@@ -122,7 +123,23 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByRole('dialog', { name: 'Tactical Loom' })).toHaveAttribute('aria-modal', 'true');
     expect(screen.queryByTestId('loom-consequence-pane')).toBeNull();
     expect(screen.queryByTestId('loom-details-toggle')).toBeNull();
+    expect(screen.getByTestId('loom-empty-prompt')).toHaveTextContent('Choose a thread');
+    expect(screen.getByTestId('loom-confirm')).toBeDisabled();
     expect(screen.getByTestId('gene-option-0')).toHaveTextContent('VOLT');
+    expect(screen.getByTestId('gene-option-0-salience')).toHaveTextContent('Live Wire creates');
+    expect(screen.getByTestId('gene-option-1-salience')).toHaveTextContent('Phase Gate creates');
+    expect(screen.queryByTestId('loom-lite')).toBeNull();
+
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    expect(screen.getByTestId('gene-option-0')).toHaveFocus();
+    expect(screen.getByTestId('gene-option-0')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('loom-confirm')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('gene-option-0'));
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Live Wire creates');
+    expect(screen.getByTestId('loom-details-toggle')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('loom-lite')).toBeNull();
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
+    expect(screen.getByTestId('loom-details-toggle')).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('loom-lite')).toHaveTextContent('Live Wire creates');
     expect(screen.getByTestId('loom-lite-trigger')).toHaveTextContent('Every third eligible target');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
@@ -140,6 +157,69 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('LOCKED');
     expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('Bank 10 runs or reach M3');
     expect(screen.queryByText(/best|recommended/i)).toBeNull();
+  });
+
+  it('resets selection and unfolded analysis for every newly issued offer', () => {
+    const first = model();
+    const { rerender } = render(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={first}
+        onChoose={jest.fn()}
+        onDecline={jest.fn()}
+      />
+    );
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(screen.getByTestId('gene-option-0'));
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
+    expect(screen.getByTestId('loom-full-reaction-map')).toBeInTheDocument();
+
+    const next = {
+      ...model(),
+      decisionId: 'test-offer-2',
+      sourceLabel: 'Cadence offer · 24 foods',
+    };
+    rerender(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={next}
+        onChoose={jest.fn()}
+        onDecline={jest.fn()}
+      />
+    );
+    expect(screen.getByTestId('loom-empty-prompt')).toBeInTheDocument();
+    expect(screen.getByTestId('loom-confirm')).toBeDisabled();
+    expect(screen.queryByTestId('loom-details-toggle')).toBeNull();
+    expect(screen.queryByTestId('loom-full-reaction-map')).toBeNull();
+  });
+
+  it('preserves a deliberate choice across presentation refreshes for the same offer', () => {
+    const first = model();
+    const { rerender } = render(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={first}
+        onChoose={jest.fn()}
+        onDecline={jest.fn()}
+      />
+    );
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(screen.getByTestId('gene-option-0'));
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
+
+    rerender(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={{ ...model(), sourceLabel: 'Cadence offer · refreshed facts' }}
+        onChoose={jest.fn()}
+        onDecline={jest.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('gene-option-0')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('loom-confirm')).toBeEnabled();
+    expect(screen.getByTestId('loom-details-toggle')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('loom-full-reaction-map')).toBeInTheDocument();
   });
 
   it('spells out dual Strains and preserves every immediate and future Splice branch', () => {
@@ -198,10 +278,13 @@ describe('GeneChoiceOverlay tactical Loom', () => {
         onDecline={jest.fn()}
       />
     );
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
     expect(screen.getByTestId('gene-option-0')).toHaveTextContent('UMBRA');
     expect(screen.getByTestId('gene-option-0')).toHaveTextContent('FERAL');
     expect(screen.getByTestId('gene-option-0-strain-UMBRA')).toBeVisible();
     expect(screen.getByTestId('gene-option-0-strain-FERAL')).toBeVisible();
+    fireEvent.click(screen.getByTestId('gene-option-0'));
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
     expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('UMBRA');
     expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('FERAL');
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Styx Contract');
@@ -225,13 +308,13 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
 
     fireEvent.click(screen.getByTestId('gene-option-1'));
-    expect(screen.getByTestId('loom-lite')).toHaveTextContent('Phase Gate creates');
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Phase Gate creates');
     expect(onChoose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onChoose).toHaveBeenCalledWith(1);
 
     fireEvent.click(screen.getByTestId('gene-decline'));
-    expect(screen.getByTestId('loom-lite')).toHaveTextContent('mint Bond 2 of 3');
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('mint Bond 2 of 3');
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onDecline).toHaveBeenCalledTimes(1);
   });
@@ -256,6 +339,31 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(onChoose).toHaveBeenCalledWith(1);
   });
 
+  it('keeps Enter and Space on subordinate controls from confirming a gene', () => {
+    const onChoose = jest.fn();
+    render(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={model()}
+        onChoose={onChoose}
+        onDecline={jest.fn()}
+      />
+    );
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(screen.getByTestId('gene-option-0'));
+    const details = screen.getByTestId('loom-details-toggle');
+    details.focus();
+
+    fireEvent.keyDown(details, { key: 'Enter' });
+    expect(onChoose).not.toHaveBeenCalled();
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(details);
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(details, { key: ' ' });
+    expect(onChoose).not.toHaveBeenCalled();
+  });
+
   it('shows an authoritative illegal candidate but cannot commit it', () => {
     const onChoose = jest.fn();
     const baseModel = model();
@@ -278,6 +386,9 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByTestId('gene-option-0')).toHaveTextContent('Another second life is already active');
     expect(screen.getByTestId('gene-option-1')).toHaveFocus();
     fireEvent.keyDown(window, { key: '1' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onChoose).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: '2' });
     fireEvent.keyDown(window, { key: 'Enter' });
     expect(onChoose).toHaveBeenCalledWith(1);
   });
@@ -320,7 +431,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.click(screen.getByTestId('gene-decline'));
     expect(screen.getByTestId('loom-anchor-decline-step')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('loom-decline-option-pin-a'));
-    expect(screen.getByTestId('loom-lite')).toHaveTextContent('mints no Bond');
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('mints no Bond');
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onDecline).toHaveBeenCalledWith(0);
   });
@@ -356,10 +467,18 @@ describe('GeneChoiceOverlay tactical Loom', () => {
       />
     );
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(screen.getByTestId('gene-option-0'));
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(screen.getByTestId('loom-recode-step')).toHaveTextContent('Step 2 of 2');
     expect(screen.getByTestId('loom-replace-0')).toHaveTextContent('+8 growth');
+    expect(screen.getByTestId('loom-replace-0')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('loom-confirm')).toBeDisabled();
     expect(screen.getByTestId('loom-replace-0-strain-AURUM')).toBeVisible();
+    screen.getByTestId('loom-replace-0').focus();
+    expect(screen.getByTestId('loom-replace-0')).toHaveAttribute('aria-checked', 'false');
+    fireEvent.keyDown(screen.getByTestId('loom-replace-0'), { key: 'Enter' });
+    expect(onRecode).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('loom-replace-0'));
     expect(screen.getByTestId('loom-lite')).toHaveTextContent('THREAD Live Wire · replace Gold Trail');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Live Wire');
@@ -387,6 +506,9 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     const thread = screen.getByTestId('gene-option-0');
     expect(thread).toHaveAccessibleName(/Compound Interest/i);
     expect(within(thread).getByText('Compound Interest')).not.toHaveClass('truncate');
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(thread);
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
     expect(screen.getByTestId('loom-focused-gene-name')).toHaveTextContent('Compound Interest');
   });
 
@@ -405,8 +527,11 @@ describe('GeneChoiceOverlay tactical Loom', () => {
       />
     );
     expect(screen.getByTestId('gene-choice-overlay')).toHaveAttribute('data-rules-version', '1');
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(screen.getByTestId('gene-option-0'));
+    fireEvent.click(screen.getByTestId('loom-details-toggle'));
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Uncatalogued Splice');
-    fireEvent.focus(screen.getByTestId('gene-decline'));
+    fireEvent.click(screen.getByTestId('gene-decline'));
     expect(screen.getByTestId('loom-lite')).toHaveTextContent('forced to FERAL');
   });
 });

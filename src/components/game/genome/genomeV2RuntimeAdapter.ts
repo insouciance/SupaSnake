@@ -13,6 +13,7 @@ import {
   type GenomeV2StrainThreshold,
 } from '@/shared/game/genomeV2';
 import type { GenomeV2ActivationPresentation } from './genomeV2PresentationAdapter';
+import { isGeneId, type GenePick } from '@/shared/game/genes';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -195,6 +196,24 @@ export function parseGenomeV2State(value: unknown): GenomeV2State | null {
     return null;
   }
   return state as unknown as GenomeV2State;
+}
+
+/**
+ * Legacy mutation-picked events carry the complete held list. Genome v2
+ * events intentionally do not: their authoritative inventory lives in the
+ * reducer slots. Keeping this distinction here prevents a v2 pick from
+ * assigning `undefined` into the legacy Zustand array.
+ */
+export function parseLegacyHeldGenes(value: unknown): GenePick[] | null {
+  if (!Array.isArray(value)) return null;
+  const parsed: GenePick[] = [];
+  for (const entry of value) {
+    const candidate = record(entry);
+    const atFood = nonNegativeInteger(candidate?.atFood);
+    if (!candidate || !isGeneId(candidate.id) || atFood === null) return null;
+    parsed.push({ id: candidate.id, atFood });
+  }
+  return parsed;
 }
 
 /** Exact REDLINE/Overclock instrument from canonical state and config. The

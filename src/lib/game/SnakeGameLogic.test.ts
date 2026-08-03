@@ -1400,6 +1400,7 @@ describe('SnakeGameLogic', () => {
         deathPosition: null,
         mutations: [],
         deathCause: 'extracted', // Identity v1 section 9.5
+        collisionDiagnostic: null,
         phoenixTriggeredAtFood: null,
         genome: null, // legacy runs carry no genome payload
       });

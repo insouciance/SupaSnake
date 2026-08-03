@@ -1,5 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  GENOME_V2_INTERACTION_AUTO_OFFER,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_V2_CONFIG,
   createGenomeV2State,
   deriveGenomeV2Ftue,
@@ -77,11 +79,15 @@ function stateWithGene(
   return stateWithGenes(dynasty, [geneId]);
 }
 
-function runtimeFromState(state: GenomeV2State): GenomeV2Runtime {
+function runtimeFromState(
+  state: GenomeV2State,
+  interactionVersion = GENOME_V2_INTERACTION_AUTO_OFFER
+): GenomeV2Runtime {
   return new GenomeV2Runtime({
     runSeed: state.runSeed,
     dynasty: state.dynasty,
     reducerState: state,
+    interactionVersion,
   });
 }
 
@@ -214,6 +220,81 @@ describe('GenomeV2Runtime deterministic decisions', () => {
     expect(portalId).toContain('portal:');
   });
 
+  it('runs physical relic opportunities on a deterministic 4-8 food clock', () => {
+    const options = {
+      runSeed: 'runtime-physical-relic-seed',
+      dynasty: 'PRIMAL' as const,
+      pool: genomeV2ActivePool('PRIMAL'),
+      ftue: deriveGenomeV2Ftue(10, 3),
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    };
+    const runtime = new GenomeV2Runtime(options);
+    const firstAt = runtime.nextCadenceOpportunityAtFood();
+    expect(firstAt).toBeGreaterThanOrEqual(4);
+    expect(firstAt).toBeLessThanOrEqual(8);
+    expect(runtime.openCadenceOffer(1, firstAt - 1)).toBeNull();
+
+    // The relic may remain visible while ordinary food is collected. The
+    // next 6 +/- 2 interval begins only when that relic is deliberately
+    // collected, matching the historical physical-relic cadence.
+    const collectedAt = firstAt + 3;
+    const offer = runtime.openCadenceOffer(2, collectedAt);
+    expect(offer).not.toBeNull();
+    expect(runtime.getState().offerCount).toBe(1);
+    expect(runtime.declineOffer(3)).toBe(true);
+    const secondAt = runtime.nextCadenceOpportunityAtFood();
+    expect(secondAt - collectedAt).toBeGreaterThanOrEqual(4);
+    expect(secondAt - collectedAt).toBeLessThanOrEqual(8);
+  });
+
+  it('expires an ignored relic without rolling, revealing, or declining an offer', () => {
+    const runtime = new GenomeV2Runtime({
+      runSeed: 'runtime-ignored-relic-seed',
+      dynasty: 'PRIMAL',
+      pool: genomeV2ActivePool('PRIMAL'),
+      ftue: deriveGenomeV2Ftue(10, 3),
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    });
+    const firstAt = runtime.nextCadenceOpportunityAtFood();
+    const before = runtime.getState();
+
+    const expiredAt = firstAt + 2;
+    expect(runtime.expireCadenceRelic(expiredAt)).toBe(true);
+    expect(runtime.getState()).toEqual(before);
+    expect(runtime.getState().offerCount).toBe(0);
+    expect(runtime.getState().bonds).toBe(0);
+    const nextAt = runtime.nextCadenceOpportunityAtFood();
+    expect(nextAt - expiredAt).toBeGreaterThanOrEqual(4);
+    expect(nextAt - expiredAt).toBeLessThanOrEqual(8);
+  });
+
+  it('doubles every physical relic interval for Patient', () => {
+    const runtime = new GenomeV2Runtime({
+      runSeed: 'runtime-patient-relic-seed',
+      dynasty: 'PRIMAL',
+      pool: genomeV2ActivePool('PRIMAL'),
+      ftue: deriveGenomeV2Ftue(10, 3),
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+      cadenceMultiplier: 2,
+    });
+    const firstAt = runtime.nextCadenceOpportunityAtFood();
+    expect(firstAt).toBeGreaterThanOrEqual(8);
+    expect(firstAt).toBeLessThanOrEqual(16);
+
+    const collectedAt = firstAt + 3;
+    expect(runtime.openCadenceOffer(1, collectedAt)).not.toBeNull();
+    expect(runtime.declineOffer(2)).toBe(true);
+    const afterCollection = runtime.nextCadenceOpportunityAtFood();
+    expect(afterCollection - collectedAt).toBeGreaterThanOrEqual(8);
+    expect(afterCollection - collectedAt).toBeLessThanOrEqual(16);
+
+    const expiredAt = afterCollection + 2;
+    expect(runtime.expireCadenceRelic(expiredAt)).toBe(true);
+    const afterExpiry = runtime.nextCadenceOpportunityAtFood();
+    expect(afterExpiry - expiredAt).toBeGreaterThanOrEqual(8);
+    expect(afterExpiry - expiredAt).toBeLessThanOrEqual(16);
+  });
+
   it('expires a physical portal without consuming an offer roll', () => {
     const runtime = new GenomeV2Runtime({
       runSeed: 'runtime-expired-portal',
@@ -266,6 +347,88 @@ describe('GenomeV2Runtime target and signature bridges', () => {
     expect(runtime.getState().activeSplices).toContain('splice_dragon_hoard');
     expect(runtime.hasMechanic('gold_trail')).toBe(true);
     expect(runtime.hasMechanic('compound_interest')).toBe(false);
+  });
+
+  it('binds both Gilded Fork cells to one target and restores them from a checkpoint snapshot', () => {
+    const reducer = stateWithGenes('PRIMAL', ['gold_trail', 'overgrowth']);
+    const legacy = runtimeFromState(reducer);
+    const runtime = runtimeFromState(
+      reducer,
+      GENOME_V2_INTERACTION_PHYSICAL_RELIC
+    );
+    for (let ordinal = 1; ordinal <= 4; ordinal += 1) {
+      collectOrdinary(legacy, ordinal);
+      collectOrdinary(runtime, ordinal);
+    }
+    expect(legacy.projectNextTarget(true)).toMatchObject({
+      kind: 'gold_trail',
+      requiresForkCell: false,
+    });
+    const legacySpawned = legacy.spawnTarget(9, {
+      cell: { x: 5, z: 5 },
+      speedAtSpawnMs: 160,
+      shortestSafeMoves: 5,
+    });
+    expect(legacySpawned.target).toMatchObject({
+      kind: 'gold_trail',
+      forkCell: null,
+      forkChoice: null,
+    });
+    expect(legacy.targetChoiceAt({ x: 5, z: 5 })).toMatchObject({
+      target: { targetId: legacySpawned.targetId },
+      choice: null,
+    });
+    expect(
+      legacy.chooseGildedFork(
+        legacySpawned.targetId,
+        'ordinary',
+        10
+      )
+    ).toBe(true);
+    expect(
+      legacy.resolveTarget(legacySpawned.targetId, 10, {
+        resolution: 'collected',
+        movesUsed: 5,
+        baseYield: genomeV2Yield(1),
+        pressureBps: 0,
+      })
+    ).toMatchObject({ lifecycle: 'completed' });
+    expect(runtime.projectNextTarget(true)).toMatchObject({
+      kind: 'gold_trail',
+      requiresForkCell: true,
+    });
+    expect(() => runtime.spawnTarget(9, {
+      cell: { x: 5, z: 5 },
+      speedAtSpawnMs: 160,
+      shortestSafeMoves: 5,
+    })).toThrow('requires two distinct visible cells');
+    const spawned = runtime.spawnTarget(9, {
+      cell: { x: 5, z: 5 },
+      forkCell: { x: 9, z: 9 },
+      speedAtSpawnMs: 160,
+      shortestSafeMoves: 5,
+    });
+
+    expect(runtime.targetChoiceAt({ x: 5, z: 5 })).toMatchObject({
+      target: { targetId: spawned.targetId },
+      choice: 'ordinary',
+    });
+    expect(runtime.targetChoiceAt({ x: 9, z: 9 })).toMatchObject({
+      target: { targetId: spawned.targetId },
+      choice: 'gilded',
+    });
+
+    const restored = new GenomeV2Runtime({
+      runSeed: runtime.getState().runSeed,
+      dynasty: 'PRIMAL',
+      reducerState: runtime.getState(),
+      snapshot: runtime.snapshot(),
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    });
+    expect(restored.targetChoiceAt({ x: 9, z: 9 })).toMatchObject({
+      target: { targetId: spawned.targetId },
+      choice: 'gilded',
+    });
   });
 
   it('spends the single Wall Rush charge before allowing another redirect', () => {

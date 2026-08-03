@@ -43,7 +43,7 @@ jobs:
         if: always()
         run: supabase stop --no-backup
 
-  # TWO LEGS, BECAUSE ONE WAS TESTING THE CONFIGURATION NOBODY RUNS.
+  # FOUR FLAG SHAPES: two full suites plus two narrow independent rollbacks.
   #
   # Until 2026-07-27 this job passed no NEXT_PUBLIC_* flag at all, so every
   # flag-split spec ran its flag-OFF branch - while production runs all of them
@@ -52,14 +52,15 @@ jobs:
   # never let CI infer them from an omitted flag"); this is that failure in the
   # other direction, where the inferred branch was the one players don't get.
   #
-  # `rollback` keeps the historical flag-off coverage. `production` mirrors the
-  # live environment. Both must pass. The aggregate job below is named `e2e` so
-  # the branch-protection required check keeps its name while covering both.
+  # `rollback` keeps historical all-off coverage. `production` mirrors the live
+  # environment. Workbench and Genome have independent rollback switches, so
+  # their two mixed states run the focused public Research journey. The
+  # aggregate job below keeps the branch-protection name `e2e`.
   e2e-matrix:
     name: e2e (${{ matrix.flags }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # BOTH LEGS BLOCK (WP-3.11).
+    # EVERY LEG BLOCKS (WP-3.11).
     #
     # The production leg spent its first weeks as `continue-on-error: true`
     # because it landed with seven failures inherited from the years this
@@ -80,15 +81,16 @@ jobs:
       matrix:
         # NOT `[off, on]`: YAML 1.1 parsers - GitHub's among them - coerce bare
         # `off`/`on` to booleans, which would render as "false"/"true" in the
-        # expression below, match neither branch, and silently run BOTH legs
+        # expression below, match neither branch, and silently mis-arm the jobs
         # with flags off. That is precisely the bug this job exists to fix.
-        flags: [rollback, production]
+        flags:
+          [rollback, legacy-workbench, genome-without-workbench, production]
     env:
       # The isolated database applies every migration, including FTUE v2's
       # bootstrap RPC, before the production build starts. These two are
-      # production defaults on both legs (CLAUDE.md).
-      NEXT_PUBLIC_FTUE_V2: 'true'
-      NEXT_PUBLIC_HUD_COCKPIT_V1: 'true'
+      # production defaults on every flag leg (CLAUDE.md).
+      NEXT_PUBLIC_FTUE_V2: "true"
+      NEXT_PUBLIC_HUD_COCKPIT_V1: "true"
 
     steps:
       - name: Checkout
@@ -97,15 +99,27 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       # Must run before `npm run build`: NEXT_PUBLIC_* are inlined at build
       # time, so a flag exported after the build has no effect at all.
       - name: Arm feature flags for this leg
         run: |
-          if [ "${{ matrix.flags }}" != 'production' ]; then
+          if [ "${{ matrix.flags }}" = 'rollback' ]; then
             echo 'rollback leg: no NEXT_PUBLIC_* armed, flag-off paths covered'
+            exit 0
+          fi
+          if [ "${{ matrix.flags }}" = 'legacy-workbench' ]; then
+            echo 'NEXT_PUBLIC_WORKBENCH_V1=true' >> "$GITHUB_ENV"
+            echo 'legacy Workbench leg: Genome v2 off, Workbench v1 on'
+            exit 0
+          fi
+          if [ "${{ matrix.flags }}" = 'genome-without-workbench' ]; then
+            node scripts/production-public-surface-cli.mjs github-env \
+              | grep -v '^NEXT_PUBLIC_WORKBENCH_V1=' \
+              >> "$GITHUB_ENV"
+            echo 'Workbench rollback leg: Genome v2 on, Workbench v1 off'
             exit 0
           fi
           # This is the same checked-in contract the release workflow injects
@@ -146,9 +160,14 @@ jobs:
 
       # playwright.config.ts starts `npm run start` (serves the build above)
       - name: Run e2e tests (excluding @stripe)
-        run: npx playwright test --grep-invert "@stripe"
+        run: |
+          if [ "${{ matrix.flags }}" = 'legacy-workbench' ] || [ "${{ matrix.flags }}" = 'genome-without-workbench' ]; then
+            npx playwright test e2e/lexicon.spec.ts --grep "a signed-out visitor reaches one coherent research destination"
+          else
+            npx playwright test --grep-invert "@stripe"
+          fi
         env:
-          CI: 'true'
+          CI: "true"
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -180,4 +199,4 @@ jobs:
             echo "::error::SQL contracts=$sql_result, e2e matrix=$e2e_result - every isolated gate must pass"
             exit 1
           fi
-          echo 'SQL contracts and both e2e legs passed (flags off and flags on)'
+          echo 'SQL contracts and all e2e flag shapes passed'

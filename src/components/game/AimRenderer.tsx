@@ -56,6 +56,8 @@ export interface AimRendererProps {
   queuedDirections?: readonly Direction[];
   /** Full snake (for the pathline danger scan) */
   snake?: readonly Position[];
+  /** Solid board cells beyond the snake (terrain, seals, and scars). */
+  obstacles?: readonly { x: number; z: number }[];
   /** Grid size (default 20) */
   gridSize?: number;
   /** Player-selected aim system */
@@ -87,6 +89,7 @@ const DEADEYE_LINE_Y = 0.06;
 
 const EMPTY_QUEUE: readonly Direction[] = [];
 const EMPTY_SNAKE: readonly Position[] = [];
+const EMPTY_OBSTACLES: readonly { x: number; z: number }[] = [];
 const EMPTY_TARGETS: readonly AimTarget[] = [];
 const NULL_BUFFER = { current: null } as const;
 
@@ -580,6 +583,7 @@ interface PathlineProps {
   direction: Direction;
   queuedDirections: readonly Direction[];
   snake: readonly Position[];
+  obstacles: readonly { x: number; z: number }[];
   gridSize: number;
   color: string;
   laneColor: string;
@@ -590,6 +594,7 @@ function Pathline({
   direction,
   queuedDirections,
   snake,
+  obstacles,
   gridSize,
   color,
   laneColor,
@@ -669,8 +674,15 @@ function Pathline({
 
   // Danger scan (committed heading only, no queue)
   const danger = useMemo(
-    () => projectDangerPath(head, direction, snake, gridSize, LANE_LENGTH),
-    [head, direction, snake, gridSize]
+    () => projectDangerPath(
+      head,
+      direction,
+      snake,
+      gridSize,
+      LANE_LENGTH,
+      obstacles
+    ),
+    [head, direction, snake, gridSize, obstacles]
   );
   const dangerCells = danger.impact ? danger.cells : [];
 
@@ -848,6 +860,7 @@ export function AimRenderer({
   direction = 'RIGHT',
   queuedDirections = EMPTY_QUEUE,
   snake = EMPTY_SNAKE,
+  obstacles = EMPTY_OBSTACLES,
   gridSize = 20,
   aimSystem = 'deadeye',
   targets = EMPTY_TARGETS,
@@ -876,6 +889,7 @@ export function AimRenderer({
           direction={direction}
           queuedDirections={queuedDirections}
           snake={snake}
+          obstacles={obstacles}
           gridSize={gridSize}
           color={color}
           laneColor={laneColor}

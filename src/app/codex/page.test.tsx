@@ -1,22 +1,26 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import CodexPage from './page';
-import { lexiconSection } from '@/shared/game/lexicon';
+import { genomeResearchCopy } from './researchCopy';
 
 const mockUseAuth = jest.fn();
 const mockFetchCodex = jest.fn();
 const mockResetCodex = jest.fn();
 const mockUseCodexStore = jest.fn();
 
-jest.mock('@/lib/auth/AuthProvider', () => ({
-  useAuth: () => mockUseAuth(),
-}));
+jest.mock('@/lib/auth/AuthProvider', () => ({ useAuth: () => mockUseAuth() }));
 jest.mock('@/lib/stores/codexStore', () => ({
   useCodexStore: () => mockUseCodexStore(),
 }));
 jest.mock('@/components/ui/NavBar', () => ({ NavBar: () => <nav /> }));
-jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: false }));
+jest.mock('@/components/workbench/WorkbenchView', () => ({
+  WorkbenchView: ({ studyRef }: { studyRef?: string | null }) => (
+    <div data-testid="workbench-view" data-study-ref={studyRef ?? ''} />
+  ),
+}));
+jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: true }));
+jest.mock('@/lib/features/workbench', () => ({ WORKBENCH_V1_ENABLED: true }));
 
 const EMPTY_DATA = {
   genes: [],
@@ -31,9 +35,10 @@ const EMPTY_DATA = {
   sampleSize: 0,
 };
 
-describe('Genome Codex page', () => {
+describe('Genome Research compatibility page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.history.replaceState(null, '', '/codex');
     mockUseAuth.mockReturnValue({
       session: { access_token: 'token', user: { id: 'user-a' } },
       isAuthenticated: true,
@@ -52,23 +57,47 @@ describe('Genome Codex page', () => {
     });
   });
 
-  it('is available to authenticated players without any premium gate', () => {
+  it('opens one Workbench destination without a premium gate or archive tab', () => {
     render(<CodexPage />);
     expect(screen.getByTestId('codex-page')).toBeInTheDocument();
-    expect(screen.getByText('Archive completion')).toBeInTheDocument();
+    expect(screen.getByTestId('workbench-view')).toBeInTheDocument();
+    expect(screen.getByText('Genome Research')).toBeInTheDocument();
+    expect(screen.queryByTestId('codex-views')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('codex-rules')).not.toBeInTheDocument();
 
-    const source = fs.readFileSync(path.join(process.cwd(), 'src/app/codex/page.tsx'), 'utf8');
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/codex/page.tsx'),
+      'utf8',
+    );
     expect(source).not.toMatch(/premium_required|isPremium|hasPremium/);
   });
 
-  /**
-   * REWRITTEN, not deleted (WP-2.07a). The old assertion — that a player
-   * below the banked-run unlock sees `codex-locked` and NO catalog — was the
-   * only guard on the discovery gate, and that gate is being kept. What
-   * changed is its scope: it gates *discoveries*, never *rules*. The
-   * narrower promise is asserted here instead.
-   */
-  it('reads the rules before the banked-run unlock, and says the archive is still waiting', () => {
+  it('keeps production, mixed rollback, and full rollback copy truthful', () => {
+    expect(genomeResearchCopy(true, true)).toMatchObject({
+      intro: expect.stringContaining('Touch a possible Genome'),
+      signedOutRecord: expect.stringContaining('Workbench is open to everyone'),
+    });
+    expect(genomeResearchCopy(false, true)).toMatchObject({
+      intro: expect.stringContaining('Sign in to plan a Genome'),
+      signedOutRecord: expect.not.stringContaining(
+        'Workbench is open to everyone',
+      ),
+    });
+    expect(genomeResearchCopy(false, false)).toMatchObject({
+      intro: expect.stringContaining('not active in this version'),
+      signedOutRecord: expect.not.stringContaining(
+        'Workbench is open to everyone',
+      ),
+    });
+    expect(genomeResearchCopy(true, false)).toMatchObject({
+      intro: expect.stringContaining('not active in this version'),
+      signedOutRecord: expect.not.stringContaining(
+        'Workbench is open to everyone',
+      ),
+    });
+  });
+
+  it('keeps Research open before personal discovery history unlocks', () => {
     mockUseCodexStore.mockReturnValue({
       ownerId: 'user-a',
       live: true,
@@ -83,56 +112,27 @@ describe('Genome Codex page', () => {
     });
     render(<CodexPage />);
 
-    // The rules are there at 14 banked runs.
-    expect(screen.getByTestId('codex-rules')).toBeInTheDocument();
-    expect(screen.getByTestId('lexicon-mechanic-extraction_bank')).toBeInTheDocument();
-
-    // The gate is still stated, and still states the same two numbers.
+    expect(screen.getByTestId('workbench-view')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Your Research Record'));
     const pending = screen.getByTestId('codex-discovery-pending');
     expect(pending).toHaveTextContent('15 banked runs');
     expect(pending).toHaveTextContent('You have banked 14');
   });
 
-  it('renders every documented section for a signed-out visitor, with no fetch', () => {
+  it('keeps the public Workbench visible while account history alone asks for sign-in', () => {
     mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
     render(<CodexPage />);
 
-    // The contradiction this resolves: /codex sits in the public sitemap and
-    // the public footer. A visitor who follows either must be able to read it.
-    expect(screen.getByTestId('codex-rules')).toBeInTheDocument();
-    for (const testId of [
-      'lexicon-mechanics',
-      'lexicon-dynasties',
-      'lexicon-traits',
-      'lexicon-strains',
-      'lexicon-anomalies',
-    ]) {
-      expect(screen.getByTestId(testId)).toBeInTheDocument();
-    }
-    // The three extraction verbs, documented nowhere before this WP.
-    expect(screen.getByText('BANK')).toBeInTheDocument();
-    expect(screen.getByText('PASS')).toBeInTheDocument();
-    expect(screen.getByText('INFUSE')).toBeInTheDocument();
-
-    // The discovery layer, and only it, asks for an account.
-    expect(screen.getByTestId('codex-signed-out')).toBeInTheDocument();
-    expect(screen.queryByText('Archive completion')).toBeNull();
+    expect(screen.getByTestId('workbench-view')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Your Research Record'));
+    expect(screen.getByTestId('codex-signed-out')).toHaveTextContent(
+      'The Workbench is open to everyone',
+    );
     expect(mockFetchCodex).not.toHaveBeenCalled();
     expect(mockResetCodex).toHaveBeenCalled();
   });
 
-  it('lays out all fifteen strain tiers', () => {
-    mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
-    render(<CodexPage />);
-    const tiers = lexiconSection('strainTier');
-    expect(tiers).toHaveLength(15);
-    for (const entry of tiers) {
-      const [strain, tier] = entry.id.split(':');
-      expect(screen.getByTestId(`lexicon-tier-${strain}-${tier}`)).toBeInTheDocument();
-    }
-  });
-
-  it('shows every tactical recipe while discovery remains separate history', () => {
+  it('preserves discovery recipes and history inside the subordinate record', () => {
     mockUseCodexStore.mockReturnValue({
       ownerId: 'user-a',
       live: true,
@@ -144,31 +144,13 @@ describe('Genome Codex page', () => {
         splices: [
           {
             id: 'splice_dragon_hoard',
+            rulesVersion: 2,
             name: 'Dragon Hoard',
             parents: ['gold_trail', 'compound_interest'],
             strains: [],
-            effect: 'dragon hoard effect',
-            cost: 'dragon hoard cost',
             discoveries: 2,
             banks: 1,
             discovered: true,
-            firstDiscoveredAt: null,
-            worldFirstAt: null,
-            rewardDna: 250,
-          },
-          {
-            id: 'splice_all_in',
-            name: 'All In',
-            parents: null,
-            strains: [],
-            effect: 'all in effect',
-            cost: 'all in cost',
-            discoveries: 0,
-            banks: 0,
-            discovered: false,
-            firstDiscoveredAt: null,
-            worldFirstAt: null,
-            rewardDna: 250,
           },
         ],
       },
@@ -178,21 +160,15 @@ describe('Genome Codex page', () => {
       reset: mockResetCodex,
     });
     render(<CodexPage />);
+    fireEvent.click(screen.getByText('Your Research Record'));
 
-    expect(screen.getByTestId('codex-recipe-splice_dragon_hoard')).toHaveTextContent(
-      'Gold Trail + Compound Interest'
-    );
-    expect(screen.getByTestId('codex-recipe-splice_all_in')).toHaveTextContent(
-      'Recipe undiscovered'
-    );
-    expect(screen.queryByText('Compound Interest + Mirror Wager')).not.toBeInTheDocument();
-    // Legacy discovery still changes archive history while v2 is off.
-    expect(screen.getAllByText('All In').length).toBeGreaterThan(0);
-    expect(screen.getByText('all in effect')).toBeInTheDocument();
-    expect(screen.getByText('all in cost')).toBeInTheDocument();
+    expect(screen.getByText('Genome Weaver')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('codex-recipe-splice_dragon_hoard'),
+    ).toHaveTextContent('Gold Trail + Compound Interest');
   });
 
-  it('fails closed synchronously when authenticated player B sees player A store state', () => {
+  it('fails closed synchronously when player B sees player A store state', () => {
     mockUseAuth.mockReturnValue({
       session: { access_token: 'token-b', user: { id: 'user-b' } },
       isAuthenticated: true,
@@ -211,19 +187,18 @@ describe('Genome Codex page', () => {
     });
 
     render(<CodexPage />);
-
-    expect(screen.getByText('Opening the Codex…')).toBeInTheDocument();
-    expect(screen.queryByText('Archive completion')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Your Research Record'));
+    expect(
+      screen.getByText('Reading your Genome history…'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Genome Weaver')).not.toBeInTheDocument();
     expect(mockFetchCodex).toHaveBeenCalledWith('user-b', 'token-b');
   });
 
-  it('puts the interactive strategy atlas before the reference grids', () => {
-    mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
+  it('opens old notification anchors into the Research Record', () => {
+    window.history.replaceState(null, '', '/codex#codex-genome-weaver');
     render(<CodexPage />);
-    expect(screen.getByTestId('genome-strategy-atlas')).toBeInTheDocument();
-    expect(screen.getByTestId('genome-strategy-atlas')).toHaveAttribute('data-rules-version', '1');
-    expect(screen.getByLabelText('Genome consequence chain')).toHaveTextContent(
-      /Offer.*Strain.*Splice.*BANK \/ crash/
-    );
+    expect(screen.getByTestId('research-record')).toHaveAttribute('open');
+    expect(screen.getByText('Genome Weaver')).toBeInTheDocument();
   });
 });

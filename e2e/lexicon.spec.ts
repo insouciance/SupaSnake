@@ -1,5 +1,5 @@
 /**
- * WP-2.07a — The Lexicon.
+ * WP-2.07a — Genome Research and touch-readable Heirlooms.
  *
  * The defect these specs exist for is a touch defect, so they run on a
  * touch viewport. `TRAITS[].effect` has shipped for months, but only as an
@@ -8,9 +8,11 @@
  * option `playwright.config.ts` does not set, so it is set per-describe
  * here rather than globally.
  *
- * The second describe covers the other half of the package: `/codex` is in
- * the public sitemap and the public footer, and used to be auth-walled AND
- * 15-banked-run-gated. Its rules now render for a signed-out visitor.
+ * The second describe protects the consolidated research architecture:
+ * `/codex` remains a public compatibility URL, but it now opens one Workbench
+ * rather than a duplicate rules/Archive surface. Genome v2 exposes the full
+ * research table before sign-in; both mixed and full rollback states remain
+ * explicit rather than silently inventing a second destination.
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -18,6 +20,7 @@ import { seedConsent, signInAsGuest } from './helpers';
 
 const PHONE = { width: 390, height: 844 } as const;
 const GENOME_V2_ENABLED = process.env.NEXT_PUBLIC_GENOME_V2 === 'true';
+const WORKBENCH_V1_ENABLED = process.env.NEXT_PUBLIC_WORKBENCH_V1 === 'true';
 
 const CHARGE = {
   remaining: 4,
@@ -39,7 +42,11 @@ async function installAsceticSnake(page: Page): Promise<void> {
       status: 200,
       contentType: 'application/json',
       json: {
-        player: { id: 'lexicon-player', total_games_played: 20, high_score: 10_000 },
+        player: {
+          id: 'lexicon-player',
+          total_games_played: 20,
+          high_score: 10_000,
+        },
         charge: CHARGE,
         needsStarterSelection: false,
         hasCompletedFirstRun: true,
@@ -93,7 +100,7 @@ test.describe('Run Setup explains the snake on touch', () => {
     // The warning needs no tap at all: Ascetic deletes mutation foods from
     // the run, and that has to be readable before START.
     await expect(page.getByTestId('heirloom-notice-ascetic')).toContainText(
-      /no mutation foods/i
+      /no mutation foods/i,
     );
 
     // The chip itself is now a real control. Tap it.
@@ -119,7 +126,7 @@ test.describe('Run Setup explains the snake on touch', () => {
     expect(box!.y + box!.height).toBeLessThanOrEqual(PHONE.height);
     expect(
       box!.y + box!.height <= triggerBox!.y ||
-        box!.y >= triggerBox!.y + triggerBox!.height
+        box!.y >= triggerBox!.y + triggerBox!.height,
     ).toBe(true);
 
     // A second tap closes it, and a tap outside closes it.
@@ -152,69 +159,84 @@ test.describe('Run Setup explains the snake on touch', () => {
   });
 });
 
-test.describe('The Codex reads as a lexicon', () => {
+test.describe('Genome Research has one Workbench destination', () => {
   test.use({ viewport: PHONE, hasTouch: true });
 
   test.beforeEach(async ({ page }) => {
     await seedConsent(page);
   });
 
-  test('a signed-out visitor can read the rules', async ({ page }) => {
-    // /codex is in the public sitemap and the landing footer. Following
-    // either used to reach an auth wall behind a 15-banked-run gate.
-    await page.goto('/codex', { waitUntil: 'domcontentloaded' });
-
-    await expect(page.getByTestId('codex-page')).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByTestId('codex-rules')).toBeVisible();
-
-    // The three extraction verbs — the game's most load-bearing vocabulary,
-    // documented nowhere before this work package.
-    for (const verb of ['BANK', 'PASS', 'INFUSE']) {
-      await expect(
-        page.getByTestId(`lexicon-mechanic-extraction_${verb.toLowerCase()}`)
-      ).toContainText(verb);
-    }
-
-    // Every documented section, no API call needed for any of them.
-    for (const section of [
-      'lexicon-mechanics',
-      'lexicon-dynasties',
-      'lexicon-traits',
-      'lexicon-anomalies',
-    ]) {
-      await expect(page.getByTestId(section)).toBeVisible();
-    }
-    if (GENOME_V2_ENABLED) {
-      // Genome v2 replaces the legacy ladder list with the public Strategy
-      // Atlas. Every family and every corrected 2/3/4 rung remains visible
-      // before discovery; the rollback leg separately proves the v1 Lexicon.
-      await expect(page.getByTestId('atlas-all-ladders')).toBeVisible();
-      for (const strain of ['AURUM', 'VOLT', 'FERAL', 'FLUX', 'UMBRA']) {
-        for (const points of [2, 3, 4]) {
-          await expect(
-            page.getByTestId(`atlas-all-tier-${strain}-${points}`)
-          ).toBeVisible();
-        }
-      }
-      await expect(page.getByTestId('lexicon-strains')).toHaveCount(0);
-    } else {
-      await expect(page.getByTestId('lexicon-strains')).toBeVisible();
-      // All fifteen legacy strain tiers are spelled out in rollback mode.
-      await expect(page.getByTestId('lexicon-tier-FERAL-2')).toContainText('Fortress');
-    }
-
-    // The discovery layer, and only it, still asks for an account.
-    await expect(page.getByTestId('codex-signed-out')).toBeVisible();
-  });
-
-  test('a guest at zero banked runs still gets the whole catalog', async ({
+  test('a signed-out visitor reaches one coherent research destination', async ({
     page,
   }) => {
+    // /codex remains in old links and the sitemap. It is now a compatibility
+    // route into the Workbench, not a second Codex destination.
+    await page.goto('/codex', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.getByTestId('codex-page')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByTestId('codex-rules')).toHaveCount(0);
+    if (GENOME_V2_ENABLED && WORKBENCH_V1_ENABLED) {
+      await expect(page.getByTestId('workbench-view')).toBeVisible();
+      await expect(page.getByTestId('workbench-public-research')).toBeVisible();
+      await expect(page.getByTestId('workbench-research-table')).toBeVisible();
+      await expect(page.getByTestId('workbench-strains')).toBeVisible();
+      await expect(page.getByTestId('workbench-gene-palette')).toBeVisible();
+    } else if (!GENOME_V2_ENABLED && WORKBENCH_V1_ENABLED) {
+      await expect(page.getByTestId('workbench-signed-out')).toBeVisible();
+      await expect(
+        page.getByText(
+          'Sign in to plan a Genome against your collection and current conditions.',
+        ),
+      ).toBeVisible();
+    } else {
+      // Full rollback and Genome-without-Workbench both keep the compatibility
+      // route and Research Record, but must not claim an active instrument.
+      await expect(page.getByTestId('workbench-view')).toHaveCount(0);
+      await expect(page.getByTestId('workbench-signed-out')).toHaveCount(0);
+      await expect(
+        page.getByText(
+          'Genome research instruments are not active in this version.',
+        ),
+      ).toBeVisible();
+    }
+
+    // Discovery history remains optional and subordinate. Opening it asks for
+    // an account without hiding the v2 public research instrument above.
+    const researchRecord = page.getByTestId('research-record');
+    await researchRecord.locator('summary').click();
+    const signedOutRecord = page.getByTestId('codex-signed-out');
+    await expect(signedOutRecord).toBeVisible();
+    if (GENOME_V2_ENABLED && WORKBENCH_V1_ENABLED) {
+      await expect(signedOutRecord).toContainText(
+        'The Workbench is open to everyone',
+      );
+    } else {
+      await expect(signedOutRecord).toContainText(
+        'Sign in to connect discoveries',
+      );
+      await expect(signedOutRecord).not.toContainText(
+        'The Workbench is open to everyone',
+      );
+    }
+  });
+
+  test('a guest at zero banked runs gets the v2 research catalog', async ({
+    page,
+  }) => {
+    test.skip(
+      !(GENOME_V2_ENABLED && WORKBENCH_V1_ENABLED),
+      'The public catalog belongs to Genome v2; rollback composition is covered by the signed-out route test.',
+    );
     await signInAsGuest(page);
     await page.goto('/codex', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByTestId('codex-rules')).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByTestId('lexicon-mechanic-charges')).toBeVisible();
+    await expect(page.getByTestId('workbench-view')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByTestId('workbench-research-table')).toBeVisible();
+    await expect(page.getByTestId('workbench-gene-palette')).toBeVisible();
     // The old behaviour was a bare "Bank 15 runs to open the Genome Codex".
     await expect(page.getByText(/Bank 15 runs to open/i)).toHaveCount(0);
   });

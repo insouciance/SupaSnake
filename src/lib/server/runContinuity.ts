@@ -37,10 +37,13 @@ import {
   strainTierAtFood,
 } from '@/shared/game/genome';
 import {
+  GENOME_V2_INTERACTION_AUTO_OFFER,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_RULES_V2,
   assertGenomeV2PersistenceBound,
   genomeV2FtueFromPresentation,
   genomeV2YieldFloor,
+  type GenomeV2InteractionVersion,
   type GenomeV2RunRecord,
 } from '@/shared/game/genomeV2';
 import {
@@ -71,6 +74,12 @@ export interface StartFingerprintInput {
   confirmMaxEnergy: boolean;
   signalObjectiveId: string | null;
   ladderRung: number | null;
+  /**
+   * Omitted and v1 are intentionally fingerprint-equivalent so a start
+   * prepared by an older client remains resumable across the rolling deploy.
+   * Only an explicit physical-relic capability changes the start intent.
+   */
+  genomeInteractionVersion?: GenomeV2InteractionVersion;
 }
 
 export interface RunStartManifest extends Record<string, unknown> {
@@ -86,6 +95,7 @@ export interface StoredRunStartIntent extends Record<string, unknown> {
   confirmMaxEnergy: boolean;
   signalObjectiveId: string | null;
   ladderRung: number | null;
+  genomeInteractionVersion?: GenomeV2InteractionVersion;
 }
 
 export interface ContinuityRow {
@@ -175,6 +185,9 @@ export function fingerprintStartRequest(input: StartFingerprintInput): string {
     confirmMaxEnergy: input.confirmMaxEnergy,
     signalObjectiveId: input.signalObjectiveId,
     ladderRung: input.ladderRung,
+    ...(input.genomeInteractionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC
+      ? { genomeInteractionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC }
+      : {}),
   });
   return createHash('sha256').update(canonical).digest('hex');
 }
@@ -931,6 +944,8 @@ function validateCheckpointGenome(
         externalSecondLife: config.traits.includes('iron_scales')
           ? 'iron_scales'
           : null,
+        interactionVersion: config.genome.interactionVersion,
+        cadenceMultiplier: config.traits.includes('patient') ? 2 : 1,
         reducerState: reducer,
         snapshot,
       });
@@ -1270,6 +1285,21 @@ export function validateRunCheckpoint(
       ? anomaly.id
       : null;
   const expectedGenome = sanitizeGenomeCapability(context.manifest.genome);
+  const checkpointGenome = objectRecord(config.genome);
+  // A tab loaded before the interaction sub-version existed sanitizes the
+  // server's explicit v1 stamp into the historical field-less v2 config.
+  // Normalize that one omission only. Physical-relic v2 must remain explicit,
+  // and every other extra/missing field still fails the exact manifest bind.
+  const comparableCheckpointGenome =
+    expectedGenome?.rulesVersion === GENOME_RULES_V2 &&
+    expectedGenome.interactionVersion === GENOME_V2_INTERACTION_AUTO_OFFER &&
+    checkpointGenome?.rulesVersion === GENOME_RULES_V2 &&
+    checkpointGenome.interactionVersion === undefined
+      ? {
+          ...checkpointGenome,
+          interactionVersion: GENOME_V2_INTERACTION_AUTO_OFFER,
+        }
+      : config.genome ?? null;
   if (
     config.ruleset !== expectedDynasty ||
     safeInteger(config.gridSize, 4) !== GAME_CONFIG.board.gridSize ||
@@ -1279,7 +1309,7 @@ export function validateRunCheckpoint(
     config.anomaly !== expectedAnomaly ||
     !jsonEquivalent(config.traits, expectedTraits) ||
     !jsonEquivalent(config.mutationPool, expectedMutationPool) ||
-    !jsonEquivalent(config.genome ?? null, expectedGenome)
+    !jsonEquivalent(comparableCheckpointGenome, expectedGenome)
   ) {
     throw new RunContinuityError('Run checkpoint does not match its start manifest.', 'invalid_checkpoint');
   }

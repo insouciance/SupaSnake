@@ -12,16 +12,16 @@
 .choiceWeave {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  padding: 10px 0 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 0 7px;
 }
 
 .choiceWeave::before {
   position: absolute;
   top: 39px;
-  right: 14%;
-  left: 14%;
+  right: 24%;
+  left: 24%;
   height: 1px;
   background: linear-gradient(
     90deg,
@@ -42,19 +42,19 @@
   z-index: 1;
   display: grid;
   min-width: 0;
-  min-height: 108px;
+  min-height: 142px;
   justify-items: center;
   border: 0;
   background: transparent;
   color: rgb(237 233 223 / 54%);
   cursor: pointer;
   font-size: 14px;
-  padding: 0 3px;
+  padding: 0 6px 8px;
   text-align: center;
 }
 
 .choiceToken:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: .48;
 }
 
@@ -194,15 +194,195 @@
   overflow-wrap: anywhere;
 }
 
+.choiceSignal {
+  display: block;
+  max-width: 14rem;
+  min-height: 2.2em;
+  margin-top: 6px;
+  color: rgb(237 233 223 / 62%);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.quietActions {
+  display: flex;
+  min-height: 30px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgb(99 142 186 / 16%);
+  padding: 0 0 7px;
+}
+
+.quietAction {
+  min-height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(237 233 223 / 49%);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  padding: 4px 12px;
+}
+
+.quietAction:hover,
+.quietAction:focus-visible,
+.quietAction[data-active='true'] {
+  background: rgb(196 181 253 / 8%);
+  color: rgb(237 233 223 / 82%);
+  outline: 0;
+}
+
+.quietAction:disabled {
+  cursor: wait;
+  opacity: .45;
+}
+
+.emptyPrompt {
+  display: grid;
+  min-height: 86px;
+  align-content: center;
+  gap: 4px;
+  padding: 14px 8px;
+  text-align: center;
+}
+
+.emptyPrompt strong {
+  color: #c4b5fd;
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.emptyPrompt span {
+  color: rgb(237 233 223 / 52%);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.28;
+}
+
+.quickRead {
+  position: relative;
+  display: grid;
+  gap: 9px;
+  margin-top: 10px;
+  border: 1px solid rgb(168 85 247 / 24%);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 0, rgb(168 85 247 / 13%), transparent 55%),
+    rgb(5 8 22 / 66%);
+  padding: 11px;
+}
+
+.quickReadHeading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.quickReadHeading span,
+.quickReadHeading em {
+  color: #c4b5fd;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-style: normal;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.quickReadHeading strong {
+  color: #f7f0ff;
+  font-family: var(--font-body);
+  font-size: 15px;
+}
+
+.quickReadHeading em {
+  margin-left: auto;
+  border: 1px solid rgb(196 181 253 / 24%);
+  border-radius: 999px;
+  background: rgb(196 181 253 / 7%);
+  padding: 3px 7px;
+}
+
+.quickTrigger,
+.quickConsequences p {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  color: rgb(237 233 223 / 73%);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.quickTrigger b,
+.quickConsequences b {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: .09em;
+}
+
+.quickTrigger b { color: #7df9ff; }
+.quickConsequences p[data-tone='gain'] b { color: #8befbd; }
+.quickConsequences p[data-tone='risk'] b { color: #ffbd64; }
+
+.quickConsequences {
+  display: grid;
+  gap: 6px;
+}
+
+.detailsToggle {
+  display: flex;
+  min-height: 38px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 5px 0 3px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgb(196 181 253 / 70%);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: .1em;
+}
+
+.detailsToggle:hover,
+.detailsToggle:focus-visible {
+  background: rgb(168 85 247 / 8%);
+  color: #d8caff;
+  outline: 1px solid rgb(168 85 247 / 24%);
+}
+
+.decisionFooter {
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
+}
+
 @media (min-width: 640px) {
-  .choiceWeave { gap: 14px; padding-block: 12px 14px; }
+  .choiceWeave { gap: 18px; padding-block: 12px 8px; }
   .choiceWeave::before { top: 44px; }
-  .choiceToken { min-height: 112px; }
+  .choiceToken { min-height: 146px; }
   .choiceCore { width: 60px; height: 60px; }
   .choiceGlyph { width: 28px; height: 28px; }
   .choiceAction { font-size: 12px; }
   .choiceName { font-size: 14px; }
   .choiceStrain { font-size: 11px; }
+  .choiceSignal { font-size: 12px; }
+  .quickConsequences { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

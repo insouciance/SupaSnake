@@ -28,9 +28,12 @@ export function rollGeneOfferInterval(
 }
 
 /**
- * V2-only buildcraft cadence. The first two decisions arrive after four foods
- * so the Genome becomes visible immediately; later intervals are uniformly
- * 4–6 (mean five). V1 callers remain on `GENE_OFFER_CADENCE` above.
+ * Compatibility cadence for rules-v2 interaction version 1. Those already
+ * started sessions opened their first two decisions after four foods, then
+ * used uniformly distributed 4–6-food intervals. New player-pulled relic runs
+ * use the universal `GENE_OFFER_CADENCE` through
+ * `genomeV2PhysicalRelicInterval`; this function remains byte-compatible for
+ * resumable automatic-offer sessions.
  */
 export const GENOME_V2_GENE_OFFER_CADENCE = {
   openingOfferCount: 2,

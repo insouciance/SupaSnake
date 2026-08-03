@@ -364,7 +364,7 @@ export function RunCockpit({
             </div>
           )}
 
-          {model.overclock ? (
+          {model.overclock && model.state !== 'held' ? (
             <div
               className={styles.overclockRail}
               data-active={model.overclock.active ? 'true' : 'false'}

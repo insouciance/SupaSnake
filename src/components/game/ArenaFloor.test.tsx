@@ -13,14 +13,14 @@ describe('arena floor render geometry', () => {
   it('converts a desired base into the centre of centred Three.js geometry', () => {
     expect(centerYFromBase(0.04, 0.9)).toBeCloseTo(0.49, 10);
     expect(
-      centerYFromBase(FLOOR_CLEARANCE, 0.58) - 0.58 / 2
+      centerYFromBase(FLOOR_CLEARANCE, 0.7) - 0.7 / 2
     ).toBeCloseTo(FLOOR_CLEARANCE, 10);
     expect(FLOOR_CLEARANCE).toBeGreaterThan(FLOOR_GRAPHICS_TOP_Y);
   });
 });
 
 describe('analytic arena edge wash', () => {
-  it('uses a resolution-independent radial fragment calculation', () => {
+  it('uses a resolution-independent board-shaped fragment calculation', () => {
     const material = createArenaEdgeWashMaterial('#35e6ff', 0.5);
 
     expect(material).toBeInstanceOf(THREE.ShaderMaterial);
@@ -30,9 +30,8 @@ describe('analytic arena edge wash', () => {
     expect(material.toneMapped).toBe(false);
     expect(material.uniforms.uAccent.value.getHexString()).toBe('35e6ff');
     expect(material.uniforms.uStrength.value).toBe(0.5);
-    expect(ARENA_EDGE_WASH_FRAGMENT_SHADER).toContain(
-      'length(vUv - vec2(0.5))'
-    );
+    expect(ARENA_EDGE_WASH_FRAGMENT_SHADER).toContain('abs(vUv * 2.0');
+    expect(ARENA_EDGE_WASH_FRAGMENT_SHADER).toContain('pow(edgeVector.x, 6.0)');
     expect(ARENA_EDGE_WASH_FRAGMENT_SHADER).toContain('smoothstep');
     expect(ARENA_EDGE_WASH_FRAGMENT_SHADER).not.toContain('sampler2D');
 

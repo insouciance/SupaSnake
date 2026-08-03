@@ -8,6 +8,8 @@
 
 import type { GenomeV2ActiveGeneId } from '@/shared/game/genes';
 import {
+  GENOME_V2_INTERACTION_AUTO_OFFER,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_RULES_V2,
   GENOME_V2_CONFIG,
   assertGenomeV2PersistenceBound,
@@ -19,6 +21,7 @@ import {
   genomeV2HasSplice,
   genomeV2MechanicEnabled,
   genomeV2OfferInterval,
+  genomeV2PhysicalRelicInterval,
   previewGenomeV2Recode,
   projectGenomeV2NextTarget,
   reduceGenomeV2Event,
@@ -27,6 +30,7 @@ import {
   type GenomeV2Event,
   type GenomeV2ExclusiveTargetKind,
   type GenomeV2Ftue,
+  type GenomeV2InteractionVersion,
   type GenomeV2NextTargetProjection,
   type GenomeV2PhoenixEffect,
   type GenomeV2RecodePreview,
@@ -78,6 +82,10 @@ export interface GenomeV2RuntimeOptions {
   suppressedStrains?: readonly StrainId[];
   strainThresholdDelta?: Readonly<Partial<Record<StrainId, number>>>;
   externalSecondLife?: 'iron_scales' | 'other' | null;
+  /** Missing preserves the already-issued automatic-offer interaction. */
+  interactionVersion?: GenomeV2InteractionVersion;
+  /** Patient owns the only supported cadence multiplier. */
+  cadenceMultiplier?: 1 | 2;
   reducerState?: GenomeV2State;
   snapshot?: GenomeV2RuntimeSnapshot;
   onEvent?: (event: GenomeV2Event) => void;
@@ -100,6 +108,12 @@ export interface GenomeV2SpawnFacts {
   targetId: string;
   target: GenomeV2TargetState;
   projection: GenomeV2NextTargetProjection;
+}
+
+export interface GenomeV2TargetChoice {
+  target: GenomeV2TargetState;
+  /** Null for every target that is not a two-cell Gilded Fork. */
+  choice: 'ordinary' | 'gilded' | null;
 }
 
 export interface GenomeV2TargetResolutionResult {
@@ -474,6 +488,8 @@ export function enclosedGenomeV2Cells(
 export class GenomeV2Runtime {
   private readonly initialState: GenomeV2State;
   private readonly onEvent?: (event: GenomeV2Event) => void;
+  private readonly interactionVersion: GenomeV2InteractionVersion;
+  private readonly cadenceMultiplier: 1 | 2;
   private state: GenomeV2State;
   private cadenceOfferCount = 0;
   private nextCadenceOfferAtFood = 4;
@@ -487,6 +503,9 @@ export class GenomeV2Runtime {
   private targetProgress = new Map<string, GenomeV2TargetProgress>();
 
   constructor(options: GenomeV2RuntimeOptions) {
+    this.interactionVersion =
+      options.interactionVersion ?? GENOME_V2_INTERACTION_AUTO_OFFER;
+    this.cadenceMultiplier = options.cadenceMultiplier ?? 1;
     const reducerState = options.reducerState
       ? clone(options.reducerState)
       : createGenomeV2State(options.dynasty, {
@@ -564,14 +583,23 @@ export class GenomeV2Runtime {
         'Active Genome v2 reducer state requires its runtime snapshot.'
       );
     }
-    if (options.snapshot) this.restoreSnapshot(options.snapshot);
+    if (options.snapshot) {
+      this.restoreSnapshot(options.snapshot);
+    } else if (
+      this.interactionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC
+    ) {
+      this.nextCadenceOfferAtFood = this.physicalRelicInterval(0);
+    }
     assertGenomeV2PersistenceBound(this.state);
   }
 
   reset(): void {
     this.state = clone(this.initialState);
     this.cadenceOfferCount = 0;
-    this.nextCadenceOfferAtFood = 4;
+    this.nextCadenceOfferAtFood =
+      this.interactionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC
+        ? this.physicalRelicInterval(0)
+        : 4;
     this.targetOrdinal = 0;
     this.portalOrdinal = 0;
     this.instanceOrdinal = 0;
@@ -695,6 +723,21 @@ export class GenomeV2Runtime {
     };
   }
 
+  private physicalRelicInterval(opportunityIndex: number): number {
+    return (
+      genomeV2PhysicalRelicInterval(this.state, opportunityIndex) *
+      this.cadenceMultiplier
+    );
+  }
+
+  usesPhysicalCadenceRelics(): boolean {
+    return this.interactionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC;
+  }
+
+  nextCadenceOpportunityAtFood(): number {
+    return this.nextCadenceOfferAtFood;
+  }
+
   cadenceOfferDue(foodCount: number): boolean {
     return (
       this.state.offer === null &&
@@ -710,13 +753,21 @@ export class GenomeV2Runtime {
       this.nextCadenceOfferAtFood = Number.MAX_SAFE_INTEGER;
       return null;
     }
-    // Portal and cadence choices share one authoritative offer stream. The
-    // interval is rolled from the same pre-open offer index as the candidates,
-    // so opening a portal can advance later 4–6-food cadence entropy without
-    // maintaining a second, divergent RNG history.
-    const interval = genomeV2OfferInterval(this.state, this.state.offerCount);
-    this.cadenceOfferCount += 1;
-    this.nextCadenceOfferAtFood = foodCount + interval;
+    if (this.usesPhysicalCadenceRelics()) {
+      // The candidate stream is still shared with portal MUTATE. Cadence is
+      // not: ignoring a relic must not reveal or consume a candidate pair, so
+      // its opportunity clock has its own deterministic cursor.
+      this.cadenceOfferCount += 1;
+      this.nextCadenceOfferAtFood =
+        foodCount + this.physicalRelicInterval(this.cadenceOfferCount);
+    } else {
+      // Compatibility for already-started automatic-offer runs. Portal and
+      // cadence choices shared one stream and the 4/4/4–6 clock was indexed by
+      // the pre-open offer count; do not rewrite those in-flight semantics.
+      const interval = genomeV2OfferInterval(this.state, this.state.offerCount);
+      this.cadenceOfferCount += 1;
+      this.nextCadenceOfferAtFood = foodCount + interval;
+    }
     this.apply(
       {
         type: 'offer_opened',
@@ -728,6 +779,24 @@ export class GenomeV2Runtime {
       tick
     );
     return offer;
+  }
+
+  /**
+   * Let an uncollected physical relic disappear without opening, declining,
+   * or even rolling an offer. The next opportunity is deterministic and the
+   * authoritative reducer remains untouched.
+   */
+  expireCadenceRelic(foodCount: number): boolean {
+    if (
+      !this.usesPhysicalCadenceRelics() ||
+      !this.cadenceOfferDue(foodCount)
+    ) {
+      return false;
+    }
+    this.cadenceOfferCount += 1;
+    this.nextCadenceOfferAtFood =
+      foodCount + this.physicalRelicInterval(this.cadenceOfferCount);
+    return true;
   }
 
   previewOfferRecode(
@@ -981,13 +1050,17 @@ export class GenomeV2Runtime {
   }
 
   projectNextTarget(cadenceEligible = true): GenomeV2NextTargetProjection {
-    return projectGenomeV2NextTarget(this.state, { cadenceEligible });
+    return projectGenomeV2NextTarget(this.state, {
+      cadenceEligible,
+      interactionVersion: this.interactionVersion,
+    });
   }
 
   spawnTarget(
     tick: number,
     facts: {
       cell: GenomeV2Cell;
+      forkCell?: GenomeV2Cell | null;
       secondaryCell?: GenomeV2Cell | null;
       optionalRouteCells?: readonly [GenomeV2Cell, GenomeV2Cell] | null;
       speedAtSpawnMs: number;
@@ -1005,6 +1078,8 @@ export class GenomeV2Runtime {
         type: 'target_spawned',
         targetId,
         cell: facts.cell,
+        interactionVersion: this.interactionVersion,
+        forkCell: facts.forkCell ?? null,
         secondaryCell: facts.secondaryCell ?? null,
         optionalRouteCells: facts.optionalRouteCells ?? null,
         speedAtSpawnMs: Math.max(1, Math.floor(facts.speedAtSpawnMs)),
@@ -1028,20 +1103,35 @@ export class GenomeV2Runtime {
   }
 
   targetAt(cell: GenomeV2Cell): GenomeV2TargetState | null {
-    return (
-      activeTargets(this.state)
-        .filter((target) => target.edible && target.collidable)
-        .find((target) => {
-          const progress = this.targetProgress.get(target.targetId);
-          const liveCell =
-            target.kind === 'circuit_run' &&
-            progress?.circuitLegsCompleted === 1 &&
-            target.secondaryCell
-              ? target.secondaryCell
-              : target.cell;
-          return sameCell(liveCell, cell);
-        }) ?? null
-    );
+    return this.targetChoiceAt(cell)?.target ?? null;
+  }
+
+  /**
+   * Resolve board geometry to its one canonical target and, for Gilded Fork,
+   * the branch the player's head physically entered. This is a read only:
+   * the explicit choice event is committed immediately before collection.
+   */
+  targetChoiceAt(cell: GenomeV2Cell): GenomeV2TargetChoice | null {
+    for (const target of activeTargets(this.state)) {
+      if (!target.edible || !target.collidable) continue;
+      const progress = this.targetProgress.get(target.targetId);
+      const liveCell =
+        target.kind === 'circuit_run' &&
+        progress?.circuitLegsCompleted === 1 &&
+        target.secondaryCell
+          ? target.secondaryCell
+          : target.cell;
+      if (sameCell(liveCell, cell)) {
+        return {
+          target,
+          choice: target.forkCell ? 'ordinary' : null,
+        };
+      }
+      if (target.forkCell && sameCell(target.forkCell, cell)) {
+        return { target, choice: 'gilded' };
+      }
+    }
+    return null;
   }
 
   advanceCircuitLegAt(cell: GenomeV2Cell): GenomeV2CircuitAdvance | null {

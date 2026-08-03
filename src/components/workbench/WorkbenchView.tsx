@@ -83,6 +83,18 @@ const EMPTY_V2_EXPERIMENT: GenomeV2ExperimentPlan = {
   actions: [],
 };
 
+/**
+ * Research is a free rules instrument, not an authenticated reward. These
+ * neutral specimens keep every Dynasty pool explorable before an account owns
+ * a snake; authenticated players still see their strongest real specimen in
+ * each Dynasty instead.
+ */
+const PUBLIC_RESEARCH_SPECIMENS: readonly PanelSnake[] = [
+  { id: 'research-cyber', name: 'CYBER', dynasty: 'CYBER', generation: 1, equipped: true },
+  { id: 'research-primal', name: 'PRIMAL', dynasty: 'PRIMAL', generation: 1, equipped: false },
+  { id: 'research-cosmic', name: 'COSMIC', dynasty: 'COSMIC', generation: 1, equipped: false },
+];
+
 const LENSES: Array<{
   id: GenomeV2ResearchLens;
   label: string;
@@ -684,11 +696,13 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
   const { session, isAuthenticated } = useAuth();
   const [panelResource, setPanelResource] = useState<OwnedPanelResource | null>(null);
   const [experiment, setExperiment] = useState<OwnedExperiment | null>(null);
+  const [publicPlan, setPublicPlan] = useState<GenomeV2ExperimentPlan>(EMPTY_V2_EXPERIMENT);
   const [studyResource, setStudyResource] = useState<OwnedStudyResource | null>(null);
   const token = session?.access_token;
   const ownerId = typeof session?.user?.id === 'string' && session.user.id.length > 0
     ? session.user.id
     : null;
+  const hasAuthenticatedOwner = Boolean(isAuthenticated && ownerId && token);
 
   // Account-derived state is renderable only under the identity that loaded or
   // created it. This render-time gate closes the gap before effects run during
@@ -699,11 +713,15 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
   const panel = ownedPanelResource?.panel ?? null;
   const isLoading = ownedPanelResource?.isLoading ?? Boolean(ownerId && token);
   const error = ownedPanelResource?.error ?? null;
+  const panelFailed = ownedPanelResource !== null && ownedPanelResource.error !== null;
+  const usesPublicResearch = !hasAuthenticatedOwner || panelFailed;
   const ownedExperiment = ownerId && experiment?.ownerId === ownerId
     ? experiment
     : null;
   const snakeId = ownedExperiment?.snakeId ?? null;
-  const plan = ownedExperiment?.plan ?? EMPTY_V2_EXPERIMENT;
+  const plan = usesPublicResearch
+    ? publicPlan
+    : ownedExperiment?.plan ?? EMPTY_V2_EXPERIMENT;
   const ownedStudyResource = ownerId && studyResource?.ownerId === ownerId
     ? studyResource
     : null;
@@ -717,22 +735,25 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
   const studyError = ownedStudyResource?.error ?? null;
 
   const setPlan = useCallback((next: GenomeV2ExperimentPlan) => {
-    if (!ownerId) return;
+    if (usesPublicResearch || !ownerId) {
+      setPublicPlan(next);
+      return;
+    }
     setExperiment((current) => ({
       ownerId,
       snakeId: current?.ownerId === ownerId ? current.snakeId : null,
       plan: next,
     }));
-  }, [ownerId]);
+  }, [ownerId, usesPublicResearch]);
 
   const setSnakeId = useCallback((next: string | null) => {
-    if (!ownerId) return;
+    if (usesPublicResearch || !ownerId) return;
     setExperiment((current) => ({
       ownerId,
       snakeId: next,
       plan: current?.ownerId === ownerId ? current.plan : EMPTY_V2_EXPERIMENT,
     }));
-  }, [ownerId]);
+  }, [ownerId, usesPublicResearch]);
 
   useEffect(() => {
     if (!isAuthenticated || !token || !ownerId) {
@@ -867,8 +888,15 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
     };
   }, [isAuthenticated, ownerId, studyRef, token]);
 
-  const roster = useMemo(() => compactRoster(panel?.snakes ?? []), [panel?.snakes]);
-  const snake = roster.find((entry) => entry.id === snakeId)
+  const ownedRoster = useMemo(() => compactRoster(panel?.snakes ?? []), [panel?.snakes]);
+  const roster = usesPublicResearch || ownedRoster.length === 0
+    ? PUBLIC_RESEARCH_SPECIMENS
+    : ownedRoster;
+  const selectedSnakeId = usesPublicResearch
+    ? `research-${plan.dynasty.toLowerCase()}`
+    : snakeId;
+  const snake = roster.find((entry) => entry.id === selectedSnakeId)
+    ?? roster.find((entry) => entry.dynasty === plan.dynasty)
     ?? roster.find((entry) => entry.equipped)
     ?? roster[0]
     ?? null;
@@ -880,30 +908,8 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
 
   if (!WORKBENCH_V1_ENABLED) return null;
 
-  if (!isAuthenticated || !ownerId || !token) {
-    return (
-      <section className={styles.signedOut} data-testid="workbench-signed-out">
-        <span aria-hidden="true">⌬</span>
-        <p>Sign in and the Research Loom opens with your strongest Dynasty specimens.</p>
-        <Link href="/login">Sign In</Link>
-      </section>
-    );
-  }
-
   if (isLoading && !panel && !study) {
     return <div className={styles.loading} data-testid="workbench-loading">Lighting the runes…</div>;
-  }
-
-  if (error && !study) {
-    return <div className={styles.error} data-testid="workbench-error">{error}</div>;
-  }
-
-  if ((!panel || !snake) && !study) {
-    return (
-      <div className={styles.loading} data-testid="workbench-no-snakes">
-        Breed a snake in the Lab to give the Research Loom a Dynasty.
-      </div>
-    );
   }
 
   return (
@@ -933,8 +939,19 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
         </nav>
       </header>
 
-      {error && study ? (
-        <div className={styles.error}>Your settled run is safe to study, but the current collection could not be loaded.</div>
+      {panelFailed ? (
+        <p
+          className={`${styles.error} ${styles.panelFallback}`}
+          role="alert"
+          data-testid="workbench-error"
+        >
+          <strong>Personal specimens are closed.</strong>
+          <span>{error || 'The Workbench could not read your collection.'} Public research specimens remain available below.</span>
+        </p>
+      ) : !hasAuthenticatedOwner ? (
+        <p className={styles.researchInvitation} data-testid="workbench-public-research">
+          Every rule is open. <Link href="/login">Sign in</Link> to place your own specimens and settled runs on the table.
+        </p>
       ) : null}
 
       {studyLoading ? (
@@ -950,7 +967,7 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
           <ResearchTable plan={plan} onPlan={setPlan} />
         </div>
       ) : (
-        <div className={styles.loading}>Breed a snake in the Lab to begin a new experiment.</div>
+        <div className={styles.loading}>The Research Loom could not form a Dynasty specimen.</div>
       )}
 
       <p className={styles.honesty}>

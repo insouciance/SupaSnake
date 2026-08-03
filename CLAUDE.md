@@ -1,8 +1,9 @@
 # SupaSnake
 
 3D precision snake game. The central mechanic is **extraction**: a portal appears and
-the player chooses BANK (secure ×1.25), PASS (continue), or INFUSE (pay body length for
-build power). Three dynasties (CYBER/PRIMAL/COSMIC) are genuinely different rulesets. A
+the player chooses BANK (secure), CONTINUE (deepen Carry), or MUTATE (consume the
+portal for build power). Three dynasties (CYBER/PRIMAL/COSMIC) are genuinely
+different rulesets. A
 run-scoped buildcraft system (genes/strains/splices) feeds a collection and breeding
 metagame ("Snake Lab").
 
@@ -12,7 +13,7 @@ settled, so the economy can still change freely.
 
 ## Documentation authority
 
-**IMPORTANT — `docs/PRODUCT_CONSTITUTION.md` (v1.12, 2026-08-02) is the single design
+**IMPORTANT — `docs/PRODUCT_CONSTITUTION.md` (v1.13, 2026-08-03) is the single design
 authority.** Every system change is designed from it and checked against its 15
 Inviolable Rules; every PR runs `docs/CONSTITUTION_CHECKLIST.md`. Implementation work
 is decomposed in `docs/IMPLEMENTATION_HANDOFF.md` — take work packages from there,
@@ -23,6 +24,13 @@ Cite it for what shipped; as work packages land it goes stale — trust code ove
 `docs/game/MONETIZATION_DESIGN.md` is **superseded** by Constitution §10 (overturn
 recorded in Constitution §15). Twenty stale design documents were deleted on
 2026-07-25; git has the history; do not implement from any of it.
+
+Current Genome behavior is governed by Constitution v1.13 and
+`docs/game/TACTICAL_GENOME_V2.md`: ordinary 6 ± 2-food opportunities place a
+40-tick physical relic, only collection creates an offer, the Loom is
+simple-first with per-offer UNFOLD DETAILS, and one free Genome Workbench is the
+only player-facing Research instrument. `/codex` remains a compatibility route,
+not a second product surface.
 
 ## Stack
 
@@ -40,7 +48,7 @@ src/components/     # game (R3F scene), lab, auth, engagement, profile, ui
 src/lib/            # engine (game/SnakeGameLogic.ts), stores, auth, audio, effects, server helpers
 src/shared/config/  # game.ts (economy/features), engagement.ts, premium.ts
 src/shared/game/    # deterministic rules: rulesets, genes, strains, splices, mastery, lineage
-supabase/migrations # 001-038; 029-033 Genome, 034-036 security/compliance, 037 FTUE v2, 038 Training
+supabase/migrations # Forward-only schema/RPC history; derive the current set from the repo
 e2e/                # Playwright specs
 ```
 

@@ -117,6 +117,21 @@ describe('projectDangerPath (radar danger sense)', () => {
     expect(result.impact).toBe(false);
     expect(result.cells).toHaveLength(5);
   });
+
+  it('detects a visible permanent-terrain impact in the same lane', () => {
+    const result = projectDangerPath(
+      head,
+      'RIGHT',
+      [head],
+      GRID,
+      5,
+      [{ x: 12, z: 10 }]
+    );
+    expect(result).toEqual({
+      impact: true,
+      cells: [{ x: 11, z: 10 }, { x: 12, z: 10 }],
+    });
+  });
 });
 
 describe('findAlignedTargets (gridlock rails)', () => {

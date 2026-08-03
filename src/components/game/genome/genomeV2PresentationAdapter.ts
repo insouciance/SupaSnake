@@ -1153,6 +1153,10 @@ export function buildGenomeV2TacticalLoomModel(
         };
       });
   return {
+    decisionId:
+      input.state.offer?.offerId
+      ?? input.state.portal?.genomeOffer?.offerId
+      ?? `projection:${input.state.eventIndex}:${candidates.join(':')}`,
     rulesVersion: 2,
     title: input.state.portal ? 'Mutation Loom' : 'Tactical Loom',
     sourceLabel: input.sourceLabel ?? (input.state.portal ? 'Portal Genome offer' : 'Cadence Genome offer'),

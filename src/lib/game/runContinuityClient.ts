@@ -6,6 +6,11 @@ import {
   type SnakeTerminalReplayProof,
 } from '@/lib/game/SnakeGameLogic';
 import { isCanonicalCompletedSettlement } from '@/lib/game/settlementResponse';
+import {
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+  isGenomeV2InteractionVersion,
+  type GenomeV2InteractionVersion,
+} from '@/shared/game/genomeV2';
 
 export type RunContinuityPhase =
   | 'preparing'
@@ -49,6 +54,52 @@ export function matchesContinuityAuthority(
     (expectedSessionId === undefined || currentSessionId === expectedSessionId);
 }
 
+export interface ActiveCheckpointAuthority {
+  accessToken: string;
+  userId: string;
+  sessionId: string;
+  leaseToken: string;
+}
+
+export interface CurrentActiveCheckpointAuthority {
+  accessToken: string | null | undefined;
+  userId: string | null | undefined;
+  sessionId: string | null | undefined;
+  leaseToken: string | null | undefined;
+}
+
+export type ActiveCheckpointReceiptDisposition =
+  | 'ignored'
+  | 'accepted'
+  | 'connection_recovered';
+
+/**
+ * Classify a checkpoint response against authority and hold state read when
+ * the response arrives. Both values are deliberately live: an async writer
+ * must not use the render-time state it captured before awaiting the network.
+ */
+export function classifyActiveCheckpointReceipt(
+  expected: ActiveCheckpointAuthority,
+  current: CurrentActiveCheckpointAuthority,
+  currentHold: 'connection' | 'stale' | null
+): ActiveCheckpointReceiptDisposition {
+  if (
+    current.leaseToken !== expected.leaseToken ||
+    !matchesContinuityAuthority(
+      expected.accessToken,
+      current.accessToken,
+      expected.sessionId,
+      current.sessionId,
+      expected.userId,
+      current.userId
+    )
+  ) return 'ignored';
+
+  return currentHold === 'connection'
+    ? 'connection_recovered'
+    : 'accepted';
+}
+
 export interface ActiveRunView {
   sessionId: string;
   phase: RunContinuityPhase;
@@ -75,6 +126,7 @@ export interface RunStartRetryIntent {
   confirmMaxEnergy: boolean;
   signalObjectiveId: string | null;
   ladderRung: number | null;
+  genomeInteractionVersion?: GenomeV2InteractionVersion;
 }
 
 function responseRecord(value: unknown): Record<string, unknown> {
@@ -122,6 +174,8 @@ function parseActiveRun(value: unknown): ActiveRunView | null {
       typeof startIntent.startRequestId === 'string' &&
       ['earn', 'free', 'anomaly', 'signal'].includes(String(startIntent.mode)) &&
       typeof startIntent.snakeId === 'string' &&
+      (startIntent.genomeInteractionVersion === undefined ||
+        isGenomeV2InteractionVersion(startIntent.genomeInteractionVersion)) &&
       Number.isSafeInteger(startIntent.energyCommitment)
         ? startIntent as unknown as RunStartRetryIntent
         : null,
@@ -150,6 +204,13 @@ export async function retryPreparingRunStart(
         ? { signalObjectiveId: intent.signalObjectiveId }
         : {}),
       ...(intent.ladderRung !== null ? { ladderRung: intent.ladderRung } : {}),
+      ...(intent.genomeInteractionVersion ===
+      GENOME_V2_INTERACTION_PHYSICAL_RELIC
+        ? {
+            genomeInteractionVersion:
+              GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+          }
+        : {}),
     }),
   });
   const body = await jsonRecord(response);
