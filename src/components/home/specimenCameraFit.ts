@@ -4,52 +4,13 @@ export interface SpecimenCameraBounds {
   halfZ: number;
 }
 
-export interface HomeSafeStage {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-}
-
-interface RectEdge {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-}
-
-const STAGE_GUTTER_PX = 8;
-const MIN_STAGE_SIZE_PX = 96;
-
 /**
- * Turn the actual Home HUD and dock geometry into an unobstructed stage.
- * Values are relative to the viewport because the chamber fills it.
+ * Home is a portrait, not a collection preview. The player asked for one
+ * unmistakable little creature: its head and two body pieces. Keeping this in
+ * the pure framing module lets the responsive contract be tested without a
+ * WebGL environment.
  */
-export function measureHomeSafeStage(
-  width: number,
-  height: number,
-  header: RectEdge | null,
-  dock: RectEdge | null
-): HomeSafeStage {
-  const safeWidth = Math.max(MIN_STAGE_SIZE_PX, Math.floor(width));
-  const safeHeight = Math.max(MIN_STAGE_SIZE_PX, Math.floor(height));
-  const top = Math.max(0, Math.ceil(header?.bottom ?? 0) + STAGE_GUTTER_PX);
-  const requestedBottom = Math.max(
-    0,
-    Math.ceil(safeHeight - (dock?.top ?? safeHeight)) + STAGE_GUTTER_PX
-  );
-  const bottom = Math.min(
-    requestedBottom,
-    Math.max(0, safeHeight - top - MIN_STAGE_SIZE_PX)
-  );
-
-  return {
-    top,
-    right: Math.max(0, safeWidth - Math.floor(width)),
-    bottom,
-    left: 0,
-  };
-}
+export const HOME_SPECIMEN_PIECES = 3 as const;
 
 /**
  * Exact perspective fit for an axis-aligned specimen viewed at the chamber's
