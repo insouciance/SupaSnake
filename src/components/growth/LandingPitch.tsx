@@ -32,7 +32,7 @@ const CHOICES = [
   {
     key: 'infuse',
     label: 'INFUSE',
-    body: 'Pay body length for build power. Shorter snake, sharper genome.',
+    body: 'Feed growth into build power. A stronger genome leaves a longer, harder snake.',
   },
 ] as const;
 

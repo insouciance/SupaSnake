@@ -305,6 +305,31 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(onChoose).toHaveBeenCalledWith(1);
   });
 
+  it('keeps Enter and Space on subordinate controls from confirming a gene', () => {
+    const onChoose = jest.fn();
+    render(
+      <GeneChoiceOverlay
+        {...baseProps}
+        presentation={model()}
+        onChoose={onChoose}
+        onDecline={jest.fn()}
+      />
+    );
+    act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
+    fireEvent.click(screen.getByTestId('gene-option-0'));
+    const details = screen.getByTestId('loom-details-toggle');
+    details.focus();
+
+    fireEvent.keyDown(details, { key: 'Enter' });
+    expect(onChoose).not.toHaveBeenCalled();
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(details);
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(details, { key: ' ' });
+    expect(onChoose).not.toHaveBeenCalled();
+  });
+
   it('shows an authoritative illegal candidate but cannot commit it', () => {
     const onChoose = jest.fn();
     const baseModel = model();
@@ -412,7 +437,14 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(screen.getByTestId('loom-recode-step')).toHaveTextContent('Step 2 of 2');
     expect(screen.getByTestId('loom-replace-0')).toHaveTextContent('+8 growth');
+    expect(screen.getByTestId('loom-replace-0')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('loom-confirm')).toBeDisabled();
     expect(screen.getByTestId('loom-replace-0-strain-AURUM')).toBeVisible();
+    screen.getByTestId('loom-replace-0').focus();
+    expect(screen.getByTestId('loom-replace-0')).toHaveAttribute('aria-checked', 'false');
+    fireEvent.keyDown(screen.getByTestId('loom-replace-0'), { key: 'Enter' });
+    expect(onRecode).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('loom-replace-0'));
     expect(screen.getByTestId('loom-lite')).toHaveTextContent('THREAD Live Wire · replace Gold Trail');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
     expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Live Wire');

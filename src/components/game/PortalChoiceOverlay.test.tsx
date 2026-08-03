@@ -270,7 +270,11 @@ describe('PortalChoiceOverlay', () => {
     fireEvent.keyDown(window, { key: '1' });
     expect(onBank).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId('loom-back-to-portal'));
+    const backToPortal = screen.getByTestId('loom-back-to-portal');
+    backToPortal.focus();
+    fireEvent.keyDown(backToPortal, { key: 'Enter' });
+    expect(onCommit).not.toHaveBeenCalled();
+    fireEvent.click(backToPortal);
     expect(screen.getByRole('dialog', { name: 'Portal Decision' })).toBeInTheDocument();
     expect(onCommit).not.toHaveBeenCalled();
 

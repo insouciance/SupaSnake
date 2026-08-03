@@ -125,7 +125,9 @@ export function TacticalLoomDecision({
     if (selectedCandidate?.disabledReason) return;
     if (replacementChoices.length > 0 && !recodePhase) {
       setRecodePhase(true);
-      setReplacementSlot(replacementChoices.find((choice) => !choice.disabledReason)?.slotIndex ?? null);
+      // Entering Recode reveals the legal loci; it does not silently choose
+      // one. Focus is navigation and can never become irreversible consent.
+      setReplacementSlot(null);
       return;
     }
     if (recodePhase) {
@@ -152,6 +154,11 @@ export function TacticalLoomDecision({
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (locked) return;
+      const interactiveTarget =
+        event.target instanceof Element &&
+        event.target.closest(
+          'button, a, input, select, textarea, [role="button"], [role="radio"], [contenteditable="true"]'
+        ) !== null;
       if (event.key === '1') {
         select('candidate-0');
         firstChoiceRef.current?.focus();
@@ -168,9 +175,16 @@ export function TacticalLoomDecision({
           select('decline');
           dialogRef.current?.querySelector<HTMLButtonElement>('[data-testid="gene-decline"]')?.focus();
         }
-      } else if ((event.key === 'Enter' || event.key === ' ') && selected !== null) {
+      } else if (
+        (event.key === 'Enter' || event.key === ' ') &&
+        selected !== null &&
+        !interactiveTarget
+      ) {
         confirm();
       } else {
+        // Buttons and other controls keep their native Enter/Space behavior.
+        // The capture shortcut must never turn Details, Back, or a radio
+        // choice into a hidden gene confirmation.
         return;
       }
       event.preventDefault();
@@ -338,7 +352,6 @@ export function TacticalLoomDecision({
                     aria-label={`Replace ${choice.label}${choice.strains.length > 0 ? `, Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}, +${choice.growthCost} growth`}
                     disabled={Boolean(choice.disabledReason)}
                     onClick={() => setReplacementSlot(choice.slotIndex)}
-                    onFocus={() => setReplacementSlot(choice.slotIndex)}
                     className={`min-h-11 rounded-[10px] border px-2 py-2 text-left text-sm ${
                       replacementSlot === choice.slotIndex
                         ? 'border-venom-orange bg-venom-orange/12'
@@ -387,7 +400,6 @@ export function TacticalLoomDecision({
                     role="radio"
                     aria-checked={selectedDeclineOption?.id === option.id}
                     onClick={() => setDeclineOptionId(option.id)}
-                    onFocus={() => setDeclineOptionId(option.id)}
                     className={`min-h-11 rounded-[10px] border px-2.5 py-2 text-left text-sm ${
                       selectedDeclineOption?.id === option.id
                         ? 'border-cosmic bg-cosmic/12'
