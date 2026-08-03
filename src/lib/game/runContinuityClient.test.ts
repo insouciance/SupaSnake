@@ -2,6 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   activatePreparedRun,
   buildTerminalReplayProof,
+  classifyActiveCheckpointReceipt,
   classifyTerminalRecoveryResponse,
   createRunStartRequestId,
   fetchActiveRun,
@@ -381,5 +382,94 @@ describe('run continuity client', () => {
     expect(writes).toEqual([1, 3]);
     releases.shift()?.();
     await expect(Promise.all([second, third])).resolves.toEqual([undefined, undefined]);
+  });
+
+  it('uses live authority and hold state when an automatic heartbeat resolves late', async () => {
+    const authority = {
+      accessToken: 'token-a',
+      userId: 'user-a',
+      sessionId: 'run-1',
+      leaseToken: 'resumed-exclusive-lease-token',
+    };
+    let currentAuthority = { ...authority };
+    let currentHold: 'connection' | 'stale' | null = null;
+    let releaseResponse: (() => void) | null = null;
+    let acceptedHeartbeats = 0;
+    let requiresDirection = false;
+
+    const queue = new LatestOnlyAsyncQueue<typeof authority>(async (expected) => {
+      await new Promise<void>((resolve) => {
+        releaseResponse = resolve;
+      });
+      const disposition = classifyActiveCheckpointReceipt(
+        expected,
+        currentAuthority,
+        currentHold
+      );
+      if (disposition === 'ignored') return;
+      acceptedHeartbeats += 1;
+      if (disposition === 'connection_recovered') {
+        currentHold = null;
+        requiresDirection = true;
+      }
+    });
+
+    const automaticHeartbeat = queue.enqueue(authority);
+    await Promise.resolve();
+    // The watchdog can fire while the automatic request is awaiting its
+    // response. Receipt handling must observe this live value, not the null
+    // captured when the writer began.
+    currentHold = 'connection';
+    releaseResponse?.();
+    await automaticHeartbeat;
+
+    expect(acceptedHeartbeats).toBe(1);
+    expect(currentHold).toBeNull();
+    expect(requiresDirection).toBe(true);
+
+    // A response from the superseded resume lease is never a heartbeat.
+    currentAuthority = {
+      ...currentAuthority,
+      leaseToken: 'newer-exclusive-lease-token',
+    };
+    expect(classifyActiveCheckpointReceipt(
+      authority,
+      currentAuthority,
+      'connection'
+    )).toBe('ignored');
+  });
+
+  it('keeps the hold after automatic failure and lets manual retry recover through the same queue', async () => {
+    const authority = {
+      accessToken: 'token-a',
+      userId: 'user-a',
+      sessionId: 'run-1',
+      leaseToken: 'resumed-exclusive-lease-token',
+    };
+    let currentHold: 'connection' | 'stale' | null = 'connection';
+    let acceptedHeartbeats = 0;
+    let failNext = true;
+    const queue = new LatestOnlyAsyncQueue<typeof authority>(async (expected) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error('offline');
+      }
+      const disposition = classifyActiveCheckpointReceipt(
+        expected,
+        authority,
+        currentHold
+      );
+      if (disposition === 'ignored') return;
+      acceptedHeartbeats += 1;
+      if (disposition === 'connection_recovered') currentHold = null;
+    });
+
+    await expect(queue.enqueue(authority)).rejects.toThrow('offline');
+    expect(acceptedHeartbeats).toBe(0);
+    expect(currentHold).toBe('connection');
+
+    await expect(queue.enqueue(authority)).resolves.toBeUndefined();
+    expect(acceptedHeartbeats).toBe(1);
+    expect(currentHold).toBeNull();
   });
 });

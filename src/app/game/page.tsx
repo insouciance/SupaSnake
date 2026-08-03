@@ -255,6 +255,7 @@ import {
 import {
   activatePreparedRun,
   buildTerminalReplayProof,
+  classifyActiveCheckpointReceipt,
   classifyTerminalRecoveryResponse,
   createRunStartRequestId,
   fetchActiveRun,
@@ -266,6 +267,10 @@ import {
   saveActiveRunCheckpoint,
   type ActiveRunView,
 } from '@/lib/game/runContinuityClient';
+import {
+  useRunContinuityWatchdog,
+  type RunContinuityHeartbeat,
+} from '@/hooks/useRunContinuityWatchdog';
 import {
   IconBolt,
   IconDna,
@@ -615,6 +620,8 @@ export default function GamePage() {
   const [continuitySafetyHold, setContinuitySafetyHold] = useState<
     'connection' | 'stale' | null
   >(null);
+  const [continuityHeartbeat, setContinuityHeartbeat] =
+    useState<RunContinuityHeartbeat | null>(null);
   const [requiresDirectionalStart, setRequiresDirectionalStart] = useState(false);
   const [minimalFirstRunPrompt, setMinimalFirstRunPrompt] = useState(false);
   const [showFirstResultDiscovery, setShowFirstResultDiscovery] = useState(false);
@@ -743,6 +750,7 @@ export default function GamePage() {
   const checkpointBarrierRef = useRef<Promise<void>>(Promise.resolve());
   const checkpointFailureSinceRef = useRef<number | null>(null);
   const lastCheckpointAcceptedAtRef = useRef(0);
+  const continuitySafetyHoldRef = useRef(continuitySafetyHold);
   const checkpointWriterRef = useRef<
     (proposal: ActiveCheckpointProposal) => Promise<void>
   >(async () => undefined);
@@ -772,6 +780,13 @@ export default function GamePage() {
   sessionRef.current = session;
   currentSessionIdRef.current = currentSessionId;
   continuityPhaseRef.current = runContinuityPhase;
+  continuitySafetyHoldRef.current = continuitySafetyHold;
+
+  const recordContinuityReceipt = useCallback(() => {
+    const acceptedAt = Date.now();
+    lastCheckpointAcceptedAtRef.current = acceptedAt;
+    setContinuityHeartbeat({ acceptedAt });
+  }, []);
 
   // Retry an undelivered settlement when this tab regains connectivity. The
   // queue is memory-only; a settled duplicate recovers its canonical receipt.
@@ -946,12 +961,14 @@ export default function GamePage() {
     checkpointBarrierRef.current = Promise.resolve();
     checkpointFailureSinceRef.current = null;
     lastCheckpointAcceptedAtRef.current = 0;
+    continuitySafetyHoldRef.current = null;
     currentSessionIdRef.current = null;
     continuityPhaseRef.current = 'none';
     setCurrentSessionId(null);
     setInterruptedRun(null);
     setRunContinuityPhase('none');
     setContinuitySafetyHold(null);
+    setContinuityHeartbeat(null);
     setSettlingRecoveryState('idle');
     setSettlementSecuredPending(false);
     setStartError(null);
@@ -2929,7 +2946,9 @@ export default function GamePage() {
     deathPresentationRef.current = null;
     lastCheckpointAcceptedAtRef.current = 0;
     checkpointFailureSinceRef.current = null;
+    continuitySafetyHoldRef.current = null;
     setContinuitySafetyHold(null);
+    setContinuityHeartbeat(null);
     setInterruptedRun(null);
     gameStartTime.current = 0;
     freeRunRef.current = mode === 'free';
@@ -3268,6 +3287,7 @@ export default function GamePage() {
       intervalRef.current = null;
     }
     setAwaitingResumeInput(false);
+    continuitySafetyHoldRef.current = kind;
     setContinuitySafetyHold(kind);
   }, []);
 
@@ -3275,17 +3295,17 @@ export default function GamePage() {
   // retried after a lost response, allowing the row-locked RPC's digest
   // idempotency to answer without inventing a new revision.
   checkpointWriterRef.current = async (proposal) => {
-    if (
-      runLeaseRef.current !== proposal.leaseToken ||
-      !matchesContinuityAuthority(
-        proposal.accessToken,
-        sessionRef.current?.access_token,
-        proposal.sessionId,
-        currentSessionIdRef.current,
-        proposal.userId,
-        sessionRef.current?.user?.id
-      )
-    ) return;
+    const classifyReceipt = () => classifyActiveCheckpointReceipt(
+      proposal,
+      {
+        accessToken: sessionRef.current?.access_token,
+        userId: sessionRef.current?.user?.id,
+        sessionId: currentSessionIdRef.current,
+        leaseToken: runLeaseRef.current,
+      },
+      continuitySafetyHoldRef.current
+    );
+    if (classifyReceipt() === 'ignored') return;
     const expectedRevision = checkpointRevisionRef.current;
     const saveOnce = async () => {
       const controller = proposal.keepalive ? null : new AbortController();
@@ -3319,37 +3339,19 @@ export default function GamePage() {
         ) throw error;
         receipt = await saveOnce();
       }
-      if (
-        runLeaseRef.current !== proposal.leaseToken ||
-        !matchesContinuityAuthority(
-          proposal.accessToken,
-          sessionRef.current?.access_token,
-          proposal.sessionId,
-          currentSessionIdRef.current,
-          proposal.userId,
-          sessionRef.current?.user?.id
-        )
-      ) return;
+      const receiptDisposition = classifyReceipt();
+      if (receiptDisposition === 'ignored') return;
       checkpointRevisionRef.current = receipt.revision;
       acceptedReplayRef.current = proposal.checkpoint.privateState.replay;
-      lastCheckpointAcceptedAtRef.current = Date.now();
+      recordContinuityReceipt();
       checkpointFailureSinceRef.current = null;
-      if (continuitySafetyHold === 'connection') {
+      if (receiptDisposition === 'connection_recovered') {
+        continuitySafetyHoldRef.current = null;
         setContinuitySafetyHold(null);
         setAwaitingResumeInput(true);
       }
     } catch (error) {
-      if (
-        runLeaseRef.current !== proposal.leaseToken ||
-        !matchesContinuityAuthority(
-          proposal.accessToken,
-          sessionRef.current?.access_token,
-          proposal.sessionId,
-          currentSessionIdRef.current,
-          proposal.userId,
-          sessionRef.current?.user?.id
-        )
-      ) return;
+      if (classifyReceipt() === 'ignored') return;
       if (
         error instanceof RunContinuityClientError &&
         error.reason === 'lease_conflict'
@@ -3455,39 +3457,20 @@ export default function GamePage() {
     return () => window.removeEventListener('online', retryContinuityCheckpoint);
   }, [continuitySafetyHold, retryContinuityCheckpoint]);
 
-  // The safety bound is measured from the last server receipt, independent of
-  // an individual fetch timeout or retry. A hung pair of HTTP attempts must
-  // not let the board continue beyond the promised ten-second rollback cap.
-  useEffect(() => {
-    if (
-      runContinuityPhase !== 'active' ||
-      !isPlaying ||
-      isGameOver ||
-      continuitySafetyHold !== null ||
-      !runLeaseRef.current ||
-      lastCheckpointAcceptedAtRef.current <= 0
-    ) return;
-    let timer: number | null = null;
-    const watch = () => {
-      const remaining = ACTIVE_RUN_CONNECTION_HOLD_MS -
-        (Date.now() - lastCheckpointAcceptedAtRef.current);
-      if (remaining <= 0) {
-        holdForContinuity('connection');
-        return;
-      }
-      timer = window.setTimeout(watch, remaining);
-    };
-    watch();
-    return () => {
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [
-    continuitySafetyHold,
-    holdForContinuity,
-    isGameOver,
-    isPlaying,
-    runContinuityPhase,
-  ]);
+  // The safety bound is measured from the latest server receipt, independent
+  // of an individual fetch timeout or retry. Resume lease rotation and every
+  // accepted checkpoint explicitly re-arm the deadline; failed writes do not.
+  useRunContinuityWatchdog({
+    enabled:
+      runContinuityPhase === 'active' &&
+      isPlaying &&
+      !isGameOver &&
+      continuitySafetyHold === null &&
+      runLeaseRef.current !== null,
+    heartbeat: continuityHeartbeat,
+    budgetMs: ACTIVE_RUN_CONNECTION_HOLD_MS,
+    onExpired: () => holdForContinuity('connection'),
+  });
 
   // A bounded cadence limits rollback after a browser or device failure.
   // Critical gameplay decisions additionally checkpoint through the event
@@ -3572,7 +3555,7 @@ export default function GamePage() {
           runLeaseRef.current = activated.leaseToken;
           checkpointRevisionRef.current = activated.checkpointRevision;
           acceptedReplayRef.current = activated.checkpoint.privateState.replay;
-          lastCheckpointAcceptedAtRef.current = Date.now();
+          recordContinuityReceipt();
           checkpointFailureSinceRef.current = null;
           setContinuitySafetyHold(null);
           game.activatePrepared();
@@ -3617,7 +3600,7 @@ export default function GamePage() {
       if (activationPromiseRef.current === task) activationPromiseRef.current = null;
     });
     return task;
-  }, [setReady, startGameLoop, syncState]);
+  }, [recordContinuityReceipt, setReady, startGameLoop, syncState]);
 
   const applyCheckpointedRun = useCallback((active: ActiveRunView): void => {
     if (!active.manifest || !active.checkpoint || !active.leaseToken) {
@@ -3646,8 +3629,9 @@ export default function GamePage() {
     runLeaseRef.current = active.leaseToken;
     checkpointRevisionRef.current = active.checkpointRevision;
     acceptedReplayRef.current = active.checkpoint.privateState.replay;
-    lastCheckpointAcceptedAtRef.current = Date.now();
+    recordContinuityReceipt();
     checkpointFailureSinceRef.current = null;
+    continuitySafetyHoldRef.current = null;
     setContinuitySafetyHold(null);
     gameStartTime.current = Date.now() - active.checkpoint.privateState.elapsedMs;
     setCurrentSessionId(active.sessionId);
@@ -3685,6 +3669,7 @@ export default function GamePage() {
     // pre-accept simulation tick can occur after reload.
   }, [
     applyStartedRun,
+    recordContinuityReceipt,
     setChoiceOptions,
     setHeldMutations,
     setPaused,
