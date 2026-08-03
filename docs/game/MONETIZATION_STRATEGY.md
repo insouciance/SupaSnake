@@ -1,7 +1,7 @@
 # SupaSnake Monetization Strategy
 
 **Status:** Authoritative commercial product strategy within
-[`PRODUCT_CONSTITUTION.md`](../PRODUCT_CONSTITUTION.md) v1.8. The Constitution
+[`PRODUCT_CONSTITUTION.md`](../PRODUCT_CONSTITUTION.md) v1.12. The Constitution
 remains design law; this document turns §10 into a repository-grounded product,
 packaging, and implementation plan. The historical
 [`MONETIZATION_DESIGN.md`](./MONETIZATION_DESIGN.md) remains superseded and must

@@ -25,13 +25,20 @@ import { getTraitSlots } from '@/shared/game/traits';
 import { sanitizeTraits } from '@/shared/game/traits';
 import { sanitizeLineage, startingStrainPoints } from '@/shared/game/lineage';
 import { STRAIN_IDS, type StrainId } from '@/shared/game/strains';
-import { formatAscendanceYieldMultiplier } from '@/shared/game/ascendance';
+import {
+  CURRENT_ASCENDANCE_CURVE_VERSION,
+  formatAscendanceYieldMultiplier,
+} from '@/shared/game/ascendance';
 import { SnakeArt } from '@/components/lab/SnakeArt';
 import { TraitChipRow } from '@/components/traits/TraitChip';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { IconArrowRight, IconBolt, IconCheck, IconDna, IconEgg, IconSnake } from '@/components/ui/icons';
 import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
+import {
+  AscendanceProgressionInstrument,
+} from '@/components/progression/AscendanceProgressionInstrument';
+import { buildAscendanceProgressionModel } from '@/components/progression/ascendancePresentationAdapter';
 
 export interface VariantDetailModalProps {
   variant: SnakeVariant;
@@ -202,6 +209,10 @@ export function VariantDetailModal({
     lineage,
     sanitizeTraits(owned.traits)
   );
+  const ascendanceProgression = buildAscendanceProgressionModel({
+    generation: owned.generation,
+    curveVersion: CURRENT_ASCENDANCE_CURVE_VERSION,
+  });
 
   // Base stats stay flat and Score remains build-independent. Gen4+
   // Ascendance scales Yield separately, so its multiplier is stated beside
@@ -396,6 +407,7 @@ export function VariantDetailModal({
                   primaryColor={theme.primary}
                   secondaryColor={theme.secondary}
                   rarity={variant.rarity}
+                  generation={owned.generation}
                   className="absolute inset-0 w-full h-full"
                 />
               )}
@@ -433,6 +445,10 @@ export function VariantDetailModal({
                 </span>
               </div>
             </div>
+          </div>
+
+          <div className="px-3 pt-3 sm:px-4" data-testid="variant-ascendance">
+            <AscendanceProgressionInstrument model={ascendanceProgression} compact />
           </div>
 
           {/*

@@ -304,6 +304,78 @@ describe('run continuity server contract', () => {
     ).toThrow('server time bound');
   });
 
+  it('preserves cumulative active time across an offline resume and later saves', () => {
+    const activatedAt = Date.UTC(2026, 7, 2, 8, 0, 0);
+    const offlineGapMs = 3 * 60 * 60 * 1_000;
+    const manifest = {
+      sessionId: 'offline-resume',
+      simulation: {
+        seed: 'offline-resume-seed',
+        version: 1,
+        rulesVersion: SNAKE_RULES_VERSION,
+      },
+      runSnake: { dynasty: 'PRIMAL' },
+    };
+    const startedAt = new Date(activatedAt).toISOString();
+    const game = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'offline-resume-seed',
+    });
+    game.prepare();
+    const opening = game.exportCheckpoint(activatedAt);
+    game.activatePrepared(activatedAt);
+    game.tick();
+
+    const firstProposal = game.exportCheckpoint(activatedAt + 1_000);
+    const firstAccepted = validateRunCheckpoint(firstProposal, {
+      manifest,
+      startedAt,
+      now: activatedAt + 1_000,
+      previous: opening,
+    });
+    expect(firstAccepted.privateState.elapsedMs).toBe(1_000);
+
+    const resumedAt = activatedAt + offlineGapMs;
+    const resumed = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'offline-resume-seed',
+    });
+    resumed.prepare();
+    resumed.restoreCheckpoint(firstAccepted, resumedAt, {
+      replacePreparedOpening: true,
+    });
+
+    resumed.tick();
+    const resumedProposal = resumed.exportCheckpoint(resumedAt + 1_000);
+    const resumedAccepted = validateRunCheckpoint(resumedProposal, {
+      manifest,
+      startedAt,
+      now: resumedAt + 1_000,
+      previous: firstAccepted,
+    });
+    expect(resumedAccepted.privateState.elapsedMs).toBe(2_000);
+
+    resumed.tick();
+    const thirdProposal = resumed.exportCheckpoint(resumedAt + 2_000);
+    const thirdAccepted = validateRunCheckpoint(thirdProposal, {
+      manifest,
+      startedAt,
+      now: resumedAt + 2_000,
+      previous: resumedAccepted,
+    });
+    expect(thirdAccepted.privateState.elapsedMs).toBe(3_000);
+
+    resumed.tick();
+    const fourthProposal = resumed.exportCheckpoint(resumedAt + 3_000);
+    const fourthAccepted = validateRunCheckpoint(fourthProposal, {
+      manifest,
+      startedAt,
+      now: resumedAt + 3_000,
+      previous: thirdAccepted,
+    });
+    expect(fourthAccepted.privateState.elapsedMs).toBe(4_000);
+  });
+
   it('rejects a forged free decision hold in replay', () => {
     const now = Date.now();
     const game = new SnakeGameLogic({
@@ -427,6 +499,7 @@ describe('run continuity server contract', () => {
       toTick: terminalTrace.ticks,
       actionOffset: opening.privateState.replay.actions.length,
       actions: terminalTrace.actions.slice(opening.privateState.replay.actions.length),
+      activeElapsedMs: 1_000,
     };
     const rpc = jest.fn().mockResolvedValue({
       data: { accepted: true, inserted: true },
@@ -446,6 +519,8 @@ describe('run continuity server contract', () => {
       },
       continuity_phase: 'active',
       continuity_activated_at: new Date(now - 1_000).toISOString(),
+      continuity_checkpoint_saved_at: new Date(now - 500).toISOString(),
+      continuity_lease_issued_at: new Date(now - 1_000).toISOString(),
       continuity_checkpoint: newerCheckpoint,
       continuity_checkpoint_revision: 2,
       continuity_lease_hash: createHash('sha256').update(lease).digest('hex'),
@@ -462,12 +537,212 @@ describe('run continuity server contract', () => {
       now,
     });
     expect(intent.facts).not.toHaveProperty('replay');
+    expect(intent.facts.duration_seconds).toBe(1);
     expect(Buffer.byteLength(JSON.stringify(intent.facts), 'utf8'))
       .toBeLessThanOrEqual(262_144);
     expect(rpc).toHaveBeenCalledWith(
       'stage_run_continuity_terminal',
       expect.objectContaining({ p_expected_revision: 2 })
     );
+
+    const sameSecondLaterIntent = await stageRunTerminalIntent(clientWithRowAndRpc({
+      id: 'terminal-rebase',
+      start_request_id: START_ID,
+      start_manifest: {
+        sessionId: 'terminal-rebase',
+        simulation: {
+          seed: 'terminal-rebase',
+          version: 1,
+          rulesVersion: SNAKE_RULES_VERSION,
+        },
+        runSnake: { dynasty: 'PRIMAL' },
+      },
+      continuity_phase: 'active',
+      continuity_activated_at: new Date(now - 1_000).toISOString(),
+      continuity_checkpoint: newerCheckpoint,
+      continuity_checkpoint_revision: 2,
+      continuity_checkpoint_saved_at: new Date(now - 500).toISOString(),
+      continuity_lease_issued_at: new Date(now - 1_000).toISOString(),
+      continuity_lease_hash: createHash('sha256').update(lease).digest('hex'),
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      started_at: new Date(now - 2_000).toISOString(),
+      ended_at: null,
+      end_reason: null,
+    }, jest.fn().mockResolvedValue({
+      data: { accepted: true, inserted: true },
+      error: null,
+    })), {
+      playerId: 'player-1',
+      sessionId: 'terminal-rebase',
+      expectedRevision: 2,
+      leaseToken: lease,
+      replay: { ...proof, activeElapsedMs: 1_500 },
+      now: now + 500,
+    });
+    expect(sameSecondLaterIntent.facts.duration_seconds).toBe(1);
+    expect(sameSecondLaterIntent.digest).not.toBe(intent.digest);
+  });
+
+  it('settles terminal duration from cumulative active time after a long offline gap', async () => {
+    const activatedAt = Date.UTC(2026, 7, 2, 8, 0, 0);
+    const resumedAt = activatedAt + 3 * 60 * 60 * 1_000;
+    const lease = 'offline-terminal-lease-token-with-enough-entropy';
+    const game = new SnakeGameLogic({
+      gridSize: 4,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'offline-terminal',
+    });
+    game.prepare();
+    game.activatePrepared(activatedAt);
+    game.tick();
+    const checkpoint = game.exportCheckpoint(activatedAt + 1_000);
+
+    const resumed = new SnakeGameLogic({
+      gridSize: 4,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'offline-terminal',
+    });
+    resumed.prepare();
+    resumed.restoreCheckpoint(checkpoint, resumedAt, {
+      replacePreparedOpening: true,
+    });
+    resumed.tick();
+    expect(resumed.getState().isGameOver).toBe(true);
+    const terminalTrace = resumed.getReplayTrace();
+    const rpc = jest.fn().mockResolvedValue({
+      data: { accepted: true, inserted: true },
+      error: null,
+    });
+    const row = {
+      id: 'offline-terminal',
+      start_request_id: START_ID,
+      start_manifest: {
+        sessionId: 'offline-terminal',
+        simulation: {
+          seed: 'offline-terminal',
+          version: 1,
+          rulesVersion: SNAKE_RULES_VERSION,
+        },
+        runSnake: { dynasty: 'PRIMAL' },
+      },
+      continuity_phase: 'active',
+      continuity_activated_at: new Date(activatedAt).toISOString(),
+      continuity_checkpoint: checkpoint,
+      continuity_checkpoint_revision: 2,
+      continuity_checkpoint_saved_at: new Date(activatedAt + 1_000).toISOString(),
+      continuity_lease_issued_at: new Date(resumedAt).toISOString(),
+      continuity_lease_hash: createHash('sha256').update(lease).digest('hex'),
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      started_at: new Date(activatedAt - 1_000).toISOString(),
+      ended_at: null,
+      end_reason: null,
+    };
+    const replay = {
+      fromTick: checkpoint.privateState.replay.ticks,
+      toTick: terminalTrace.ticks,
+      actionOffset: checkpoint.privateState.replay.actions.length,
+      actions: terminalTrace.actions.slice(checkpoint.privateState.replay.actions.length),
+      activeElapsedMs: 2_000,
+    };
+
+    const intent = await stageRunTerminalIntent(
+      clientWithRowAndRpc(row, rpc),
+      {
+        playerId: 'player-1',
+        sessionId: 'offline-terminal',
+        expectedRevision: 2,
+        leaseToken: lease,
+        replay,
+        now: resumedAt + 1_000,
+      }
+    );
+
+    expect(intent.facts.duration_seconds).toBe(2);
+    expect(intent.facts.duration_seconds).not.toBe(10_801);
+
+    const legacyReplay = { ...replay };
+    delete legacyReplay.activeElapsedMs;
+    const legacyIntent = await stageRunTerminalIntent(
+      clientWithRowAndRpc(row, jest.fn().mockResolvedValue({
+        data: { accepted: true, inserted: true },
+        error: null,
+      })),
+      {
+        playerId: 'player-1',
+        sessionId: 'offline-terminal',
+        expectedRevision: 2,
+        leaseToken: lease,
+        replay: legacyReplay,
+        now: resumedAt + 1_000,
+      }
+    );
+    // A pre-cutover browser can still settle, but receives only the accepted
+    // second plus the terminal suffix's physical minimum — never three offline
+    // hours and never an unbounded client claim.
+    expect(legacyIntent.facts.duration_seconds).toBe(1);
+    expect(legacyIntent.digest).not.toBe(intent.digest);
+  });
+
+  it('rejects terminal active time that rewinds or outruns the current lease window', async () => {
+    const now = Date.UTC(2026, 7, 2, 12, 0, 0);
+    const lease = 'terminal-time-bound-lease-with-enough-entropy';
+    const game = new SnakeGameLogic({
+      gridSize: 4,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'terminal-time-bound',
+    });
+    game.prepare();
+    game.activatePrepared(now - 2_000);
+    game.tick();
+    const checkpoint = game.exportCheckpoint(now - 1_000);
+    game.tick();
+    const terminalTrace = game.getReplayTrace();
+    const row = {
+      id: 'terminal-time-bound',
+      start_request_id: START_ID,
+      start_manifest: {
+        sessionId: 'terminal-time-bound',
+        simulation: {
+          seed: 'terminal-time-bound',
+          version: 1,
+          rulesVersion: SNAKE_RULES_VERSION,
+        },
+        runSnake: { dynasty: 'PRIMAL' },
+      },
+      continuity_phase: 'active',
+      continuity_activated_at: new Date(now - 2_000).toISOString(),
+      continuity_checkpoint: checkpoint,
+      continuity_checkpoint_revision: 2,
+      continuity_checkpoint_saved_at: new Date(now - 1_000).toISOString(),
+      continuity_lease_issued_at: new Date(now - 1_000).toISOString(),
+      continuity_lease_hash: createHash('sha256').update(lease).digest('hex'),
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      started_at: new Date(now - 3_000).toISOString(),
+      ended_at: null,
+      end_reason: null,
+    };
+    const baseReplay = {
+      fromTick: checkpoint.privateState.replay.ticks,
+      toTick: terminalTrace.ticks,
+      actionOffset: checkpoint.privateState.replay.actions.length,
+      actions: terminalTrace.actions.slice(checkpoint.privateState.replay.actions.length),
+    };
+    const stage = (activeElapsedMs: number) => stageRunTerminalIntent(
+      clientWithRowAndRpc(row, jest.fn()),
+      {
+        playerId: 'player-1',
+        sessionId: 'terminal-time-bound',
+        expectedRevision: 2,
+        leaseToken: lease,
+        replay: { ...baseReplay, activeElapsedMs },
+        now,
+      }
+    );
+
+    await expect(stage(999)).rejects.toMatchObject({
+      reason: 'invalid_checkpoint',
+    });
+    await expect(stage(12_001)).rejects.toThrow('server time bound');
   });
 
   it('refuses a checkpoint that rewinds accepted progress', () => {

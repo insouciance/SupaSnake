@@ -7,14 +7,14 @@ documents remain useful context but do not override the files listed here.
 
 | Need | Document |
 |---|---|
-| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.8) |
+| **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.12) |
 | What to build next, and how | [Implementation Handoff](IMPLEMENTATION_HANDOFF.md) |
 | The gate every PR passes | [Constitution Checklist](CONSTITUTION_CHECKLIST.md) |
 | The verified state of the game as built | [Ground Truth](GROUND_TRUTH.md) |
 | Amendments awaiting the owner | [Proposed Amendments](CONSTITUTION_AMENDMENTS_PROPOSED.md) |
 | Strategic assessment behind the Constitution | [Product, Gameplay & Metagame Audit](game/SUPASNAKE_PRODUCT_GAMEPLAY_METAGAME_AUDIT.md) |
 
-The Constitution decides *what* may exist: its 14 Inviolable Rules and §12.2 caps
+The Constitution decides *what* may exist: its 15 Inviolable Rules and §12.2 caps
 bind every change, and a change that cannot be reconciled with them needs an
 amendment, not an exception. Work is decomposed into numbered work packages in the
 Implementation Handoff; `AGENTS.md` carries the branch, worktree, and migration
@@ -35,7 +35,7 @@ with the Constitution, the Constitution wins and the contract is the stale docum
 | Complete game direction | [Game Design v2](game/GAME_DESIGN_V2.md) |
 | Progress recognition, career memory, and social proof | [Career Spine](game/CAREER_SPINE.md) |
 | Player flow, onboarding, and interruptions | [Player Flow & Interruption Policy](game/PLAYER_FLOW_INTERRUPTION_POLICY.md) |
-| Genome/buildcraft | [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) |
+| Genome/buildcraft | [Tactical Genome v2](game/TACTICAL_GENOME_V2.md); [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) is the historical foundation |
 | Active game screen and camera | [Run Cockpit & Arena](game/HUD_COCKPIT_REDESIGN.md) |
 | Energy Commitment and Clan Energy Battles | [Energy Commitment & Clan Battles](game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md) |
 | Monetization, catalog, and commerce sequencing | [Monetization Strategy](game/MONETIZATION_STRATEGY.md) |

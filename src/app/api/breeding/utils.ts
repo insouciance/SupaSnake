@@ -66,6 +66,8 @@ export interface BreedingDraft {
   dna_cost: number;
   ascendance: {
     generation: number;
+    curve_version: 2;
+    multiplier_bps: number;
     yield_bonus: number;
     yield_multiplier: number;
   };

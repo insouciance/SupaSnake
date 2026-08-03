@@ -27,10 +27,11 @@ describe('pre-run snake selection boundaries', () => {
   it('Run Setup selection owns only the collection equip endpoint', () => {
     const source = read('src/app/game/page.tsx');
     const handlerStart = source.indexOf('const handleChooseSetupSnake');
-    const handlerEnd = source.indexOf('// Splice hints', handlerStart);
+    const handlerEnd = source.indexOf('const handleChooseSetupFavorite', handlerStart);
     const handler = source.slice(handlerStart, handlerEnd);
 
     expect(handlerStart).toBeGreaterThan(-1);
+    expect(handlerEnd).toBeGreaterThan(handlerStart);
     expect(handler).toContain("fetch('/api/collection/equip'");
     expect(handler).not.toContain('/api/game/session');
     expect(source).toContain('<SnakePickerSheet');

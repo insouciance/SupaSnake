@@ -139,6 +139,7 @@ export function SnakePicker({
                       primaryColor={theme.primary}
                       secondaryColor={theme.secondary}
                       rarity={variant.rarity}
+                      generation={snake.generation}
                       className="absolute inset-0 w-full h-full"
                     />
                     <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 text-center bg-void-deep/80 border-t border-scale-blue-light/30">

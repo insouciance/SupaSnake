@@ -3,6 +3,12 @@
  * Validates system health reporting and dependency checks
  */
 
+var mockCaptureException: jest.Mock;
+
+jest.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
+}));
+
 import { GET } from './route';
 import { createClient } from '@supabase/supabase-js';
 
@@ -15,15 +21,24 @@ jest.mock('@supabase/supabase-js', () => ({
       })),
     })),
     rpc: jest.fn((name: string) => Promise.resolve({
-      data: name === 'get_cohesive_release_capability'
-        ? {
-            status: 'ready',
-            version: 1,
-            foundingBridgeVersion: 1,
-            continuityVersion: 1,
-            favoriteInvariantVersion: 1,
-          }
-        : { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+      data:
+        name === 'get_cohesive_release_capability'
+          ? {
+              status: 'ready',
+              version: 1,
+              foundingBridgeVersion: 1,
+              continuityVersion: 1,
+              favoriteInvariantVersion: 1,
+            }
+          : name === 'get_genome_v2_capability'
+            ? {
+                status: 'ready',
+                schemaVersion: 2,
+                catalogVersion: 2,
+                ascendanceVersion: 2,
+                spliceCount: 8,
+              }
+            : { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
       error: null,
     })),
   })),
@@ -42,8 +57,8 @@ jest.mock('@/lib/server/productionPublicSurface', () => ({
     declaredHash: 'contract-hash',
     projectRef: 'gmpwyzqafoyowndbvlma',
     expectedProjectRef: 'gmpwyzqafoyowndbvlma',
-    enabledFlagCount: 21,
-    expectedFlagCount: 21,
+    enabledFlagCount: 22,
+    expectedFlagCount: 22,
     disabledFlags: [],
   })),
 }));
@@ -54,6 +69,7 @@ const originalEnv = process.env;
 describe('GET /api/health', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCaptureException = jest.fn();
     process.env = {
       ...originalEnv,
       NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co',
@@ -102,7 +118,7 @@ describe('GET /api/health', () => {
       status: 'healthy',
       contractHash: 'contract-hash',
       projectRef: 'gmpwyzqafoyowndbvlma',
-      enabledFlagCount: 21,
+      enabledFlagCount: 22,
     });
     expect(data.checks.cohesiveRelease).toMatchObject({
       status: 'healthy',
@@ -110,6 +126,15 @@ describe('GET /api/health', () => {
       foundingBridgeVersion: 1,
       continuityVersion: 1,
       favoriteInvariantVersion: 1,
+    });
+    expect(data.checks.genomeV2).toMatchObject({
+      status: 'healthy',
+      schemaVersion: 2,
+      catalogVersion: 2,
+      ascendanceVersion: 2,
+      spliceCount: 8,
+      rulesVersion: 2,
+      strainThresholds: { minor: 2, expression: 3, apex: 4 },
     });
   });
 
@@ -193,6 +218,168 @@ describe('GET /api/health', () => {
     expect(response.status).toBe(503);
     expect(data.checks.careerSpine.status).toBe('unhealthy');
     expect(data.checks.cohesiveRelease.status).toBe('unhealthy');
+    expect(data.checks.genomeV2.status).toBe('unhealthy');
+  });
+
+  it('fails health when the Genome v2 capability is incomplete', async () => {
+    (createClient as jest.Mock)
+      .mockImplementationOnce(() => ({
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+          })),
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+          error: null,
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: {
+            status: 'ready',
+            version: 1,
+            foundingBridgeVersion: 1,
+            continuityVersion: 1,
+            favoriteInvariantVersion: 1,
+          },
+          error: null,
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: {
+            status: 'ready',
+            schemaVersion: 2,
+            catalogVersion: 2,
+            ascendanceVersion: 1,
+            spliceCount: 8,
+          },
+          error: null,
+        })),
+      }));
+
+    const response = await GET();
+    const data = await response.json();
+    expect(response.status).toBe(503);
+    expect(data.checks.genomeV2.status).toBe('unhealthy');
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Genome v2 capability invalid' }),
+      expect.objectContaining({
+        tags: expect.objectContaining({
+          dependency: 'genome-v2-capability',
+        }),
+      })
+    );
+  });
+
+  it('reports a Genome v2 capability RPC error instead of silently degrading health', async () => {
+    (createClient as jest.Mock)
+      .mockImplementationOnce(() => ({
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+          })),
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+          error: null,
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: {
+            status: 'ready',
+            version: 1,
+            foundingBridgeVersion: 1,
+            continuityVersion: 1,
+            favoriteInvariantVersion: 1,
+          },
+          error: null,
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: null,
+          error: {
+            code: '42501',
+            message: 'permission denied for get_genome_v2_capability',
+          },
+        })),
+      }));
+
+    const response = await GET();
+    const data = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(data.checks.genomeV2).toMatchObject({
+      status: 'unhealthy',
+      error: 'permission denied for get_genome_v2_capability',
+    });
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: '42501',
+        message: 'permission denied for get_genome_v2_capability',
+      }),
+      expect.objectContaining({
+        tags: expect.objectContaining({
+          dependency: 'genome-v2-capability',
+        }),
+      })
+    );
+  });
+
+  it('reports an unexpected Genome v2 capability exception', async () => {
+    (createClient as jest.Mock)
+      .mockImplementationOnce(() => ({
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            limit: jest.fn(() => Promise.resolve({ data: [{ id: 1 }], error: null })),
+          })),
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: { status: 'ready', bridgeVersion: 1, careerVersion: 1 },
+          error: null,
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.resolve({
+          data: {
+            status: 'ready',
+            version: 1,
+            foundingBridgeVersion: 1,
+            continuityVersion: 1,
+            favoriteInvariantVersion: 1,
+          },
+          error: null,
+        })),
+      }))
+      .mockImplementationOnce(() => ({
+        rpc: jest.fn(() => Promise.reject(new Error('capability transport failed'))),
+      }));
+
+    const response = await GET();
+    const data = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(data.checks.genomeV2).toMatchObject({
+      status: 'unhealthy',
+      error: 'capability transport failed',
+    });
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'capability transport failed' }),
+      expect.objectContaining({
+        tags: expect.objectContaining({
+          dependency: 'genome-v2-capability',
+        }),
+      })
+    );
   });
 
   it('fails health when a cohesive release bridge is absent', async () => {

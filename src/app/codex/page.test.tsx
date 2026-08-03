@@ -6,6 +6,7 @@ import { lexiconSection } from '@/shared/game/lexicon';
 
 const mockUseAuth = jest.fn();
 const mockFetchCodex = jest.fn();
+const mockResetCodex = jest.fn();
 const mockUseCodexStore = jest.fn();
 
 jest.mock('@/lib/auth/AuthProvider', () => ({
@@ -15,6 +16,7 @@ jest.mock('@/lib/stores/codexStore', () => ({
   useCodexStore: () => mockUseCodexStore(),
 }));
 jest.mock('@/components/ui/NavBar', () => ({ NavBar: () => <nav /> }));
+jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: false }));
 
 const EMPTY_DATA = {
   genes: [],
@@ -33,10 +35,11 @@ describe('Genome Codex page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseAuth.mockReturnValue({
-      session: { access_token: 'token' },
+      session: { access_token: 'token', user: { id: 'user-a' } },
       isAuthenticated: true,
     });
     mockUseCodexStore.mockReturnValue({
+      ownerId: 'user-a',
       live: true,
       unlocked: true,
       bankedRuns: 20,
@@ -45,6 +48,7 @@ describe('Genome Codex page', () => {
       isLoading: false,
       error: null,
       fetchCodex: mockFetchCodex,
+      reset: mockResetCodex,
     });
   });
 
@@ -66,6 +70,7 @@ describe('Genome Codex page', () => {
    */
   it('reads the rules before the banked-run unlock, and says the archive is still waiting', () => {
     mockUseCodexStore.mockReturnValue({
+      ownerId: 'user-a',
       live: true,
       unlocked: false,
       bankedRuns: 14,
@@ -74,6 +79,7 @@ describe('Genome Codex page', () => {
       isLoading: false,
       error: null,
       fetchCodex: mockFetchCodex,
+      reset: mockResetCodex,
     });
     render(<CodexPage />);
 
@@ -112,6 +118,7 @@ describe('Genome Codex page', () => {
     expect(screen.getByTestId('codex-signed-out')).toBeInTheDocument();
     expect(screen.queryByText('Archive completion')).toBeNull();
     expect(mockFetchCodex).not.toHaveBeenCalled();
+    expect(mockResetCodex).toHaveBeenCalled();
   });
 
   it('lays out all fifteen strain tiers', () => {
@@ -125,8 +132,9 @@ describe('Genome Codex page', () => {
     }
   });
 
-  it('shows a discovered splice its recipe and an undiscovered one none', () => {
+  it('shows every tactical recipe while discovery remains separate history', () => {
     mockUseCodexStore.mockReturnValue({
+      ownerId: 'user-a',
       live: true,
       unlocked: true,
       bankedRuns: 20,
@@ -167,6 +175,7 @@ describe('Genome Codex page', () => {
       isLoading: false,
       error: null,
       fetchCodex: mockFetchCodex,
+      reset: mockResetCodex,
     });
     render(<CodexPage />);
 
@@ -174,11 +183,47 @@ describe('Genome Codex page', () => {
       'Gold Trail + Compound Interest'
     );
     expect(screen.getByTestId('codex-recipe-splice_all_in')).toHaveTextContent(
-      'Recipe hidden'
+      'Recipe undiscovered'
     );
-    // The rules of an undiscovered splice are not hidden — only its recipe.
-    expect(screen.getByText('All In')).toBeInTheDocument();
+    expect(screen.queryByText('Compound Interest + Mirror Wager')).not.toBeInTheDocument();
+    // Legacy discovery still changes archive history while v2 is off.
+    expect(screen.getAllByText('All In').length).toBeGreaterThan(0);
     expect(screen.getByText('all in effect')).toBeInTheDocument();
     expect(screen.getByText('all in cost')).toBeInTheDocument();
+  });
+
+  it('fails closed synchronously when authenticated player B sees player A store state', () => {
+    mockUseAuth.mockReturnValue({
+      session: { access_token: 'token-b', user: { id: 'user-b' } },
+      isAuthenticated: true,
+    });
+    mockUseCodexStore.mockReturnValue({
+      ownerId: 'user-a',
+      live: true,
+      unlocked: true,
+      bankedRuns: 99,
+      unlockAt: 15,
+      data: EMPTY_DATA,
+      isLoading: false,
+      error: null,
+      fetchCodex: mockFetchCodex,
+      reset: mockResetCodex,
+    });
+
+    render(<CodexPage />);
+
+    expect(screen.getByText('Opening the Codex…')).toBeInTheDocument();
+    expect(screen.queryByText('Archive completion')).not.toBeInTheDocument();
+    expect(mockFetchCodex).toHaveBeenCalledWith('user-b', 'token-b');
+  });
+
+  it('puts the interactive strategy atlas before the reference grids', () => {
+    mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
+    render(<CodexPage />);
+    expect(screen.getByTestId('genome-strategy-atlas')).toBeInTheDocument();
+    expect(screen.getByTestId('genome-strategy-atlas')).toHaveAttribute('data-rules-version', '1');
+    expect(screen.getByLabelText('Genome consequence chain')).toHaveTextContent(
+      /Offer.*Strain.*Splice.*BANK \/ crash/
+    );
   });
 });

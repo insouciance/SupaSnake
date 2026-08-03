@@ -1,6 +1,105 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.8 · amended 31 July 2026
+**Version:** 1.12 · amended 2 August 2026
+**v1.12 amendment (explicit owner ruling, 2 August 2026):** Genome v2 Strain
+ladders activate at **2/3/4 points**, mapped to Minor, Expression, and Apex.
+With only six loci, the previously approved 3/4/5 ladder delayed the first
+meaningful family reaction too far and made deep commitment unnecessarily
+restrictive. The FTUE gates remain semantic: Minor is available from the first
+run, Expression requires two validated banks, and Apex requires ten validated
+banks or the existing M3 alternate. Spawn inheritance remains capped at two
+points per Strain, World Conditions may shift the frozen run ladder by at most
+one point, and Genome v1 sessions keep their original rules.
+
+Strain affiliation is also part of a gene's first-read identity. Every v2 gene
+shown in the Tactical Loom or Workbench carries a compact badge containing its
+rune, independent Strain color, and written Strain name; dual-Strain genes show
+both badges. Color alone, a hover state, or buried description text is not
+sufficient. This correction is made before the first production Genome v2
+session. If that premise proves false at release time, the ladder change must be
+versioned as a new ruleset rather than silently changing an active run. The
+owner approved this correction during the active Genome v2 build and waived the
+cooling period; the trade-off is recorded in §15.
+**v1.11 amendment (explicit owner ruling, 2 August 2026):** the live Loom's
+intuition must include legible second- and third-order consequences, not merely
+the immediate arithmetic. Every candidate names and depicts its Strain tags.
+The focused candidate may show the complete **affected** 3/4/5 Strain route and
+every directly connected Splice branch in a compact rune/reaction map, including
+whether each rung or branch activates now, remains future, closes, breaks, or
+requires Recode. This is not the prohibited expert dashboard: unrelated ladders,
+the full catalog, broad scenario arithmetic, build rankings, and exhaustive prose
+remain in Research. On mobile the reaction map prioritises recognition and a
+single focused rule; it may reveal a tapped explanation within the frozen
+decision, but cannot hide the candidate's Strain identity or immediate Splice
+fate. This refines v1.10's information boundary without restoring its discarded
+coursework-like expert expander. The owner approved this correction in the
+production Goal and waived the cooling period; the trade-off is recorded in
+§15.
+**v1.10 amendment (explicit owner ruling, 2 August 2026):** Genome information
+is divided by player intent: **intuition during a run; research outside a run**.
+The live Tactical Loom remains the decisive strategy break, but it is not an
+expert dashboard. It shows the two candidates and DECLINE, then only the focused
+action's immediate gain, meaningful risk, trigger/cadence, changed locus, newly
+activated or lost Strain rung/Splice, and any irreversible body, terrain,
+second-life, Ash, Stake, Escrow, Bond, or Anchor consequence. Unchanged ledgers,
+complete 3/4/5 ladders, one-step recipe trees, broad projections, and catalog
+research do not occupy the live decision surface. A full-locus Recode is the
+narrow exception: its exact gain/loss and permanent growth cost must be visible
+before confirmation. There is no in-run expert expander.
+
+Complete future depth remains visible from run one through the Codex and
+Workbench. Together they form one free, game-like Research instrument: browse one
+rule at a time, manipulate the six loci directly, and see the immediate visual
+chain from gene to Strain rung to Splice. Yield, Risk, and Space are optional
+lenses; exact arithmetic appears on demand in one focused readout. Research never
+ranks Dynasties, recommends an optimum, hides tactical truth behind payment, or
+resembles compulsory coursework. Post-choice feedback identifies what activated
+and what it boosts without intercepting steering; Results can load the run's exact
+terminal Genome into Research. This narrows v1.9's live disclosure requirement,
+not its visible-depth, strategic-mastery, authority, or large-Yield-spread goals.
+The owner approved this correction during the active Genome v2 build and waived
+the cooling period; the trade-off is recorded in §15.
+**v1.9 amendment (explicit owner ruling, 1 August 2026):** the Genome becomes
+the run's visible tactical centre rather than a hidden catalog of buffs. A gene
+decision freezes the simulation while retaining the board as context and exposes
+THREAD, FORK, and DECLINE through one shared **Tactical Loom**: current run facts,
+all affected 3/4/5 Strain rungs, immediate and one-step Splice consequences,
+body/terrain pressure, persistent liabilities, and exact BANK/crash ledgers. It
+must provide facts and projections, never a recommendation or a dynasty-neutral
+ranking. Dynasty fit is a mastery test, and a well-built, well-executed Genome is
+intended to produce materially more Yield than a poor or misplayed one. Target
+transformations are exclusive and queued; one target never silently stacks two
+competing identities. Routine live-play Genome celebration is pointer-transparent,
+especially on touch; only the player's own frozen decisions may intercept steering.
+
+The active v2 pool is 13 shared genes plus the run's one Dynasty signature, subject
+to the existing 12–16 hard bounds. Rotation replaces entries rather than appending
+beyond the cap. Legacy IDs and v1 settlement remain readable for active and
+historical runs. Offer DECLINE and portal PASS are different verbs and different
+events. Recode at a full Genome is explicit, previewed, and paid with growth; it may
+stop future effects but never erase accrued value, liabilities, Ash, body growth, or
+permanent terrain. Portal-created seals and Scars remain permanent under Rule 15.
+
+Visible future depth replaces the old hidden FTUE. Strain tags and all ladder rungs
+are visible from the first run; CONTINUE unlocks after one validated bank,
+Expressions after two, MUTATE after four, spawn inheritance and Splices after six,
+and Apex after ten or the existing M3 alternate [H]. Every portal presents BANK,
+CONTINUE, and MUTATE from the beginning, with unavailable choices visibly locked by
+server-authored progress. This overturns §8.3's instruction to keep the prior ramp
+unchanged while preserving progressive activation rather than front-loading every
+mechanic.
+
+Ascendance is also corrected. Gen1–3 remain ×1.00; from Gen4 each generation
+multiplies the preceding generation's Yield by **×1.02 [H]**. The old ~×1.30
+asymptote and shrinking marginal gain are removed: every generation retains the
+same visible relative value, while the existing ×1.25 breeding-cost steepening
+continues to outrun it. Score remains structurally untouched. The exact curve
+version and multiplier are frozen at run start so deployments cannot rewrite an
+active stake. Every fifth generation is a visible evolution/prestige milestone;
+this amendment does not silently add permanent gene sockets or paid power. The
+arithmetic has only an unreachable representation guard, never a player-facing
+balance ceiling. The owner approved this Genome/Ascendance production build and
+waived the cooling period; the costs are recorded in §15.
 **v1.8 amendment (explicit owner ruling, 31 July 2026):** Results may use a
 bounded tactile **Victory Lap** of up to three meaningful collection taps. The
 economic fact remains unchanged: settlement secures every reward and progression
@@ -767,20 +866,22 @@ implementation contradicts it three times with `random()` (GT §4). Rulings:
   parents' strains. Full preview before payment; nothing material hidden post-payment
   (P6; also §10's "outcome fully known" made mechanical). Breeding stays a DNA sink
   with the shipped cost curve.
-- **Generations are uncapped: Gen4+ is Ascendance** (owner ruling, v1.2, reversing
-  the Gen3 cap). Gen1–3 keep their unlocks (second trait slot, lineage strength).
-  From Gen4, every generation permanently raises that snake's **Yield** — increments
-  start near +2% and shrink toward an asymptote of roughly +30% total [H], so
-  upgrading never stops paying but a veteran's snake stays ~1.3× a newcomer's, never
-  10× — a clanmate fresh to the hunt is never dead weight. Competitive prestige
-  must remain an invitation to improve, not a mechanism that erases participation. Every
-  fifth generation the snake **visibly evolves** (pattern and aura stages), and
-  pedigree compounds in the Chronicle. The breeding cost curve steepens through
-  Ascendance so the lane spans months, not day one [H] — the previous economy's
-  honest error was that Gen3 fell on day one. Score remains untouched by all of it
-  (Rule 2): the ladder measures the pilot; Ascendance pays where investment is
-  *supposed* to pay — the Serpent battle, where your clan is watching. Your snake gets
-  stronger forever, and the place it shows is the place that counts.
+- **Generations are uncapped: Gen4+ is Ascendance** (owner rulings v1.2 and v1.9,
+  reversing the Gen3 cap and then the diminishing asymptote). Gen1–3 keep their
+  unlocks (second trait slot, lineage strength). From Gen4, every generation
+  permanently raises that snake's **Yield** by ×1.02 relative to the preceding
+  generation [H]: `multiplier(g) = 1.02^(g - 3)`. The gain therefore never fades
+  into an imperceptible decimal and has no reachable design ceiling. The breeding
+  cost curve still steepens by ×1.25 per generation, substantially faster than
+  the benefit, so investment cannot self-finance an accelerating power spiral.
+  Every fifth generation the snake **visibly evolves** (pattern and aura stages),
+  and pedigree compounds in the Chronicle. The exact curve version and multiplier
+  are stamped when a run starts; an in-flight run never changes value after a
+  release. Score remains untouched by all of it (Rule 2): the ladder measures the
+  pilot; Ascendance pays in Yield and Depth, where earned long-term investment and
+  clan responsibility are intended to be visible. New players retain meaningful
+  participation through skill, best-five replacement, and the faster-growing cost
+  curve rather than through an artificial veteran-power ceiling.
 - **Reroll tokens and the lineage reroll are retired** (nothing random remains to
   reroll). Held tokens convert to 150 DNA each (their old price) in one migration.
 - **Ascendance can be unwound from the leaves inward.** The main Lab offers the
@@ -807,8 +908,13 @@ genes produce over a million six-gene combinations (F6). Rulings:
   stay reachable; the three dynasty signatures stay. The catalog is preserved —
   inactive genes are shelved, not deleted, and may rotate in via seasons *within the
   cap*.
-- The FTUE ramp (GT §6.2) stays server-enforced and unchanged: it is the
-  best-in-class part of teaching. Splices stay late (15 banks); apexes stay gated.
+- The FTUE remains server-enforced, but v1.9 replaces hidden depth with a visible
+  activation ramp: Strain tags and every 2/3/4 rung are visible immediately;
+  CONTINUE activates after 1 validated bank, Expressions after 2, MUTATE after 4,
+  spawn inheritance and Splices after 6, and Apex after 10 or M3 [H]. Locked portal
+  verbs and ladder effects explain their server-authored requirement rather than
+  disappearing. The player sees the strategic future before receiving all of its
+  verbs.
 - The offer-gravity algorithm (GT §2.4) is a strength — keep it, and *surface* it:
   the pity rule and lineage bias should be felt ("your lineage called this gene"), not
   hidden.
@@ -1602,7 +1708,7 @@ Stripe-in-test-mode means no purchases to honor — this is the last cheap momen
 | 17 | Analyst: LLM narration + email | Retire LLM path; repurpose email to deterministic weekly settlement digest (§7.5) | Deterministic Analyst stays in Results L3 |
 | 18 | Aim-system unlocks (score/games/breeding-gated) | Universalize as settings, day one | Unlock records → Chronicle trivia; no owned thing removed |
 | 19 | Reroll tokens + lineage reroll RPC | Retire with deterministic breeding | Tokens convert 1 → 150 DNA in migration |
-| 20 | Generation 4–50 as shipped (cost + pedigree, no decisions) | Reforged as **Ascendance** (§8.2, v1.2): uncapped, asymptotic Yield curve, visual evolution stages | Existing Gen>3 snakes keep their generation and enter the Ascendance curve at it |
+| 20 | Generation 4–50 as shipped (cost + pedigree, no decisions) | Reforged as **Ascendance** (§8.2, v1.2; corrected v1.9): uncapped compounding Yield curve with constant relative gain and visible evolution stages | Existing Gen>3 snakes keep their generation and enter the current curve at it; active runs retain their start-stamped curve |
 | 21 | Generation-based "skill brackets" | Delete | — |
 | 22 | Victory bonus, welcome-back modal, notifications, Discord OAuth plumbing, Chronicle, Records, cosmetics substrate, Training, offer-gravity | **Keep** | The spine survives |
 | 23 | `shed` (every 25 foods, tail resets to length 8) — v1.4, Rule 15 | **Delete.** Its Launch-Ten slot goes to `static_charge` [H] | The catalog's strongest safety valve — and the reason INFUSE was never a real cost |
@@ -1733,6 +1839,11 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 26 | **Legacy Score as the full Player Card's public prestige headline** | **v1.6:** underlying Records remain permanent, but the opaque aggregate retires from the public headline in favor of three curated, provenance-labelled proofs | The convenience of one summary number. Gained: status that says what was earned and cannot be confused with Score, Depth, or paid decoration |
 | 27 | **Rule 8 privacy-by-suppression: no teammate comparison, officer rank, differentiated recognition, or clan DNA reward** | **v1.7:** competition is a product pillar and earned progression is visible status. Leader/Co-leader/Member hierarchy, contribution ranks, two auditable Glory seats, and bounded server-ledgered battle/Glory DNA rewards are permitted. Explicit owner ruling, 31 July 2026; cooling period waived for the greenlit UX rework | The belief that hiding comparison prevents harmful pressure. Gained: credible esports hierarchy, stronger social motivation, visible excellence, and clan responsibility. The permanent guardrail is competitive integrity: no paid power, purchased rank, fabricated activity, client-authored result, or reward without an auditable earned event |
 | 28 | **Results recognition must auto-play and may not use claim language or repeated taps** | **v1.8:** up to three meaningful, optional Victory Lap collection taps may stage rewards already secured by settlement. Replay/Setup never wait; one action may complete the ceremony; only Daily Take may perform an economic collect RPC. Explicit owner ruling, 31 July 2026; cooling period waived for the approved cohesive UX implementation | The pure zero-tap recap. Gained: tactile trophy-raising payoff without stranded value, duplicate grants, claim debt, or notification farming |
+| 29 | **Ascendance approaches a ~×1.30 ceiling while each more expensive generation buys a smaller gain** (v1.2) | **v1.9:** Gen4+ compounds Yield by ×1.02 per generation; every fifth generation is a visible evolution beat; the run-start curve and multiplier are immutable. Score remains untouched. Explicit owner ruling, 1 August 2026; cooling period waived for the approved production build | The bounded ~1.3× veteran/newcomer spread and its simple economy guardrail. Gained: earned progression that remains materially valuable and socially prestigious. The faster ×1.25 cost curve, no-DNA-sales rule, Score independence, best-five competition, and live spread telemetry now carry the guardrail |
+| 30 | **Genome depth remains hidden behind the 4/8/10/12/15/20-bank FTUE and live offers disclose only prose plus a partial hint** | **v1.9:** the Tactical Loom makes the offer the run's explicit strategy break; future portal verbs and all ladders are visible from run one, while activation advances at 1/2/4/6/10 banks [H]. Explicit owner ruling, 1 August 2026; cooling period waived | The unusually quiet early game and the lowest possible first-session information load. Gained: legible aspiration, learnable n-order buildcraft, and a genuine skill gap without requiring Codex memorisation or a cheat sheet |
+| 31 | **Every affected ladder, one-step Splice path, liability ledger, and BANK/crash projection belongs in the live Tactical Loom** (v1.9) | **v1.10:** intuition in-run, Research outside. The live Loom shows only the immediate actionable delta and irreversible consequences; Codex/Workbench carries the complete visible future, direct experimentation, and on-demand arithmetic. No in-run expert expander. Explicit owner ruling, 2 August 2026; cooling period waived | The guarantee that every n-order possibility is visible without leaving the run. Gained: a mobile-legible decision beat, lower working-memory load, and preservation of flow. The permanent guardrail is that a player is never blind about what the current choice activates, breaks, costs, or exposes |
+| 32 | **v1.10's live surface shows only a newly activated or lost rung/Splice** | **v1.11:** the focused choice shows its complete affected 3/4/5 route and all directly connected Splice branches as a compact rune reaction map; unrelated systems and exhaustive research remain outside the run. Explicit owner ruling, 2 August 2026; cooling period waived | The smallest possible live consequence pane. Gained: visible second-/third-order strategy, explicit Strain identity, and learnable buildcraft without recreating a table, solver, or expert dashboard |
+| 33 | **Genome v2 Strain ladders activate at 3/4/5 points** | **v1.12:** the v2 ladder activates at 2/3/4, mapped to Minor/Expression/Apex; FTUE gates remain semantic, v1 remains unchanged, and every Loom/Workbench gene exposes rune + color + written Strain badge at first read. Explicit owner ruling, 2 August 2026; cooling period waived | The wider delay before a run's first Strain effect and the stricter concentration needed to reach Apex. Gained: meaningful family identity after two points within a six-locus Genome, earlier build feedback, and immediate legibility without requiring Codex memorisation. Pre-release compatibility condition: no production v2 session may exist before this correction ships |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
@@ -1753,7 +1864,7 @@ full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
 | # | v1.1 position | v1.2 ruling | What is given up |
 |---|---|---|---|
 | B1 | No run-start menus; ≤2 taps to board | Mandatory Run Setup page, preset, one-tap START; ≤3 taps (§5) | The purest cold-start funnel; the activation cost is measured (§17.22) with first-run auto-skip as the fallback |
-| B2 | Gen3 mechanical cap; Gen4+ pedigree only | Ascendance: uncapped generations → asymptotic per-snake Yield curve, visual evolution (§8.2) | The audit's P7 "fake depth" caution; the newcomer gap is bounded (~1.3×) instead of eliminated |
+| B2 | Gen3 mechanical cap; Gen4+ pedigree only | Ascendance: uncapped generations → per-snake Yield curve and visual evolution (§8.2); its v1.2 asymptote is superseded by v1.9 row 29 | The audit's P7 "fake depth" caution; v1.9 accepts a wider earned progression spread while retaining Score independence and faster-rising costs |
 | B3 | No streak economies; auto-settle purity, zero collect moments | Daily Take + tier-cooling streak, bonus-scoped; one collect tap (§7.2) | The no-loss purity; a bounded streak-churn risk accepted, with tier-cooling as the mitigation |
 | B4 | "Anti-obligation" positioning; enumerated free guarantees in §3 | "Fair pull, no predation" positioning; §3 slimmed to the test sentence (owner edit) | The loudest differentiation claim; the test sentence now carries the free promise alone (§17.25) |
 
@@ -1891,10 +2002,13 @@ deliberately undecided pending data.
     ×1.25/×1.5/×2/×3; one-tier cooling. *Test:* D7/D30 lift versus the
     streak-break churn signature (players who miss a day and never return); if the
     cliff appears despite cooling, add a two-day grace before the first tier drop.
-24. **Ascendance curve** (v1.2). +2% decaying toward ~+30%; cost steepening.
-    *Test:* months-to-asymptote distribution and intra-clan Yield spread; retune
-    so the p90/p10 member gap stays under ~1.4× [H] and the lane still feels
-    endless (every gen visibly adds something).
+24. **Ascendance curve** (v1.9, superseding the v1.2 asymptote). Gen4+ compounds
+    Yield by ×1.02 per generation while future breeding cost compounds by ×1.25.
+    *Test:* time and earned DNA per generation; next-generation conversion;
+    intra-clan Yield spread; generation distribution among best-five results;
+    downgrade/refund behavior; and whether every fifth visual evolution reads as
+    prestige. Retune the relative increment only from live data—never by restoring
+    imperceptible diminishing gains or allowing Ascendance to touch Score.
 25. **§3 contract presentation** (v1.2). The enumerated free guarantees were
     removed by owner edit; the test sentence carries the promise. *Test:* if trust
     sentiment or press framing weakens measurably, restore an abbreviated
@@ -1953,7 +2067,7 @@ deliberately undecided pending data.
 
 ---
 
-*Ratified 25 July 2026; amended through v1.7 on 31 July 2026. The owner should be able to read this and recognize their own
+*Ratified 25 July 2026; amended through v1.12 on 2 August 2026. The owner should be able to read this and recognize their own
 game — better organized, with the avoided decisions made and priced. Where it is
 wrong, amend it honestly: name the rule, pay the cost, record the overturn. What it
 must never become is a document that is merely agreed with.*

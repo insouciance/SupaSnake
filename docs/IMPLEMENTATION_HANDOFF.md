@@ -1,9 +1,9 @@
-# Implementation Handoff — Constitution v1.3 → Code
+# Implementation Handoff — Constitution → Code
 
 **For:** the implementing agents (Opus 5 max, GPT 5.6 max) running in parallel on
-feature branches. **Prepared:** 25 July 2026, by the Constitution's author, from
-`docs/PRODUCT_CONSTITUTION.md` (v1.3) and `docs/GROUND_TRUTH.md` (code-verified
-baseline @ `main` fd22c0c era).
+feature branches. **Prepared:** 25 July 2026 from Constitution v1.3; maintained
+under the current `docs/PRODUCT_CONSTITUTION.md` (v1.12) and
+`docs/GROUND_TRUTH.md` (code-verified baseline @ `main` fd22c0c era).
 **Owner:** available for escalations; batch them.
 
 ---
@@ -43,8 +43,10 @@ stale; when code and GT disagree, the code is the truth and the WP spec is the g
 - **Tracks:** **Track A (server/data)** and **Track B (surfaces/growth)** — the WP
   table assigns each WP a track. Suggested: Opus 5 max on A, GPT 5.6 max on B;
   the split matters more than the assignment.
-- **Migrations are Track A only, and serialized.** Baseline is migration 038. The
-  next migration number is claimed **at merge time, not branch time**: before
+- **Migrations are Track A only, and serialized.** Migration 038 was this
+  handoff's preparation baseline; always derive the live baseline from the
+  freshly fetched repository. The next migration number is claimed **at merge
+  time, not branch time**: before
   merging, rebase on main and renumber your migration file to the next free slot.
   Two migration-bearing PRs never merge the same day without a rebase in between.
 - **Hot files** (merge-conflict magnets): `src/app/api/game/session/route.ts`,
@@ -64,7 +66,7 @@ stale; when code and GT disagree, the code is the truth and the WP spec is the g
 ## 4. Kickoff briefing — paste this at the top of each agent session
 
 > You are implementing SupaSnake work packages. Authority:
-> `docs/PRODUCT_CONSTITUTION.md` v1.3 (design law — its §4 Rules and §12.2 caps
+> `docs/PRODUCT_CONSTITUTION.md` v1.12 (design law — its §4 Rules and §12.2 caps
 > are inviolable). Process: `docs/IMPLEMENTATION_HANDOFF.md` (your WP, the branch
 > and migration protocol, the decision/escalation rules). Baseline facts:
 > `docs/GROUND_TRUTH.md` (pre-implementation; code outranks it once WPs land).
@@ -184,10 +186,14 @@ multiplies only itself.*
 **WP-1.05 · A · Lineage rework** (§8.2; kill #19–20). Deterministic draft RPC
 (variant line, trait draft, lineage strain — full preview, no `random()`); reroll
 tokens → 150 DNA conversion migration; lineage-reroll RPC retired; **Ascendance**:
-uncapped gens, asymptotic Yield bonus (+2% decaying toward ~+30%), cost curve
-steepening past Gen3. Migration: yes. *Acceptance: breeding path grep-clean of
-`random()`; preview equals outcome in tests; curve unit-tested at asymptote;
-existing Gen>3 snakes enter the curve at their generation.*
+uncapped gens; Gen1–3 remain ×1 and Gen4+ compounds Yield by ×1.02 per
+generation, with no ordinary design ceiling; the cost curve still steepens past
+Gen3. New runs freeze the exact curve version and multiplier at start, while
+unstamped/in-flight legacy runs retain v1 settlement. Migration: yes.
+*Acceptance: breeding path grep-clean of `random()`; preview equals outcome in
+tests; v2 waypoints and v1 cross-deploy settlement are unit-tested; existing
+Gen>3 snakes enter the current curve at their generation without rewriting old
+run outcomes.*
 
 **WP-1.06 · B · Run Setup + Results three layers** (§5). LAUNCH → setup (preset,
 one-tap START; first-run fully preset) → board; REPLAY skips setup; Results L1

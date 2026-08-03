@@ -22,9 +22,8 @@ import { STRAIN_ECONOMICS, STRAIN_PHYSICS, STRAIN_THRESHOLDS } from './strains';
 import { GEN3_SLOT_UNLOCK, MAX_TRAIT_SLOTS, TRAIT_PHYSICS } from './traits';
 import {
   ASCENDANCE_COST_STEEPENING,
-  ASCENDANCE_FIRST_INCREMENT,
   ASCENDANCE_START_GENERATION,
-  ASCENDANCE_YIELD_CEILING,
+  ASCENDANCE_V2_GENERATION_FACTOR,
 } from './ascendance';
 import { ANOMALY_ECONOMICS, ANOMALY_PHYSICS } from './anomalies';
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -80,8 +79,7 @@ const CASES: Case[] = [
   ['mechanic', 'lineage_strength', 'cost', `${FTUE.spawnPointsAt} banked runs`],
   ['mechanic', 'lineage_strength', 'cost', `${STRAIN_THRESHOLDS.maxSpawnPoints} points per strain`],
   ['mechanic', 'ascendance', 'effect', `Gen ${ASCENDANCE_START_GENERATION}`],
-  ['mechanic', 'ascendance', 'effect', signed(1 + ASCENDANCE_FIRST_INCREMENT)],
-  ['mechanic', 'ascendance', 'effect', signed(1 + ASCENDANCE_YIELD_CEILING)],
+  ['mechanic', 'ascendance', 'effect', `×${ASCENDANCE_V2_GENERATION_FACTOR}`],
   ['mechanic', 'ascendance', 'cost', `Gen ${GEN3_SLOT_UNLOCK}`],
   ['mechanic', 'ascendance', 'cost', `×${ASCENDANCE_COST_STEEPENING}`],
 

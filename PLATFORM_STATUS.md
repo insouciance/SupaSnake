@@ -1,6 +1,6 @@
 # SupaSnake platform status
 
-**Updated:** 2026-07-31
+**Updated:** 2026-08-02
 
 **Environment:** operator production, Stripe sandbox
 
@@ -12,22 +12,22 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–061 deployed and aligned |
+| Schema | Migrations 001–064 deployed and aligned; reviewed 065 Genome v2 addition pending release |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
 | Practice | Training Lab enabled; deterministic and rewardless |
 | Energy | Server-time recovery to 6; 1–6 commitment; nonlinear harvest |
 | Clan battle | Automatic positive-Energy eligibility; three days; best five per member |
 | Career | Durable run ingress; atomic progression; bounded recognition; server-backed attention and memory |
-| Player-feature baseline | `564dbb7` |
-| Current deployment | `dpl_FrfgGfaDnBjjJum6NwWfgUsrSdSR` |
-| Outgoing pre-cutover artifact | `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e`; **not rollback-safe after migration 061** |
+| Player-feature baseline | `23ba6e6fd95029cd9da4cea5b78a998b55aac782` |
+| Current deployment | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` |
+| Outgoing pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; compatible with additive migration 065 before v2 intake, but not a safe rollback target after any v2 session is issued |
 | Payments | Test/sandbox mode only |
 
 The current release passed protected-PR and post-main Build, Lint, Test, and
 both isolated-Supabase E2E workflows; full type checking, lint, Jest coverage,
-production build, deterministic cockpit fixtures, local migrations 001–061
-from zero, phased 060/061 and concurrency SQL integration, the production
+production build, deterministic cockpit fixtures, local migrations 001–064
+from zero, phased continuity/Career and concurrency SQL integration, the production
 runtime dependency audit, staged and canonical health, linked database lint,
 and focused public-production smoke. Detailed evidence is maintained in
 `docs/ops/QA_CHECKLIST.md`.
@@ -130,8 +130,11 @@ These do not invalidate the operator production release:
 - Linked database lint passed with no error and existing non-blocking warnings.
   Address warnings only through a reviewed forward migration; never rewrite
   deployed migration history.
-- Migration 061 intentionally closes the retired writer. The outgoing artifact
-  is not rollback-safe; any Career settlement incident requires a forward fix.
+- Migration 061 intentionally closes the retired Career writer. For Genome v2,
+  migration 065 remains additive, but once a v2 session is issued the outgoing
+  pre-v2 application cannot resume that immutable contract. Rollout incidents
+  therefore require the documented dual-version, flag-off forward fix rather
+  than restoring the outgoing application.
 - Final commercial legal review and support-mailbox operating procedures
 - Stripe test-to-live review and a controlled real purchase/refund
 - `RESEND_API_KEY` if weekly digest email becomes a marketed feature

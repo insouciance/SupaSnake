@@ -8,6 +8,7 @@ import {
   EnergyGlyph,
   GeneGlyph,
   ModeGlyph,
+  OverclockGlyph,
   PauseGlyph,
   PortalGlyph,
   ResetGlyph,
@@ -19,6 +20,7 @@ import {
   TrainingTickGlyph,
 } from './CockpitGlyphs';
 import type { RunCockpitModel } from './types';
+import type { GenomeV2OverclockSource } from '@/components/game/genome/genomeV2RuntimeAdapter';
 import styles from './CockpitPrototype.module.css';
 
 interface RunCockpitProps {
@@ -27,6 +29,7 @@ interface RunCockpitProps {
   onPause: () => void;
   onAbandon?: () => void;
   onResetView: () => void;
+  onOverclock?: (source: GenomeV2OverclockSource) => void;
   pauseDisabled?: boolean;
   showPause?: boolean;
   showAbandon?: boolean;
@@ -74,6 +77,7 @@ export function RunCockpit({
   onPause,
   onAbandon,
   onResetView,
+  onOverclock,
   pauseDisabled = false,
   showPause = true,
   showAbandon = false,
@@ -215,13 +219,13 @@ export function RunCockpit({
             </div>
 
             <div className={styles.outcomes}>
-              <span className={styles.secureOutcome} aria-label={`Bank value ${formatTelemetry(model.bankDna)} DNA`}>
+              <span className={styles.secureOutcome} aria-label={`Bank value ${model.bankOutcomeLabel ?? `${formatTelemetry(model.bankDna)} DNA`}`} title={model.outcomeUnitLabel}>
                 <ShieldGlyph />
-                <strong>{formatTelemetry(model.bankDna)}</strong>
+                <strong>{model.bankOutcomeLabel ?? formatTelemetry(model.bankDna)}</strong>
               </span>
-              <span className={styles.riskOutcome} aria-label={`Crash salvage ${formatTelemetry(model.crashDna)} DNA`}>
+              <span className={styles.riskOutcome} aria-label={`Crash salvage ${model.crashOutcomeLabel ?? `${formatTelemetry(model.crashDna)} DNA`}`} title={model.outcomeUnitLabel}>
                 <RiskGlyph />
-                <strong>{formatTelemetry(model.crashDna)}</strong>
+                <strong>{model.crashOutcomeLabel ?? formatTelemetry(model.crashDna)}</strong>
               </span>
             </div>
 
@@ -231,19 +235,29 @@ export function RunCockpit({
               data-testid="strain-meter"
             >
               {model.strains.map((strain) => {
-                const activePoints = Math.max(0, Math.min(4, Math.floor(strain.points)));
+                const pointCap = Math.max(
+                  1,
+                  Math.min(
+                    5,
+                    Math.floor(strain.apexTarget ?? model.strainPointCap ?? 4)
+                  )
+                );
+                const activePoints = Math.max(0, Math.min(pointCap, Math.floor(strain.points)));
                 return (
                   <span
                     key={strain.id}
                     className={`${styles.strainGauge} ${strain.suppressed ? styles.strainSuppressed : ''}`}
-                    style={{ '--strain': strain.color } as TokenStyle}
-                    aria-label={`${strain.name} ${activePoints} of 4, tier ${strain.tier}${strain.suppressed ? ', suppressed' : ''}`}
-                    title={`${strain.name} ${activePoints}/4${strain.suppressed ? ' · suppressed' : ''}`}
+                    style={{
+                      '--strain': strain.color,
+                      '--strain-points': String(pointCap),
+                    } as TokenStyle}
+                    aria-label={`${strain.name} ${activePoints} of ${pointCap}, tier ${strain.tier}${strain.suppressed ? ', Dampened: Minor remains available; Expression and Apex capped' : ''}`}
+                    title={`${strain.name} ${activePoints}/${pointCap}${strain.suppressed ? ' · Dampened · Minor available · higher reactions capped' : ''}`}
                     data-testid={`strain-meter-${strain.id}`}
                   >
                     <span className={styles.strainIcon}><StrainGlyph id={strain.id} /></span>
                     <span className={styles.strainSegments} aria-hidden="true">
-                      {[0, 1, 2, 3].map((point) => (
+                      {Array.from({ length: pointCap }, (_, point) => (
                         <i key={point} data-active={point < activePoints ? 'true' : 'false'} />
                       ))}
                     </span>
@@ -349,6 +363,40 @@ export function RunCockpit({
               </span>
             </div>
           )}
+
+          {model.overclock ? (
+            <div
+              className={styles.overclockRail}
+              data-active={model.overclock.active ? 'true' : 'false'}
+              data-testid="genome-overclock-control"
+            >
+              {model.overclock.active ? (
+                <span
+                  role="status"
+                  aria-label={`${model.overclock.active.label} active at ${model.overclock.active.multiplierBps / 10_000} times speed for ${model.overclock.active.remainingMoves} more moves`}
+                >
+                  <OverclockGlyph />
+                  <strong>{model.overclock.active.label}</strong>
+                  <em>{model.overclock.active.remainingMoves}M</em>
+                </span>
+              ) : model.overclock.available.map((source, index) => (
+                <button
+                  key={source.source}
+                  type="button"
+                  disabled={!onOverclock || !['active', 'apex'].includes(model.state)}
+                  onClick={() => onOverclock?.(source.source)}
+                  aria-label={`Activate ${source.label}, speed ${source.multiplierBps / 10_000} times for ${source.moveBudget} moves`}
+                  aria-keyshortcuts={index === 0 ? 'R' : 'Shift+R'}
+                  title={`${source.label} · ×${source.multiplierBps / 10_000} speed · ${source.moveBudget} moves · ${index === 0 ? 'R' : 'Shift+R'}`}
+                  data-overclock-source={source.source}
+                >
+                  <OverclockGlyph />
+                  <strong>{source.label}</strong>
+                  <kbd>{index === 0 ? 'R' : '⇧R'}</kbd>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div
             className={styles.controls}

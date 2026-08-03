@@ -26,3 +26,33 @@ export function rollGeneOfferInterval(
     Math.floor(rng() * span)
   );
 }
+
+/**
+ * V2-only buildcraft cadence. The first two decisions arrive after four foods
+ * so the Genome becomes visible immediately; later intervals are uniformly
+ * 4–6 (mean five). V1 callers remain on `GENE_OFFER_CADENCE` above.
+ */
+export const GENOME_V2_GENE_OFFER_CADENCE = {
+  openingOfferCount: 2,
+  openingInterval: 4,
+  intervalBase: 5,
+  intervalJitter: 1,
+  minFoodsPerPick: 4,
+  maxFoodsPerPick: 6,
+} as const;
+
+export function rollGenomeV2GeneOfferInterval(
+  offerIndex: number,
+  rng: () => number
+): number {
+  const index = Math.max(0, Math.floor(offerIndex));
+  if (index < GENOME_V2_GENE_OFFER_CADENCE.openingOfferCount) {
+    return GENOME_V2_GENE_OFFER_CADENCE.openingInterval;
+  }
+  const span = 2 * GENOME_V2_GENE_OFFER_CADENCE.intervalJitter + 1;
+  return (
+    GENOME_V2_GENE_OFFER_CADENCE.intervalBase -
+    GENOME_V2_GENE_OFFER_CADENCE.intervalJitter +
+    Math.floor(Math.min(0.999999999999, Math.max(0, rng())) * span)
+  );
+}

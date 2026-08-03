@@ -55,7 +55,9 @@ describe('RunCockpit', () => {
     expect(screen.getByTestId('hold-budget')).toHaveTextContent('2/4');
     expect(screen.getByTestId('hold-budget')).toHaveAttribute('data-spent', 'false');
     expect(screen.getByLabelText('Gold Trail')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Umbra 2 of 4, tier 1, suppressed/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(
+      /Umbra 2 of 4, tier 1, Dampened: Minor remains available; Expression and Apex capped/i
+    )).toBeInTheDocument();
     expect(screen.getByTestId('first-movement-prompt')).toHaveTextContent(
       'Swipe or press an arrow to move'
     );
@@ -79,6 +81,114 @@ describe('RunCockpit', () => {
     expect(screen.getByTestId('free-play-watermark')).toHaveAccessibleName(
       /free play, primal dynasty/i
     );
+  });
+
+  it('renders the complete 2/3/4 Genome v2 ladder without changing legacy width', () => {
+    const { rerender } = render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          strainPointCap: 4,
+          strains: MODEL.strains.map((strain) =>
+            strain.id === 'AURUM' ? { ...strain, points: 4 } : strain
+          ),
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 4 of 4, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(4);
+
+    rerender(
+      <RunCockpit model={MODEL} onPause={jest.fn()} onResetView={jest.fn()}>
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 3 of 4, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(4);
+  });
+
+  it('renders each run-frozen shifted Apex target without clamping its truth', () => {
+    const { rerender } = render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          strains: MODEL.strains.map((strain) =>
+            strain.id === 'AURUM'
+              ? { ...strain, points: 3, tier: 3, apexTarget: 3 }
+              : strain
+          ),
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 3 of 3, tier 3/i)).toBeInTheDocument();
+    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(3);
+
+    rerender(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          strains: MODEL.strains.map((strain) =>
+            strain.id === 'AURUM'
+              ? { ...strain, points: 4, tier: 2, apexTarget: 5 }
+              : strain
+          ),
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 4 of 5, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(5);
+
+    rerender(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          strains: MODEL.strains.map((strain) =>
+            strain.id === 'AURUM'
+              ? { ...strain, points: 5, tier: 3, apexTarget: 5 }
+              : strain
+          ),
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText(/Aurum 5 of 5, tier 3/i)).toBeInTheDocument();
+  });
+
+  it('shows exact Genome v2 Yield labels without pretending they are final DNA', () => {
+    render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          bankOutcomeLabel: '42.75Y',
+          crashOutcomeLabel: '8.5Y',
+          outcomeUnitLabel: 'Genome Yield before stamped outer multipliers',
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByLabelText('Bank value 42.75Y')).toHaveAttribute(
+      'title',
+      'Genome Yield before stamped outer multipliers'
+    );
+    expect(screen.getByLabelText('Crash salvage 8.5Y')).toBeInTheDocument();
   });
 
   it('adapts training progress without exposing economy instruments', () => {
@@ -147,6 +257,61 @@ describe('RunCockpit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pause run' }));
     expect(onResetView).toHaveBeenCalledTimes(1);
     expect(onPause).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes REDLINE an explicit player action and shows its bounded active window', () => {
+    const onOverclock = jest.fn();
+    const { rerender } = render(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          state: 'active',
+          overclock: {
+            active: null,
+            available: [{
+              source: 'zenith_protocol',
+              label: 'REDLINE',
+              multiplierBps: 17_500,
+              moveBudget: 14,
+            }],
+          },
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+        onOverclock={onOverclock}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Activate REDLINE, speed 1.75 times for 14 moves',
+    }));
+    expect(onOverclock).toHaveBeenCalledWith('zenith_protocol');
+
+    rerender(
+      <RunCockpit
+        model={{
+          ...MODEL,
+          state: 'active',
+          overclock: {
+            active: {
+              source: 'zenith_protocol',
+              label: 'REDLINE',
+              multiplierBps: 17_500,
+              remainingMoves: 9,
+            },
+            available: [],
+          },
+        }}
+        onPause={jest.fn()}
+        onResetView={jest.fn()}
+        onOverclock={onOverclock}
+      >
+        <canvas />
+      </RunCockpit>
+    );
+    expect(screen.getByRole('status', { name: /redline active at 1.75 times speed for 9 more moves/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /activate redline/i })).toBeNull();
   });
 
   it('keeps tactical-hold guidance off-board and exposes an abandon action', () => {

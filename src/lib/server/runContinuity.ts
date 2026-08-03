@@ -17,6 +17,7 @@ import { resolveGrowthProfile } from '@/shared/game/growth';
 import { ladderHoldBase, resolveLadderRung } from '@/shared/game/ladder';
 import { isAnomalyId } from '@/shared/game/anomalies';
 import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
+import { GenomeV2Runtime } from '@/lib/game/genomeV2Runtime';
 import { isStrainId, STRAIN_PHYSICS } from '@/shared/game/strains';
 import {
   SNAKE_RULES_VERSION,
@@ -35,6 +36,13 @@ import {
   strainActivations,
   strainTierAtFood,
 } from '@/shared/game/genome';
+import {
+  GENOME_RULES_V2,
+  assertGenomeV2PersistenceBound,
+  genomeV2FtueFromPresentation,
+  genomeV2YieldFloor,
+  type GenomeV2RunRecord,
+} from '@/shared/game/genomeV2';
 import {
   isChargeExempt,
   type ChargeExemptionFacts,
@@ -403,7 +411,34 @@ function isDirection(value: unknown): value is Direction {
   return ['UP', 'DOWN', 'LEFT', 'RIGHT'].includes(String(value));
 }
 
-function parseReplayTrace(value: unknown): SnakeReplayTrace {
+function boundedReplayIdentity(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 160 &&
+    value.trim() === value &&
+    !/[\u0000-\u001f\u007f]/.test(value)
+  );
+}
+
+function hasOnlyReplayKeys(
+  action: Record<string, unknown>,
+  keys: readonly string[]
+): boolean {
+  const allowed = new Set(keys);
+  return Object.keys(action).every((key) => allowed.has(key));
+}
+
+function replaySlot(value: unknown): value is 0 | 1 | 2 | 3 | 4 | 5 {
+  return safeInteger(value) !== null && (value as number) <= 5;
+}
+
+/**
+ * Strictly normalize the replay boundary before any action reaches physics.
+ * V2 decisions are discriminated unions on the wire as well as in TypeScript:
+ * branch-incompatible fields are rejected instead of being silently ignored.
+ */
+export function parseReplayTrace(value: unknown): SnakeReplayTrace {
   const record = objectRecord(value);
   const ticks = safeInteger(record?.ticks);
   if (
@@ -461,6 +496,164 @@ function parseReplayTrace(value: unknown): SnakeReplayTrace {
         }
         actions.push({ tick, kind: 'surge', strain: action.strain });
         break;
+      case 'genome_v2_offer': {
+        if (!boundedReplayIdentity(action.offerId)) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 offer identity.');
+        }
+        if (action.choice === 'decline') {
+          if (
+            !hasOnlyReplayKeys(action, [
+              'tick',
+              'kind',
+              'offerId',
+              'choice',
+              'pinCandidate',
+            ]) ||
+            (action.pinCandidate !== undefined &&
+              action.pinCandidate !== 0 &&
+              action.pinCandidate !== 1)
+          ) {
+            rejectCheckpoint('Run checkpoint contains an invalid Genome v2 decline.');
+          }
+          actions.push({
+            tick,
+            kind: 'genome_v2_offer',
+            offerId: action.offerId,
+            choice: 'decline',
+            ...(action.pinCandidate !== undefined
+              ? { pinCandidate: action.pinCandidate }
+              : {}),
+          });
+          break;
+        }
+        if (
+          (action.choice !== 0 && action.choice !== 1) ||
+          !replaySlot(action.slot) ||
+          !hasOnlyReplayKeys(action, [
+            'tick',
+            'kind',
+            'offerId',
+            'choice',
+            'slot',
+          ])
+        ) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 gene choice.');
+        }
+        actions.push({
+          tick,
+          kind: 'genome_v2_offer',
+          offerId: action.offerId,
+          choice: action.choice,
+          slot: action.slot,
+        });
+        break;
+      }
+      case 'genome_v2_portal': {
+        if (!boundedReplayIdentity(action.portalId)) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 portal identity.');
+        }
+        if (action.choice === 'bank') {
+          if (
+            !hasOnlyReplayKeys(action, ['tick', 'kind', 'portalId', 'choice'])
+          ) {
+            rejectCheckpoint('Run checkpoint contains an invalid Genome v2 BANK action.');
+          }
+          actions.push({
+            tick,
+            kind: 'genome_v2_portal',
+            portalId: action.portalId,
+            choice: 'bank',
+          });
+          break;
+        }
+        if (action.choice === 'continue') {
+          if (
+            typeof action.activateMirror !== 'boolean' ||
+            !hasOnlyReplayKeys(action, [
+              'tick',
+              'kind',
+              'portalId',
+              'choice',
+              'activateMirror',
+            ])
+          ) {
+            rejectCheckpoint('Run checkpoint contains an invalid Genome v2 CONTINUE action.');
+          }
+          actions.push({
+            tick,
+            kind: 'genome_v2_portal',
+            portalId: action.portalId,
+            choice: 'continue',
+            activateMirror: action.activateMirror,
+          });
+          break;
+        }
+        if (
+          (action.choice !== 'infuse' && action.choice !== 'recode') ||
+          (action.candidate !== 0 && action.candidate !== 1) ||
+          !replaySlot(action.slot) ||
+          !hasOnlyReplayKeys(action, [
+            'tick',
+            'kind',
+            'portalId',
+            'choice',
+            'candidate',
+            'slot',
+          ])
+        ) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 MUTATE action.');
+        }
+        actions.push({
+          tick,
+          kind: 'genome_v2_portal',
+          portalId: action.portalId,
+          choice: action.choice,
+          candidate: action.candidate,
+          slot: action.slot,
+        });
+        break;
+      }
+      case 'genome_v2_target':
+        if (
+          !boundedReplayIdentity(action.targetId) ||
+          (action.choice !== 'ordinary' && action.choice !== 'gilded') ||
+          !hasOnlyReplayKeys(action, [
+            'tick',
+            'kind',
+            'targetId',
+            'choice',
+          ])
+        ) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 target choice.');
+        }
+        actions.push({
+          tick,
+          kind: 'genome_v2_target',
+          targetId: action.targetId,
+          choice: action.choice,
+        });
+        break;
+      case 'genome_v2_overclock':
+        if (
+          !boundedReplayIdentity(action.activationId) ||
+          (action.source !== 'volt_apex' &&
+            action.source !== 'zenith_protocol') ||
+          !hasOnlyReplayKeys(action, [
+            'tick',
+            'kind',
+            'source',
+            'activationId',
+          ])
+        ) {
+          rejectCheckpoint('Run checkpoint contains an invalid Genome v2 Overclock action.');
+        }
+        actions.push({
+          tick,
+          kind: 'genome_v2_overclock',
+          source: action.source,
+          activationId: action.activationId,
+        });
+        break;
       default:
         rejectCheckpoint('Run checkpoint contains an unknown replay action.');
     }
@@ -473,12 +666,17 @@ function parseTerminalReplayProof(value: unknown): SnakeTerminalReplayProof {
   const fromTick = safeInteger(record?.fromTick);
   const toTick = safeInteger(record?.toTick);
   const actionOffset = safeInteger(record?.actionOffset);
+  const activeElapsedValue = record?.activeElapsedMs;
+  const activeElapsedMs = activeElapsedValue === undefined
+    ? undefined
+    : safeInteger(activeElapsedValue);
   if (
     fromTick === null ||
     toTick === null ||
     toTick < fromTick ||
     toTick - fromTick > RUN_REPLAY_MAX_TICKS_PER_CHECKPOINT ||
     actionOffset === null ||
+    activeElapsedMs === null ||
     !Array.isArray(record?.actions) ||
     record.actions.length > RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT
   ) {
@@ -490,7 +688,13 @@ function parseTerminalReplayProof(value: unknown): SnakeTerminalReplayProof {
   if (parsed.actions.some((action) => action.tick < fromTick)) {
     rejectCheckpoint('Terminal replay proof predates its checkpoint base.');
   }
-  return { fromTick, toTick, actionOffset, actions: parsed.actions };
+  return {
+    fromTick,
+    toTick,
+    actionOffset,
+    actions: parsed.actions,
+    activeElapsedMs,
+  };
 }
 
 function replayComparable(checkpoint: SnakeCheckpointV1): Record<string, unknown> {
@@ -529,7 +733,7 @@ function replayEngineFromCheckpoint(checkpoint: SnakeCheckpointV1): SnakeGameLog
 function deriveCanonicalReplay(
   proposed: SnakeCheckpointV1,
   previous: SnakeCheckpointV1,
-  serverElapsedMs: number
+  activeElapsedMs: number
 ): SnakeCheckpointV1 {
   const trace = parseReplayTrace(proposed.privateState.replay);
   const priorTrace = parseReplayTrace(previous.privateState.replay);
@@ -557,7 +761,11 @@ function deriveCanonicalReplay(
   }
   const canonical = engine.exportCheckpoint();
   canonical.state.startTime = null;
-  canonical.privateState.elapsedMs = serverElapsedMs;
+  // Replay reconstructs gameplay state from the accepted checkpoint, while
+  // elapsed time remains the client's already-validated cumulative active
+  // clock. Time spent offline must never become run time. The wall clock since
+  // activation is used only as the upper integrity bound below.
+  canonical.privateState.elapsedMs = activeElapsedMs;
   if (!jsonEquivalent(replayComparable(proposed), replayComparable(canonical))) {
     rejectCheckpoint('Run checkpoint does not equal its deterministic replay.');
   }
@@ -686,6 +894,62 @@ function validateCheckpointGenome(
   const { state, privateState, config } = checkpoint;
   if (privateState.drivenRun !== false || !Array.isArray(state.lossEvents) || state.lossEvents.length > 0) {
     rejectCheckpoint('Run checkpoint contains an unsupported authored or length-loss state.');
+  }
+  if (config.genome?.rulesVersion === GENOME_RULES_V2) {
+    const reducer = state.genomeV2;
+    const snapshot = privateState.genomeV2Runtime;
+    if (
+      !reducer ||
+      reducer.v !== GENOME_RULES_V2 ||
+      !snapshot ||
+      state.foodEaten !== reducer.foodCount ||
+      state.dnaCollected !== genomeV2YieldFloor(reducer.ledger.bankableYield)
+    ) {
+      rejectCheckpoint('Run checkpoint contains inconsistent Genome v2 progress.');
+    }
+    if (
+      previous &&
+      (previous.config.genome?.rulesVersion !== GENOME_RULES_V2 ||
+        previous.state.genomeV2?.v !== GENOME_RULES_V2 ||
+        !previous.privateState.genomeV2Runtime)
+    ) {
+      rejectCheckpoint('Run checkpoint changes its Genome rules version.');
+    }
+    try {
+      assertGenomeV2PersistenceBound(reducer);
+      const restored = new GenomeV2Runtime({
+        runSeed: config.genome.runSeed,
+        dynasty: config.ruleset,
+        pool: config.genome.v2GenePool,
+        ftue: config.genome.ftuePresentation
+          ? genomeV2FtueFromPresentation(config.genome.ftuePresentation)
+          : reducer.ftue,
+        startingStrainPoints: config.genome.heirloom,
+        offerTiltStrain: config.genome.offerTiltStrain,
+        suppressedStrains: config.genome.suppressedStrains,
+        strainThresholdDelta: config.genome.strainThresholdDelta,
+        externalSecondLife: config.traits.includes('iron_scales')
+          ? 'iron_scales'
+          : null,
+        reducerState: reducer,
+        snapshot,
+      });
+      if (!jsonEquivalent(restored.getState(), reducer)) {
+        rejectCheckpoint('Run checkpoint rewrites its Genome v2 reducer.');
+      }
+    } catch (error) {
+      if (error instanceof RunContinuityError) throw error;
+      rejectCheckpoint('Run checkpoint contains an invalid Genome v2 runtime.');
+    }
+
+    // Body, speed, terrain, event identities, and runtime cursors are proved
+    // by the deterministic opening/suffix comparator before this branch. Do
+    // not re-derive them with Genome-v1 formulas, and do not reject a Phase
+    // Scar merely because its creation tick still contains the head cell.
+    return;
+  }
+  if (state.genomeV2 !== null || privateState.genomeV2Runtime != null) {
+    rejectCheckpoint('Legacy run checkpoint carries Genome v2 state.');
   }
   if (
     !Array.isArray(state.heldMutations) ||
@@ -1115,7 +1379,7 @@ export function validateRunCheckpoint(
   const canonical = deriveCanonicalReplay(
     typed,
     context.previous!,
-    serverElapsedMs
+    elapsedMs
   );
   const canonicalFood = canonical.state.foodEaten;
   validateCheckpointBoard(canonical, context.previous!, expectedDynasty);
@@ -1192,6 +1456,8 @@ export async function stageRunStartFinalization(
     exempt: boolean;
     energyVisible: boolean;
     manifestBase: Record<string, unknown>;
+    /** Exact settlement authority mirrored by `manifestBase.runContext`. */
+    runContext: Record<string, unknown> | null;
   }
 ): Promise<void> {
   const reserved = ['sessionId', 'energy', 'charge', 'clanBattle'];
@@ -1206,11 +1472,15 @@ export async function stageRunStartFinalization(
       continuity_energy_commitment: input.exempt ? 0 : input.requestedCommitment,
       continuity_exempt: input.exempt,
       continuity_energy_visible: input.energyVisible,
+      ...(input.runContext ? { run_context: input.runContext } : {}),
     })
     .eq('id', input.sessionId)
     .eq('player_id', input.playerId)
     .eq('continuity_phase', 'preparing')
     .is('start_manifest', null)
+    // The first successful stage is immutable. A concurrent repair cannot
+    // replace a manifest/context pair derived under a different deployment.
+    .is('start_manifest_draft', null)
     .is('ended_at', null)
     .is('end_reason', null)
     .select('id');
@@ -1555,7 +1825,7 @@ export interface TerminalRunIntent {
     victory: false;
     mutations: GameOverData['mutations'];
     phoenix_triggered_at_food: number | null;
-    genome: GameOverData['genome'];
+    genome: GameOverData['genome'] | GenomeV2RunRecord;
     death_cause: GameOverData['deathCause'];
     run_events: ReturnType<SnakeGameLogic['getRunEvents']>;
   };
@@ -1592,11 +1862,47 @@ function deriveTerminalIntent(
     ticks: proof.toTick,
     actions: [...priorTrace.actions, ...proof.actions.slice(overlapCount)],
   };
-  const elapsedMs = Math.max(0, now - activatedAt);
-  const maxTicks = Math.ceil(elapsedMs / 20) + 16;
+  const priorActiveElapsedMs = safeInteger(checkpoint.privateState.elapsedMs);
+  if (priorActiveElapsedMs === null) {
+    throw new RunContinuityError(
+      'Terminal checkpoint has invalid active time.',
+      'invalid_checkpoint'
+    );
+  }
+  const suffixTicks = trace.ticks - priorTrace.ticks;
+  // Compatibility for already-open pre-cutover tabs: old terminal proofs do
+  // not carry an elapsed clock. Settle those conservatively from the accepted
+  // checkpoint plus only the fastest physically possible replay suffix. Never
+  // derive progress from activation wall time, which includes offline gaps.
+  const activeElapsedMs = proof.activeElapsedMs ??
+    priorActiveElapsedMs + suffixTicks * STRAIN_PHYSICS.tickFloorMs;
+  const checkpointSavedAt = Date.parse(row.continuity_checkpoint_saved_at ?? '');
+  const leaseIssuedAt = Date.parse(row.continuity_lease_issued_at ?? '');
+  const activeWindowAnchor = Math.max(
+    activatedAt,
+    Number.isFinite(checkpointSavedAt) ? checkpointSavedAt : activatedAt,
+    Number.isFinite(leaseIssuedAt) ? leaseIssuedAt : activatedAt
+  );
+  const serverElapsedMs = Math.max(0, now - activatedAt);
+  const activeWindowMs = Math.max(0, now - activeWindowAnchor);
+  if (
+    !Number.isSafeInteger(activeElapsedMs) ||
+    activeElapsedMs < priorActiveElapsedMs ||
+    activeElapsedMs > serverElapsedMs + 10_000 ||
+    activeElapsedMs - priorActiveElapsedMs > activeWindowMs + 10_000
+  ) {
+    throw new RunContinuityError(
+      'Terminal active time exceeds its server time bound.',
+      'invalid_checkpoint'
+    );
+  }
+  const maxSuffixTicks =
+    Math.ceil(
+      (activeElapsedMs - priorActiveElapsedMs) / STRAIN_PHYSICS.tickFloorMs
+    ) + 16;
   if (
     trace.ticks < priorTrace.ticks ||
-    trace.ticks > maxTicks ||
+    suffixTicks > maxSuffixTicks ||
     trace.ticks - priorTrace.ticks > RUN_REPLAY_MAX_TICKS_PER_CHECKPOINT ||
     trace.actions.length - priorTrace.actions.length >
       RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT
@@ -1616,14 +1922,14 @@ function deriveTerminalIntent(
   const facts: TerminalRunIntent['facts'] = {
     score: result.score,
     dna_earned: result.dnaCollected,
-    duration_seconds: Math.floor(elapsedMs / 1_000),
+    duration_seconds: Math.floor(activeElapsedMs / 1_000),
     food_count: result.foodEaten,
     extracted: result.extracted,
     died: !result.extracted,
     victory: false,
     mutations: result.mutations,
     phoenix_triggered_at_food: result.phoenixTriggeredAtFood,
-    genome: result.genome,
+    genome: result.genomeV2 ?? result.genome,
     death_cause: result.deathCause,
     run_events: engine.getRunEvents(),
   };
@@ -1631,7 +1937,7 @@ function deriveTerminalIntent(
     throw new RunContinuityError('Terminal settlement facts exceed their safe bound.', 'invalid_checkpoint');
   }
   const replayDigest = createHash('sha256')
-    .update(JSON.stringify(trace))
+    .update(JSON.stringify({ trace, activeElapsedMs }))
     .digest('hex');
   return {
     facts,

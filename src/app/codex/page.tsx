@@ -19,9 +19,11 @@
  * recording at the banked-run unlock. That progression is intact; it simply
  * no longer decides whether the rules exist.
  *
- * One piece of content stays hidden: the splice RECIPE. The server nulls
- * `parents` until you have discovered the splice (`api/codex/utils.ts`), so
- * it is absent from the JSON rather than masked here.
+ * Genome v2 mechanical routes never wait on discovery. Its Splice recipes,
+ * requirements, effects, and costs are visible from the start; discovery
+ * records ownership, history, prestige, and rewards around those public
+ * rules. The preserved v1 archive remains read-only and keeps its original
+ * discovery masking rather than publishing old locked recipes through v2.
  */
 
 import { Suspense, useEffect, useMemo } from 'react';
@@ -29,13 +31,26 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { WorkbenchView } from '@/components/workbench/WorkbenchView';
+import { LegacyGenomeArchive } from '@/components/game/genome/LegacyGenomeArchive';
 import { WORKBENCH_V1_ENABLED } from '@/lib/features/workbench';
+import { GENOME_V2_ENABLED } from '@/lib/features/genomeV2';
 import { useCodexStore } from '@/lib/stores/codexStore';
 import { NavBar } from '@/components/ui/NavBar';
 import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { IconDna, IconFlask } from '@/components/ui/icons';
-import { GENES } from '@/shared/game/genes';
+import { GenomeStrategyAtlas } from '@/components/game/genome/GenomeStrategyAtlas';
+import {
+  buildGenomeV2AtlasModel,
+  discoveredGenomeV2Recipes,
+} from '@/components/game/genome/genomeV2AtlasAdapter';
+import { buildLegacyGenomeAtlasModel } from '@/components/game/genome/legacyGenomeAtlasAdapter';
+import {
+  GENES,
+  GENOME_V2_GENES,
+  isGeneId,
+  isGenomeV2ActiveGeneId,
+} from '@/shared/game/genes';
 import {
   ACTIVE_STRAIN_TIERS,
   describe as describeEntry,
@@ -62,7 +77,7 @@ function LexiconRow({ entry }: { entry: LexiconEntry }) {
         {entry.strains && entry.strains.length > 0 && entry.kind !== 'strain' && (
           <div className="flex gap-1">
             {entry.strains.map((strain) => (
-              <StrainChip key={strain} strain={strain} />
+              <StrainChip key={strain} strain={strain} showGlyph />
             ))}
           </div>
         )}
@@ -130,7 +145,7 @@ function StrainLadder() {
               data-testid={`lexicon-strain-${strain}`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <StrainChip strain={strain} size="md" />
+                <StrainChip strain={strain} size="md" showGlyph />
                 <p className="font-body text-xs text-beige/60">{family.effect}</p>
               </div>
               <div className="mt-3 space-y-3">
@@ -167,6 +182,13 @@ function StrainLadder() {
       </div>
     </section>
   );
+}
+
+function catalogGeneName(id: string, rulesVersion?: 1 | 2): string {
+  if (rulesVersion === 2 && isGenomeV2ActiveGeneId(id)) {
+    return GENOME_V2_GENES[id].name;
+  }
+  return isGeneId(id) ? GENES[id].name : id;
 }
 
 /**
@@ -216,22 +238,52 @@ function ViewTabs({ view }: { view: CodexView }) {
   );
 }
 
-function CodexShell({ view }: { view: CodexView }) {
+function CodexShell({
+  view,
+  studyRef = null,
+}: {
+  view: CodexView;
+  studyRef?: string | null;
+}) {
   const { session, isAuthenticated } = useAuth();
   const {
-    live,
-    unlocked,
-    bankedRuns,
-    unlockAt,
-    data,
-    isLoading,
-    error,
+    ownerId: codexOwnerId,
+    live: storedLive,
+    unlocked: storedUnlocked,
+    bankedRuns: storedBankedRuns,
+    unlockAt: storedUnlockAt,
+    data: storedData,
+    isLoading: storedIsLoading,
+    error: storedError,
     fetchCodex,
+    reset: resetCodex,
   } = useCodexStore();
+  const accessToken = session?.access_token;
+  const authOwnerId = typeof session?.user?.id === 'string' && session.user.id.length > 0
+    ? session.user.id
+    : null;
+  const hasAuthenticatedOwner = isAuthenticated && Boolean(authOwnerId && accessToken);
+  const ownsCodexState = Boolean(authOwnerId && codexOwnerId === authOwnerId);
+  // The render gate is synchronous: an effect has no opportunity to expose A's
+  // discoveries during the first render under B. The store epoch separately
+  // prevents an out-of-order A response from becoming B's state later.
+  const live = ownsCodexState ? storedLive : false;
+  const unlocked = ownsCodexState ? storedUnlocked : false;
+  const bankedRuns = ownsCodexState ? storedBankedRuns : 0;
+  const unlockAt = ownsCodexState ? storedUnlockAt : 0;
+  const data = ownsCodexState ? storedData : null;
+  const isLoading = hasAuthenticatedOwner
+    ? (!ownsCodexState || storedIsLoading)
+    : false;
+  const error = ownsCodexState ? storedError : null;
 
   useEffect(() => {
-    if (session?.access_token) void fetchCodex(session.access_token);
-  }, [session?.access_token, fetchCodex]);
+    if (!isAuthenticated || !accessToken || !authOwnerId) {
+      resetCodex();
+      return;
+    }
+    void fetchCodex(authOwnerId, accessToken);
+  }, [accessToken, authOwnerId, fetchCodex, isAuthenticated, resetCodex]);
 
   const renderedDiscoveryArtifacts = useMemo(() => {
     if (!data) return [];
@@ -249,13 +301,19 @@ function CodexShell({ view }: { view: CodexView }) {
     if (data.progress.genomeWeaverUnlocked) refs.push('genome_weaver');
     return refs;
   }, [data]);
+  const strategyAtlas = useMemo(
+    () => GENOME_V2_ENABLED
+      ? buildGenomeV2AtlasModel(discoveredGenomeV2Recipes(data?.splices ?? []))
+      : buildLegacyGenomeAtlasModel(data?.splices ?? []),
+    [data?.splices]
+  );
 
   // The Codex dot clears only when this player's discovery layer has actually
   // loaded. Merely navigating to the public rules reference is not enough.
   useRecognitionSeen(
     'codex',
-    view === 'archive' && Boolean(session?.access_token) && !isLoading && data !== null,
-    session?.access_token,
+    view === 'archive' && hasAuthenticatedOwner && !isLoading && data !== null,
+    accessToken,
     { artifactRefs: renderedDiscoveryArtifacts }
   );
 
@@ -293,11 +351,12 @@ function CodexShell({ view }: { view: CodexView }) {
         {WORKBENCH_V1_ENABLED && <ViewTabs view={view} />}
 
         {view === 'workbench' ? (
-          <WorkbenchView />
+          <WorkbenchView studyRef={studyRef} />
         ) : (
           <>
         {/* ── The rules. No account, no API, no gate. ─────────────────── */}
         <div className="space-y-10 animate-fade-up" data-testid="codex-rules">
+          <GenomeStrategyAtlas model={strategyAtlas} />
           <LexiconGrid
             testId="lexicon-mechanics"
             title="How a run works"
@@ -316,7 +375,7 @@ function CodexShell({ view }: { view: CodexView }) {
             blurb="Permanent, snake-bound sidegrades. Bred, never bought."
             entries={lexiconSection('trait')}
           />
-          <StrainLadder />
+          {!GENOME_V2_ENABLED && <StrainLadder />}
           <LexiconGrid
             testId="lexicon-anomalies"
             title="Anomaly weeks"
@@ -331,7 +390,7 @@ function CodexShell({ view }: { view: CodexView }) {
             Your discoveries
           </h2>
 
-          {!isAuthenticated ? (
+          {!hasAuthenticatedOwner ? (
             <section className="panel p-6 text-center" data-testid="codex-signed-out">
               <p className="text-beige mb-4 font-body">
                 The rules above are the same for everyone. Sign in to see which
@@ -402,7 +461,7 @@ function CodexShell({ view }: { view: CodexView }) {
                       id={`codex-strain-${entry.strain}`}
                       className="panel p-4"
                     >
-                      <StrainChip strain={entry.strain} size="md" />
+                      <StrainChip strain={entry.strain} size="md" showGlyph />
                       <div className="mt-4 space-y-3 text-sm">
                         {(['expression', 'apex'] as const).map((tier) => {
                           const milestone = entry[tier];
@@ -449,22 +508,27 @@ function CodexShell({ view }: { view: CodexView }) {
                         </h4>
                         <div className="flex gap-1">
                           {splice.strains.map((strain) => (
-                            <StrainChip key={strain} strain={strain} />
+                            <StrainChip key={strain} strain={strain} showGlyph />
                           ))}
                         </div>
                       </div>
                       <p className="text-sm text-beige/70 mt-3">{splice.effect}</p>
                       <p className="text-xs text-strike-red/75 mt-2">{splice.cost}</p>
-                      {/* The one thing still withheld — and the server, not
-                          this page, is what withholds it. */}
-                      <p
-                        className="text-xs font-body text-cosmic/80 mt-2"
-                        data-testid={`codex-recipe-${splice.id}`}
-                      >
-                        {splice.parents
-                          ? `Recipe: ${GENES[splice.parents[0]].name} + ${GENES[splice.parents[1]].name}`
-                          : 'Recipe hidden — fuse the right pair to reveal it'}
-                      </p>
+                      {splice.parents ? (
+                        <p
+                          className="text-xs font-body text-cosmic/80 mt-2"
+                          data-testid={`codex-recipe-${splice.id}`}
+                        >
+                          Recipe: {catalogGeneName(splice.parents[0], splice.rulesVersion)} + {catalogGeneName(splice.parents[1], splice.rulesVersion)}
+                        </p>
+                      ) : (
+                        <p
+                          className="text-xs font-body text-beige/45 mt-2"
+                          data-testid={`codex-recipe-${splice.id}`}
+                        >
+                          Recipe undiscovered
+                        </p>
+                      )}
                       <p className="text-xs font-mono text-beige/50 mt-3">
                         {splice.discoveries} runs · {splice.banks} banked
                       </p>
@@ -492,7 +556,7 @@ function CodexShell({ view }: { view: CodexView }) {
                         <h4 className="font-display text-bone-white">{gene.name}</h4>
                         <div className="flex gap-1">
                           {gene.strains.map((strain) => (
-                            <StrainChip key={strain} strain={strain} />
+                            <StrainChip key={strain} strain={strain} showGlyph />
                           ))}
                         </div>
                       </div>
@@ -506,6 +570,10 @@ function CodexShell({ view }: { view: CodexView }) {
                   ))}
                 </div>
               </section>
+
+              {data.legacyArchive ? (
+                <LegacyGenomeArchive archive={data.legacyArchive} />
+              ) : null}
             </div>
           )}
         </div>
@@ -523,7 +591,10 @@ function CodexWithParams() {
     WORKBENCH_V1_ENABLED && searchParams?.get('view') === 'workbench'
       ? 'workbench'
       : 'archive';
-  return <CodexShell view={view} />;
+  const studyRef = GENOME_V2_ENABLED && view === 'workbench'
+    ? searchParams?.get('result')
+    : null;
+  return <CodexShell view={view} studyRef={studyRef} />;
 }
 
 /**

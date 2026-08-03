@@ -46,6 +46,14 @@ import {
   type AscendanceYieldBreakdown,
 } from '@/shared/game/ascendance';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
+import {
+  GenomeYieldRecap,
+  type GenomeYieldRecapModel,
+} from '@/components/game/genome/GenomeYieldRecap';
+import {
+  AscendanceProgressionInstrument,
+  type AscendanceProgressionModel,
+} from '@/components/progression/AscendanceProgressionInstrument';
 
 export type RunResultsOutcome = 'extracted' | 'crashed';
 export type TakeCollectState =
@@ -97,6 +105,12 @@ export interface RunResultsProps {
   replayDisabled: boolean;
   replayEnergy: number;
   shareArtifact?: ReactNode;
+  /** Exact v2 settlement projection; omitted for legacy/unavailable receipts. */
+  genomeRecap?: GenomeYieldRecapModel | null;
+  /** Opaque, authenticated handoff to the settled run's Research reading. */
+  studyGenomeHref?: string | null;
+  /** Exact run-stamped Ascendance presentation, including honest v1 labels. */
+  ascendanceProgression?: AscendanceProgressionModel | null;
 }
 
 function headline(outcome: RunResultsOutcome, practice: boolean) {
@@ -834,6 +848,9 @@ export function RunResults({
   replayDisabled,
   replayEnergy,
   shareArtifact,
+  genomeRecap = null,
+  studyGenomeHref = null,
+  ascendanceProgression = null,
 }: RunResultsProps) {
   const head = headline(outcome, practice);
   const receipt = impact?.receipt;
@@ -949,6 +966,22 @@ export function RunResults({
             </div>
           </details>
         )}
+
+        {!settlementPending && genomeRecap ? <GenomeYieldRecap model={genomeRecap} /> : null}
+        {!settlementPending && genomeRecap && studyGenomeHref ? (
+          <Link
+            href={studyGenomeHref}
+            className="mx-auto flex min-h-[44px] max-w-sm items-center justify-center gap-2 rounded-full border border-cosmic/50 bg-cosmic/10 px-5 py-2 font-display text-sm text-cosmic transition-colors hover:border-cosmic hover:bg-cosmic/20"
+            data-testid="results-study-genome"
+          >
+            <IconFlask size={16} /> Study this Genome <IconArrowRight size={15} />
+          </Link>
+        ) : null}
+        {!settlementPending && ascendanceProgression ? (
+          <div className="mx-auto max-w-lg text-left">
+            <AscendanceProgressionInstrument model={ascendanceProgression} compact />
+          </div>
+        ) : null}
 
         {!settlementPending && clanBattle?.eligible && (
           <div className="panel-glow [--glow:#7df9ff] mx-auto max-w-lg space-y-2 px-4 py-3 text-left" data-testid="results-clan-battle">

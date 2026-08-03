@@ -20,6 +20,7 @@
  */
 
 import React from 'react';
+import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
 import { InfoPopover } from '@/components/ui/InfoPopover';
 import { describe as describeEntry } from '@/shared/game/lexicon';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
@@ -46,6 +47,8 @@ export interface StrainChipProps {
    * for one.
    */
   interactive?: boolean;
+  /** Pair the family rune with its written name for first-glance buildcraft. */
+  showGlyph?: boolean;
   className?: string;
 }
 
@@ -55,6 +58,7 @@ export function StrainChip({
   size = 'sm',
   emphasis = false,
   interactive = false,
+  showGlyph = false,
   className = '',
 }: StrainChipProps): React.ReactElement | null {
   const def = STRAINS[strain];
@@ -81,6 +85,14 @@ export function StrainChip({
           : undefined,
       }}
     >
+      {showGlyph && (
+        <span
+          className={size === 'sm' ? 'h-3 w-3 shrink-0' : 'h-4 w-4 shrink-0'}
+          aria-hidden="true"
+        >
+          <StrainGlyph id={strain} />
+        </span>
+      )}
       {def.name}
       {pips > 0 && (
         <span aria-label={`${pips} point${pips === 1 ? '' : 's'}`}>

@@ -12,7 +12,10 @@ import {
   computeRunTotals,
   normalizeDynastyName,
 } from '@/shared/game/rulesets';
-import { ascendanceYieldBreakdown } from '@/shared/game/ascendance';
+import {
+  ascendanceYieldBreakdown,
+  createAscendanceRunStamp,
+} from '@/shared/game/ascendance';
 
 describe('Game Session Logic', () => {
   describe('Session Start', () => {
@@ -70,6 +73,20 @@ describe('Game Session Logic', () => {
       expect(source).not.toMatch(/requestedProfile/);
       expect(source).not.toMatch(/GROWTH_LAB_ENABLED/);
       expect(source).toMatch(/growthProfileId \? \{ growthProfile: growthProfileId \}/);
+    });
+
+    it('keeps Genome v2 opt-in and retains the complete v1 start contract', () => {
+      const source = fs.readFileSync(
+        path.join(__dirname, 'route.ts'),
+        'utf8'
+      );
+      expect(source).toMatch(/if \(GENOME_V2_ENABLED\)/);
+      expect(source).toMatch(/rulesVersion: GENOME_RULES_V2/);
+      expect(source).toMatch(/v2GenePool: genePool/);
+      expect(source).toMatch(/const ftue = deriveFtue\(bankedRuns, masteryLevel, ownedVariants\)/);
+      expect(source).toMatch(/const genePool = composeGenePool\(/);
+      expect(source).toMatch(/lineage: lineageBias/);
+      expect(source).toMatch(/tierCap: ftueTierCap\(ftue\)/);
     });
 
     it('should create session from the equipped snake', () => {
@@ -719,9 +736,13 @@ describe('Game Session Logic', () => {
         startedAgo(125),
         'PRIMAL'
       );
-      const breakdown = ascendanceYieldBreakdown(validation.adjustedDna, 11);
+      const stamp = createAscendanceRunStamp(11);
+      const breakdown = ascendanceYieldBreakdown(validation.adjustedDna, 11, {
+        curveVersion: stamp.curveVersion,
+        frozenMultiplierBps: stamp.multiplierBps,
+      });
 
-      expect(breakdown.multiplier).toBe(1.1273);
+      expect(breakdown.multiplier).toBe(1.1717);
       expect(breakdown.totalYield).toBe(
         breakdown.baseYield + breakdown.bonusYield
       );
@@ -747,8 +768,11 @@ describe('Game Session Logic', () => {
       // Ascendance landed - the multiplier STACK is still gone, and the one
       // surviving factor is per-snake progression, not account state.
       expect(source).toMatch(
-        /const ascendance = ascendanceYieldBreakdown\(\s*validation\.adjustedDna,\s*ascendanceGeneration\s*\);/
+        /const ascendance = ascendanceYieldBreakdown\(\s*validation\.adjustedDna,\s*ascendanceGeneration,\s*runContext\?\.snake\.ascendance/
       );
+      expect(source).toMatch(/frozenMultiplierBps:\s*runContext\.snake\.ascendance\.multiplierBps/);
+      expect(source).toMatch(/Missing stamps are historical runs/);
+      expect(source).toMatch(/curveVersion: 1/);
       expect(source).toMatch(/const yieldDna = ascendance\.totalYield/);
       // Both earning and practice responses carry the same authoritative
       // explanation; Results never estimates the contribution from Gen text.

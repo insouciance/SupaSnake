@@ -13,15 +13,25 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] `npm audit --audit-level=high` reports no blocking advisory
 - [ ] `npm run build` succeeds
 - [ ] All migrations apply from 001 through the release's highest numbered
-      migration (061 for the Career Spine release) on a clean database; the
-      060-only additive bridge and separate 061 cutover are also exercised
+      migration (065 for the Genome v2 release) on a clean database; the
+      062–065 reviewed bridge chain and its ordinary/concurrency contracts are
+      also exercised
 - [ ] `supabase db push --linked --include-all --dry-run` is a no-op for the
       current baseline, or lists exactly the migrations named in a future
       release plan
+- [ ] While the exact outgoing Production artifact does not yet prove the full
+      Genome v2 capability **and** the corrected 2/3/4 Strain profile, the
+      dedicated hosted read-only preflight reports
+      zero durable v2 sessions before schema mutation and again immediately
+      before Production; any nonzero result blocks this first-cutover rules-v2
+      threshold correction
 - [ ] Build / Lint / Test / E2E workflows are green on the release commit
 - [ ] CI and production builds use `NEXT_PUBLIC_FTUE_V2=true`,
       `NEXT_PUBLIC_HUD_COCKPIT_V1=true`, `NEXT_PUBLIC_LADDER_V1=true`, and
-      `NEXT_PUBLIC_CAREER_SPINE_V1=true`. The production workflow and its E2E
+      `NEXT_PUBLIC_CAREER_SPINE_V1=true`. Genome v2 production additionally
+      requires exact `NEXT_PUBLIC_GENOME_V2=true`; new starts use v1 for every
+      other value while already-stamped v2 sessions remain resumable. The
+      production workflow and its E2E
       matrix additionally compile `NEXT_PUBLIC_RUN_FLOW_V1=true` and prove it
       through `/api/health`; the ordinary Build workflow may retain its
       deliberate flag-off rollback compile. Career settlement and earned
@@ -58,6 +68,13 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] Results presents no more than three meaningful Career recognition beats;
       destination-specific acknowledgement clears server-backed attention
       without bell-open or route-open shortcuts
+- [ ] Tactical Loom candidates name their Strains, show affected 2/3/4 routes
+      and direct Splice fates as a compact reaction map, and never rank choices
+- [ ] Results `Study this Genome` opens the exact owned terminal Genome in the
+      free Research Workbench through an opaque server-backed handoff; no
+      authoritative state appears in URL or browser storage
+- [ ] Flag-off new starts stay v1 while a pre-existing v2 session reconnects,
+      banks/crashes, and settles correctly
 - [ ] Guest-to-email upgrade preserves collection, DNA, lineage, and Codex
 - [ ] Registered deletion schedules 30 days out; a new sign-in cancels it
 - [ ] Guest deletion requires `DELETE MY ACCOUNT` and erases immediately
@@ -98,8 +115,10 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 ## Release execution
 
 - [ ] Backups/PITR and current Vercel production deployment ID are recorded
-- [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (including the reviewed 060 bridge →
-      exact application SHA → invocation drain → 061 Career cutover order)
+- [ ] Follow `docs/ops/RELEASE_RUNBOOK.md` (including exact outgoing inspection
+      → zero-v2 proof → cron snapshot → Preview contract → reviewed migration
+      065 → linked probe → repeated zero-v2 proof → exact application SHA
+      cutover)
 - [ ] Post-release health and core smoke checks pass on `supasnake.com`
 - [ ] Every configured cron route rejects no/incorrect bearer tokens
 - [ ] Discord outbox, Analyst daily job and deletion worker appear in Vercel logs
@@ -109,5 +128,7 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - Any double charge, missing credit, webhook failure, or refund inconsistency
 - Save/collection/lineage corruption or cross-player data exposure
 - Failed production environment, migration dry-run, health, or RLS check
+- Genome capability, flag, versioned-session continuity, or Research ownership
+  mismatch
 - Unresolved consent, age, legal-disclosure, or account-erasure defect
 - Crash-free sessions below 99% during soak

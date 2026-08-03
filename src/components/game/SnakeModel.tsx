@@ -64,7 +64,7 @@ export function getSegmentScale(index: number, length: number): number {
 /** Settled-interior energy. The renderer uses one categorical head/interior
  * step instead of an index gradient, so a stationary coil does not carry a
  * moving brightness wave and the tail never becomes the least legible part. */
-export const ENERGY_MIN = 0.88;
+export const ENERGY_MIN = 0.94;
 
 // -----------------------------------------------------------------------------
 // The trail (WP-3.07) - pure per-segment shape, unit-tested in SnakeModel.test
@@ -110,11 +110,11 @@ export function getTrailFootprint(level: number): number {
  *
  * Kept modest and above zero at level 0: this is a readout, not a punishment,
  * and the segments must stay legible however badly you are packing. The top of
- * the range is bounded by the instanced body's albedo trim (x0.75) so even a
+ * the range is bounded by the instanced body's albedo trim so even a
  * fully fused trunk stays under the bloom threshold - a blooming trunk is a
  * flicker amplifier in motion, which is why that trim exists.
  */
-export const TRAIL_TONE: readonly number[] = [0.8, 0.94, 1.1];
+export const TRAIL_TONE: readonly number[] = [0.9, 1, 1.08];
 
 export function getTrailTone(level: number): number {
   if (level <= 0) return TRAIL_TONE[0];

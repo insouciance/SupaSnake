@@ -128,6 +128,7 @@ import {
   geneStrains,
   type GeneId,
   type GenePick,
+  type GenomeV2ActiveGeneId,
 } from '@/shared/game/genes';
 import {
   SPLICE_ECONOMICS,
@@ -138,6 +139,7 @@ import {
 import {
   STRAIN_ECONOMICS,
   STRAIN_PHYSICS,
+  STRAIN_IDS,
   fortressFiresAt,
   type StrainId,
   type StrainPoints,
@@ -170,6 +172,32 @@ import {
   type LineageBias,
   type OfferTraceEntry,
 } from '@/shared/game/offerGravity';
+import {
+  GENOME_RULES_V2,
+  GENOME_V2_CONFIG,
+  GENOME_V2_STRAIN_THRESHOLDS,
+  genomeV2FtueFromPresentation,
+  genomeV2RunRecord,
+  genomeV2StrainPoints,
+  genomeV2Yield,
+  genomeV2YieldFloor,
+  projectGenomeV2Ladders,
+  type GenomeRulesVersion,
+  type GenomeV2FtueCapability,
+  type GenomeV2FtuePresentation,
+  type GenomeV2RecodePreview,
+  type GenomeV2RunRecord,
+  type GenomeV2SlotIndex,
+  type GenomeV2State,
+} from '@/shared/game/genomeV2';
+import {
+  GenomeV2Runtime,
+  enclosedGenomeV2Cells,
+  genomeV2CircuitRoute,
+  genomeV2PhaseRoute,
+  shortestGenomeV2Route,
+  type GenomeV2RuntimeSnapshot,
+} from './genomeV2Runtime';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
@@ -202,12 +230,7 @@ export interface DirectionInputTiming {
  * not enter the buffer.
  */
 export type SetDirectionResult =
-  | 'accepted'
-  | 'duplicate'
-  | 'reversal'
-  | 'micro_u'
-  | 'queue_full'
-  | 'inactive';
+  'accepted' | 'duplicate' | 'reversal' | 'micro_u' | 'queue_full' | 'inactive';
 
 interface QueuedDirection {
   direction: Direction;
@@ -287,6 +310,8 @@ export interface GameState {
    * the pause state - the pause menu must not render.
    */
   pendingChoice: [GeneId, GeneId] | null;
+  /** Canonical reducer state for a rules-version-2 run; null for v1/legacy. */
+  genomeV2: GenomeV2State | null;
   // --- GENOME (Buildcraft: The Genome) - all inert in legacy mode ----------
   /** Live strain points (heirloom + genes + surges). */
   strainCounts: StrainPoints;
@@ -314,7 +339,16 @@ export interface GameState {
    * freezes the engine (like the gene choice hold) until the player
    * resolves BANK or INFUSE. Null when no portal decision is pending.
    */
-  pendingPortalChoice: { canInfuse: boolean } | null;
+  pendingPortalChoice: {
+    canInfuse: boolean;
+    /** V2-only server-authored capability facts. Omitted on v1 paths. */
+    canContinue?: boolean;
+    canMutate?: boolean;
+    continueLockedReason?: string | null;
+    mutateLockedReason?: string | null;
+    continueCapability?: GenomeV2FtueCapability;
+    portalGenomeCapability?: GenomeV2FtueCapability;
+  } | null;
   /** Surge-strain choice hold (infusing while at the gene cap). */
   pendingSurgeChoice: boolean;
   /** The run's one revive, once fired (generalizes phoenixTriggeredAtFood). */
@@ -407,6 +441,8 @@ export interface GameOverData {
    * server-side - nothing is trusted.
    */
   genome: GameOverGenome | null;
+  /** Canonical v2 run record. Absent on every legacy/v1 payload. */
+  genomeV2?: GenomeV2RunRecord;
 }
 
 /** The genome block of the end-of-run payload. */
@@ -461,7 +497,8 @@ type GameEvent =
   | 'warpSkinTriggered'
   | 'pocketRiftTriggered'
   | 'petrified'
-  | 'reviveTriggered';
+  | 'reviveTriggered'
+  | 'genomeV2Event';
 type EventCallback = (data?: unknown) => void;
 
 interface GameOptions {
@@ -548,10 +585,23 @@ export interface DrivenStartState {
 
 /** Server-issued genome capability + run-start context. */
 export interface GenomeEngineConfig {
+  /** Missing is deliberately v1 for historical sessions and old clients. */
+  rulesVersion?: GenomeRulesVersion;
   /** The session's offer seed (stored on the session row). */
   runSeed: string;
+  /**
+   * Optional server-authored opening reducer state for rules v2. The engine
+   * rejects a Dynasty mismatch instead of trusting a client-selected state.
+   */
+  reducerState?: GenomeV2State;
+  /** Curated v2 pool. V1 continues to read `genePool` below unchanged. */
+  v2GenePool?: GenomeV2ActiveGeneId[];
+  /** Exact server-authored v2 capability/progress presentation. */
+  ftuePresentation?: GenomeV2FtuePresentation;
   /** Starting strain points (heirloom traits + lineage, server-derived). */
   heirloom?: StrainPoints;
+  /** Server-derived Signal/anomaly offer tilt for v2. */
+  offerTiltStrain?: StrainId | null;
   /** The unlocked gene offer pool (server-composed). */
   genePool?: GeneId[];
   /** Lineage offer bias (strength 0+ lineages). */
@@ -587,6 +637,40 @@ export interface GenomeEngineConfig {
   };
 }
 
+export type GenomeV2OfferResolution =
+  | {
+      action: 'choose';
+      offerId: string;
+      candidateIndex: 0 | 1;
+      replacementSlot?: GenomeV2SlotIndex;
+    }
+  | {
+      action: 'decline';
+      offerId: string;
+      pinCandidateIndex?: 0 | 1;
+    };
+
+export type GenomeV2PortalResolution =
+  | { action: 'bank'; portalId: string }
+  | {
+      action: 'continue';
+      portalId: string;
+      activateMirror?: boolean;
+    }
+  | {
+      action: 'mutate';
+      portalId: string;
+      candidateIndex: 0 | 1;
+      /** Open locus for INFUSE, occupied locus for a final confirmed Recode. */
+      replacementSlot?: GenomeV2SlotIndex;
+    };
+
+export interface GenomeV2OverclockResolution {
+  source: 'volt_apex' | 'zenith_protocol';
+  /** Replay supplies the stable identity; live callers omit it. */
+  activationId?: string;
+}
+
 export const SNAKE_CHECKPOINT_VERSION = 1 as const;
 export const DEATH_SEQUENCE_DURATION_MS = 800;
 /**
@@ -611,7 +695,36 @@ export type SnakeReplayAction =
   | { tick: number; kind: 'resume' }
   | { tick: number; kind: 'mutation'; choice: 0 | 1 | 'decline' }
   | { tick: number; kind: 'portal'; choice: 'bank' | 'pass' | 'infuse' }
-  | { tick: number; kind: 'surge'; strain: StrainId };
+  | { tick: number; kind: 'surge'; strain: StrainId }
+  | {
+      tick: number;
+      kind: 'genome_v2_offer';
+      offerId: string;
+      choice: 0 | 1 | 'decline';
+      pinCandidate?: 0 | 1;
+      slot?: GenomeV2SlotIndex;
+    }
+  | {
+      tick: number;
+      kind: 'genome_v2_portal';
+      portalId: string;
+      choice: 'bank' | 'continue' | 'infuse' | 'recode';
+      candidate?: 0 | 1;
+      slot?: GenomeV2SlotIndex;
+      activateMirror?: boolean;
+    }
+  | {
+      tick: number;
+      kind: 'genome_v2_target';
+      targetId: string;
+      choice: 'ordinary' | 'gilded';
+    }
+  | {
+      tick: number;
+      kind: 'genome_v2_overclock';
+      source: 'volt_apex' | 'zenith_protocol';
+      activationId: string;
+    };
 
 export interface SnakeReplayTrace {
   ticks: number;
@@ -628,6 +741,13 @@ export interface SnakeTerminalReplayProof {
   toTick: number;
   actionOffset: number;
   actions: SnakeReplayAction[];
+  /**
+   * Cumulative play-clock elapsed at the terminal boundary. A restored engine
+   * carries the accepted checkpoint value forward, so time spent offline is
+   * absent. The server treats this as a bounded proposal, never raw authority.
+   * Optional only so already-open pre-cutover tabs can finish conservatively.
+   */
+  activeElapsedMs?: number;
 }
 
 /**
@@ -680,6 +800,8 @@ export interface SnakeCheckpointV1 {
     runEventsTruncated: boolean;
     elapsedMs: number;
     replay: SnakeReplayTrace;
+    /** Additive and optional so every historical v1 checkpoint still reads. */
+    genomeV2Runtime?: GenomeV2RuntimeSnapshot | null;
   };
 }
 
@@ -746,6 +868,8 @@ export class SnakeGameLogic {
   private anomaly: AnomalyId | null;
   /** Genome capability - non-null only when the server issued a runSeed. */
   private genome: GenomeEngineConfig | null;
+  /** Reducer/event adapter, present only for an explicitly stamped v2 run. */
+  private genomeV2Runtime: GenomeV2Runtime | null = null;
   /**
    * The run's growth profile (WP-3.02), server-stamped into `run_context`.
    * NEVER read from a build-time flag: `computeLengthTrace` recomputes with
@@ -882,13 +1006,13 @@ export class SnakeGameLogic {
    * forge unlimited `decision` pauses at otherwise ordinary board states.
    */
   private decisionHoldEntitled = false;
-
   constructor(options: GameOptions = {}) {
     if (options.rng && options.simulationSeed) {
       throw new Error('Provide rng or simulationSeed, not both');
     }
     this.gridSize = options.gridSize ?? GAME_CONFIG.board.gridSize;
-    this.initialLength = options.initialLength ?? GAME_CONFIG.snake.initialLength;
+    this.initialLength =
+      options.initialLength ?? GAME_CONFIG.snake.initialLength;
     this.ruleset = options.ruleset ?? RULESETS.COSMIC;
     if (options.simulationSeed) {
       this.replayableRng = StatefulRng.fromSeed(options.simulationSeed);
@@ -919,6 +1043,7 @@ export class SnakeGameLogic {
     this.speed = options.initialSpeed ?? this.ruleset.speedForFood(0);
     this.events = new Map();
     this.clearDirectionalIntent();
+    this.genomeV2Runtime = this.createGenomeV2Runtime();
 
     this.state = this.createInitialState();
   }
@@ -938,9 +1063,83 @@ export class SnakeGameLogic {
     return this.replayableRng !== null;
   }
 
-  /** True while the run plays under genome rules (server capability). */
+  /** Missing rulesVersion remains byte-compatible Genome v1. */
   private genomeActive(): boolean {
-    return this.genome !== null;
+    return this.genome !== null && this.genome.rulesVersion !== GENOME_RULES_V2;
+  }
+
+  private genomeV2Active(): boolean {
+    return this.genome?.rulesVersion === GENOME_RULES_V2;
+  }
+
+  private createGenomeV2Runtime(
+    snapshot?: GenomeV2RuntimeSnapshot,
+    reducerStateOverride?: GenomeV2State
+  ): GenomeV2Runtime | null {
+    if (!this.genomeV2Active() || !this.genome) return null;
+    const reducerState = reducerStateOverride ?? this.genome.reducerState;
+    if (!reducerState) {
+      if (!this.genome.v2GenePool || this.genome.v2GenePool.length < 2) {
+        throw new Error(
+          'Fresh Genome v2 runs require a server-frozen gene pool.'
+        );
+      }
+      if (!this.genome.ftuePresentation) {
+        throw new Error(
+          'Fresh Genome v2 runs require server-authored FTUE facts.'
+        );
+      }
+    }
+    const reducerDynasty = reducerState?.dynasty;
+    const ftue = this.genome.ftuePresentation
+      ? genomeV2FtueFromPresentation(this.genome.ftuePresentation)
+      : reducerState?.ftue;
+    return new GenomeV2Runtime({
+      runSeed: this.genome.runSeed,
+      dynasty: reducerDynasty ?? (this.ruleset.id as DynastyName),
+      pool: this.genome.v2GenePool,
+      ftue,
+      startingStrainPoints: this.genome.heirloom,
+      offerTiltStrain: this.genome.offerTiltStrain,
+      suppressedStrains: this.genome.suppressedStrains,
+      strainThresholdDelta: this.genome.strainThresholdDelta,
+      externalSecondLife: this.hasTrait('iron_scales') ? 'iron_scales' : null,
+      reducerState,
+      snapshot,
+      onEvent: (event) => this.emit('genomeV2Event', event),
+    });
+  }
+
+  private syncGenomeV2State(): void {
+    const reducer = this.genomeV2Runtime?.getState() ?? null;
+    this.state.genomeV2 = reducer;
+    if (reducer) {
+      this.state.dnaCollected = genomeV2YieldFloor(
+        reducer.ledger.bankableYield
+      );
+      this.state.strainCounts = genomeV2StrainPoints(reducer);
+      const ladders = projectGenomeV2Ladders(reducer);
+      this.state.strainTiers = Object.fromEntries(
+        STRAIN_IDS.map((strain) => {
+          const active = ladders[strain].activeTier;
+          const semanticTier = active === GENOME_V2_STRAIN_THRESHOLDS.apex
+            ? 3
+            : active === GENOME_V2_STRAIN_THRESHOLDS.expression
+              ? 2
+              : active === GENOME_V2_STRAIN_THRESHOLDS.minor
+                ? 1
+                : 0;
+          return [strain, semanticTier];
+        })
+      );
+    }
+  }
+
+  private genomeV2OfferPending(): boolean {
+    return (
+      this.state.genomeV2?.offer !== null &&
+      this.state.genomeV2?.offer !== undefined
+    );
   }
 
   /**
@@ -951,13 +1150,15 @@ export class SnakeGameLogic {
    */
   setGenome(genome: GenomeEngineConfig | null): void {
     if (this.state.isPlaying) return;
-    this.genome = genome;
+    this.genome = genome ? checkpointClone(genome) : null;
+    this.genomeV2Runtime = this.createGenomeV2Runtime();
     this.state.strainCounts = this.spawnStrainPoints();
+    this.syncGenomeV2State();
   }
 
   /** The active genome config (or null in legacy mode). */
   getGenome(): GenomeEngineConfig | null {
-    return this.genome ? { ...this.genome } : null;
+    return this.genome ? checkpointClone(this.genome) : null;
   }
 
   /**
@@ -1076,9 +1277,10 @@ export class SnakeGameLogic {
   /** Recompute the fused view + activations + live tiers after a change. */
   private refreshGenomeDerived(): void {
     if (!this.genomeActive()) return;
-    this.fusedView = this.genome?.ftue?.splicesUnlocked === false
-      ? { loose: [...this.state.heldMutations], splices: [] }
-      : fusePicks(this.state.heldMutations);
+    this.fusedView =
+      this.genome?.ftue?.splicesUnlocked === false
+        ? { loose: [...this.state.heldMutations], splices: [] }
+        : fusePicks(this.state.heldMutations);
     this.state.fusedSplices = this.fusedView.splices.map((s) => ({
       id: s.spliceId,
       atFood: s.atFood,
@@ -1103,10 +1305,18 @@ export class SnakeGameLogic {
       const tier = Math.min(gate, strainTierAtFood(a, Number.MAX_SAFE_INTEGER));
       if (tier > 0) tiers[strain] = tier;
       const beforeTier = before
-        ? Math.min(gate, strainTierAtFood(before[strain], Number.MAX_SAFE_INTEGER))
+        ? Math.min(
+            gate,
+            strainTierAtFood(before[strain], Number.MAX_SAFE_INTEGER)
+          )
         : 0;
       if (tier > beforeTier && tier >= 1) {
-        this.recordRunEvent({ t: this.runTimeDs(), e: 'g', id: strain, v: tier });
+        this.recordRunEvent({
+          t: this.runTimeDs(),
+          e: 'g',
+          id: strain,
+          v: tier,
+        });
         this.emit('expressionActivated', { strain, tier });
         this.onTierActivated(strain, tier);
       }
@@ -1196,9 +1406,12 @@ export class SnakeGameLogic {
       extracted: false,
       mutationTile: null,
       mutationTicksRemaining: 0,
-      nextMutationAtFood: this.rollNextMutationInterval(),
+      nextMutationAtFood: this.genomeV2Active()
+        ? Number.MAX_SAFE_INTEGER
+        : this.rollNextMutationInterval(),
       heldMutations: [],
       pendingChoice: null,
+      genomeV2: this.genomeV2Runtime?.getState() ?? null,
       strainCounts: this.spawnStrainPoints(),
       strainTiers: {},
       fusedSplices: [],
@@ -1270,7 +1483,10 @@ export class SnakeGameLogic {
     this.state.startTime = now;
   }
 
-  private beginRun(opening: DrivenStartState | null, startClock: boolean): void {
+  private beginRun(
+    opening: DrivenStartState | null,
+    startClock: boolean
+  ): void {
     this.deathSequenceToken += 1;
     this.drivenRun = opening !== null;
     // A session seed describes the opening, not the incidental number of
@@ -1286,7 +1502,21 @@ export class SnakeGameLogic {
       snake.push({ x: centerX - i, y: 0, z: centerZ });
     }
 
+    if (this.genomeV2Active()) {
+      const reducerDynasty = this.genome?.reducerState?.dynasty;
+      if (reducerDynasty && reducerDynasty !== this.ruleset.id) {
+        throw new Error(
+          'Genome v2 reducer state is not bound to the stamped Dynasty.'
+        );
+      }
+      this.genomeV2Runtime = this.createGenomeV2Runtime();
+      this.genomeV2Runtime?.reset();
+    } else {
+      this.genomeV2Runtime = null;
+    }
+
     this.state = this.createInitialState();
+    if (this.genomeV2Runtime) this.syncGenomeV2State();
     this.state.snake = snake;
     this.state.isPlaying = true;
     this.state.startTime = startClock ? Date.now() : null;
@@ -1329,7 +1559,7 @@ export class SnakeGameLogic {
     // first food re-derived the speed through this same helper.
     this.speed = this.effectiveSpeedForFood(0);
     this.refreshHoldBudget();
-    this.spawnFoods();
+    if (!opening || !this.genomeV2Active()) this.spawnFoods();
     if (opening) {
       this.state.snake = opening.snake.map((cell) => ({ ...cell, y: 0 }));
       this.state.direction = opening.direction;
@@ -1376,10 +1606,14 @@ export class SnakeGameLogic {
     if (opening.snake.length > 1) {
       const head = opening.snake[0];
       const neck = opening.snake[1];
-      const delta = opening.direction === 'UP' ? { x: 0, z: -1 }
-        : opening.direction === 'DOWN' ? { x: 0, z: 1 }
-          : opening.direction === 'LEFT' ? { x: -1, z: 0 }
-            : { x: 1, z: 0 };
+      const delta =
+        opening.direction === 'UP'
+          ? { x: 0, z: -1 }
+          : opening.direction === 'DOWN'
+            ? { x: 0, z: 1 }
+            : opening.direction === 'LEFT'
+              ? { x: -1, z: 0 }
+              : { x: 1, z: 0 };
       if (neck.x !== head.x - delta.x || neck.z !== head.z - delta.z) {
         throw new Error('Driven snake heading must point away from its neck');
       }
@@ -1413,6 +1647,10 @@ export class SnakeGameLogic {
    */
   setRuleset(ruleset: DynastyRuleset): void {
     this.ruleset = ruleset;
+    if (!this.state.isPlaying && this.genomeV2Active()) {
+      this.genomeV2Runtime = this.createGenomeV2Runtime();
+      this.syncGenomeV2State();
+    }
     this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
     if (!this.state.isPlaying && !this.state.exitTile) {
       this.state.nextExitAtFood = this.exitCadence().firstExitAtFood;
@@ -1438,9 +1676,15 @@ export class SnakeGameLogic {
     this.traits = [...traits];
     if (!this.state.isPlaying) {
       if (!this.state.mutationTile) {
-        this.state.nextMutationAtFood = this.rollNextMutationInterval();
+        this.state.nextMutationAtFood = this.genomeV2Active()
+          ? Number.MAX_SAFE_INTEGER
+          : this.rollNextMutationInterval();
       }
       this.state.ironScalesAvailable = this.hasTrait('iron_scales');
+      if (this.genomeV2Active()) {
+        this.genomeV2Runtime = this.createGenomeV2Runtime();
+        this.syncGenomeV2State();
+      }
     }
   }
 
@@ -1487,19 +1731,24 @@ export class SnakeGameLogic {
   getState(): GameState {
     return {
       ...this.state,
-      snake: this.state.snake.map(s => ({ ...s })),
+      snake: this.state.snake.map((s) => ({ ...s })),
       food: { ...this.state.food },
-      foods: this.state.foods.map(f => ({ ...f })),
+      foods: this.state.foods.map((f) => ({ ...f })),
       // Cloned per tick, deliberately: the renderer reads this through zustand,
       // and a stable array reference would never re-render — terrain would be
       // computed, lethal, and still invisible, which is the bug WP-3.05 found.
       terrain: this.state.terrain.map((b) => ({ ...b })),
       exitTile: this.state.exitTile ? { ...this.state.exitTile } : null,
       exitTile2: this.state.exitTile2 ? { ...this.state.exitTile2 } : null,
-      mutationTile: this.state.mutationTile ? { ...this.state.mutationTile } : null,
-      heldMutations: this.state.heldMutations.map(m => ({ ...m })),
+      mutationTile: this.state.mutationTile
+        ? { ...this.state.mutationTile }
+        : null,
+      heldMutations: this.state.heldMutations.map((m) => ({ ...m })),
       pendingChoice: this.state.pendingChoice
         ? [...this.state.pendingChoice]
+        : null,
+      genomeV2: this.state.genomeV2
+        ? checkpointClone(this.state.genomeV2)
         : null,
       strainCounts: { ...this.state.strainCounts },
       strainTiers: { ...this.state.strainTiers },
@@ -1508,7 +1757,7 @@ export class SnakeGameLogic {
       infuses: this.state.infuses.map((i) => ({ ...i })),
       surges: this.state.surges.map((s) => ({ ...s })),
       pendingPortalChoice: this.state.pendingPortalChoice
-        ? { ...this.state.pendingPortalChoice }
+        ? checkpointClone(this.state.pendingPortalChoice)
         : null,
       revive: this.state.revive ? { ...this.state.revive } : null,
       genomeClaims: { ...this.state.genomeClaims },
@@ -1552,7 +1801,9 @@ export class SnakeGameLogic {
         portalIndex: this.portalIndex,
         portalsMet: this.portalsMet,
         fusedView: checkpointClone(this.fusedView),
-        activations: this.activations ? checkpointClone(this.activations) : null,
+        activations: this.activations
+          ? checkpointClone(this.activations)
+          : null,
         lengthTrace: checkpointClone(this.lengthTrace),
         petrified: this.petrified,
         ouroborosBites: this.ouroborosBites,
@@ -1573,6 +1824,9 @@ export class SnakeGameLogic {
           ticks: this.replayTicks,
           actions: checkpointClone(this.replayActions),
         },
+        genomeV2Runtime: this.genomeV2Runtime
+          ? this.genomeV2Runtime.snapshot()
+          : null,
       },
     };
   }
@@ -1609,7 +1863,11 @@ export class SnakeGameLogic {
     ) {
       throw new Error('Unsupported or malformed snake checkpoint');
     }
-    const gridSize = checkpointInteger(checkpoint.config.gridSize, 'gridSize', 4);
+    const gridSize = checkpointInteger(
+      checkpoint.config.gridSize,
+      'gridSize',
+      4
+    );
     const initialLength = checkpointInteger(
       checkpoint.config.initialLength,
       'initialLength',
@@ -1638,7 +1896,47 @@ export class SnakeGameLogic {
     this.replayableRng = StatefulRng.restore(checkpoint.rng);
     this.rng = () => this.replayableRng!.next();
 
+    const genomeV2Snapshot = checkpoint.privateState.genomeV2Runtime;
+    if (this.genomeV2Active()) {
+      if (!genomeV2Snapshot || !checkpoint.state.genomeV2) {
+        throw new Error('Genome v2 checkpoint is missing its reducer runtime.');
+      }
+      this.genomeV2Runtime = this.createGenomeV2Runtime(
+        genomeV2Snapshot,
+        checkpoint.state.genomeV2
+      );
+    } else {
+      this.genomeV2Runtime = null;
+    }
+
     this.state = checkpointClone(checkpoint.state);
+    if (this.genomeV2Runtime) {
+      const restoredReducer = this.genomeV2Runtime.getState();
+      if (
+        JSON.stringify(this.state.genomeV2) !== JSON.stringify(restoredReducer)
+      ) {
+        throw new Error('Genome v2 checkpoint reducer state is inconsistent.');
+      }
+      if (this.state.foodEaten !== restoredReducer.foodCount) {
+        throw new Error(
+          'Genome v2 checkpoint food count differs from its reducer.'
+        );
+      }
+      if (
+        this.state.dnaCollected !==
+        genomeV2YieldFloor(restoredReducer.ledger.bankableYield)
+      ) {
+        throw new Error(
+          'Genome v2 checkpoint Yield differs from its bankable ledger.'
+        );
+      }
+      this.state.genomeV2 = restoredReducer;
+    } else {
+      if (this.state.genomeV2) {
+        throw new Error('Legacy checkpoint carries Genome v2 reducer state.');
+      }
+      this.state.genomeV2 = null;
+    }
     this.state.isGameOver = false;
     this.state.isDeathSequence = false;
     this.state.deathPosition = null;
@@ -1697,7 +1995,8 @@ export class SnakeGameLogic {
     this.decisionHoldEntitled =
       checkpoint.privateState.decisionHoldEntitled === true;
     this.runEvents = checkpointClone(checkpoint.privateState.runEvents);
-    this.runEventsTruncated = checkpoint.privateState.runEventsTruncated === true;
+    this.runEventsTruncated =
+      checkpoint.privateState.runEventsTruncated === true;
     this.replayTicks = checkpointInteger(
       checkpoint.privateState.replay?.ticks,
       'replay ticks'
@@ -1705,7 +2004,9 @@ export class SnakeGameLogic {
     if (!Array.isArray(checkpoint.privateState.replay?.actions)) {
       throw new Error('Invalid checkpoint replay actions');
     }
-    this.replayActions = checkpointClone(checkpoint.privateState.replay.actions);
+    this.replayActions = checkpointClone(
+      checkpoint.privateState.replay.actions
+    );
     this.applyingReplay = false;
 
     this.blockedScratch = null;
@@ -1747,7 +2048,11 @@ export class SnakeGameLogic {
     }
     this.applyingReplay = true;
     try {
-      for (let index = fromActionIndex; index < trace.actions.length; index += 1) {
+      for (
+        let index = fromActionIndex;
+        index < trace.actions.length;
+        index += 1
+      ) {
         const action = trace.actions[index];
         if (
           !action ||
@@ -1758,13 +2063,15 @@ export class SnakeGameLogic {
           throw new Error('Invalid replay action position');
         }
         while (this.replayTicks < action.tick) {
-          if (this.state.isGameOver) throw new Error('Replay continues after terminal state');
+          if (this.state.isGameOver)
+            throw new Error('Replay continues after terminal state');
           this.tick();
         }
         this.applyReplayAction(action);
       }
       while (this.replayTicks < trace.ticks) {
-        if (this.state.isGameOver) throw new Error('Replay continues after terminal state');
+        if (this.state.isGameOver)
+          throw new Error('Replay continues after terminal state');
         this.tick();
       }
       if (this.replayTicks !== trace.ticks) {
@@ -1780,19 +2087,23 @@ export class SnakeGameLogic {
     switch (action.kind) {
       case 'turn': {
         const result = this.setDirection(action.direction, 'standard');
-        if (result !== 'accepted') throw new Error('Replay contains an illegal turn');
+        if (result !== 'accepted')
+          throw new Error('Replay contains an illegal turn');
         return;
       }
       case 'pause':
-        if (!this.pause(action.hold)) throw new Error('Replay contains an illegal hold');
+        if (!this.pause(action.hold))
+          throw new Error('Replay contains an illegal hold');
         return;
       case 'resume':
-        if (!this.state.isPaused) throw new Error('Replay resumes a running board');
+        if (!this.state.isPaused)
+          throw new Error('Replay resumes a running board');
         this.resume();
         return;
       case 'mutation':
         if (action.choice === 'decline') {
-          if (!this.state.pendingChoice) throw new Error('Replay declines no offer');
+          if (!this.state.pendingChoice)
+            throw new Error('Replay declines no offer');
           this.declineMutation();
         } else if (!this.chooseMutation(action.choice)) {
           throw new Error('Replay chooses no offer');
@@ -1806,6 +2117,80 @@ export class SnakeGameLogic {
       case 'surge':
         if (!this.chooseSurge(action.strain)) {
           throw new Error('Replay resolves no surge');
+        }
+        return;
+      case 'genome_v2_offer':
+        if (
+          !this.resolveGenomeV2Offer(
+            action.choice === 'decline'
+              ? {
+                  action: 'decline',
+                  offerId: action.offerId,
+                  ...(action.pinCandidate !== undefined
+                    ? { pinCandidateIndex: action.pinCandidate }
+                    : {}),
+                }
+              : {
+                  action: 'choose',
+                  offerId: action.offerId,
+                  candidateIndex: action.choice,
+                  ...(action.slot !== undefined
+                    ? { replacementSlot: action.slot }
+                    : {}),
+                }
+          )
+        ) {
+          throw new Error('Replay resolves no Genome v2 offer');
+        }
+        return;
+      case 'genome_v2_portal': {
+        if (action.choice === 'infuse' || action.choice === 'recode') {
+          const occupant =
+            action.slot === undefined
+              ? undefined
+              : this.genomeV2Runtime?.getState().slots[action.slot]?.occupant;
+          const expectedChoice = occupant === null ? 'infuse' : 'recode';
+          if (occupant === undefined || action.choice !== expectedChoice) {
+            throw new Error(
+              'Replay Genome v2 portal verb disagrees with its locus.'
+            );
+          }
+        }
+        const resolution: GenomeV2PortalResolution =
+          action.choice === 'bank'
+            ? { action: 'bank', portalId: action.portalId }
+            : action.choice === 'continue'
+              ? {
+                  action: 'continue',
+                  portalId: action.portalId,
+                  activateMirror: action.activateMirror === true,
+                }
+              : {
+                  action: 'mutate',
+                  portalId: action.portalId,
+                  candidateIndex: action.candidate ?? 0,
+                  ...(action.slot !== undefined
+                    ? { replacementSlot: action.slot }
+                    : {}),
+                };
+        if (!this.resolveGenomeV2Portal(resolution)) {
+          throw new Error('Replay resolves no Genome v2 portal');
+        }
+        return;
+      }
+      case 'genome_v2_target':
+        if (!this.resolveGenomeV2TargetChoice(action.targetId, action.choice)) {
+          throw new Error('Replay resolves no Genome v2 target choice');
+        }
+        return;
+      case 'genome_v2_overclock':
+        if (
+          !this.activateGenomeV2Overclock({
+            source: action.source,
+            activationId: action.activationId,
+          })
+        ) {
+          throw new Error('Replay activates no Genome v2 overclock');
         }
         return;
       default:
@@ -1851,6 +2236,7 @@ export class SnakeGameLogic {
       this.state.isGameOver ||
       this.state.isPaused ||
       this.state.pendingChoice !== null ||
+      this.genomeV2OfferPending() ||
       this.state.pendingPortalChoice !== null ||
       this.state.pendingSurgeChoice
     ) {
@@ -1882,7 +2268,10 @@ export class SnakeGameLogic {
         ? GAME_CONFIG.controls.flickQueueDepth
         : GAME_CONFIG.controls.standardQueueDepth;
     const queueIsFull = this.directionQueue.length >= capacity;
-    if (this.preTurnIntent || (queueIsFull && !this.isInsidePreTurnGrace(timing))) {
+    if (
+      this.preTurnIntent ||
+      (queueIsFull && !this.isInsidePreTurnGrace(timing))
+    ) {
       return 'queue_full';
     }
 
@@ -2002,11 +2391,11 @@ export class SnakeGameLogic {
     return false;
   }
 
-  private rememberAcceptedTurn(
-    from: Direction,
-    input: QueuedDirection
-  ): void {
-    if (input.source !== 'flick' || !Number.isFinite(input.timing?.inputTimeMs)) {
+  private rememberAcceptedTurn(from: Direction, input: QueuedDirection): void {
+    if (
+      input.source !== 'flick' ||
+      !Number.isFinite(input.timing?.inputTimeMs)
+    ) {
       this.recentFlickTurns = [];
       return;
     }
@@ -2026,9 +2415,10 @@ export class SnakeGameLogic {
   private promotePreTurnIntent(): void {
     const intent = this.preTurnIntent;
     if (!intent) return;
-    const capacity = intent.source === 'flick'
-      ? GAME_CONFIG.controls.flickQueueDepth
-      : GAME_CONFIG.controls.standardQueueDepth;
+    const capacity =
+      intent.source === 'flick'
+        ? GAME_CONFIG.controls.flickQueueDepth
+        : GAME_CONFIG.controls.standardQueueDepth;
     if (this.directionQueue.length >= capacity) return;
     this.directionQueue.push(intent);
     this.preTurnIntent = null;
@@ -2061,6 +2451,7 @@ export class SnakeGameLogic {
       this.state.isGameOver ||
       this.state.isDeathSequence ||
       this.state.pendingChoice !== null ||
+      this.genomeV2OfferPending() ||
       this.state.pendingPortalChoice !== null ||
       this.state.pendingSurgeChoice
     ) {
@@ -2112,6 +2503,7 @@ export class SnakeGameLogic {
       this.state.isGameOver ||
       this.state.isDeathSequence ||
       this.state.pendingChoice !== null ||
+      this.genomeV2OfferPending() ||
       this.state.pendingPortalChoice !== null ||
       this.state.pendingSurgeChoice
     ) {
@@ -2130,7 +2522,11 @@ export class SnakeGameLogic {
     }
     this.clearDirectionalIntent();
     this.state.isPaused = true;
-    this.recordReplayAction({ tick: this.replayTicks, kind: 'pause', hold: kind });
+    this.recordReplayAction({
+      tick: this.replayTicks,
+      kind: 'pause',
+      hold: kind,
+    });
     this.emit('pause');
     return true;
   }
@@ -2199,6 +2595,7 @@ export class SnakeGameLogic {
       this.state.isPaused ||
       this.state.isDeathSequence ||
       this.state.pendingChoice !== null ||
+      this.genomeV2OfferPending() ||
       this.state.pendingPortalChoice !== null ||
       this.state.pendingSurgeChoice
     ) {
@@ -2208,6 +2605,11 @@ export class SnakeGameLogic {
     // A decision re-arm belongs only to the exact resolution boundary. Once
     // movement advances, it cannot be claimed later as a free tactical hold.
     this.decisionHoldEntitled = false;
+
+    if (this.genomeV2Runtime?.endExpiredOverclock(this.replayTicks)) {
+      this.syncGenomeV2State();
+      this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
+    }
 
     // Consume exactly one buffered input per tick
     const queued = this.directionQueue.shift();
@@ -2231,10 +2633,18 @@ export class SnakeGameLogic {
     // this tick is lethal on this tick - the player saw it forming and had
     // the whole forming window to leave.
     this.tickTerrain();
+    if (this.genomeV2Runtime) {
+      this.genomeV2Runtime.expireGoldWindows(this.replayTicks);
+      this.syncGenomeV2State();
+    }
 
     const head = this.state.snake[0];
     let newHead = this.getNextPosition(head, this.state.direction);
     let wallHit = this.checkWallCollision(newHead);
+    let pendingPhaseGate: {
+      targetId: string;
+      cells: readonly [{ x: number; z: number }, { x: number; z: number }];
+    } | null = null;
 
     // Every revive grants a short escape phase instead of returning free
     // space. During it the board boundary behaves like a wrap and the body is
@@ -2262,7 +2672,11 @@ export class SnakeGameLogic {
 
     // Pocket Rift (gene): a charged wall hit teleports to the opposite
     // wall (a wrap), recharging every 20 foods.
-    if (wallHit && this.hasMutation('pocket_rift') && this.state.pocketRiftCharged) {
+    if (
+      wallHit &&
+      this.hasMutation('pocket_rift') &&
+      this.state.pocketRiftCharged
+    ) {
       newHead = this.wrapPosition(newHead);
       wallHit = false;
       this.state.pocketRiftCharged = false;
@@ -2271,7 +2685,11 @@ export class SnakeGameLogic {
     }
 
     // FLUX Minor "Warp Skin": one free edge-wrap per 30 foods.
-    if (wallHit && this.strainTierNow('FLUX') >= 1 && this.state.warpSkinCharged) {
+    if (
+      wallHit &&
+      this.strainTierNow('FLUX') >= 1 &&
+      this.state.warpSkinCharged
+    ) {
       newHead = this.wrapPosition(newHead);
       wallHit = false;
       this.state.warpSkinCharged = false;
@@ -2282,13 +2700,41 @@ export class SnakeGameLogic {
     // Wall Rush: a wall hit becomes a slide along the wall (clockwise
     // perpendicular preferred, counter-clockwise fallback). A corner or a
     // body-blocked slide still kills - Wall Rush is not a corner pardon.
-    if (wallHit && this.hasMutation('wall_rush')) {
+    const legacyWallRush = this.hasMutation('wall_rush');
+    const genomeV2WallRush = this.genomeV2Runtime?.canWallRedirect() === true;
+    if (wallHit && (legacyWallRush || genomeV2WallRush)) {
       const slide = this.trySlide(head);
       if (slide) {
         this.state.direction = slide.dir;
         newHead = slide.pos;
         wallHit = false;
         this.slidThisTick = true;
+        if (genomeV2WallRush) {
+          if (!this.genomeV2Runtime?.recordWallRedirect(this.replayTicks)) {
+            throw new Error(
+              'Genome v2 Wall Rush reducer rejected a charged live redirect.'
+            );
+          }
+          this.syncGenomeV2State();
+        }
+      }
+    }
+
+    // Phase Gate/Riftline is optional because the player must steer onto the
+    // visible entry. Re-check the exit against the live board before using it;
+    // geometry that became unsafe since spawn behaves like an ordinary cell.
+    if (!wallHit) {
+      const gate = this.genomeV2Runtime?.phaseGateAtEntry(newHead);
+      const exit = gate?.cells[1];
+      if (
+        gate &&
+        exit &&
+        !this.checkWallCollision({ ...exit, y: 0 }) &&
+        !this.checkSelfCollision({ ...exit, y: 0 }) &&
+        !this.isPositionOnTerrain({ ...exit, y: 0 })
+      ) {
+        pendingPhaseGate = gate;
+        newHead = { ...exit, y: 0 };
       }
     }
 
@@ -2298,9 +2744,10 @@ export class SnakeGameLogic {
     // handled below as the broader one-use BOARD-collision pardon.
     const terrainHit =
       !wallHit &&
-      this.state.terrain.some(
+      (this.state.terrain.some(
         (b) => b.solid && b.x === newHead.x && b.z === newHead.z
-      );
+      ) ||
+        this.isGenomeV2PermanentTerrain(newHead));
 
     const exitExistedAtTickStart = this.state.exitTile !== null;
     const mutationExistedAtTickStart = this.state.mutationTile !== null;
@@ -2321,6 +2768,47 @@ export class SnakeGameLogic {
     ) {
       this.state.snake.unshift(newHead);
       this.state.snake.pop();
+      if (this.genomeV2Active()) {
+        this.genomeV2Runtime?.openPortal(this.replayTicks);
+        this.syncGenomeV2State();
+        const reducer = this.state.genomeV2;
+        const continueCapability =
+          this.genome?.ftuePresentation?.capabilities.continue;
+        const portalGenomeCapability =
+          this.genome?.ftuePresentation?.capabilities.portalGenome;
+        const continueUnlocked = reducer?.ftue.continueUnlocked === true;
+        const portalGenomeUnlocked =
+          reducer?.ftue.portalGenomeUnlocked === true;
+        const canMutate =
+          portalGenomeUnlocked && reducer?.portal?.genomeOffer !== null;
+        this.state.pendingPortalChoice = {
+          canInfuse: canMutate,
+          canContinue: continueUnlocked,
+          canMutate,
+          continueLockedReason: continueUnlocked
+            ? null
+            : (continueCapability?.reason ?? null),
+          mutateLockedReason: canMutate
+            ? null
+            : (portalGenomeCapability?.reason ?? null),
+          ...(continueCapability
+            ? { continueCapability: checkpointClone(continueCapability) }
+            : {}),
+          ...(portalGenomeCapability
+            ? {
+                portalGenomeCapability: checkpointClone(portalGenomeCapability),
+              }
+            : {}),
+        };
+        this.emit('portalChoice', {
+          rulesVersion: GENOME_RULES_V2,
+          portal: this.genomeV2Runtime?.getState().portal ?? null,
+          ftuePresentation: this.genome?.ftuePresentation
+            ? checkpointClone(this.genome.ftuePresentation)
+            : null,
+        });
+        return;
+      }
       if (this.genomeActive() && this.portalChoicesUnlocked()) {
         const canInfuse = this.canInfuse();
         this.state.pendingPortalChoice = { canInfuse };
@@ -2387,6 +2875,19 @@ export class SnakeGameLogic {
       return;
     }
 
+    if (
+      pendingPhaseGate &&
+      !this.genomeV2Runtime?.usePhaseGate(
+        pendingPhaseGate.targetId,
+        this.replayTicks
+      )
+    ) {
+      throw new Error(
+        'Genome v2 Phase Gate could not commit its previewed route.'
+      );
+    }
+    if (pendingPhaseGate) this.syncGenomeV2State();
+
     // Mutation food pickup: the helix is not food (no growth, no DNA) -
     // stepping onto it opens the choice-of-2 hold after the move resolves.
     const ateMutation =
@@ -2394,7 +2895,23 @@ export class SnakeGameLogic {
       newHead.x === this.state.mutationTile.x &&
       newHead.z === this.state.mutationTile.z;
 
-    const foodIndex = this.findFoodIndex(newHead);
+    let foodIndex = this.findFoodIndex(newHead);
+    if (foodIndex >= 0 && this.genomeV2Runtime) {
+      const circuit = this.genomeV2Runtime.advanceCircuitLegAt(newHead);
+      if (circuit) {
+        // Circuit's relay is visible food geometry but not a food event. Move
+        // the same physical target to leg two; this tick therefore resolves as
+        // ordinary movement (including its tail pop), and the pair grows once
+        // only when the destination is collected.
+        this.state.foods[foodIndex] = {
+          x: circuit.destination.x,
+          y: 0,
+          z: circuit.destination.z,
+        };
+        this.state.food = { ...this.state.foods[0] };
+        foodIndex = -1;
+      }
+    }
     const ateFood = foodIndex >= 0;
 
     // The body length BEFORE this move resolves. `computeLengthTrace`
@@ -2441,13 +2958,11 @@ export class SnakeGameLogic {
       // shared with `computeLengthTrace` - see growth.ts, "one function, both
       // sides". Gene and anomaly extras layer on top, unchanged.
       const extraGrowth =
-        (baseGrowthForFood(
-          this.growth,
-          n,
-          this.ruleset.id,
-          lengthBeforeMove
-        ) - 1) +
-        (this.hasGene('overgrowth') ? MUTATION_PHYSICS.overgrowthExtraSegments : 0) +
+        baseGrowthForFood(this.growth, n, this.ruleset.id, lengthBeforeMove) -
+        1 +
+        (this.hasGene('overgrowth')
+          ? MUTATION_PHYSICS.overgrowthExtraSegments
+          : 0) +
         (this.hasGene('bulk_up') ? GENE_PHYSICS.bulkUpExtraSegments : 0) +
         (this.anomaly === 'overgrown'
           ? ANOMALY_PHYSICS.overgrownExtraSegments
@@ -2472,6 +2987,13 @@ export class SnakeGameLogic {
       const { dnaValue, scoreValue } = this.resolveFoodEconomy(n);
       this.state.dnaCollected += dnaValue;
       this.state.score += scoreValue;
+      if (this.genomeV2Active()) {
+        const genomeGrowth = this.resolveCollectedGenomeV2Target(
+          collectedPosition,
+          dnaValue
+        );
+        if (genomeGrowth > 0) this.growTail(genomeGrowth);
+      }
 
       // Genome bonus layers (Midas / Static Charge / Ricochet / Gilded
       // Wake drop) - display + bounded-trust claim accumulators only.
@@ -2492,7 +3014,8 @@ export class SnakeGameLogic {
         if (
           !this.state.pocketRiftCharged &&
           this.hasGene('pocket_rift') &&
-          n - this.pocketRiftLastRecharge >= GENE_PHYSICS.pocketRiftRechargeFoods
+          n - this.pocketRiftLastRecharge >=
+            GENE_PHYSICS.pocketRiftRechargeFoods
         ) {
           this.state.pocketRiftCharged = true;
         }
@@ -2510,15 +3033,27 @@ export class SnakeGameLogic {
       if (this.strainTierNow('VOLT') >= 2 && this.state.foods.length > 0) {
         this.consumeArcFoods(collectedPosition);
       }
-      if (this.state.foods.length === 0) {
+      const crownAdvance = this.genomeV2Runtime?.advanceCrownWave(
+        this.replayTicks
+      );
+      if (crownAdvance) this.syncGenomeV2State();
+      if (
+        this.state.foods.length === 0 &&
+        crownAdvance?.outcome === 'perfect' &&
+        crownAdvance.crownCell
+      ) {
+        this.spawnGenomeV2CrownStar(crownAdvance.crownCell);
+      } else if (this.state.foods.length === 0) {
         this.spawnFoods();
       } else {
         this.state.food = { ...this.state.foods[0] };
       }
 
       this.advancePortalSchedule(n);
+      this.maybeOpenGenomeV2CadenceOffer();
       // Ascetic (trait): mutation food never spawns - no builds, pure snake
       if (
+        !this.genomeV2Active() &&
         !this.state.mutationTile &&
         !ateMutation &&
         !this.hasTrait('ascetic') &&
@@ -2556,9 +3091,10 @@ export class SnakeGameLogic {
     // nearby food creeps toward the head, one cell per tick. When both are
     // active the larger radius wins - the pull itself never stacks.
     if (
-      this.hasMutation('magnet_pulse') ||
-      this.hasMutation('gravity_well') ||
-      this.hasTrait('magnetism')
+      !this.genomeV2Active() &&
+      (this.hasMutation('magnet_pulse') ||
+        this.hasMutation('gravity_well') ||
+        this.hasTrait('magnetism'))
     ) {
       this.applyMagnetPulse();
     }
@@ -2574,6 +3110,15 @@ export class SnakeGameLogic {
     if (this.state.exitTile && exitExistedAtTickStart) {
       this.state.exitTicksRemaining -= 1;
       if (this.state.exitTicksRemaining <= 0) {
+        if (this.genomeV2Runtime) {
+          if (!this.genomeV2Runtime.getState().portal) {
+            this.genomeV2Runtime.openPortal(this.replayTicks, {
+              includeGenomeOffer: false,
+            });
+          }
+          this.genomeV2Runtime.expirePortal(this.replayTicks);
+          this.syncGenomeV2State();
+        }
         this.state.exitTile = null;
         this.state.exitTile2 = null;
         this.state.exitTicksRemaining = 0;
@@ -2589,9 +3134,14 @@ export class SnakeGameLogic {
     // and respawns elsewhere. Foods eaten this tick already resolved above
     // (a fresh wave restarts the clock); the counter only runs while the
     // wave survives untouched.
-    if (this.anomaly === 'meteor_shower' && !ateFood && this.state.foods.length > 0) {
+    if (
+      this.anomaly === 'meteor_shower' &&
+      !ateFood &&
+      this.state.foods.length > 0
+    ) {
       this.state.foodTicksRemaining -= 1;
       if (this.state.foodTicksRemaining <= 0) {
+        this.expireDisplacedGenomeV2Targets(this.state.foods);
         this.spawnFoods();
         this.emit('foodDespawned');
       }
@@ -2640,12 +3190,20 @@ export class SnakeGameLogic {
     // board calcifies where it sat. Deliberately AFTER the eat resolves, so a
     // star collected on the closing tick counts as collected - the player who
     // made the route by one tick is not billed for it.
-    if (this.ruleset.constellation && this.state.constellationTicksRemaining > 0) {
+    if (
+      this.ruleset.constellation &&
+      this.state.constellationTicksRemaining > 0
+    ) {
       this.state.constellationTicksRemaining -= 1;
       if (this.state.constellationTicksRemaining <= 0) {
         this.calcifyConstellation();
       }
     }
+
+    // Coilkeeper is an observation of the board *after* the move resolves.
+    // That boundary is what makes a completed loop replayable: the exact
+    // body/terrain cells that enclosed the region are already committed.
+    this.maybeSealGenomeV2Coil();
 
     this.emit('tick');
   }
@@ -2655,7 +3213,279 @@ export class SnakeGameLogic {
    * physical side effects, clears the choice hold, and the game resumes on
    * the next tick. Returns false when no choice is pending.
    */
+  resolveGenomeV2Offer(resolution: GenomeV2OfferResolution): boolean {
+    const runtime = this.genomeV2Runtime;
+    const offer = runtime?.getState().offer;
+    if (!runtime || !offer || offer.offerId !== resolution.offerId)
+      return false;
+
+    if (resolution.action === 'decline') {
+      if (
+        !runtime.declineOffer(this.replayTicks, {
+          pinCandidateIndex: resolution.pinCandidateIndex,
+        })
+      ) {
+        return false;
+      }
+      this.recordReplayAction({
+        tick: this.replayTicks,
+        kind: 'genome_v2_offer',
+        offerId: resolution.offerId,
+        choice: 'decline',
+        ...(resolution.pinCandidateIndex !== undefined
+          ? { pinCandidate: resolution.pinCandidateIndex }
+          : {}),
+      });
+      this.syncGenomeV2State();
+      this.decisionHoldEntitled = true;
+      this.emit('mutationDeclined', { rulesVersion: GENOME_RULES_V2 });
+      return true;
+    }
+
+    const result = runtime.acquireOfferCandidate(
+      resolution.candidateIndex,
+      this.replayTicks,
+      resolution.replacementSlot
+    );
+    if (!result) return false;
+    if (result.growthCharged > 0) this.growTail(result.growthCharged);
+    this.recordReplayAction({
+      tick: this.replayTicks,
+      kind: 'genome_v2_offer',
+      offerId: resolution.offerId,
+      choice: resolution.candidateIndex,
+      slot: result.slot,
+    });
+    this.syncGenomeV2State();
+    this.applyGenomeV2Acquisition(result.geneId);
+    this.decisionHoldEntitled = true;
+    this.emit('mutationPicked', {
+      id: result.geneId,
+      atFood: this.state.foodEaten,
+      rulesVersion: GENOME_RULES_V2,
+    });
+    return true;
+  }
+
+  /** Pure portal preview: inspection/back never writes an event or consumes it. */
+  inspectGenomeV2PortalCandidate(
+    portalId: string,
+    candidateIndex: 0 | 1
+  ): GenomeV2ActiveGeneId | null {
+    const state = this.genomeV2Runtime?.getState();
+    if (!state?.portal || state.portal.portalId !== portalId) return null;
+    return this.genomeV2Runtime?.inspectPortalCandidate(candidateIndex) ?? null;
+  }
+
+  /** Pure Recode consequence preview; it never appends a journal event. */
+  previewGenomeV2OfferRecode(
+    offerId: string,
+    candidateIndex: 0 | 1,
+    replacementSlot: GenomeV2SlotIndex
+  ): GenomeV2RecodePreview | null {
+    const offer = this.genomeV2Runtime?.getState().offer;
+    if (!offer || offer.offerId !== offerId) return null;
+    return (
+      this.genomeV2Runtime?.previewOfferRecode(
+        candidateIndex,
+        replacementSlot
+      ) ?? null
+    );
+  }
+
+  /** Pure portal Recode preview; inspection/back does not consume the door. */
+  previewGenomeV2PortalRecode(
+    portalId: string,
+    candidateIndex: 0 | 1,
+    replacementSlot: GenomeV2SlotIndex
+  ): GenomeV2RecodePreview | null {
+    const portal = this.genomeV2Runtime?.getState().portal;
+    if (!portal || portal.portalId !== portalId) return null;
+    return (
+      this.genomeV2Runtime?.previewPortalRecode(
+        candidateIndex,
+        replacementSlot
+      ) ?? null
+    );
+  }
+
+  /**
+   * Atomic v2 portal commit. MUTATE previews are pure; only this final method
+   * emits INFUSE/Recode, charges body growth, and removes the physical portal.
+   */
+  resolveGenomeV2Portal(resolution: GenomeV2PortalResolution): boolean {
+    const runtime = this.genomeV2Runtime;
+    const reducer = runtime?.getState();
+    if (
+      !runtime ||
+      !reducer?.portal ||
+      reducer.portal.portalId !== resolution.portalId ||
+      this.state.pendingPortalChoice === null
+    ) {
+      return false;
+    }
+
+    if (resolution.action === 'bank') {
+      if (!runtime.bankPortal(this.replayTicks)) return false;
+      this.recordReplayAction({
+        tick: this.replayTicks,
+        kind: 'genome_v2_portal',
+        portalId: resolution.portalId,
+        choice: 'bank',
+      });
+      this.syncGenomeV2State();
+      this.state.pendingPortalChoice = null;
+      this.finalizeRun('extracted');
+      return true;
+    }
+
+    if (resolution.action === 'continue') {
+      if (reducer.ftue.continueUnlocked !== true) return false;
+      if (
+        !runtime.continuePortal(
+          this.replayTicks,
+          resolution.activateMirror === true
+        )
+      ) {
+        return false;
+      }
+      this.recordReplayAction({
+        tick: this.replayTicks,
+        kind: 'genome_v2_portal',
+        portalId: resolution.portalId,
+        choice: 'continue',
+        activateMirror: resolution.activateMirror === true,
+      });
+      this.syncGenomeV2State();
+      this.state.pendingPortalChoice = null;
+      this.consumePassedPortal();
+      this.decisionHoldEntitled = true;
+      return true;
+    }
+
+    if (
+      reducer.ftue.portalGenomeUnlocked !== true ||
+      !reducer.portal.genomeOffer
+    ) {
+      return false;
+    }
+    const openSlot = reducer.slots.find(
+      (slot) => slot.occupant === null
+    )?.index;
+    const slot = resolution.replacementSlot ?? openSlot;
+    if (slot === undefined) return false;
+    const occupant = reducer.slots[slot]?.occupant;
+    if (occupant?.kind === 'ash') return false;
+    const result = runtime.resolvePortalMutation(
+      resolution.candidateIndex,
+      this.replayTicks,
+      slot
+    );
+    if (!result) return false;
+
+    this.growTail(result.growthCharged);
+    this.recordReplayAction({
+      tick: this.replayTicks,
+      kind: 'genome_v2_portal',
+      portalId: resolution.portalId,
+      choice: result.recoded ? 'recode' : 'infuse',
+      candidate: resolution.candidateIndex,
+      slot: result.slot,
+    });
+    this.syncGenomeV2State();
+    this.applyGenomeV2Acquisition(result.geneId);
+    this.state.pendingPortalChoice = null;
+    this.state.exitTile = null;
+    this.state.exitTile2 = null;
+    this.state.exitTicksRemaining = 0;
+    this.scheduleNextPortalAfterResolve(this.state.foodEaten);
+    this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'infuse' });
+    this.emit('infused', {
+      atFood: this.state.foodEaten,
+      segmentsGrown: result.growthCharged,
+      rulesVersion: GENOME_RULES_V2,
+      geneId: result.geneId,
+    });
+    this.decisionHoldEntitled = true;
+    return true;
+  }
+
+  private applyGenomeV2Acquisition(geneId: GenomeV2ActiveGeneId): void {
+    // A Recode may add OR retire Time Dilation/REDLINE, so speed is refreshed
+    // after every atomic acquisition rather than keyed only to the new ID.
+    this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
+    if (geneId === 'phoenix') {
+      // One coherent second-life economy: a held Phoenix supersedes the
+      // legacy trait pardon instead of stacking behind it.
+      this.state.ironScalesAvailable = false;
+    }
+  }
+
+  /** Explicit Gilded Fork branch; ordinary collection remains the safe default. */
+  resolveGenomeV2TargetChoice(
+    targetId: string,
+    choice: 'ordinary' | 'gilded'
+  ): boolean {
+    if (
+      !this.genomeV2Runtime?.chooseGildedFork(
+        targetId,
+        choice,
+        this.replayTicks
+      )
+    ) {
+      return false;
+    }
+    this.recordReplayAction({
+      tick: this.replayTicks,
+      kind: 'genome_v2_target',
+      targetId,
+      choice,
+    });
+    this.syncGenomeV2State();
+    return true;
+  }
+
+  /** Player-controlled VOLT Apex / CYBER REDLINE activation. */
+  activateGenomeV2Overclock(resolution: GenomeV2OverclockResolution): boolean {
+    if (
+      !this.genomeV2Runtime ||
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.startTime === null ||
+      this.state.isPaused ||
+      this.state.pendingChoice !== null ||
+      this.genomeV2OfferPending() ||
+      this.state.pendingPortalChoice !== null ||
+      this.state.pendingSurgeChoice
+    ) {
+      return false;
+    }
+    const activationId = this.genomeV2Runtime.startOverclock(
+      this.replayTicks,
+      resolution.source,
+      resolution.activationId
+    );
+    if (!activationId) return false;
+    this.recordReplayAction({
+      tick: this.replayTicks,
+      kind: 'genome_v2_overclock',
+      source: resolution.source,
+      activationId,
+    });
+    this.syncGenomeV2State();
+    this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
+    return true;
+  }
+
   chooseMutation(index: 0 | 1): boolean {
+    const v2Offer = this.genomeV2Runtime?.getState().offer;
+    if (v2Offer) {
+      return this.resolveGenomeV2Offer({
+        action: 'choose',
+        offerId: v2Offer.offerId,
+        candidateIndex: index,
+      });
+    }
     const offer = this.state.pendingChoice;
     if (!offer) return false;
     const id = offer[index];
@@ -2733,6 +3563,14 @@ export class SnakeGameLogic {
 
   /** Decline the offer (take neither) - clears the choice hold. */
   declineMutation(): void {
+    const v2Offer = this.genomeV2Runtime?.getState().offer;
+    if (v2Offer) {
+      this.resolveGenomeV2Offer({
+        action: 'decline',
+        offerId: v2Offer.offerId,
+      });
+      return;
+    }
     if (!this.state.pendingChoice) return;
     this.recordReplayAction({
       tick: this.replayTicks,
@@ -2826,6 +3664,15 @@ export class SnakeGameLogic {
    * Surge choice at the gene cap). Returns false when nothing is pending.
    */
   resolvePortalChoice(action: 'bank' | 'pass' | 'infuse'): boolean {
+    if (this.genomeV2Active()) {
+      const portalId = this.genomeV2Runtime?.getState().portal?.portalId;
+      if (!portalId || action === 'infuse') return false;
+      return this.resolveGenomeV2Portal(
+        action === 'bank'
+          ? { action: 'bank', portalId }
+          : { action: 'continue', portalId, activateMirror: false }
+      );
+    }
     const pending = this.state.pendingPortalChoice;
     if (!pending) return false;
     this.recordReplayAction({
@@ -2924,9 +3771,10 @@ export class SnakeGameLogic {
   }
 
   /** Per-food economy under genome or legacy rules - one round per food. */
-  private resolveFoodEconomy(
-    n: number
-  ): { dnaValue: number; scoreValue: number } {
+  private resolveFoodEconomy(n: number): {
+    dnaValue: number;
+    scoreValue: number;
+  } {
     let mod: number;
     let flat: number;
     if (this.genomeActive() && this.activations) {
@@ -2946,10 +3794,16 @@ export class SnakeGameLogic {
       // live trace, and the out-of-fold payment in `applyShedMoves` is
       // gone. Those two edits are one change.
       const lengthAt = (at: number) => this.lengthAtEat(at);
-      mod = genomeFoodValueModifier(this.fusedView, this.activations, n, this.state.revive, {
-        lengthAt,
-        prevRunDied: this.genome?.prevRunDied,
-      });
+      mod = genomeFoodValueModifier(
+        this.fusedView,
+        this.activations,
+        n,
+        this.state.revive,
+        {
+          lengthAt,
+          prevRunDied: this.genome?.prevRunDied,
+        }
+      );
       flat = genomeFoodValueFlatBonus(
         this.fusedView,
         this.activations,
@@ -2979,8 +3833,9 @@ export class SnakeGameLogic {
     // reach the payout: it is true on tithe's own food (the shared helper
     // requires `n > tithe.atFood`), and it stays true once tithe is
     // consumed by a fusion (the helper reads the LOOSE view only).
-    const floor =
-      this.genomeActive() ? tithePerFoodFloor(this.fusedView, n) : 0;
+    const floor = this.genomeActive()
+      ? tithePerFoodFloor(this.fusedView, n)
+      : 0;
     const dnaValue = Math.max(floor, Math.round(baseDna * mod) + flat);
     const scoreValue = Math.round(
       FOOD_BASE_SCORE * this.ruleset.scoreMultiplier(n)
@@ -3018,7 +3873,9 @@ export class SnakeGameLogic {
       this.slidThisTick &&
       this.state.fusedSplices.some((s) => s.id === 'splice_ricochet')
     ) {
-      const bonus = Math.round(dnaValue * SPLICE_ECONOMICS.ricochetSlideBonusRatio);
+      const bonus = Math.round(
+        dnaValue * SPLICE_ECONOMICS.ricochetSlideBonusRatio
+      );
       this.state.dnaCollected += bonus;
       claims.ricochetDna = (claims.ricochetDna ?? 0) + bonus;
     }
@@ -3071,10 +3928,23 @@ export class SnakeGameLogic {
    * array length for occupied space once Fortress has moved body into stone.
    */
   getBoardPressure(): BoardPressureSnapshot {
+    const v2Terrain = (this.state.genomeV2?.permanentTerrain ?? []).flatMap(
+      (fact) =>
+        fact.cells.map((cell) => ({
+          x: cell.x,
+          z: cell.z,
+          // Presentation reads the canonical Genome state; this synthetic
+          // source exists only to reuse the shared occupancy calculation.
+          source: 'ladder' as const,
+          formingTicks: 0,
+          formingTotal: 0,
+          solid: true,
+        }))
+    );
     return boardPressureSnapshot(
       this.gridSize,
       this.state.snake,
-      this.state.terrain,
+      [...this.state.terrain, ...v2Terrain],
       this.modelledLength()
     );
   }
@@ -3405,7 +4275,10 @@ export class SnakeGameLogic {
   private checkSelfCollisionForDeath(pos: Position): boolean {
     if (this.state.revivePhaseTicksRemaining > 0) return false;
     if (!this.genomeActive()) return this.checkSelfCollision(pos);
-    if (this.state.phantomTicksRemaining > 0 && this.strainTierNow('UMBRA') >= 2) {
+    if (
+      this.state.phantomTicksRemaining > 0 &&
+      this.strainTierNow('UMBRA') >= 2
+    ) {
       return false;
     }
     const safeTail = this.hasGene('serpentine')
@@ -3413,7 +4286,10 @@ export class SnakeGameLogic {
       : 0;
     const body =
       safeTail > 0
-        ? this.state.snake.slice(0, Math.max(1, this.state.snake.length - safeTail))
+        ? this.state.snake.slice(
+            0,
+            Math.max(1, this.state.snake.length - safeTail)
+          )
         : this.state.snake;
     return body.some((s) => s.x === pos.x && s.z === pos.z);
   }
@@ -3421,6 +4297,10 @@ export class SnakeGameLogic {
   /** The revive that would fire now, honoring one-revive-per-run. */
   private availableReviveKind(): GenomeRevive['kind'] | null {
     if (this.state.revive !== null) return null;
+    if (this.genomeV2Active()) {
+      const life = this.state.genomeV2?.secondLife;
+      return life && !life.consumed ? 'phoenix' : null;
+    }
     if (!this.genomeActive()) {
       return this.state.phoenixAvailable ? 'phoenix' : null;
     }
@@ -3453,8 +4333,21 @@ export class SnakeGameLogic {
       this.state.dnaCollected += STRAIN_ECONOMICS.secondSunTriggerFlat;
       this.state.genomeClaims.secondSunTriggered = true;
     }
-    this.rebirthBody();
-    this.state.revivePhaseTicksRemaining = MUTATION_PHYSICS.revivePhaseTicks;
+    const genomeV2Phoenix =
+      this.genomeV2Active() && kind === 'phoenix'
+        ? (this.genomeV2Runtime?.recordPhoenix(this.replayTicks) ?? null)
+        : null;
+    if (this.genomeV2Active() && kind === 'phoenix' && !genomeV2Phoenix) {
+      throw new Error('Genome v2 Phoenix reducer rejected a live revive.');
+    }
+    this.rebirthBody(genomeV2Phoenix?.effect.rewindSegments);
+    if (this.genomeV2Active() && kind === 'phoenix') {
+      this.growTail(genomeV2Phoenix!.bodyGrowthDelta);
+      this.syncGenomeV2State();
+      this.state.revivePhaseTicksRemaining = genomeV2Phoenix!.effect.phaseTicks;
+    } else {
+      this.state.revivePhaseTicksRemaining = MUTATION_PHYSICS.revivePhaseTicks;
+    }
     this.emit('reviveTriggered', {
       kind,
       atFood: this.state.revive.atFood,
@@ -3468,6 +4361,414 @@ export class SnakeGameLogic {
         collision: { ...collisionPosition },
       });
     }
+  }
+
+  private genomeV2RouteBlockedCells(): Array<{ x: number; z: number }> {
+    const permanent = (this.state.genomeV2?.permanentTerrain ?? []).flatMap(
+      (fact) => fact.cells
+    );
+    return [
+      ...this.state.snake.slice(1).map((cell) => ({ x: cell.x, z: cell.z })),
+      ...this.state.terrain.map((cell) => ({ x: cell.x, z: cell.z })),
+      ...permanent.map((cell) => ({ x: cell.x, z: cell.z })),
+    ];
+  }
+
+  /** Emit one cadence-eligible spawn fact for every real food, including each Star. */
+  private registerGenomeV2Targets(foods: Position[]): void {
+    const runtime = this.genomeV2Runtime;
+    const head = this.state.snake[0];
+    if (!runtime || !head) return;
+    const currentCrownWave =
+      this.ruleset.id === 'COSMIC' &&
+      runtime.hasGene('constellation_crown') &&
+      foods.length >= 2 &&
+      runtime.getState().crownWave === null;
+    const currentTargetIds: string[] = [];
+    const baseBlocked = this.genomeV2RouteBlockedCells();
+
+    for (let index = 0; index < foods.length; index += 1) {
+      const food = foods[index];
+      const projection = runtime.projectNextTarget(true);
+      const blocked = [
+        ...baseBlocked,
+        ...foods
+          .filter((_, otherIndex) => otherIndex !== index)
+          .map((cell) => ({ x: cell.x, z: cell.z })),
+        ...this.genomeV2ReservedTargetCells(),
+      ];
+      const route = shortestGenomeV2Route(
+        this.gridSize,
+        head,
+        food,
+        blocked,
+        this.ruleset.torus === true
+      );
+      if (!route) {
+        throw new Error('Genome v2 food spawned without a safe target route.');
+      }
+
+      let cell = { x: food.x, z: food.z };
+      let secondaryCell: { x: number; z: number } | null = null;
+      let optionalRouteCells:
+        readonly [{ x: number; z: number }, { x: number; z: number }] | null =
+        null;
+      let shortestSafeMoves = Math.max(0, route.length - 1);
+
+      if (projection.requiresSecondaryCell) {
+        const circuit = genomeV2CircuitRoute(
+          this.gridSize,
+          head,
+          food,
+          blocked,
+          this.ruleset.torus === true
+        );
+        if (!circuit) {
+          throw new Error('Genome v2 Circuit has no legal relay geometry.');
+        }
+        secondaryCell = { x: food.x, z: food.z };
+        cell = { ...circuit.relay };
+        shortestSafeMoves = circuit.shortestSafeMoves;
+        foods[index] = { ...cell, y: 0 };
+      }
+
+      if (projection.requiresOptionalRouteCells) {
+        optionalRouteCells = genomeV2PhaseRoute(
+          this.gridSize,
+          head,
+          cell,
+          blocked,
+          this.ruleset.torus === true
+        );
+        if (!optionalRouteCells) {
+          throw new Error(
+            'Genome v2 Phase contract has no legal gate geometry.'
+          );
+        }
+      }
+
+      const spawned = runtime.spawnTarget(this.replayTicks, {
+        cell,
+        secondaryCell,
+        optionalRouteCells,
+        speedAtSpawnMs: this.getSpeed(),
+        shortestSafeMoves,
+        cadenceEligible: true,
+        crownRole: currentCrownWave ? 'current' : null,
+      });
+      currentTargetIds.push(spawned.targetId);
+    }
+
+    if (currentCrownWave && currentTargetIds.length >= 2) {
+      const futureCell = this.chooseGenomeV2CrownPreviewCell();
+      let futureTargetId: string | null = null;
+      if (futureCell) {
+        const route = shortestGenomeV2Route(
+          this.gridSize,
+          head,
+          futureCell,
+          [
+            ...baseBlocked,
+            ...foods.map((cell) => ({ x: cell.x, z: cell.z })),
+            ...this.genomeV2ReservedTargetCells(),
+          ],
+          true
+        );
+        const future = runtime.spawnTarget(this.replayTicks, {
+          cell: futureCell,
+          speedAtSpawnMs: this.getSpeed(),
+          shortestSafeMoves: Math.max(0, (route?.length ?? 1) - 1),
+          cadenceEligible: false,
+          crownRole: 'future',
+        });
+        futureTargetId = future.targetId;
+      }
+      if (
+        !runtime.openCrownWave(
+          this.replayTicks,
+          currentTargetIds,
+          futureTargetId
+        )
+      ) {
+        throw new Error(
+          'Genome v2 Crown wave could not bind its target geometry.'
+        );
+      }
+    }
+    if (foods.length > 0) this.state.food = { ...foods[0] };
+    this.syncGenomeV2State();
+  }
+
+  private genomeV2ReservedTargetCells(): Array<{ x: number; z: number }> {
+    return Object.values(this.genomeV2Runtime?.getState().targets ?? {})
+      .filter((target) => ['active', 'armed'].includes(target.lifecycle))
+      .flatMap((target) => [
+        { ...target.cell },
+        ...(target.secondaryCell ? [{ ...target.secondaryCell }] : []),
+        ...(target.optionalRouteCells
+          ? target.optionalRouteCells.map((cell) => ({ ...cell }))
+          : []),
+      ]);
+  }
+
+  private chooseGenomeV2CrownPreviewCell(): { x: number; z: number } | null {
+    const head = this.state.snake[0];
+    if (!head) return null;
+    const blocked = this.waveBlockedGrid();
+    for (const food of this.state.foods) {
+      markBlocked(blocked, this.gridSize, food.x, food.z);
+    }
+    for (const cell of this.genomeV2ReservedTargetCells()) {
+      markBlocked(blocked, this.gridSize, cell.x, cell.z);
+    }
+    return chooseSurvivableTargetCell(
+      this.gridSize,
+      head,
+      blocked,
+      this.rng,
+      this.state.snake.length
+    );
+  }
+
+  private spawnGenomeV2CrownStar(cell: { x: number; z: number }): void {
+    const runtime = this.genomeV2Runtime;
+    const head = this.state.snake[0];
+    if (!runtime || !head) return;
+    const route = shortestGenomeV2Route(
+      this.gridSize,
+      head,
+      cell,
+      this.genomeV2RouteBlockedCells(),
+      true
+    );
+    this.state.foods = [{ ...cell, y: 0 }];
+    this.state.food = { ...this.state.foods[0] };
+    runtime.spawnTarget(this.replayTicks, {
+      cell,
+      speedAtSpawnMs: this.getSpeed(),
+      shortestSafeMoves: Math.max(0, (route?.length ?? 1) - 1),
+      cadenceEligible: false,
+      crownRole: 'crown',
+    });
+    const window = this.constellationWindowTicks();
+    this.state.constellationWindowTicks = window;
+    this.state.constellationTicksRemaining = window;
+    this.syncGenomeV2State();
+  }
+
+  private expireDisplacedGenomeV2Targets(
+    foods: readonly Position[],
+    options: { terminal?: boolean } = {}
+  ): void {
+    const runtime = this.genomeV2Runtime;
+    if (!runtime) return;
+    for (const food of foods) {
+      const target = runtime.targetAt(food);
+      if (!target) continue;
+      if (target.kind === 'gold_trail' && target.forkChoice === null) {
+        runtime.chooseGildedFork(target.targetId, 'ordinary', this.replayTicks);
+      }
+      const deferredUnits = runtime.collectedUnitsForTargetResolution(
+        target.targetId,
+        'expired'
+      );
+      if (deferredUnits > 0) this.applyDeferredGenomeV2FoodUnit();
+      const result = runtime.resolveTarget(target.targetId, this.replayTicks, {
+        resolution: 'expired',
+        movesUsed: Math.max(0, this.replayTicks - target.spawnTick),
+        baseYield: 0,
+        pressureBps: Math.round(
+          this.getBoardPressure().committedOccupancy * 10_000
+        ),
+      });
+      if (result && result.collectedUnits !== deferredUnits) {
+        throw new Error(
+          'Genome v2 target resolution changed its collected-unit fact.'
+        );
+      }
+      if (result && result.bodyGrowthDelta > 0) {
+        this.growTail(result.bodyGrowthDelta);
+      }
+      if (deferredUnits > 0 && !options.terminal) {
+        this.advancePortalSchedule(this.state.foodEaten);
+        this.maybeOpenGenomeV2CadenceOffer();
+      }
+    }
+    runtime.failCrownWave(this.replayTicks);
+    this.syncGenomeV2State();
+  }
+
+  /**
+   * Circuit leg one is a collected unit even when the linked route later
+   * burns. Its Yield remains zero, but ordinary growth, Score, arena cadence,
+   * and replay food count must still match the reducer's canonical foodCount.
+   */
+  private applyDeferredGenomeV2FoodUnit(): void {
+    const lengthBeforeFood = this.modelledLength();
+    this.state.foodEaten += 1;
+    const n = this.state.foodEaten;
+    this.lengthTrace.lengthAtEat[n] = lengthBeforeFood;
+    this.recordRunEvent({ t: this.runTimeDs(), e: 'f', n });
+    const growth =
+      baseGrowthForFood(this.growth, n, this.ruleset.id, lengthBeforeFood) +
+      (this.hasGene('bulk_up') ? GENE_PHYSICS.bulkUpExtraSegments : 0) +
+      (this.anomaly === 'overgrown'
+        ? ANOMALY_PHYSICS.overgrownExtraSegments
+        : 0);
+    this.growTail(growth);
+    this.placeDueTerrain();
+    this.applyShedMoves(n);
+    this.applyPetrify(n);
+    const { scoreValue } = this.resolveFoodEconomy(n);
+    this.state.score += scoreValue;
+    this.ticksSinceAnyEat = 0;
+    this.speed = this.effectiveSpeedForFood(n);
+    this.refreshHoldBudget();
+  }
+
+  private resolveCollectedGenomeV2Target(
+    position: Position,
+    dnaValue: number
+  ): number {
+    const runtime = this.genomeV2Runtime;
+    const target = runtime?.targetAt(position);
+    if (!runtime || !target) return 0;
+    // Gilded Fork's explicit greedy choice may be made while routing. If the
+    // player simply collects the ordinary target, that physical choice is
+    // recorded canonically before resolution instead of throwing at the eat.
+    if (target.kind === 'gold_trail' && target.forkChoice === null) {
+      runtime.chooseGildedFork(target.targetId, 'ordinary', this.replayTicks);
+    }
+    const result = runtime.resolveTarget(target.targetId, this.replayTicks, {
+      resolution: 'collected',
+      movesUsed: Math.max(0, this.replayTicks - target.spawnTick),
+      baseYield: genomeV2Yield(dnaValue),
+      pressureBps: Math.round(
+        this.getBoardPressure().committedOccupancy * 10_000
+      ),
+    });
+    if (!result) return 0;
+    this.syncGenomeV2State();
+    // The reducer is the one live economic truth. Score remains independent.
+    this.state.dnaCollected = genomeV2YieldFloor(
+      this.state.genomeV2?.ledger.bankableYield ?? 0
+    );
+    return result.bodyGrowthDelta;
+  }
+
+  private maybeOpenGenomeV2CadenceOffer(): void {
+    const runtime = this.genomeV2Runtime;
+    if (!runtime) return;
+    const offer = runtime.openCadenceOffer(
+      this.replayTicks,
+      this.state.foodEaten
+    );
+    if (!offer) return;
+    this.syncGenomeV2State();
+    this.emit('mutationChoice', {
+      options: [...offer.candidates],
+      source: 'cadence',
+      offerId: offer.offerId,
+      rulesVersion: GENOME_RULES_V2,
+    });
+  }
+
+  private maybeSealGenomeV2Coil(): void {
+    const runtime = this.genomeV2Runtime;
+    const reducer = runtime?.getState();
+    if (!runtime || !reducer) return;
+    const coilReady =
+      runtime.hasMechanic('coilkeeper') &&
+      reducer.coilCharge >= GENOME_V2_CONFIG.coilkeeper.chargeFoods;
+    const heartwood = runtime.hasGene('heartwood');
+    const feralTerritory = runtime.hasLadderTier(
+      'FERAL',
+      GENOME_V2_STRAIN_THRESHOLDS.expression
+    );
+    if (!coilReady && !heartwood && !feralTerritory) return;
+    const occupied = [
+      ...this.state.snake.map((cell) => ({ x: cell.x, z: cell.z })),
+      ...this.state.terrain.map((cell) => ({ x: cell.x, z: cell.z })),
+      ...reducer.permanentTerrain.flatMap((fact) => fact.cells),
+    ];
+    const protectedCells = [
+      ...this.state.foods.map((cell) => ({ x: cell.x, z: cell.z })),
+      ...(this.state.exitTile
+        ? [{ x: this.state.exitTile.x, z: this.state.exitTile.z }]
+        : []),
+      ...(this.state.exitTile2
+        ? [{ x: this.state.exitTile2.x, z: this.state.exitTile2.z }]
+        : []),
+      ...(this.state.mutationTile
+        ? [{ x: this.state.mutationTile.x, z: this.state.mutationTile.z }]
+        : []),
+      ...this.genomeV2ReservedTargetCells(),
+    ];
+    const enclosed = enclosedGenomeV2Cells(
+      this.gridSize,
+      occupied,
+      protectedCells,
+      this.ruleset.torus === true
+    );
+    if (enclosed.length === 0) return;
+
+    if (
+      coilReady &&
+      enclosed.length >= GENOME_V2_CONFIG.coilkeeper.minimumSealedCells
+    ) {
+      if (!runtime.recordCoilSeal(this.replayTicks, enclosed)) {
+        throw new Error('Genome v2 reducer rejected a live Coil seal.');
+      }
+      // Recovery geometry is measured after the sealed cells become terrain.
+      this.syncGenomeV2State();
+    }
+
+    const claimed = new Set(
+      reducer.territories.flatMap((territory) =>
+        territory.cells.map((cell) => cellKey(cell.x, cell.z))
+      )
+    );
+    const newlyEnclosed = enclosed.filter(
+      (cell) => !claimed.has(cellKey(cell.x, cell.z))
+    );
+    const territoryMinimum = heartwood
+      ? GENOME_V2_CONFIG.signatures.heartwoodMinimumCells
+      : GENOME_V2_CONFIG.coilkeeper.minimumSealedCells;
+    const recoveryExitCount = this.genomeV2RecoveryExitCount();
+    if (
+      (heartwood || feralTerritory) &&
+      newlyEnclosed.length >= territoryMinimum &&
+      recoveryExitCount > 0
+    ) {
+      if (
+        !runtime.recordTerritory(this.replayTicks, {
+          cells: newlyEnclosed,
+          recoveryExitCount,
+          source: heartwood ? 'heartwood' : 'feral_ladder',
+        })
+      ) {
+        throw new Error('Genome v2 reducer rejected live territory facts.');
+      }
+    }
+    this.syncGenomeV2State();
+  }
+
+  /** Replay-derived proof that a recovered coil leaves at least one safe move. */
+  private genomeV2RecoveryExitCount(): number {
+    const head = this.state.snake[0];
+    if (!head) return 0;
+    let exits = 0;
+    for (const direction of ['UP', 'RIGHT', 'DOWN', 'LEFT'] as const) {
+      let cell = this.getNextPosition(head, direction);
+      if (!this.isInBounds(cell)) {
+        if (!this.ruleset.torus) continue;
+        cell = this.wrapPosition(cell);
+      }
+      if (!this.checkSelfCollision(cell) && !this.isPositionOnTerrain(cell)) {
+        exits += 1;
+      }
+    }
+    return exits;
   }
 
   /**
@@ -3501,7 +4802,8 @@ export class SnakeGameLogic {
             : 0) -
           // Constellation Crown (COSMIC's signature gene): fewer stars, a
           // longer window - the terraformer's build, clearing waves clean.
-          (this.hasGene('constellation_crown')
+          (this.genomeV2Runtime?.hasGene('constellation_crown') === true ||
+          this.hasGene('constellation_crown')
             ? GENE_PHYSICS.crownConstellationStarPenalty
             : 0)
         : Math.max(1, this.growth.simultaneousFoods)) +
@@ -3544,11 +4846,23 @@ export class SnakeGameLogic {
       const cell =
         (spaced && i > 0
           ? chooseFoodCell(
-              this.gridSize, head, spaced, occupancy, this.rng, null, escape
+              this.gridSize,
+              head,
+              spaced,
+              occupancy,
+              this.rng,
+              null,
+              escape
             )
           : null) ??
         chooseFoodCell(
-          this.gridSize, head, blocked, occupancy, this.rng, null, escape
+          this.gridSize,
+          head,
+          blocked,
+          occupancy,
+          this.rng,
+          null,
+          escape
         );
       // `null` means the board holds no free cell at all - the player has
       // filled it. Placing nothing is the honest answer; the wave carries
@@ -3563,6 +4877,7 @@ export class SnakeGameLogic {
     }
     this.state.foods = foods;
     if (foods.length > 0) this.state.food = { ...foods[0] };
+    this.registerGenomeV2Targets(foods);
 
     // The window opens with the wave and closes on whatever is left.
     if (constellation) {
@@ -3591,7 +4906,8 @@ export class SnakeGameLogic {
     if (!constellation) return 0;
     const seconds =
       constellation.windowSeconds +
-      (this.hasGene('constellation_crown')
+      (this.genomeV2Runtime?.hasGene('constellation_crown') === true ||
+      this.hasGene('constellation_crown')
         ? GENE_PHYSICS.crownConstellationWindowSeconds
         : 0) -
       (this.hasMutation('starweaver')
@@ -3637,6 +4953,7 @@ export class SnakeGameLogic {
     const constellation = this.ruleset.constellation;
     if (!constellation) return;
     const missed = this.state.foods;
+    this.expireDisplacedGenomeV2Targets(missed);
     this.state.constellationTicksRemaining = 0;
     if (missed.length > 0) {
       this.placeTerrainAt(
@@ -3739,6 +5056,11 @@ export class SnakeGameLogic {
     for (const block of this.state.terrain) {
       markBlocked(blocked, this.gridSize, block.x, block.z);
     }
+    for (const fact of this.state.genomeV2?.permanentTerrain ?? []) {
+      for (const cell of fact.cells) {
+        markBlocked(blocked, this.gridSize, cell.x, cell.z);
+      }
+    }
     this.markClosingRing(blocked);
     if (this.state.exitTile) {
       markBlocked(
@@ -3763,6 +5085,9 @@ export class SnakeGameLogic {
         this.state.mutationTile.x,
         this.state.mutationTile.z
       );
+    }
+    for (const cell of this.genomeV2ReservedTargetCells()) {
+      markBlocked(blocked, this.gridSize, cell.x, cell.z);
     }
     return blocked;
   }
@@ -3840,7 +5165,16 @@ export class SnakeGameLogic {
    * food that spawns there would be a trap the player could not have read.
    */
   private isPositionOnTerrain(pos: Position): boolean {
-    return this.state.terrain.some((b) => b.x === pos.x && b.z === pos.z);
+    return (
+      this.state.terrain.some((b) => b.x === pos.x && b.z === pos.z) ||
+      this.isGenomeV2PermanentTerrain(pos)
+    );
+  }
+
+  private isGenomeV2PermanentTerrain(pos: { x: number; z: number }): boolean {
+    return (this.state.genomeV2?.permanentTerrain ?? []).some((fact) =>
+      fact.cells.some((cell) => cell.x === pos.x && cell.z === pos.z)
+    );
   }
 
   /**
@@ -3848,6 +5182,7 @@ export class SnakeGameLogic {
    * replaces the whole wave.
    */
   spawnFood(): void {
+    this.expireDisplacedGenomeV2Targets(this.state.foods);
     this.spawnFoods();
   }
 
@@ -3871,7 +5206,9 @@ export class SnakeGameLogic {
     this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'spawn' });
     this.emit('exitSpawned', {
       position: { ...position },
-      ...(this.state.exitTile2 ? { position2: { ...this.state.exitTile2 } } : {}),
+      ...(this.state.exitTile2
+        ? { position2: { ...this.state.exitTile2 } }
+        : {}),
       ticksRemaining: this.state.exitTicksRemaining,
     });
   }
@@ -3943,8 +5280,10 @@ export class SnakeGameLogic {
    * (or rolled if none) unless an explicit glyph is given.
    */
   placeFood(position: Position, glyph?: number): void {
+    this.expireDisplacedGenomeV2Targets(this.state.foods);
     this.state.foods = [{ ...position }];
     this.state.food = { ...position };
+    this.registerGenomeV2Targets(this.state.foods);
     if (this.ruleset.constellation) {
       this.state.constellationGlyph =
         glyph ??
@@ -3956,8 +5295,10 @@ export class SnakeGameLogic {
   /** Place a full food wave at specific positions (for testing). */
   placeFoods(positions: Position[], glyph?: number): void {
     if (positions.length === 0) return;
+    this.expireDisplacedGenomeV2Targets(this.state.foods);
     this.state.foods = positions.map((p) => ({ ...p }));
     this.state.food = { ...positions[0] };
+    this.registerGenomeV2Targets(this.state.foods);
     if (this.ruleset.constellation && glyph !== undefined) {
       this.state.constellationGlyph = glyph;
     }
@@ -3967,7 +5308,11 @@ export class SnakeGameLogic {
    * Place the exit portal at a specific position (for testing and driven
    * integration flows). Mirrors placeFood.
    */
-  placeExit(position: Position, ticksRemaining?: number, position2?: Position): void {
+  placeExit(
+    position: Position,
+    ticksRemaining?: number,
+    position2?: Position
+  ): void {
     this.state.exitTile = { ...position };
     this.state.exitTile2 = position2 ? { ...position2 } : null;
     this.state.exitTicksRemaining =
@@ -4016,7 +5361,7 @@ export class SnakeGameLogic {
   private emit(event: GameEvent, data?: unknown): void {
     const callbacks = this.events.get(event);
     if (callbacks) {
-      callbacks.forEach(cb => cb(data));
+      callbacks.forEach((cb) => cb(data));
     }
   }
 
@@ -4048,13 +5393,15 @@ export class SnakeGameLogic {
    * Wall Rush slide: pick a perpendicular direction along the wall
    * (clockwise preferred) whose next cell is in-bounds and body-free.
    */
-  private trySlide(
-    head: Position
-  ): { dir: Direction; pos: Position } | null {
+  private trySlide(head: Position): { dir: Direction; pos: Position } | null {
     const first = CLOCKWISE[this.state.direction];
     for (const dir of [first, OPPOSITES[first]]) {
       const pos = this.getNextPosition(head, dir);
-      if (!this.checkWallCollision(pos) && !this.checkSelfCollision(pos)) {
+      if (
+        !this.checkWallCollision(pos) &&
+        !this.checkSelfCollision(pos) &&
+        !this.isPositionOnTerrain(pos)
+      ) {
         return { dir, pos };
       }
     }
@@ -4079,9 +5426,11 @@ export class SnakeGameLogic {
    * then makes that intentionally overlapped state playable without clearing
    * body or terrain.
    */
-  private rebirthBody(): void {
+  private rebirthBody(
+    rewindSegments: number = MUTATION_PHYSICS.phoenixRewindCells
+  ): void {
     const rewind = Math.min(
-      MUTATION_PHYSICS.phoenixRewindCells,
+      Math.max(0, Math.floor(rewindSegments)),
       Math.max(0, this.state.snake.length - 1)
     );
     const reborn = this.state.snake.slice(rewind);
@@ -4159,7 +5508,12 @@ export class SnakeGameLogic {
       blocked.add(cellKey(this.state.exitTile2.x, this.state.exitTile2.z));
     }
     if (this.state.mutationTile) {
-      blocked.add(cellKey(this.state.mutationTile.x, this.state.mutationTile.z));
+      blocked.add(
+        cellKey(this.state.mutationTile.x, this.state.mutationTile.z)
+      );
+    }
+    for (const cell of this.genomeV2ReservedTargetCells()) {
+      blocked.add(cellKey(cell.x, cell.z));
     }
 
     this.placeTerrainAt(
@@ -4200,7 +5554,10 @@ export class SnakeGameLogic {
     source: TerrainSource
   ): void {
     if (cells.length === 0) return;
-    const formingTicks = formingTicksForSeconds(formingSeconds, this.getSpeed());
+    const formingTicks = formingTicksForSeconds(
+      formingSeconds,
+      this.getSpeed()
+    );
     const placed = new Set(this.state.terrain.map((b) => cellKey(b.x, b.z)));
     for (const cell of cells) {
       const key = cellKey(cell.x, cell.z);
@@ -4312,7 +5669,7 @@ export class SnakeGameLogic {
    * reaches it.
    */
   private portalScheduleActive(): boolean {
-    return this.genomeActive() && !!this.genome?.runSeed;
+    return this.genome !== null && !!this.genome.runSeed;
   }
 
   /**
@@ -4457,7 +5814,10 @@ export class SnakeGameLogic {
     const authored = this.ruleset.extraction.despawnSeconds;
     let base =
       authored !== undefined
-        ? Math.max(1, Math.round((authored * 1000) / Math.max(1, this.getSpeed())))
+        ? Math.max(
+            1,
+            Math.round((authored * 1000) / Math.max(1, this.getSpeed()))
+          )
         : this.ruleset.extraction.despawnTicks;
     // WP-3.12: the ladder's "Narrow Door" rung shortens the window, and it is
     // authored in SECONDS for exactly the reason `despawnSeconds` is - a rung
@@ -4517,6 +5877,25 @@ export class SnakeGameLogic {
    * dynasties simply gain +40 ms/tick.
    */
   private effectiveSpeedForFood(foodEaten: number): number {
+    if (this.genomeV2Active()) {
+      const base = this.ruleset.speedForFood(foodEaten);
+      let speed = this.genomeV2Runtime?.hasMechanic('time_dilation')
+        ? Math.max(
+            1,
+            Math.round(
+              (base * 10_000) / GENOME_V2_CONFIG.timeDilation.speedMultiplierBps
+            )
+          )
+        : base;
+      const overclock = this.state.genomeV2?.overclock;
+      if (overclock) {
+        speed = Math.max(
+          1,
+          Math.round((speed * 10_000) / overclock.speedMultiplierBps)
+        );
+      }
+      return speed;
+    }
     // Time Dilation (Gravity Bubble carries it) + VOLT Tempo both slow
     // the world by shifting the food offset (CYBER) or adding ms.
     let offset = 0;
@@ -4587,7 +5966,9 @@ export class SnakeGameLogic {
     const pulled: Position[] = [];
     for (const food of this.state.foods) {
       // Already inside the well: the pull has nothing to do.
-      if (Math.max(Math.abs(head.x - food.x), Math.abs(head.z - food.z)) <= radius) {
+      if (
+        Math.max(Math.abs(head.x - food.x), Math.abs(head.z - food.z)) <= radius
+      ) {
         pulled.push(food);
         continue;
       }
@@ -4673,7 +6054,9 @@ export class SnakeGameLogic {
   }
 
   private checkWallCollision(pos: Position): boolean {
-    return pos.x < 0 || pos.x >= this.gridSize || pos.z < 0 || pos.z >= this.gridSize;
+    return (
+      pos.x < 0 || pos.x >= this.gridSize || pos.z < 0 || pos.z >= this.gridSize
+    );
   }
 
   private isInBounds(pos: Position): boolean {
@@ -4681,7 +6064,7 @@ export class SnakeGameLogic {
   }
 
   private checkSelfCollision(pos: Position): boolean {
-    return this.state.snake.some(s => s.x === pos.x && s.z === pos.z);
+    return this.state.snake.some((s) => s.x === pos.x && s.z === pos.z);
   }
 
   private findFoodIndex(pos: Position): number {
@@ -4689,7 +6072,7 @@ export class SnakeGameLogic {
   }
 
   private isPositionOnSnake(pos: Position): boolean {
-    return this.state.snake.some(s => s.x === pos.x && s.z === pos.z);
+    return this.state.snake.some((s) => s.x === pos.x && s.z === pos.z);
   }
 
   private isPositionOnFood(pos: Position): boolean {
@@ -4750,7 +6133,17 @@ export class SnakeGameLogic {
    * End the run - one path for both endings. Death and extraction both commit
    * synchronously; presentation may outlive this state transition.
    */
-  private finalizeRun(reason: EndReason, retainDeathPresentation = false): void {
+  private finalizeRun(
+    reason: EndReason,
+    retainDeathPresentation = false
+  ): void {
+    if (this.genomeV2Runtime) {
+      // No live target contract survives the terminal boundary. This closes
+      // partial Circuit/Crown facts before exporting the one canonical record.
+      this.expireDisplacedGenomeV2Targets(this.state.foods, {
+        terminal: true,
+      });
+    }
     this.state.isDeathSequence = retainDeathPresentation;
     this.state.isGameOver = true;
     this.state.isPlaying = false;
@@ -4815,6 +6208,11 @@ export class SnakeGameLogic {
             strainTiers: { ...this.state.strainTiers },
           }
         : null,
+      ...(this.genomeV2Runtime
+        ? {
+            genomeV2: genomeV2RunRecord(this.genomeV2Runtime.getState(), null),
+          }
+        : {}),
     };
     this.terminalResult = checkpointClone(payload);
     this.emit('gameOver', payload);

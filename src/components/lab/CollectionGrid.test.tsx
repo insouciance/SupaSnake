@@ -141,11 +141,11 @@ describe('CollectionGrid', () => {
     const card = screen.getByTestId('variant-card-variant-0');
     expect(card).toHaveAttribute(
       'aria-label',
-      'PRIMAL 0, Generation 33, Yield multiplier 1.2621'
+      'PRIMAL 0, Generation 33, Yield multiplier 1.8114'
     );
     expect(within(card).queryByTestId('variant-card-roster-count')).toBeNull();
     expect(within(card).getByTestId('variant-card-generation-yield')).toHaveTextContent(
-      'Yield ×1.2621'
+      'Yield ×1.8114'
     );
   });
 
@@ -161,7 +161,7 @@ describe('CollectionGrid', () => {
     const card = screen.getByTestId('variant-card-variant-0');
     expect(card).toHaveAttribute(
       'aria-label',
-      'PRIMAL 0, Generation 11, Yield multiplier 1.1273, 2 snakes owned'
+      'PRIMAL 0, Generation 11, Yield multiplier 1.1717, 2 snakes owned'
     );
     expect(within(card).getByTestId('variant-card-roster-count')).toHaveTextContent('×2');
   });
@@ -233,7 +233,7 @@ describe('CollectionGrid', () => {
     expect(within(card).getByText('Gen 33')).toBeInTheDocument();
     expect(card).toHaveAttribute(
       'aria-label',
-      'PRIMAL 0, Generation 33, Yield multiplier 1.2621'
+      'PRIMAL 0, Generation 33, Yield multiplier 1.8114'
     );
   });
 

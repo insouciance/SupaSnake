@@ -175,6 +175,9 @@ describe('VariantDetailModal reads the selected sibling', () => {
     expect(screen.getByTestId('variant-yield-multiplier')).toHaveTextContent(
       'Yield ×1.00'
     );
+    expect(screen.getByTestId('variant-ascendance')).toHaveTextContent(
+      'Ascendance begins at Gen4'
+    );
   });
 
   it('states the exact Ascendance multiplier beside an ascended generation', () => {
@@ -182,7 +185,10 @@ describe('VariantDetailModal reads the selected sibling', () => {
 
     expect(screen.getByTestId('variant-generation')).toHaveTextContent('Gen 7');
     expect(screen.getByTestId('variant-yield-multiplier')).toHaveTextContent(
-      'Yield ×1.0723'
+      'Yield ×1.0824'
+    );
+    expect(screen.getByTestId('variant-ascendance')).toHaveTextContent(
+      'Next visible evolution'
     );
   });
 

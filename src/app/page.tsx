@@ -34,6 +34,7 @@ import {
   HomeCommandRail,
   type HomeCommand,
 } from '@/components/home/HomeCommandRail';
+import { HomeCodexRelic } from '@/components/home/HomeCodexRelic';
 import type { ChargeSnapshot } from '@/lib/store/gameStore';
 import { isStrainId } from '@/shared/game/strains';
 import {
@@ -627,7 +628,10 @@ export default function Home() {
 
   return (
     <>
-    <main className="app-bg text-bone-white relative h-[100dvh] overflow-hidden">
+    <main
+      className="consent-safe-viewport app-bg text-bone-white relative h-[100dvh] overflow-hidden"
+      data-home-chamber-root
+    >
       {/* The Specimen Chamber - full-viewport scene behind the UI. The
           placeholder holds the atmosphere until WebGL is live, then the
           chamber fades in from black (600ms). */}
@@ -752,10 +756,14 @@ export default function Home() {
         dna={stats?.dna ?? null}
         energy={stats?.charge ?? null}
       />
+      <HomeCodexRelic />
 
       {/* Context and four equal player destinations. The dock stays clear of
           phone safe areas and the measured desktop consent surface. */}
-      <div className="absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-10 flex flex-col items-center gap-3 px-4 sm:bottom-[calc(1rem+var(--consent-banner-height,0px))]">
+      <div
+        className="absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-10 flex flex-col items-center gap-3 px-4 sm:bottom-[calc(1rem+var(--consent-banner-height,0px))]"
+        data-home-command-dock
+      >
         {/* The World Signal (§7.2) — the ONE daily surface, standing in the
             slot the retired Contracts board occupied (§12.2, §13). The dock is
             bottom-anchored, so this grows UPWARD: LAUNCH does not move and

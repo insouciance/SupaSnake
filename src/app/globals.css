@@ -77,8 +77,7 @@ html[data-consent-visible='true'] .consent-safe-viewport {
 /* The game is a true full-screen route. Its global legal footer remains
    available everywhere else, but must not ghost through the translucent
    consent surface while the fixed cockpit is mounted. */
-body:has(.cockpit-game-viewport) > :is(footer),
-body:has(.cockpit-game-viewport) footer {
+body:has(.cockpit-game-viewport) [data-site-footer] {
   visibility: hidden;
 }
 

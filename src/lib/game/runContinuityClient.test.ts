@@ -40,12 +40,19 @@ describe('run continuity client', () => {
         { tick: 5, kind: 'turn' as const, direction: 'LEFT' as const },
       ],
     };
-    expect(buildTerminalReplayProof(accepted, terminal)).toEqual({
+    expect(buildTerminalReplayProof(accepted, terminal, 1_250)).toEqual({
       fromTick: 4,
       toTick: 6,
       actionOffset: 1,
       actions: [{ tick: 5, kind: 'turn', direction: 'LEFT' }],
+      activeElapsedMs: 1_250,
     });
+  });
+
+  it('refuses terminal proof clocks that are negative or non-integral', () => {
+    const trace = { ticks: 0, actions: [] };
+    expect(buildTerminalReplayProof(trace, trace, -1)).toBeNull();
+    expect(buildTerminalReplayProof(trace, trace, 1.5)).toBeNull();
   });
 
   it('classifies only explicit durable terminal recovery responses', () => {

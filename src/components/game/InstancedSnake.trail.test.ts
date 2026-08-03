@@ -36,14 +36,23 @@ import {
 import {
   COIL_SEAL_DURATION_SECONDS,
   getInstancedBodyMaterial,
+  SNAKE_HEAD_CENTER_Y,
+  TRAIL_STRAIN_LUMINANCE_FLOOR,
   writeCoilSealInstances,
+  writeSnakeTrailColor,
   writeTrailInstances,
 } from './InstancedSnake';
-import { FLOOR_CLEARANCE, FLOOR_TOP_Y } from './ArenaFloor';
 import {
+  centerYFromBase,
+  FLOOR_CLEARANCE,
+  FLOOR_GRAPHICS_TOP_Y,
+  FLOOR_TOP_Y,
+} from './ArenaFloor';
+import {
+  HEAD_SIZE,
   TRAIL_HEIGHT_HEAD,
+  TRAIL_TONE,
   getTrailFootprint,
-  getSnakeSegmentMaterial,
 } from './SnakeModel';
 import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 
@@ -78,6 +87,9 @@ class RecordingSink {
 
 const at = (x: number, z: number): Position => ({ x, y: 0, z });
 
+const colorDistance = (left: THREE.Color, right: THREE.Color): number =>
+  Math.hypot(left.r - right.r, left.g - right.g, left.b - right.b);
+
 /** A buffer holding one authoritative tick (prev === curr, so alpha = 1). */
 function bufferOf(snake: readonly Position[]): InterpolationBuffer {
   const buffer = createInterpolationBuffer();
@@ -100,7 +112,9 @@ function emit(
   buffer: InterpolationBuffer,
   levels: number[],
   alpha = 1,
-  elapsed = 0
+  elapsed = 0,
+  dynasty: 'CYBER' | 'PRIMAL' | 'COSMIC' = 'CYBER',
+  strainBands: Parameters<typeof writeTrailInstances>[6] = []
 ): { sink: RecordingSink; count: number } {
   const sink = new RecordingSink();
   const fusion: TrailFusionState = createTrailFusionState(20, 400);
@@ -120,7 +134,8 @@ function emit(
     alpha,
     fusion,
     cells,
-    [],
+    dynasty,
+    strainBands,
     elapsed
   );
   return { sink, count };
@@ -166,21 +181,33 @@ describe('the trail is actually emitted', () => {
   });
 
   it('stands every box on the floor, never floating', () => {
-    // Base-on-floor plus FLOOR_CLEARANCE, TerrainBlocks' convention. A box that
-    // truly hovers has no useful cast shadow and the shadow is a real occupancy
-    // cue; a box flush at y = 0 z-fights the platform's top face. The clearance
-    // is a fifth of a millimetre at board scale - far too small to read as
-    // floating, far too large for the depth buffer to confuse.
+    // Base-on-floor plus FLOOR_CLEARANCE, TerrainBlocks' convention. The base
+    // is also strictly above the major grid plane; matching that y was the
+    // remaining device-dependent clipping seam after the floor fight was fixed.
     const { sink, count } = emit(bufferOf(straight(12)), new Array(12).fill(1));
     for (let i = 0; i < count; i++) {
       const instance = sink.instances[i];
       expect(instance.position.y).toBeCloseTo(
-        FLOOR_CLEARANCE + instance.scale.y / 2,
+        centerYFromBase(FLOOR_CLEARANCE, instance.scale.y),
         10
+      );
+      expect(instance.position.y - instance.scale.y / 2).toBeGreaterThan(
+        FLOOR_GRAPHICS_TOP_Y
       );
       expect(instance.scale.y).toBeGreaterThan(0);
       expect(instance.scale.y).toBeLessThanOrEqual(TRAIL_HEIGHT_HEAD);
     }
+  });
+
+  it('places the head from the same base-to-centre rule as the body', () => {
+    expect(SNAKE_HEAD_CENTER_Y).toBe(
+      centerYFromBase(FLOOR_CLEARANCE, HEAD_SIZE)
+    );
+    expect(SNAKE_HEAD_CENTER_Y - HEAD_SIZE / 2).toBeCloseTo(
+      FLOOR_CLEARANCE,
+      10
+    );
+    expect(FLOOR_CLEARANCE).toBeGreaterThan(FLOOR_GRAPHICS_TOP_Y);
   });
 
   it('never emits a NaN', () => {
@@ -236,17 +263,62 @@ describe('fusion drives the picture, not just a number', () => {
 });
 
 describe('ordinary trail material is a solid authored surface', () => {
-  it('is fully opaque and keeps profile albedo under bloom in every dynasty', () => {
+  it('is fully opaque, neutral for semantic instance colour, and under bloom', () => {
     for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
       const material = getInstancedBodyMaterial(dynasty);
-      const shared = getSnakeSegmentMaterial(dynasty, false);
       const scalar = getGameMaterialProfile(dynasty).snake.bodyAlbedoScalar;
-      const expected = shared.color.clone().multiplyScalar(scalar);
       expect(material.transparent).toBe(false);
       expect(material.opacity).toBe(1);
       expect(material.depthWrite).toBe(true);
-      expect(material.color.getHexString()).toBe(expected.getHexString());
+      expect(material.color.r).toBeCloseTo(scalar, 10);
+      expect(material.color.g).toBeCloseTo(scalar, 10);
+      expect(material.color.b).toBeCloseTo(scalar, 10);
+      expect(material.emissive.r).toBe(1);
+      expect(material.emissive.g).toBe(1);
+      expect(material.emissive.b).toBe(1);
+      expect(scalar * Math.max(...TRAIL_TONE)).toBeLessThan(1);
+
+      const shader = {
+        fragmentShader: '#include <emissivemap_fragment>',
+      } as THREE.WebGLProgramParametersWithUniforms;
+      material.onBeforeCompile(shader, {} as THREE.WebGLRenderer);
+      expect(shader.fragmentShader).toContain('#ifdef USE_COLOR');
+      expect(shader.fragmentShader).toContain(
+        'totalEmissiveRadiance *= vColor.rgb'
+      );
+      expect(shader.fragmentShader).not.toContain(
+        '#ifdef USE_INSTANCING_COLOR'
+      );
     }
+  });
+});
+
+describe('Dynasty and Strain body colour', () => {
+  const luminance = (color: THREE.Color) =>
+    color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
+
+  it('keeps every Strain band near its Dynasty base luminance', () => {
+    for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
+      const base = writeSnakeTrailColor(new THREE.Color(), dynasty, null);
+      for (const strain of ['AURUM', 'VOLT', 'FERAL', 'FLUX', 'UMBRA'] as const) {
+        const band = writeSnakeTrailColor(new THREE.Color(), dynasty, strain);
+        expect(luminance(band)).toBeGreaterThanOrEqual(
+          luminance(base) * TRAIL_STRAIN_LUMINANCE_FLOOR - 1e-6
+        );
+        // The band still communicates its Strain; preserving luminance must
+        // not collapse it back to the untouched Dynasty colour.
+        expect(colorDistance(band, base)).toBeGreaterThan(0.03);
+      }
+    }
+  });
+
+  it('keeps the three unbanded Dynasty bodies visually distinct', () => {
+    const colors = (['CYBER', 'PRIMAL', 'COSMIC'] as const).map((dynasty) =>
+      writeSnakeTrailColor(new THREE.Color(), dynasty, null)
+    );
+    expect(colorDistance(colors[0], colors[1])).toBeGreaterThan(0.2);
+    expect(colorDistance(colors[0], colors[2])).toBeGreaterThan(0.2);
+    expect(colorDistance(colors[1], colors[2])).toBeGreaterThan(0.2);
   });
 });
 
@@ -440,7 +512,8 @@ describe('one box per cell, and nothing that interpenetrates it', () => {
     // moves along X, because only one of those changes the depth slope.
     //
     // Reproduced and eliminated with one variable: at FLOOR_CLEARANCE = 0 the
-    // banding is there, at 0.02 it is gone.
+    // banding is there. The current value additionally clears the raised major
+    // grid rather than sharing its y-plane.
     const { sink, count } = emit(bufferOf(straight(20)), new Array(20).fill(2));
     for (let i = 0; i < count; i++) {
       const base = sink.instances[i].position.y - sink.instances[i].scale.y / 2;

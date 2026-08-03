@@ -10,9 +10,9 @@
  * Serpent and Signal runs disjoint, so a Serpent run stamped `serpent_week_id`
  * and never `anomaly_id`; the end path read `session.anomaly_id`, found null,
  * and recomputed the run under NO condition. The Signal surface meanwhile told
- * the player "the gene pool tilts today" while `genomeBlock.anomalyStrain` was
- * set only on `mode: 'anomaly'`. The condition-sets were inert and one of them
- * was a false claim.
+ * the player "the gene pool tilts today" while the Genome offer-tilt channel
+ * was set only on `mode: 'anomaly'`. The condition-sets were inert and one of
+ * them was a false claim.
  *
  * v1.5 retires explicit Serpent starts in favour of automatic Clan Energy
  * Battles over ordinary runs. This suite now pins both sides of the cutover:
@@ -33,6 +33,7 @@ const mockCaptureException = jest.fn();
 var mockSettleSessionReward: jest.Mock;
 var mockSettleDurableRunProgression: jest.Mock;
 var mockResumeOrRecoverRunImpact: jest.Mock;
+var mockGenomeV2Enabled = true;
 
 jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -72,6 +73,11 @@ jest.mock('@/lib/server/codex', () => ({
   recordCodexDiscoveries: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/ftue/config', () => ({ FTUE_V2_ENABLED: true }));
+jest.mock('@/lib/features/genomeV2', () => ({
+  get GENOME_V2_ENABLED() {
+    return mockGenomeV2Enabled;
+  },
+}));
 jest.mock('@/lib/server/gameProgressionSettlement', () => ({
   settleDurableRunProgression: (...args: unknown[]) =>
     mockSettleDurableRunProgression(...args),
@@ -506,6 +512,7 @@ import {
 import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
 import { isMutationId } from '@/shared/game/mutations';
 import { sanitizeTraits } from '@/shared/game/traits';
+import { GENOME_RULES_V2 } from '@/shared/game/genomeV2';
 
 const PLAYER_ID = 'player-1';
 const SNAKE_ID = 'snake-1';
@@ -587,6 +594,7 @@ function terminalReplayProof(checkpointValue: unknown) {
     toTick: terminal.ticks,
     actionOffset: accepted.actions.length,
     actions: terminal.actions.slice(accepted.actions.length),
+    activeElapsedMs: checkpoint.privateState.elapsedMs,
   };
 }
 
@@ -679,6 +687,7 @@ const session = () => db.game_sessions[0];
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockGenomeV2Enabled = true;
   db.economy_transactions = [];
   db.serpent_weeks = [];
   db.signal_objective_runs = [];
@@ -913,6 +922,50 @@ describe('server-owned run-start continuity', () => {
     ).toHaveLength(1);
   });
 
+  it.each([
+    { initialV2: false, repairedV2: true },
+    { initialV2: true, repairedV2: false },
+  ])(
+    'keeps the repaired manifest and authoritative run context coherent across a Genome flag change ($initialV2 → $repairedV2)',
+    async ({ initialV2, repairedV2 }) => {
+      mockGenomeV2Enabled = initialV2;
+      await POST(post(startBody));
+      const shell = session();
+      const staleContext = structuredClone(shell.run_context);
+      Object.assign(shell, {
+        start_manifest: null,
+        start_manifest_draft: null,
+        continuity_energy_commitment: null,
+        continuity_exempt: null,
+        continuity_energy_visible: null,
+        continuity_phase: 'preparing',
+        energy_committed: null,
+        end_reason: null,
+        ended_at: null,
+      });
+      rpcCalls.length = 0;
+      mockGenomeV2Enabled = repairedV2;
+
+      const response = await POST(post(startBody));
+      const repaired = await response.json() as Row;
+      const repairedGenome = repaired.genome as Row;
+      const repairedContext = repaired.runContext as Row;
+      const contextGenome = repairedContext.genome as Row;
+
+      expect(response.status).toBe(200);
+      expect(repairedGenome.rulesVersion ?? 1).toBe(repairedV2 ? 2 : 1);
+      expect(contextGenome.rulesVersion ?? 1).toBe(repairedV2 ? 2 : 1);
+      expect(shell.run_context).toEqual(repairedContext);
+      expect((shell.start_manifest_draft as Row).runContext).toEqual(
+        repairedContext
+      );
+      expect(shell.run_context).not.toEqual(staleContext);
+      expect(
+        rpcCalls.filter((call) => call.fn === 'finalize_run_continuity_start')
+      ).toHaveLength(1);
+    }
+  );
+
   it('rejects the same request id when any material setting changes', async () => {
     expect((await POST(post(startBody))).status).toBe(200);
     const conflict = await POST(post({ ...startBody, energyCommitment: 5 }));
@@ -990,6 +1043,45 @@ describe('server-owned run-start continuity', () => {
       checkpoint: openingCheckpoint(manifest),
     }));
     expect(rewind.status).toBe(409);
+  });
+
+  it('continues and settles an existing Genome v2 run after new v2 starts are switched off', async () => {
+    const manifest = await (await POST(post(startBody))).json();
+    expect(manifest.genome).toMatchObject({ rulesVersion: GENOME_RULES_V2 });
+
+    const activation = await POST(post({
+      action: 'activate',
+      sessionId: manifest.sessionId,
+      checkpoint: openingCheckpoint(manifest),
+    }));
+    expect(activation.status).toBe(200);
+    const activeRun = (await activation.json()).activeRun;
+
+    // The rollout flag controls intake only. A forward flag-off deployment
+    // must retain the immutable v2 contract already stamped onto this run.
+    mockGenomeV2Enabled = false;
+    const resumed = await (await GET(get())).json();
+    expect(resumed.activeRun).toMatchObject({
+      phase: 'active',
+      manifest: {
+        sessionId: manifest.sessionId,
+        genome: { rulesVersion: GENOME_RULES_V2 },
+      },
+      checkpointRevision: activeRun.checkpointRevision,
+      canContinue: true,
+    });
+
+    const terminal = await POST(post({
+      action: 'terminal',
+      sessionId: manifest.sessionId,
+      expectedRevision: activeRun.checkpointRevision,
+      leaseToken: activeRun.leaseToken,
+      replay: terminalReplayProof(activeRun.checkpoint),
+    }));
+
+    expect(terminal.status).toBe(200);
+    expect(await terminal.json()).toMatchObject({ success: true });
+    expect(session()).toMatchObject({ validated: true });
   });
 
   it('cannot activate a session outside the authenticated player scope', async () => {
@@ -1162,14 +1254,69 @@ describe('a Signal run resolves the day’s condition and settles under it', () 
     // can outweigh the anomaly and move the tilt, and the whole point is that
     // the sentence on screen and the stream in the engine move together. A
     // regression that let them diverge would fail here.
-    expect(body.genome.anomalyStrain).toBe(
+    expect(body.genome.offerTiltStrain).toBe(
       describeSignalDay(body.signal.day).condition.strainTilt
     );
+    expect(body.genome).toMatchObject({
+      rulesVersion: GENOME_RULES_V2,
+      runSeed: expect.any(String),
+      ftuePresentation: { v: GENOME_RULES_V2 },
+    });
+    expect(Array.isArray(body.genome.v2GenePool)).toBe(true);
+    expect(body.genome.v2GenePool.length).toBeGreaterThan(1);
+    expect(body.genome).not.toHaveProperty('genePool');
+    expect(body.runContext).toMatchObject({
+      snake: {
+        ascendance: {
+          curveVersion: 2,
+          multiplierBps: expect.any(Number),
+        },
+      },
+      genome: {
+        rulesVersion: GENOME_RULES_V2,
+        genePool: body.genome.v2GenePool,
+        ftuePresentation: body.genome.ftuePresentation,
+      },
+    });
+    expect(session().run_context).toEqual(body.runContext);
     // The stamp the end path re-derives it from — mirrored by the RPC, not by
     // the session insert.
     expect(session().signal_objective_run_id).toBe(SIGNAL_ATTEMPT_ID);
     expect(session().anomaly_id ?? null).toBeNull();
     expect(session().serpent_week_id ?? null).toBeNull();
+  });
+
+  it('issues the complete legacy Genome contract when the v2 rollout is off', async () => {
+    mockGenomeV2Enabled = false;
+    db.game_sessions = [];
+
+    const response = await POST(
+      post({
+        action: 'start',
+        mode: 'signal',
+        snake_id: SNAKE_ID,
+        signalObjectiveId: signalObjectiveId('extract'),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.genome).toMatchObject({
+      runSeed: expect.any(String),
+      ftue: {
+        bankedRuns: expect.any(Number),
+        strainTagsUnlocked: expect.any(Boolean),
+      },
+    });
+    expect(Array.isArray(body.genome.genePool)).toBe(true);
+    expect(body.genome.genePool.length).toBeGreaterThan(1);
+    expect(body.genome).not.toHaveProperty('rulesVersion');
+    expect(body.genome).not.toHaveProperty('v2GenePool');
+    expect(body.runContext.genome).toMatchObject({
+      genePool: body.genome.genePool,
+      tierCap: expect.any(Number),
+    });
+    expect(body.runContext.genome).not.toHaveProperty('rulesVersion');
   });
 
   it('settlement re-derives the SAME condition from the attempt and recomputes with it', async () => {
@@ -1255,7 +1402,7 @@ describe('the legacy anomaly path is untouched', () => {
     expect(body.condition).toBe(expected);
     expect(body.anomaly.id).toBe(expected);
     expect(session().anomaly_id).toBe(expected);
-    expect(body.genome.anomalyStrain).toBe(ANOMALY_STRAINS[expected]);
+    expect(body.genome.offerTiltStrain).toBe(ANOMALY_STRAINS[expected]);
   });
 
   it('settlement still reads it straight off `anomaly_id`, with no week or day lookup', async () => {
@@ -1282,7 +1429,7 @@ describe('an ordinary run has no condition at either end', () => {
     const body = await response.json();
 
     expect(body.condition).toBeUndefined();
-    expect(body.genome.anomalyStrain).toBeNull();
+    expect(body.genome.offerTiltStrain).toBeNull();
   });
 
   it('settlement recomputes it under no condition', async () => {

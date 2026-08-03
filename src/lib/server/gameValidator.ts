@@ -74,7 +74,20 @@ import {
   isGeneId,
   type GeneId,
   type GenePick,
+  type GenomeV2ActiveGeneId,
 } from '@/shared/game/genes';
+import {
+  GENOME_RULES_V1,
+  GENOME_RULES_V2,
+  assertGenomeV2PersistenceBound,
+  genomeV2EventId,
+  genomeV2FtueFromPresentation,
+  genomeV2RunRecord,
+  genomeV2YieldFloor,
+  settleGenomeV2,
+  type GenomeV2FtuePresentation,
+  type GenomeV2RunRecord,
+} from '@/shared/game/genomeV2';
 import {
   STRAIN_ECONOMICS,
   STRAIN_PHYSICS,
@@ -199,8 +212,10 @@ function derivePortalsPassed(args: {
   return portalsPassed(met, args.infuses.length, args.extracted);
 }
 
-/** Server context for genome validation - all fields server-derived. */
-export interface GenomeValidationContext {
+/** Server context for historical Genome v1 validation. */
+export interface GenomeV1ValidationContext {
+  /** Missing is the durable pre-v2 spelling. */
+  rulesVersion?: typeof GENOME_RULES_V1;
   /** Starting strain points (traits + lineage, from the snake row). */
   heirloom: StrainPoints;
   /** The player's unlocked GENE pool (server-composed), null = ungated. */
@@ -248,8 +263,33 @@ export interface GenomeValidationContext {
   ladderRung?: number;
 }
 
+/**
+ * Server context for Genome v2 validation. The terminal record is accepted
+ * only after continuity replay produced it on the server; no browser-authored
+ * record can enter this branch.
+ */
+export interface GenomeV2ValidationContext {
+  rulesVersion: typeof GENOME_RULES_V2;
+  runSeed: string;
+  genePool: GenomeV2ActiveGeneId[];
+  startingStrainPoints: StrainPoints;
+  ftuePresentation: GenomeV2FtuePresentation;
+  externalSecondLife: 'iron_scales' | 'other' | null;
+  offerTiltStrain: StrainId | null;
+  suppressedStrains: StrainId[];
+  strainThresholdDelta: Partial<Record<StrainId, number>>;
+  authoritativeTerminal: boolean;
+  growthProfileId?: GrowthProfileId;
+  ladderRung?: number;
+}
+
+/** Server-derived, run-start-stamped Genome authority. */
+export type GenomeValidationContext =
+  | GenomeV1ValidationContext
+  | GenomeV2ValidationContext;
+
 /** The validator-accepted genome record (game_sessions.genome JSONB). */
-export interface AcceptedGenome {
+export interface AcceptedGenomeV1 {
   v: 1;
   picks: GenePick[];
   splices: { id: SpliceId; atFood: number }[];
@@ -265,6 +305,8 @@ export interface AcceptedGenome {
   /** The global raw clamp bound while individual caps passed (cheat signal). */
   globalClampHit: boolean;
 }
+
+export type AcceptedGenome = AcceptedGenomeV1 | GenomeV2RunRecord;
 
 // =============================================================================
 // VALIDATION SEVERITY (WP-2.05 — Player Truth)
@@ -659,6 +701,161 @@ function nonNegativeInt(value: unknown): number | null {
     : null;
 }
 
+function genomeV2JsonEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((entry, index) => genomeV2JsonEqual(entry, right[index]));
+  }
+  if (
+    typeof left !== 'object' || left === null ||
+    typeof right !== 'object' || right === null
+  ) return false;
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] &&
+        genomeV2JsonEqual(leftRecord[key], rightRecord[key])
+    );
+}
+
+/**
+ * Assert the flat terminal record emitted by the replayed engine. This is a
+ * server invariant, not a repairable client claim: throwing makes settlement
+ * retry with the durable terminal intent instead of paying from corrupt data.
+ */
+function authoritativeGenomeV2Record(
+  value: unknown,
+  dynasty: DynastyName,
+  foodCount: number,
+  ctx: GenomeV2ValidationContext
+): GenomeV2RunRecord {
+  if (
+    ctx.authoritativeTerminal !== true ||
+    typeof value !== 'object' || value === null || Array.isArray(value)
+  ) {
+    throw new Error('Genome v2 settlement requires a replay-authoritative terminal record.');
+  }
+  const record = value as GenomeV2RunRecord;
+  const expectedFtue = genomeV2FtueFromPresentation(ctx.ftuePresentation);
+  if (
+    record.v !== GENOME_RULES_V2 ||
+    record.dynasty !== dynasty ||
+    record.runSeed !== ctx.runSeed ||
+    record.settlement !== null ||
+    record.foodCount !== foodCount ||
+    !genomeV2JsonEqual(record.genePool, ctx.genePool) ||
+    !genomeV2JsonEqual(record.ftue, expectedFtue) ||
+    !genomeV2JsonEqual(
+      record.startingStrainPoints,
+      ctx.startingStrainPoints
+    ) ||
+    record.splicesEnabled !== expectedFtue.splicesUnlocked ||
+    record.externalSecondLife !== ctx.externalSecondLife ||
+    record.offerTiltStrain !== ctx.offerTiltStrain ||
+    !genomeV2JsonEqual(record.suppressedStrains, ctx.suppressedStrains) ||
+    !genomeV2JsonEqual(
+      record.strainThresholdDelta,
+      ctx.strainThresholdDelta
+    )
+  ) {
+    throw new Error('Genome v2 terminal record disagrees with its run-start authority.');
+  }
+  if (
+    !Number.isSafeInteger(record.eventIndex) || record.eventIndex < 0 ||
+    !Number.isSafeInteger(record.tick) || record.tick < 0 ||
+    !Number.isSafeInteger(record.compactedJournalEvents) ||
+    record.compactedJournalEvents < 0 ||
+    !Array.isArray(record.journal) ||
+    record.eventIndex !== record.compactedJournalEvents + record.journal.length
+  ) {
+    throw new Error('Genome v2 terminal journal envelope is malformed.');
+  }
+  let priorTick = 0;
+  for (let offset = 0; offset < record.journal.length; offset += 1) {
+    const event = record.journal[offset];
+    const index = record.compactedJournalEvents + offset + 1;
+    if (
+      typeof event !== 'object' || event === null ||
+      event.index !== index ||
+      event.eventId !== genomeV2EventId(record.runSeed, index) ||
+      !Number.isSafeInteger(event.tick) ||
+      event.tick < priorTick || event.tick > record.tick
+    ) {
+      throw new Error('Genome v2 terminal journal is not canonical.');
+    }
+    priorTick = event.tick;
+  }
+  assertGenomeV2PersistenceBound(record);
+  return record;
+}
+
+function validateGenomeV2Branch(
+  input: GameResultInput,
+  dynasty: DynastyName,
+  traits: TraitId[],
+  ctx: GenomeV2ValidationContext,
+  extracted: boolean,
+  foodCount: number,
+  durationSeconds: number,
+  errors: string[]
+): ValidationResult {
+  const record = authoritativeGenomeV2Record(
+    input.genome,
+    dynasty,
+    foodCount,
+    ctx
+  );
+  const settlement = settleGenomeV2(record, extracted ? 'bank' : 'crash');
+  // `displayGrossRaw` is a celebratory high-water projection and may include
+  // forfeitable Escrow/Stake. It is explicitly never an authority channel.
+  const rawDna = genomeV2YieldFloor(record.ledger.bankableYield);
+  const expectedPayout = genomeV2YieldFloor(settlement.harvestEligibleYield);
+  const totals = computeRunTotals(
+    dynasty,
+    foodCount,
+    [],
+    null,
+    traits,
+    null
+  );
+  const expectedScore = totals.score;
+
+  if (claimDriftIsAlertable(input.dna_earned, rawDna)) {
+    errors.push(
+      `DNA_MISMATCH: replay reported ${input.dna_earned}, Genome v2 recorded ${rawDna} (${dynasty}, ${foodCount} foods)`
+    );
+  }
+  if (claimDriftIsAlertable(input.score, expectedScore)) {
+    errors.push(
+      `SCORE_MISMATCH: replay reported ${input.score}, recomputed ${expectedScore} (${dynasty}, ${foodCount} foods)`
+    );
+  }
+
+  return {
+    ...severityView(errors),
+    adjustedDna: expectedPayout,
+    rawDna,
+    adjustedScore: expectedScore,
+    foodCount,
+    extracted,
+    mutations: [],
+    phoenixTriggeredAtFood:
+      record.secondLife?.consumed === true ? record.secondLife.consumedAtFood : null,
+    masteryRawDna: rawDna,
+    genome: genomeV2RunRecord(record, settlement),
+    durationSeconds,
+    claimClamps: [],
+    errors,
+  };
+}
+
 export function validateGameResult(
   input: GameResultInput,
   serverStartedAt: Date,
@@ -772,6 +969,18 @@ export function validateGameResult(
     durationSeconds * ruleset.validation.maxFoodPerSecond * foodsOnBoard
   );
   const claimedFoodCount = foodCount;
+  if (genomeCtx?.rulesVersion === GENOME_RULES_V2) {
+    return validateGenomeV2Branch(
+      input,
+      dynasty,
+      traits,
+      genomeCtx,
+      extracted,
+      claimedFoodCount,
+      durationSeconds,
+      errors
+    );
+  }
   if (foodCount > maxFood) {
     foodCount = maxFood;
   }
@@ -1190,7 +1399,7 @@ function validateGenomeBranch(
   dynasty: DynastyName,
   traits: TraitId[],
   anomaly: ConditionInput,
-  ctx: GenomeValidationContext,
+  ctx: GenomeV1ValidationContext,
   extracted: boolean,
   foodCount: number,
   claimedFoodCount: number,

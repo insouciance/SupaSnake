@@ -1,17 +1,17 @@
 # Production Release Runbook
 
-Current player-feature baseline: Career Spine runtime
-`564dbb71a83198eba796503de3334d8d4d82f48d`, deployed 2026-07-31 by workflow
-run 30608676126 as `dpl_FrfgGfaDnBjjJum6NwWfgUsrSdSR`, with hosted migrations
-001–061. Canonical health reports the exact release SHA, healthy database,
-Career phase `ready`, bridge version 1, Career version 1, and the presentation
-surface enabled. Stripe remains in sandbox/test mode.
+Current pre-Genome baseline: cohesive UX runtime
+`23ba6e6fd95029cd9da4cea5b78a998b55aac782`, independently verified on
+2 August 2026 as production deployment `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`,
+with hosted migrations 001–064. Canonical health reports the exact release SHA,
+healthy database, Career phase `ready`, cohesive capability version 1, and
+21/21 public surfaces enabled. Stripe remains in sandbox/test mode.
 
-The independently recorded outgoing deployment is
-`dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e`. It is not an application rollback target
-after migration 061 because that cutover rejects its retired settlement writer.
-Keep this volatile paragraph current in the release-record change; do not copy
-its IDs into workflow code.
+The deployment above is the outgoing application for the Genome v2 cutover.
+Migration 065 is additive, but once any v2 session starts the outgoing
+application is not a safe rollback target because it cannot resume or settle
+that immutable v2 contract. Keep this volatile paragraph current in the
+release-record change; do not copy its IDs into workflow code.
 
 ## Release law
 
@@ -28,8 +28,12 @@ cutover:
    the exact outgoing production deployment.
 3. Apply only the reviewed, exact migration plan. Re-prove current `main`, the
    exact SHA's successful push workflows, and the unchanged pending plan
-   immediately before mutation. Validate the outgoing runtime, the hosted
-   read-only schema contract, and the Preview public contract afterward.
+   immediately before mutation. Until the exact outgoing Production artifact
+   proves the full dual-version Genome v2 capability and corrected 2/3/4 Strain
+   profile, the dedicated read-only preflight must prove before mutation and
+   again immediately before Production that no durable v2 session exists.
+   Validate the outgoing runtime, the hosted read-only schema contract, and the
+   Preview public contract afterward.
 4. Create one ordinary `vercel deploy --prod` deployment. There is no
    `--prod --skip-domain` staging interval and no unsupported attempt to
    re-promote an already-current deployment merely to move cron ownership.
@@ -75,38 +79,68 @@ only production mutation path; never run a separate hosted `supabase db push`.
 6. The linked migration dry-run must be empty or exactly equal the filenames
    entered at dispatch. Any extra, missing, reordered, or partial unreviewed
    migration is a stop condition.
+7. For the first cutover, the aggregate production preflight must report zero
+   Genome v2 evidence in run context, start manifest/draft, continuity
+   checkpoint/terminal facts, and settled Genome. Any nonzero count stops this
+   rules-version-2 release: design rules v3 or persist a frozen base-threshold
+   profile instead. The workflow scopes this automatically from the exact
+   outgoing artifact's Genome capability **and exact 2/3/4 application
+   profile**—not from migration state—so a partial migration or older 3/4/5
+   binary remains guarded while legitimate post-cutover sessions do not block
+   later deployments. If outgoing Production exposes Genome v2 at all without
+   the exact 2/3/4 marker, the workflow stops before the first preflight; a
+   potentially writing 3/4/5 artifact cannot be treated as a legacy reader
+   across two non-atomic point-in-time queries.
 
 ## SQL evidence boundary
 
-The release has two deliberately different database gates:
+The release has three deliberately different database gates:
 
 - `scripts/run-local-sql-contracts.sh` runs the 059 Energy, 060 durable end,
-  061 Career, 062 clan, 063 continuity, and 064 favorite contracts plus both
+  061 Career, 062 clan, 063 continuity, 064 favorite, and 065 Genome v2
+  contracts plus both
   real two-connection races against the **final** local schema. It rejects any
   database URL that is not loopback port 54322. Later invariants require fixture
   maintenance; they never justify deleting an affected economy/session
   regression contract from the release gate.
-- `supabase/tests/cohesive_release_read_only.sql` is the only SQL contract that
-  may run against the linked production project. It creates no fixtures and is
-  one structural `SELECT` executed as `supabase_read_only_user` through the
-  Management API's dedicated read-only endpoint. It proves exact function
+- `supabase/tests/genome_v2_pre_release_read_only.sql` is the aggregate-only
+  compatibility preflight for this first v2 cutover. Until the exact outgoing
+  Production artifact proves schema/catalog/Ascendance version 2, all eight
+  Splices, rules version 2, and exact Minor/Expression/Apex thresholds 2/3/4,
+  it is executed twice via
+  `scripts/probe-linked-genome-v2-precondition.sh`: before any schema mutation
+  and immediately before Production. It checks every durable session envelope
+  that can identify rules version 2 and returns counts only. A nonzero result is
+  a hard stop, never a reason to rewrite or reinterpret an issued run. After a
+  successful cutover the outgoing capability automatically retires this
+  first-release-only premise; there is no operator bypass.
+- `supabase/tests/cohesive_release_read_only.sql` is the post-bridge structural
+  SQL contract permitted against the linked production project. It creates no
+  fixtures and is one structural `SELECT` executed as
+  `supabase_read_only_user` through the Management API's dedicated read-only
+  endpoint. It proves exact function
   signatures and service-role grants without invoking those functions, absence
   of duplicate favorites, exact trigger/function binding, validated continuity
-  constraints, and required indexes. The immediately preceding empty linked
-  migration-plan proof remains the authority for the 062/063/064 ledger.
+  constraints, required indexes, exact Genome catalog ids, versioned Codex
+  identities, hardened Genome definers, and the complete API-role table
+  privilege boundary (including TRUNCATE/TRIGGER/REFERENCES denial). The
+  immediately preceding empty linked migration-plan proof remains the authority
+  for the 062/063/064/065 ledger. Pure Genome projector behavior is exercised by
+  the service-only capability and local stateful contract; the hosted probe
+  remains structural and never invokes an application function.
 
 Never run `062_competitive_clans.sql`, `063_run_continuity.sql`,
-`064_atomic_dynasty_favorites.sql`, or the 064 concurrency test from
-`supabase/tests/` against hosted production. They intentionally create and
-exercise fixture state.
+`064_atomic_dynasty_favorites.sql`, `065_genome_v2.sql`, or the 064 concurrency
+test from `supabase/tests/` against hosted production. They intentionally create
+and exercise fixture state.
 
 ## Cohesive release states
 
-The 062–064 release is allowed only through these observable states.
+The Genome v2 release is allowed only through these observable states.
 
 ### A. Pre-bridge
 
-- Hosted schema: 001–061.
+- Hosted schema: 001–064.
 - Canonical alias: exact outgoing production deployment.
 - Cron owner and every cron host: exact outgoing deployment.
 - Cron definitions: byte-equivalent normalized `{path, schedule}` set from
@@ -114,37 +148,51 @@ The 062–064 release is allowed only through these observable states.
 - Incoming artifact: Preview target only, exact release SHA, exact manifest
   hash and production Supabase ref through the anonymous contract; service role
   deliberately disabled; never a production cron owner.
+- First-release preflight: while outgoing Production does not yet prove both
+  Genome-v2 capability and the corrected 2/3/4 application profile, zero
+  durable Genome v2 sessions across all six persisted evidence locations.
 
 If any check fails here, stop. No hosted migration has been attempted.
 
 ### B. Post-migration, pre-production
 
-- Hosted schema: 001–064, or the recognized forward-only partial state while a
+- Hosted schema: 001–065, or the recognized forward-only partial state while a
   failed push is being investigated.
 - Canonical alias and cron state: still exactly outgoing.
 - Outgoing application: healthy on the bridge schema.
 - Preview: anonymous contract healthy with exact release SHA, exact public
   surface hash, exact project ref, and no service-role dependency.
 - Read-only linked structural probe: passed.
+- If the outgoing Production artifact does not yet prove Genome-v2 capability
+  with the corrected 2/3/4 profile, the no-v2-session premise remains true; it
+  is re-proved immediately before Production while the outgoing app remains
+  legacy and Preview has no service role. Once the exact outgoing artifact
+  proves both, later releases skip this first-cutover-only premise
+  automatically.
 
 Migration 062's seven-argument compatibility function cannot create a clan or
 spend DNA. Migration 063 preserves legacy sessions while adding continuity.
 Migration 064 enforces one favorite per dynasty even for the outgoing direct
+writer. Migration 065 adds versioned Genome catalogs, discoveries, and
+Ascendance functions without rewriting legacy rows or changing the outgoing
 writer. These reviewed bridges are why the outgoing application remains valid
 while the new release is still only Preview.
 
 If the workflow stops here, production traffic and cron remain outgoing. Do not
 reverse migrations; forward-fix and retry with the exact ordered pending suffix
-(`063,064`, `064`, or `none` after all three committed).
+(`065` from the current baseline, or `none` after it commits). The workflow also
+recognizes the longer ordered suffixes only for a host that genuinely missed an
+earlier bridge; the linked dry-run, never operator memory, decides.
 
 ### C. Post-cutover
 
-- Hosted schema: 001–064.
+- Hosted schema: 001–065.
 - Canonical alias: exact deployment ID and host returned by the deliberate
   Production deployment.
 - Canonical health: exact Git SHA, exact project ref/public-surface hash,
-  database healthy, Career ready, Run Flow on, and cohesive capability versions
-  at 1.
+  database healthy, Career ready, Run Flow on, cohesive capability versions at
+  1, and Genome capability `status=healthy`, schema/catalog/Ascendance version
+  2, and eight active Splices.
 - Cron owner and every cron host: exact new deployment.
 - Cron definitions: unchanged normalized hash from the outgoing snapshot;
   enabled.
@@ -164,22 +212,26 @@ The workflow performs:
 2. Clean local Supabase replay and all ordinary/two-session SQL contracts.
 3. Exact manifest-driven public flags plus Production environment presence,
    exact project/hash, and payment-mode validation.
-4. Linked migration dry-run and exact release allowlist classification. Unknown
-   migrations stop; there is no inferred generic/additive path.
+4. Linked migration dry-run, exact release allowlist classification, exact
+   outgoing Production inspection, and—until that outgoing artifact proves the
+   full Genome v2 capability with the corrected 2/3/4 profile—the first
+   aggregate zero-v2-session proof. Unknown migrations or premature durable v2
+   evidence stop; there is no inferred generic/additive path.
 5. Exact outgoing canonical deployment and cron snapshot.
 6. Ordinary Preview deployment with service role disabled and target
    verification (`preview`, never `production`). Its anonymous release contract
    must prove the exact manifest/project/SHA. Canonical and cron are re-proved.
 7. Immediate current-main, exact-SHA CI, and pending-plan revalidation; exact
-   062–064 initial/resume push and linked lint.
+   reviewed 062–065 initial/resume suffix push and linked lint.
 8. Empty post-push dry-run and hosted read-only migration-ledger/structural probe.
 9. A second proof that canonical alias and cron remain exactly outgoing after
    all schema work.
 10. Exact outgoing release health and a second Preview anonymous-contract proof
     on the final schema.
-11. Immediate current-main, exact-SHA CI, and empty-plan proof, then one
-    deliberate `vercel deploy --prod`; production values are decrypted and
-    validated in Vercel's cloud build.
+11. Immediate current-main, exact-SHA CI, empty-plan proof, and, for the first
+    cutover only, a second aggregate zero-v2-session proof, then one deliberate
+    `vercel deploy --prod`; production values are decrypted and validated in
+    Vercel's cloud build.
 12. Exact new deployment inspection, canonical alias proof, cron owner/host/
     definition/enabled proof, and final health.
 13. A best-effort `always()` read-only state classifier while the job remains
@@ -197,20 +249,30 @@ The workflow performs:
 | Failure state | Required response |
 |---|---|
 | Verification, local SQL, environment, migration dry-run, outgoing snapshot, or Preview build fails | Stop. Hosted schema and production are unchanged. |
+| Outgoing Production exposes Genome v2 without the exact rules-v2 2/3/4 profile | Stop before Preview or mutation. The outgoing writer is incompatible with a non-atomic threshold correction; introduce a frozen profile/rules v3 or first establish a reviewed no-write transition. |
+| During the first cutover, either Genome v2 zero-session preflight is nonzero or malformed | Stop before mutation/cutover. Do not deploy 2/3/4 as rules v2; introduce rules v3 or a frozen threshold profile. |
 | Preview smoke fails before a standard migration | Stop. No hosted mutation occurred. |
-| 062–064 push/lint/read-only probe fails | Do not create a Production deployment. Preserve forward-only state, confirm canonical and cron still exact outgoing, then forward-fix or use only the recognized ordered suffix. |
+| 062–065 push/lint/read-only probe fails | Do not create a Production deployment. Preserve forward-only state, confirm canonical and cron still exact outgoing, then forward-fix or use only the recognized ordered suffix. |
 | Post-bridge outgoing or Preview smoke fails | Do not create a Production deployment. Schema is additive; production and cron remain outgoing. Forward-fix. |
 | Production command fails or returns ambiguously while alias + cron still appear outgoing | Unresolved, not a safe pre-cutover stop. Freeze releases and inspect release-SHA Production candidates until no in-flight deployment can cut over; never retry from one immediate snapshot. |
 | Production command returns ambiguously but live health reports the new SHA and cron exactly follows that canonical deployment | Treat as a post-cutover production incident. Freeze releases and inspect logs; do not promote outgoing. |
 | Alias, cron owner, cron hosts, definitions, or enabled state are mixed/unknown | Freeze deployment automation. Record all IDs and hashes, inspect Vercel dashboard/API, and restore one coherent state under operator control. |
 | Deploy job is cancelled or times out after the Production attempt starts | Assume classification did not run. Freeze releases and manually inspect canonical ID/host/readiness/target, `/api/health` release/project/hash, and complete cron state before any retry. |
-| Final new-release health fails | Because 062–064 are reviewed as outgoing-compatible, the operator may use `vercel rollback <outgoing-url>` only after confirming the current failure is application-only. Then independently prove canonical ID/host, health, cron owner/hosts/definitions/enabled. If any proof fails, forward-fix rather than improvising aliases. |
+| Final new-release health fails | Freeze new starts and inspect whether any v2 session was issued. Once a v2 session exists, do **not** roll back to the outgoing application; forward-deploy the current dual-version code with Genome v2 intake disabled, preserving resume/settlement. Even before the first v2 session, prefer a forward fix and independently prove canonical ID/host, health, cron owner/hosts/definitions/enabled. |
 
 Do not use `vercel promote <outgoing>` as rollback. A deployment that was
 already Current cannot be promoted again under Vercel's documented production
-state model; `vercel rollback` is the supported operation for a previously
-served production deployment. A rollback never reverts Supabase migrations or
-environment changes.
+state model. Although `vercel rollback` can restore a previously served
+deployment, it never reverts Supabase migrations or environment changes and is
+not compatible with already-issued Genome v2 sessions.
+
+`NEXT_PUBLIC_GENOME_V2` is a build-time rollout boundary, not an instantaneous
+kill switch. An emergency flag-off therefore requires one reviewed forward
+release of the same dual-version code: remove the flag from the production-on
+manifest, remove or set the Vercel Production value to a non-`true` value, build
+and deploy, then prove that new starts receive v1 while an existing v2 session
+still resumes and settles. Never deploy the outgoing pre-v2 application as a
+substitute for this procedure.
 
 After any rollback, record that Vercel disables automatic production-domain
 assignment until rollback is undone. The next release must explicitly inspect

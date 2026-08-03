@@ -33,6 +33,20 @@ describe('SnakeArt', () => {
     expect(svg?.getAttribute('aria-label')).toBe('CYBER SPARK artwork');
   });
 
+  it('visibly evolves its pattern and aura at each fifth generation', () => {
+    const gen4 = renderMarkup({ generation: 4 });
+    const gen5 = renderMarkup({ generation: 5 });
+    const gen10 = renderMarkup({ generation: 10 });
+
+    expect(gen4).toContain('data-ascendance-stage="0"');
+    expect(gen4).not.toContain('data-testid="ascendance-pattern"');
+    expect(gen5).toContain('data-ascendance-stage="1"');
+    expect(gen5).toContain('data-testid="ascendance-aura"');
+    expect(gen5).toContain('data-testid="ascendance-pattern"');
+    expect(gen10).toContain('data-ascendance-stage="2"');
+    expect(gen10).not.toBe(gen5);
+  });
+
   it('is deterministic: same seed renders identical output', () => {
     const first = renderMarkup();
     const second = renderMarkup();

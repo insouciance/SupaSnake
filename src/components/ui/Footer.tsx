@@ -10,7 +10,10 @@ import { LEGAL_LINKS } from '@/components/legal/LegalPageFooter';
 export function Footer() {
   const year = new Date().getFullYear();
   return (
-    <footer className="relative z-10 border-t border-scale-blue-light/40 bg-scale-blue-dark/95 px-6 py-6 font-body text-sm text-beige">
+    <footer
+      className="relative z-10 border-t border-scale-blue-light/40 bg-scale-blue-dark/95 px-6 py-6 font-body text-sm text-beige"
+      data-site-footer
+    >
       <div className="max-w-4xl mx-auto flex flex-col gap-3">
         <nav
           aria-label="Legal"

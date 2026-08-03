@@ -160,7 +160,7 @@ describe('proportion constants (AAA rework pins)', () => {
     expect(TAPER_MIN).toBe(0.85);
     // The settled interior stays close to full energy. Quiet comes from
     // cell-persistence and selective head motion, not an unreadable dark tail.
-    expect(ENERGY_MIN).toBe(0.88);
+    expect(ENERGY_MIN).toBe(0.94);
   });
 });
 

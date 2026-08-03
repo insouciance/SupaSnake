@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 
-# Execute the one production-safe cohesive schema probe through Supabase's
-# Management API. The dedicated endpoint runs the single structural SELECT as
-# supabase_read_only_user. Fixture contracts must use run-local-sql-contracts.sh
-# and are never accepted here.
+# Execute the production-safe post-bridge structural probe through Supabase's
+# Management API. The separate Genome v2 pre-release probe establishes the
+# zero-session compatibility premise; this script validates the final schema.
+# Fixture contracts must use run-local-sql-contracts.sh and are never accepted
+# here.
 
 set -euo pipefail
 
@@ -85,7 +86,7 @@ if ! jq -e '
   and (.[0].cohesive_release_probe.status == "ready")
   and (
     .[0].cohesive_release_probe.probe
-      == "cohesive_release_read_only_v1"
+      == "cohesive_release_read_only_v3"
   )
   and (.[0].cohesive_release_probe.checks | type == "object")
   and (
@@ -96,6 +97,11 @@ if ! jq -e '
         "favoriteRowsValid",
         "favoriteTriggerValid",
         "foundingBridgeSafe",
+        "genomeAscendanceFunctionsValid",
+        "genomeCatalogValid",
+        "genomeCodexVersionsValid",
+        "genomeDefinersHardened",
+        "genomeTablePrivilegesValid",
         "readOnlyExecution",
         "requiredFunctionsPresent",
         "requiredFunctionsServiceOnly",

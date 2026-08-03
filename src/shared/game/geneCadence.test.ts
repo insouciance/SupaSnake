@@ -1,7 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   GENE_OFFER_CADENCE,
+  GENOME_V2_GENE_OFFER_CADENCE,
   rollGeneOfferInterval,
+  rollGenomeV2GeneOfferInterval,
 } from './geneCadence';
 import { GENOME_SPAWN } from './genes';
 import { MUTATION_SPAWN, rollMutationInterval } from './mutations';
@@ -33,5 +35,27 @@ describe('universal Genome-offer cadence', () => {
 
   it('provides about seven build opportunities by food 42', () => {
     expect(Math.floor(42 / GENE_OFFER_CADENCE.intervalBase)).toBe(7);
+  });
+
+  it('keeps v1 byte semantics while v2 opens at four then rolls 4–6, mean five', () => {
+    expect([
+      rollGeneOfferInterval(() => 0),
+      rollGeneOfferInterval(() => 0.5),
+      rollGeneOfferInterval(() => 0.999999),
+    ]).toEqual([4, 6, 8]);
+    expect(rollGenomeV2GeneOfferInterval(0, () => 0.999)).toBe(4);
+    expect(rollGenomeV2GeneOfferInterval(1, () => 0.999)).toBe(4);
+    const later = [0, 0.34, 0.67].map((value) =>
+      rollGenomeV2GeneOfferInterval(2, () => value)
+    );
+    expect(later).toEqual([4, 5, 6]);
+    expect(later.reduce((sum, value) => sum + value, 0) / later.length).toBe(
+      GENOME_V2_GENE_OFFER_CADENCE.intervalBase
+    );
+    expect(GENE_OFFER_CADENCE).toEqual({
+      intervalBase: 6,
+      intervalJitter: 2,
+      minFoodsPerPick: 4,
+    });
   });
 });

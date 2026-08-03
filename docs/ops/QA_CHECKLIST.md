@@ -1,11 +1,11 @@
 # SupaSnake QA Checklist
 
-_Last updated: 2026-07-31_
+_Last updated: 2026-08-02_
 
 This is the current player-facing QA path for the deployed Redesign Wave,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
-Commitment/Clan Energy Battle release, control responsiveness, and the Career
-Spine release.
+Commitment/Clan Energy Battle release, control responsiveness, Career Spine,
+cohesive UX/run continuity, and the Genome v2 release candidate.
 Work from top to bottom when doing a broad playtest; use the focused matrices
 near the end when verifying a fix.
 
@@ -25,22 +25,51 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `564dbb7` — durable Career Spine and metagame recognition |
-| Current deployment | `dpl_FrfgGfaDnBjjJum6NwWfgUsrSdSR` |
-| Outgoing pre-cutover artifact | `dpl_3pxrhgn79LyLZLMKJc6Eqc3cDS2e`; not rollback-safe after migration 061 |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–061 deployed and aligned |
+| Production behavior commit | `23ba6e6` — cohesive UX/run integrity baseline before Genome v2 |
+| Current deployment | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` |
+| Outgoing pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe after any v2 session starts |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–064 deployed and aligned; 065 pending |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
+| Genome rollout flag | Production baseline has no Genome v2 surface; release target requires `NEXT_PUBLIC_GENOME_V2=true` and 22/22 manifest flags |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; production workflow `30608676126` at `564dbb7` |
+| Canonical source | `main`; canonical health currently reports exact SHA `23ba6e6` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle system, control responsiveness, and Career Spine
-are live. The current release applied the reviewed additive 060 bridge and 061
-atomic-settlement cutover. The pre-cutover application is intentionally
-incompatible with the final schema and must not be used as an app rollback.
+are live through the cohesive 062–064 release. Genome v2 is not live until
+migration 065, the 22-flag public contract, the exact release SHA, and the
+Genome capability all pass together. After the first v2 session is issued, use
+a flag-off forward deployment of the dual-version code rather than the outgoing
+application as rollback.
+
+### Genome v2 release checks
+
+- [ ] Until the exact outgoing Production artifact proves the full dual-version
+      Genome v2 capability and corrected 2/3/4 Strain profile, the dedicated
+      production read-only preflight proves
+      that no durable Genome v2 session evidence exists; any nonzero count stops
+      the first cutover and requires rules v3 or a frozen threshold profile.
+- [ ] Every offer explicitly names its Strain(s) and renders their runes.
+- [ ] The focused choice shows its affected 2/3/4 route and every directly
+      connected Splice fate without ranking or recommending a build.
+- [ ] Candidate, held, and Recode genes expose every Strain at first read through
+      a rune + independent color + written-name badge; dual-Strain genes show both.
+- [ ] The ordinary Loom remains compact and game-like at phone widths; any
+      post-choice callout is pointer-transparent after play resumes.
+- [ ] Codex and Workbench expose complete rules and direct six-locus Research
+      without hiding undiscovered recipes or resembling a ranking dashboard.
+- [ ] Results `Study this Genome` uses an authenticated, opaque, server-backed
+      handoff; URLs and browser storage never contain authoritative run state.
+- [ ] Flag-off new starts remain v1 while an already-issued v2 run resumes and
+      settles under its immutable version.
+- [ ] Deterministic settlement proves a materially large Yield spread between a
+      coherent/executed Genome and a poor/misplayed one without declaring one
+      universal optimum.
+- [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
+      Results/Research handoff pass on desktop and mobile.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
@@ -650,7 +679,12 @@ Use a clan owner/officer, a second account, and the official Discord server.
 - [ ] **Feel:** the board matches the quality promised by the Chamber and stays
       comfortable through a long session.
 
-## Stage 13 — The Genome
+## Stage 13 — The Genome v1 compatibility regression
+
+This section preserves the retired Genome v1 contract solely for flag-off,
+resume, replay, and settlement compatibility. It is **not** the acceptance
+contract for a newly issued Genome v2 run and must not override the current
+Genome v2 release checks above or `docs/game/TACTICAL_GENOME_V2.md`.
 
 ### FTUE and capability rollout
 
@@ -736,9 +770,10 @@ Check both benefit and counterweight when encountered.
 - [ ] PASS consumes the current door, schedules the next normal interval, and
       enters the deliberate input gate.
 - [ ] INFUSE is unavailable below length 8 and after three infuses.
-- [ ] INFUSE removes up to four tail segments immediately, adds +0.05 bank,
-      subtracts 0.05 salvage, delays the next portal by two foods, and consumes
-      the current portal.
+- [ ] INFUSE immediately grows the body by the run's `ladderInfuseGrowth`
+      amount (base +8), adds +0.05 bank, subtracts 0.05 salvage, delays the next
+      portal by two foods, and consumes the current portal; it never removes
+      earned length.
 - [ ] Below six held genes, INFUSE opens an immediate gravity-weighted gene
       offer; the board remains frozen through the entire portal→gene chain.
 - [ ] At six held genes, INFUSE opens Strain Surge only for held strains; the

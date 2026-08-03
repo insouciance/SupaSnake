@@ -11,9 +11,14 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 import { RUN_FLOW_V1_ENABLED } from '@/lib/features/runFlow';
 import { inspectProductionPublicSurface } from '@/lib/server/productionPublicSurface';
+import {
+  CURRENT_GENOME_RULES_VERSION,
+  GENOME_V2_STRAIN_THRESHOLDS,
+} from '@/shared/game/genomeV2';
 
 interface HealthCheck {
   status: 'healthy' | 'unhealthy';
@@ -61,6 +66,14 @@ interface HealthResponse {
       foundingBridgeVersion?: number;
       continuityVersion?: number;
       favoriteInvariantVersion?: number;
+    };
+    genomeV2: HealthCheck & {
+      schemaVersion?: number;
+      catalogVersion?: number;
+      ascendanceVersion?: number;
+      spliceCount?: number;
+      rulesVersion?: number;
+      strainThresholds?: typeof GENOME_V2_STRAIN_THRESHOLDS;
     };
   };
 }
@@ -230,6 +243,86 @@ async function checkCohesiveRelease(): Promise<
   }
 }
 
+async function checkGenomeV2(): Promise<HealthResponse['checks']['genomeV2']> {
+  const start = Date.now();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    return {
+      status: 'unhealthy',
+      responseTime: Date.now() - start,
+      error: 'Genome v2 capability configuration missing',
+    };
+  }
+
+  try {
+    const client = createClient(supabaseUrl, serviceKey);
+    const { data, error } = await client.rpc('get_genome_v2_capability');
+    const capability =
+      data && typeof data === 'object' && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : null;
+    const schemaVersion = Number(capability?.schemaVersion);
+    const catalogVersion = Number(capability?.catalogVersion);
+    const ascendanceVersion = Number(capability?.ascendanceVersion);
+    const spliceCount = Number(capability?.spliceCount);
+    if (
+      error ||
+      capability?.status !== 'ready' ||
+      schemaVersion !== 2 ||
+      catalogVersion !== 2 ||
+      ascendanceVersion !== 2 ||
+      spliceCount !== 8
+    ) {
+      const failure = error ?? new Error('Genome v2 capability invalid');
+      Sentry.captureException(failure, {
+        tags: {
+          subsystem: 'health',
+          dependency: 'genome-v2-capability',
+        },
+        extra: {
+          status: capability?.status ?? null,
+          schemaVersion,
+          catalogVersion,
+          ascendanceVersion,
+          spliceCount,
+        },
+      });
+      return {
+        status: 'unhealthy',
+        responseTime: Date.now() - start,
+        error: error?.message ?? 'Genome v2 capability invalid',
+      };
+    }
+
+    return {
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      schemaVersion,
+      catalogVersion,
+      ascendanceVersion,
+      spliceCount,
+      // Application rules are reported beside database capability so release
+      // automation can distinguish the corrected 2/3/4 artifact from an older
+      // rules-v2 binary backed by the same additive schema.
+      rulesVersion: CURRENT_GENOME_RULES_VERSION,
+      strainThresholds: GENOME_V2_STRAIN_THRESHOLDS,
+    };
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: {
+        subsystem: 'health',
+        dependency: 'genome-v2-capability',
+      },
+    });
+    return {
+      status: 'unhealthy',
+      responseTime: Date.now() - start,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 /**
  * GET /api/health
  * Returns comprehensive health status
@@ -239,10 +332,16 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
   const uptime = Math.floor((Date.now() - startTime) / 1000);
 
   // Perform health checks
-  const [databaseCheck, careerSpineCheck, cohesiveReleaseCheck] = await Promise.all([
+  const [
+    databaseCheck,
+    careerSpineCheck,
+    cohesiveReleaseCheck,
+    genomeV2Check,
+  ] = await Promise.all([
     checkDatabase(),
     checkCareerSpine(),
     checkCohesiveRelease(),
+    checkGenomeV2(),
   ]);
 
   // Get memory usage
@@ -265,6 +364,7 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     databaseCheck.status === 'healthy' &&
     careerSpineCheck.status === 'healthy' &&
     cohesiveReleaseCheck.status === 'healthy' &&
+    genomeV2Check.status === 'healthy' &&
     publicSurfaceCheck.status === 'healthy';
 
   const response: HealthResponse = {
@@ -293,6 +393,7 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
       careerSpine: careerSpineCheck,
       runFlow: runFlowCheck,
       cohesiveRelease: cohesiveReleaseCheck,
+      genomeV2: genomeV2Check,
     },
   };
 
