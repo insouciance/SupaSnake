@@ -81,14 +81,14 @@ export function LabHeader({ charge, dna, returnTo = null }: LabHeaderProps) {
           <Link
             href={codexHref}
             className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-cosmic-glow transition-[color,background-color] hover:bg-cosmic/10 hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cosmic"
-            aria-label="Genome Codex"
-            title="Genome Codex"
+            aria-label="Genome Research"
+            title="Open Genome Workbench"
           >
             <IconFlask size={18} />
             <NotificationBadge
               kind={codexBadge.kind}
               count={codexBadge.count}
-              label="New Codex activity"
+              label="New Genome discovery"
               className="absolute right-1 top-1"
             />
           </Link>

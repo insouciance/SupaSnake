@@ -123,7 +123,7 @@ export function LandingPitch() {
             Leaderboard
           </Link>
           <Link href="/codex" className="hover:text-venom-orange">
-            Codex
+            Genome Research
           </Link>
         </nav>
       </div>

@@ -3,6 +3,7 @@ import CodexPage from './page';
 import { LegacyGenomeArchive } from '@/components/game/genome/LegacyGenomeArchive';
 
 jest.mock('@/lib/features/genomeV2', () => ({ GENOME_V2_ENABLED: true }));
+jest.mock('@/lib/features/workbench', () => ({ WORKBENCH_V1_ENABLED: true }));
 jest.mock('@/lib/auth/AuthProvider', () => ({
   useAuth: () => ({ session: null, isAuthenticated: false }),
 }));
@@ -22,18 +23,13 @@ jest.mock('@/lib/stores/codexStore', () => ({
 }));
 jest.mock('@/components/ui/NavBar', () => ({ NavBar: () => <nav /> }));
 
-describe('Genome v2 Codex rollout', () => {
-  it('shows the v2 reaction atlas while keeping ordinary rules public', () => {
+describe('Genome v2 Research rollout', () => {
+  it('makes the public Workbench the visible rule instrument without an Archive fork', () => {
     render(<CodexPage />);
-    expect(screen.getByTestId('genome-strategy-atlas')).toHaveAttribute(
-      'data-rules-version',
-      '2'
-    );
-    expect(screen.getByTestId('atlas-splice-archive')).toHaveTextContent(
-      /Coilkeeper.*Overgrowth/
-    );
-    expect(screen.getByTestId('lexicon-mechanics')).toBeInTheDocument();
-    expect(screen.queryByTestId('lexicon-strains')).not.toBeInTheDocument();
+    expect(screen.getByTestId('workbench-public-research')).toBeInTheDocument();
+    expect(screen.getByTestId('workbench-research-table')).toBeInTheDocument();
+    expect(screen.queryByTestId('codex-views')).not.toBeInTheDocument();
+    expect(screen.getByTestId('research-record')).not.toHaveAttribute('open');
   });
 
   it('keeps v1 records in a collapsed, read-only archive beneath active Research', () => {

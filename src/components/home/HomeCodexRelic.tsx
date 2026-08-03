@@ -19,8 +19,9 @@ const RUNE_POSITIONS = [
 ] as const;
 
 /**
- * The Codex is part of the chamber's world, not a fifth primary command. Its
- * five runes advertise the vocabulary the player will use in the Loom.
+ * Genome Research is part of the chamber's world, not a fifth primary
+ * command. Its five runes open the single Workbench instrument and advertise
+ * the vocabulary the player will use in the Loom.
  */
 export function HomeCodexRelic() {
   const notifications = useNotificationStore((state) => state.notifications);
@@ -33,8 +34,8 @@ export function HomeCodexRelic() {
   return (
     <Link
       href={href}
-      aria-label="Genome Codex"
-      title="Genome Codex"
+      aria-label="Genome Research"
+      title="Open Genome Workbench"
       data-testid="home-codex-relic"
       className="group absolute right-[max(0.6rem,env(safe-area-inset-right,0px))] top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cosmic-glow sm:right-5 sm:h-14 sm:w-14"
     >
@@ -60,7 +61,7 @@ export function HomeCodexRelic() {
       <NotificationBadge
         kind={badge.kind}
         count={badge.count}
-        label="New Codex activity"
+        label="New Genome discovery"
         className="absolute -right-0.5 -top-0.5"
       />
     </Link>
