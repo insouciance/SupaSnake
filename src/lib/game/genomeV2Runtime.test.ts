@@ -325,6 +325,45 @@ describe('GenomeV2Runtime target and signature bridges', () => {
     expect(runtime.hasMechanic('compound_interest')).toBe(false);
   });
 
+  it('binds both Gilded Fork cells to one target and restores them from a checkpoint snapshot', () => {
+    const runtime = runtimeFromState(
+      stateWithGenes('PRIMAL', ['gold_trail', 'overgrowth'])
+    );
+    for (let ordinal = 1; ordinal <= 4; ordinal += 1) {
+      collectOrdinary(runtime, ordinal);
+    }
+    expect(runtime.projectNextTarget(true)).toMatchObject({
+      kind: 'gold_trail',
+      requiresForkCell: true,
+    });
+    const spawned = runtime.spawnTarget(9, {
+      cell: { x: 5, z: 5 },
+      forkCell: { x: 9, z: 9 },
+      speedAtSpawnMs: 160,
+      shortestSafeMoves: 5,
+    });
+
+    expect(runtime.targetChoiceAt({ x: 5, z: 5 })).toMatchObject({
+      target: { targetId: spawned.targetId },
+      choice: 'ordinary',
+    });
+    expect(runtime.targetChoiceAt({ x: 9, z: 9 })).toMatchObject({
+      target: { targetId: spawned.targetId },
+      choice: 'gilded',
+    });
+
+    const restored = new GenomeV2Runtime({
+      runSeed: runtime.getState().runSeed,
+      dynasty: 'PRIMAL',
+      reducerState: runtime.getState(),
+      snapshot: runtime.snapshot(),
+    });
+    expect(restored.targetChoiceAt({ x: 9, z: 9 })).toMatchObject({
+      target: { targetId: spawned.targetId },
+      choice: 'gilded',
+    });
+  });
+
   it('spends the single Wall Rush charge before allowing another redirect', () => {
     const runtime = runtimeFromState(stateWithGene('PRIMAL', 'wall_rush'));
 

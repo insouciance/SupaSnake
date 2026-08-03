@@ -79,6 +79,7 @@ function acquire(
 
 interface SpawnOptions {
   cell?: GenomeV2Cell;
+  forkCell?: GenomeV2Cell;
   secondaryCell?: GenomeV2Cell;
   optionalRouteCells?: readonly [GenomeV2Cell, GenomeV2Cell];
   shortestSafeMoves?: number;
@@ -96,6 +97,7 @@ function spawn(
     type: 'target_spawned',
     targetId,
     cell: options.cell ?? { x: 1, z: 1 },
+    forkCell: options.forkCell,
     secondaryCell: options.secondaryCell,
     optionalRouteCells: options.optionalRouteCells,
     speedAtSpawnMs: options.speedAtSpawnMs ?? 160,
@@ -529,9 +531,13 @@ describe('Genome v2 Splices', () => {
     let state = acquire(createGenomeV2State('PRIMAL'), 'gold_trail', 0);
     state = acquire(state, 'overgrowth', 1);
     for (let index = 0; index < 4; index += 1) state = ordinary(state, `fork-${index}`);
-    state = spawn(state, 'fork-choice');
+    state = spawn(state, 'fork-choice', {
+      forkCell: { x: 7, z: 7 },
+    });
     expect(state.targets['fork-choice']).toMatchObject({
       kind: 'gold_trail',
+      cell: { x: 1, z: 1 },
+      forkCell: { x: 7, z: 7 },
       moveBudget: null,
       expiresAtTick: null,
     });

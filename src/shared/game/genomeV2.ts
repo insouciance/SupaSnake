@@ -459,6 +459,13 @@ export interface GenomeV2TargetState {
   kind: 'ordinary' | GenomeV2ExclusiveTargetKind;
   lifecycle: GenomeV2TargetLifecycle;
   cell: GenomeV2Cell;
+  /**
+   * A mutually exclusive physical Gilded Fork destination. The ordinary
+   * branch remains `cell`; eating either branch removes both board objects.
+   * Optional for backward-compatible reads of checkpoints created before the
+   * two-cell fork existed.
+   */
+  forkCell?: GenomeV2Cell | null;
   secondaryCell: GenomeV2Cell | null;
   /** Optional route geometry (for example Phase Gate entry and exit). */
   optionalRouteCells: readonly [GenomeV2Cell, GenomeV2Cell] | null;
@@ -700,6 +707,7 @@ export type GenomeV2Event =
       type: 'target_spawned';
       targetId: string;
       cell: GenomeV2Cell;
+      forkCell?: GenomeV2Cell | null;
       secondaryCell?: GenomeV2Cell | null;
       optionalRouteCells?: readonly [GenomeV2Cell, GenomeV2Cell] | null;
       speedAtSpawnMs: number;
@@ -1238,6 +1246,7 @@ function cloneState(state: GenomeV2State): GenomeV2State {
         {
           ...target,
           cell: { ...target.cell },
+          forkCell: target.forkCell ? { ...target.forkCell } : null,
           secondaryCell: target.secondaryCell
             ? { ...target.secondaryCell }
             : null,
@@ -1847,6 +1856,7 @@ export interface GenomeV2NextTargetProjection {
   eligibleOrdinal: number | null;
   kind: 'ordinary' | GenomeV2ExclusiveTargetKind;
   contract: GenomeV2PendingTargetContract | null;
+  requiresForkCell: boolean;
   requiresSecondaryCell: boolean;
   requiresOptionalRouteCells: boolean;
 }
@@ -1865,6 +1875,7 @@ export function projectGenomeV2NextTarget(
       eligibleOrdinal: null,
       kind: 'ordinary',
       contract: null,
+      requiresForkCell: false,
       requiresSecondaryCell: false,
       requiresOptionalRouteCells: false,
     };
@@ -1882,6 +1893,9 @@ export function projectGenomeV2NextTarget(
     eligibleOrdinal,
     kind,
     contract,
+    requiresForkCell:
+      kind === 'gold_trail' &&
+      genomeV2HasSplice(state, 'splice_gilded_fork'),
     requiresSecondaryCell: kind === 'circuit_run',
     requiresOptionalRouteCells:
       kind === 'phase_gate' ||
@@ -2699,6 +2713,26 @@ export function reduceGenomeV2Event(
       ) {
         throw new Error('Genome v2 linked target geometry has no Circuit contract.');
       }
+      const requiresForkCell = spawnProjection.requiresForkCell;
+      if (
+        requiresForkCell &&
+        (!event.forkCell ||
+          (event.forkCell.x === event.cell.x &&
+            event.forkCell.z === event.cell.z))
+      ) {
+        throw new Error(
+          'Genome v2 Gilded Fork requires two distinct visible cells.'
+        );
+      }
+      if (
+        !requiresForkCell &&
+        event.forkCell !== undefined &&
+        event.forkCell !== null
+      ) {
+        throw new Error(
+          'Genome v2 fork geometry has no active Gilded Fork contract.'
+        );
+      }
       const requiresOptionalRoute = spawnProjection.requiresOptionalRouteCells;
       if (
         requiresOptionalRoute &&
@@ -2750,6 +2784,7 @@ export function reduceGenomeV2Event(
         kind,
         lifecycle: contract?.stage === 2 ? 'armed' : 'active',
         cell: { ...event.cell },
+        forkCell: event.forkCell ? { ...event.forkCell } : null,
         secondaryCell: event.secondaryCell ? { ...event.secondaryCell } : null,
         optionalRouteCells: event.optionalRouteCells
           ? [

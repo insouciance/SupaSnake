@@ -435,6 +435,12 @@ export interface GameOverData {
    * payout claim.
    */
   deathCause: RunDeathCause | null;
+  /**
+   * Exact presentation/debug contact for an honest terminal collision. This
+   * never enters settlement math and deliberately refines the persisted
+   * wall/self enum without changing its public database contract.
+   */
+  collisionDiagnostic: CollisionDiagnostic | null;
   /** Food count at the Phoenix trigger (honest-client analytics + payout). */
   phoenixTriggeredAtFood: number | null;
   /**
@@ -446,6 +452,18 @@ export interface GameOverData {
   genome: GameOverGenome | null;
   /** Canonical v2 run record. Absent on every legacy/v1 payload. */
   genomeV2?: GenomeV2RunRecord;
+}
+
+export type CollisionContact = 'border' | 'self' | 'permanent_terrain';
+
+export interface CollisionDiagnostic {
+  contact: CollisionContact;
+  cell: Position;
+  terrainSource:
+    | TerrainSource
+    | 'coilkeeper_seal'
+    | 'phase_gate_scar'
+    | null;
 }
 
 /** The genome block of the end-of-run payload. */
@@ -686,7 +704,7 @@ export const DEATH_SEQUENCE_DURATION_MS = 800;
  * this deployment must not continue.  Bump this value whenever a change can
  * alter deterministic board evolution or the meaning of persisted state.
  */
-export const SNAKE_RULES_VERSION = 'snake-rules-2026-07-31.2' as const;
+export const SNAKE_RULES_VERSION = 'snake-rules-2026-07-31.3' as const;
 
 /**
  * Compact, deterministic evidence for every player-authored state change.
@@ -996,6 +1014,8 @@ export class SnakeGameLogic {
   private terminalResult: GameOverData | null = null;
   /** Death cause staged by the collision that started the death sequence. */
   private pendingDeathCause: Exclude<RunDeathCause, 'extracted'> | null = null;
+  /** Exact local collision fact retained only through terminal presentation. */
+  private pendingCollisionDiagnostic: CollisionDiagnostic | null = null;
   /** Prevent an old presentation timer from touching a later run. */
   private deathSequenceToken = 0;
   /** Near-wall episode tracking (1-cell wall margin). */
@@ -1560,6 +1580,7 @@ export class SnakeGameLogic {
     this.deathCause = null;
     this.terminalResult = null;
     this.pendingDeathCause = null;
+    this.pendingCollisionDiagnostic = null;
     this.nearWallSinceMs = null;
     this.replayTicks = 0;
     this.replayActions = [];
@@ -2050,6 +2071,7 @@ export class SnakeGameLogic {
     this.deathCause = null;
     this.terminalResult = null;
     this.pendingDeathCause = null;
+    this.pendingCollisionDiagnostic = null;
     this.nearWallSinceMs = null;
   }
 
@@ -2059,6 +2081,15 @@ export class SnakeGameLogic {
       ticks: this.replayTicks,
       actions: checkpointClone(this.replayActions),
     };
+  }
+
+  /**
+   * Current authoritative simulation tick for render-only countdowns.
+   * Unlike `getReplayTrace`, this does not clone the growing action journal
+   * every frame; callers must never use it as settlement evidence.
+   */
+  getSimulationTick(): number {
+    return this.replayTicks;
   }
 
   getTerminalResult(): GameOverData | null {
@@ -2869,6 +2900,32 @@ export class SnakeGameLogic {
       this.checkSelfCollisionForDeath(newHead);
 
     if (wallHit || terrainHit || selfHit) {
+      const legacyTerrain = terrainHit
+        ? this.state.terrain.find(
+            (block) =>
+              block.solid &&
+              block.x === newHead.x &&
+              block.z === newHead.z
+          )
+        : undefined;
+      const genomeTerrain = terrainHit
+        ? this.state.genomeV2?.permanentTerrain.find((fact) =>
+            fact.cells.some(
+              (cell) => cell.x === newHead.x && cell.z === newHead.z
+            )
+          )
+        : undefined;
+      const collisionDiagnostic: CollisionDiagnostic = {
+        contact: wallHit
+          ? 'border'
+          : terrainHit
+            ? 'permanent_terrain'
+            : 'self',
+        cell: { ...newHead },
+        terrainSource: terrainHit
+          ? (genomeTerrain?.source ?? legacyTerrain?.source ?? null)
+          : null,
+      };
       // Terrain reports as 'wall' rather than growing `RunDeathCause`, which
       // is a persisted enum (migration 022) - and it is honest: a block is a
       // wall you watched arrive. Iron Scales absorbs a WALL hit and therefore
@@ -2906,7 +2963,11 @@ export class SnakeGameLogic {
         return;
       }
       // Start death sequence instead of immediate game over
-      this.startDeathSequence(newHead, collisionCause);
+      this.startDeathSequence(
+        newHead,
+        collisionCause,
+        collisionDiagnostic
+      );
       return;
     }
 
@@ -2947,6 +3008,10 @@ export class SnakeGameLogic {
         foodIndex = -1;
       }
     }
+    const collectedGenomeV2Choice =
+      foodIndex >= 0
+        ? (this.genomeV2Runtime?.targetChoiceAt(newHead) ?? null)
+        : null;
     const ateFood = foodIndex >= 0;
 
     // The body length BEFORE this move resolves. `computeLengthTrace`
@@ -3065,7 +3130,25 @@ export class SnakeGameLogic {
       // up to 2 more foods within 3 cells (full value, +1 segment each);
       // a new wave spawns only once all are eaten.
       this.state.foods.splice(foodIndex, 1);
-      if (this.strainTierNow('VOLT') >= 2 && this.state.foods.length > 0) {
+      if (
+        collectedGenomeV2Choice !== null &&
+        collectedGenomeV2Choice.choice !== null &&
+        collectedGenomeV2Choice.target.forkCell
+      ) {
+        const sibling =
+          collectedGenomeV2Choice.choice === 'ordinary'
+            ? collectedGenomeV2Choice.target.forkCell
+            : collectedGenomeV2Choice.target.cell;
+        const siblingIndex = this.state.foods.findIndex(
+          (food) => food.x === sibling.x && food.z === sibling.z
+        );
+        if (siblingIndex >= 0) this.state.foods.splice(siblingIndex, 1);
+      }
+      if (
+        this.genomeActive() &&
+        this.strainTierNow('VOLT') >= 2 &&
+        this.state.foods.length > 0
+      ) {
         this.consumeArcFoods(collectedPosition);
       }
       const crownAdvance = this.genomeV2Runtime?.advanceCrownWave(
@@ -4168,14 +4251,20 @@ export class SnakeGameLogic {
     return this.fusedView.loose.find((m) => m.id === id);
   }
 
-  /** VOLT Arc Lightning: auto-collect up to 2 foods within 3 cells. */
+  /**
+   * Genome-v1 VOLT Arc Lightning: auto-collect up to 2 foods within 3 cells.
+   * Genome v2 replaces this ladder with Relay, so v2 target contracts never
+   * enter this legacy collector or get chosen/orphaned by it.
+   */
   private consumeArcFoods(origin: Position): void {
     let arcs = 0;
     while (arcs < STRAIN_PHYSICS.arcMaxPerEat && this.state.foods.length > 0) {
       const index = this.state.foods.findIndex(
-        (f) =>
-          Math.max(Math.abs(f.x - origin.x), Math.abs(f.z - origin.z)) <=
-          STRAIN_PHYSICS.arcRadius
+        (food) =>
+          Math.max(
+            Math.abs(food.x - origin.x),
+            Math.abs(food.z - origin.z)
+          ) <= STRAIN_PHYSICS.arcRadius
       );
       if (index < 0) break;
       const food = this.state.foods[index];
@@ -4434,8 +4523,12 @@ export class SnakeGameLogic {
       runtime.getState().crownWave === null;
     const currentTargetIds: string[] = [];
     const baseBlocked = this.genomeV2RouteBlockedCells();
+    // A Gilded Fork appends one mutually exclusive physical branch to the
+    // wave. Only the foods that existed when registration began consume a
+    // cadence target; appended branches belong to that same target.
+    const cadenceFoodCount = foods.length;
 
-    for (let index = 0; index < foods.length; index += 1) {
+    for (let index = 0; index < cadenceFoodCount; index += 1) {
       const food = foods[index];
       const projection = runtime.projectNextTarget(true);
       const blocked = [
@@ -4457,6 +4550,7 @@ export class SnakeGameLogic {
       }
 
       let cell = { x: food.x, z: food.z };
+      let forkCell: { x: number; z: number } | null = null;
       let secondaryCell: { x: number; z: number } | null = null;
       let optionalRouteCells:
         readonly [{ x: number; z: number }, { x: number; z: number }] | null =
@@ -4495,16 +4589,40 @@ export class SnakeGameLogic {
         }
       }
 
+      if (projection.requiresForkCell) {
+        const forkBlocked = this.waveBlockedGrid();
+        for (const occupied of foods) {
+          markBlocked(
+            forkBlocked,
+            this.gridSize,
+            occupied.x,
+            occupied.z
+          );
+        }
+        forkCell = chooseSurvivableTargetCell(
+          this.gridSize,
+          head,
+          forkBlocked,
+          this.rng,
+          this.state.snake.length
+        );
+      }
+
       const spawned = runtime.spawnTarget(this.replayTicks, {
         cell,
+        forkCell,
         secondaryCell,
         optionalRouteCells,
         speedAtSpawnMs: this.getSpeed(),
         shortestSafeMoves,
-        cadenceEligible: true,
+        // If the board cannot honestly fit two reachable branches, this food
+        // stays ordinary and the queued Fork remains available for a later
+        // target. A one-cell or unsafe "choice" would violate the mechanic.
+        cadenceEligible: !projection.requiresForkCell || forkCell !== null,
         crownRole: currentCrownWave ? 'current' : null,
       });
       currentTargetIds.push(spawned.targetId);
+      if (forkCell) foods.push({ ...forkCell, y: 0 });
     }
 
     if (currentCrownWave && currentTargetIds.length >= 2) {
@@ -4552,6 +4670,7 @@ export class SnakeGameLogic {
       .filter((target) => ['active', 'armed'].includes(target.lifecycle))
       .flatMap((target) => [
         { ...target.cell },
+        ...(target.forkCell ? [{ ...target.forkCell }] : []),
         ...(target.secondaryCell ? [{ ...target.secondaryCell }] : []),
         ...(target.optionalRouteCells
           ? target.optionalRouteCells.map((cell) => ({ ...cell }))
@@ -4683,13 +4802,23 @@ export class SnakeGameLogic {
     dnaValue: number
   ): number {
     const runtime = this.genomeV2Runtime;
-    const target = runtime?.targetAt(position);
-    if (!runtime || !target) return 0;
-    // Gilded Fork's explicit greedy choice may be made while routing. If the
-    // player simply collects the ordinary target, that physical choice is
-    // recorded canonically before resolution instead of throwing at the eat.
-    if (target.kind === 'gold_trail' && target.forkChoice === null) {
-      runtime.chooseGildedFork(target.targetId, 'ordinary', this.replayTicks);
+    const located = runtime?.targetChoiceAt(position);
+    if (!runtime || !located) return 0;
+    const { target, choice } = located;
+    // The branch is the cell the head entered, so replay derives the same
+    // choice from deterministic geometry. It is not a separate input action.
+    if (target.kind === 'gold_trail' && choice !== null) {
+      if (
+        target.forkChoice === null &&
+        !runtime.chooseGildedFork(target.targetId, choice, this.replayTicks)
+      ) {
+        throw new Error('Genome v2 Gilded Fork rejected its physical branch.');
+      }
+      if (target.forkChoice !== null && target.forkChoice !== choice) {
+        throw new Error(
+          'Genome v2 Gilded Fork choice disagrees with the entered cell.'
+        );
+      }
     }
     const result = runtime.resolveTarget(target.targetId, this.replayTicks, {
       resolution: 'collected',
@@ -6188,17 +6317,24 @@ export class SnakeGameLogic {
    */
   private startDeathSequence(
     collisionPosition: Position,
-    cause: Exclude<RunDeathCause, 'extracted' | 'timeout'> = 'self'
+    cause: Exclude<RunDeathCause, 'extracted' | 'timeout'> = 'self',
+    diagnostic: CollisionDiagnostic = {
+      contact: cause === 'self' ? 'self' : 'border',
+      cell: { ...collisionPosition },
+      terrainSource: null,
+    }
   ): void {
     this.state.isDeathSequence = true;
     this.state.deathPosition = { ...collisionPosition };
     this.pendingDeathCause = cause;
+    this.pendingCollisionDiagnostic = checkpointClone(diagnostic);
 
     // Emit death sequence event for visual effects
     this.emit('deathSequence', {
       position: collisionPosition,
       score: this.state.score,
       dnaCollected: this.state.dnaCollected,
+      collisionDiagnostic: checkpointClone(diagnostic),
     });
 
     // Commit terminal state and emit gameOver in the same turn as collision.
@@ -6242,6 +6378,7 @@ export class SnakeGameLogic {
       this.state.exitTile2 = null;
       this.state.exitTicksRemaining = 0;
       this.deathCause = 'extracted';
+      this.pendingCollisionDiagnostic = null;
       this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'enter' });
       this.recordRunEvent({ t: this.runTimeDs(), e: 'b' });
       this.recordRunEvent(
@@ -6270,6 +6407,9 @@ export class SnakeGameLogic {
       deathPosition: this.state.deathPosition,
       mutations: this.state.heldMutations.map((m) => ({ ...m })),
       deathCause: this.deathCause,
+      collisionDiagnostic: this.pendingCollisionDiagnostic
+        ? checkpointClone(this.pendingCollisionDiagnostic)
+        : null,
       phoenixTriggeredAtFood: this.state.phoenixTriggeredAtFood,
       genome: this.genomeActive()
         ? {
