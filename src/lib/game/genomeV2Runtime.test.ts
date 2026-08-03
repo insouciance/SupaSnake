@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_V2_CONFIG,
   createGenomeV2State,
   deriveGenomeV2Ftue,
@@ -212,6 +213,62 @@ describe('GenomeV2Runtime deterministic decisions', () => {
     expect(restored.snapshot()).toEqual(snapshot);
     expect(restored.getState()).toEqual(first.getState());
     expect(portalId).toContain('portal:');
+  });
+
+  it('runs physical relic opportunities on a deterministic 4-8 food clock', () => {
+    const options = {
+      runSeed: 'runtime-physical-relic-seed',
+      dynasty: 'PRIMAL' as const,
+      pool: genomeV2ActivePool('PRIMAL'),
+      ftue: deriveGenomeV2Ftue(10, 3),
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    };
+    const runtime = new GenomeV2Runtime(options);
+    const firstAt = runtime.nextCadenceOpportunityAtFood();
+    expect(firstAt).toBeGreaterThanOrEqual(4);
+    expect(firstAt).toBeLessThanOrEqual(8);
+    expect(runtime.openCadenceOffer(1, firstAt - 1)).toBeNull();
+
+    const offer = runtime.openCadenceOffer(2, firstAt);
+    expect(offer).not.toBeNull();
+    expect(runtime.getState().offerCount).toBe(1);
+    expect(runtime.declineOffer(3)).toBe(true);
+    const secondAt = runtime.nextCadenceOpportunityAtFood();
+    expect(secondAt - firstAt).toBeGreaterThanOrEqual(4);
+    expect(secondAt - firstAt).toBeLessThanOrEqual(8);
+  });
+
+  it('expires an ignored relic without rolling, revealing, or declining an offer', () => {
+    const runtime = new GenomeV2Runtime({
+      runSeed: 'runtime-ignored-relic-seed',
+      dynasty: 'PRIMAL',
+      pool: genomeV2ActivePool('PRIMAL'),
+      ftue: deriveGenomeV2Ftue(10, 3),
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    });
+    const firstAt = runtime.nextCadenceOpportunityAtFood();
+    const before = runtime.getState();
+
+    expect(runtime.expireCadenceRelic(firstAt)).toBe(true);
+    expect(runtime.getState()).toEqual(before);
+    expect(runtime.getState().offerCount).toBe(0);
+    expect(runtime.getState().bonds).toBe(0);
+    const nextAt = runtime.nextCadenceOpportunityAtFood();
+    expect(nextAt - firstAt).toBeGreaterThanOrEqual(4);
+    expect(nextAt - firstAt).toBeLessThanOrEqual(8);
+  });
+
+  it('doubles every physical relic interval for Patient', () => {
+    const runtime = new GenomeV2Runtime({
+      runSeed: 'runtime-patient-relic-seed',
+      dynasty: 'PRIMAL',
+      pool: genomeV2ActivePool('PRIMAL'),
+      ftue: deriveGenomeV2Ftue(10, 3),
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+      cadenceMultiplier: 2,
+    });
+    expect(runtime.nextCadenceOpportunityAtFood()).toBeGreaterThanOrEqual(8);
+    expect(runtime.nextCadenceOpportunityAtFood()).toBeLessThanOrEqual(16);
   });
 
   it('expires a physical portal without consuming an offer roll', () => {

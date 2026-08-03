@@ -1,6 +1,38 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.12 · amended 2 August 2026
+**Version:** 1.13 · amended 3 August 2026
+**v1.13 amendment (explicit owner ruling, 3 August 2026):** ordinary Genome
+offers return to the player-pulled board rhythm. A deterministic physical Gene
+relic appears after **6 ± 2 foods (4–8)**, remains for **40 resolved movement
+ticks**, and opens the Tactical Loom only when the snake deliberately collects
+it. Ignoring or outlasting a relic is not DECLINE or PASS: it reveals no
+candidates, advances no offer/reducer event, and mints no Bond. It advances only
+the separate opportunity cadence. Patient doubles the sampled interval;
+Ascetic receives no ordinary relic. Portal MUTATE remains an immediate Loom
+decision because opening MUTATE is itself deliberate. No food, threshold, Gene
+activation, Splice, toast, or other system-pushed event may stop live movement.
+
+The live Loom now opens with two equal candidate runes and no selected answer.
+Each candidate exposes its written Strain badge and one highest-salience
+consequence at first read; DECLINE, or Back for portal inspection, is a quiet
+secondary action. Focus and hover are navigation, never consent. Selecting a
+candidate reveals its trigger, gain, and risk. **UNFOLD DETAILS** may then reveal
+only that decision's complete affected Strain route, connected Splices, changed
+locus, and material ledgers. This is a contained progressive-disclosure view,
+not the prohibited catalog, solver, or broad expert dashboard; it resets for
+every offer and is never persisted. Recode remains the exception that forces the
+exact irreversible before/after and growth cost into view before confirmation.
+This expressly revises v1.10's “no in-run expert expander” sentence while
+preserving its intuition-in-run/research-outside boundary.
+
+Genome v2 interaction is start-stamped independently of Genome arithmetic.
+Already-issued and omitted interaction stamps retain automatic-offer v1
+semantics for checkpoint and replay compatibility. Physical-relic v2 is enabled
+only when the client explicitly advertises support at start; the capability is
+part of the immutable start intent and manifest. A rolling deploy may never
+reinterpret or strand an Energy-funded run. The owner approved this correction
+after playtesting the automatic cadence and waived the cooling period; the
+trade-off is recorded in §15.
 **v1.12 amendment (explicit owner ruling, 2 August 2026):** Genome v2 Strain
 ladders activate at **2/3/4 points**, mapped to Minor, Expression, and Apex.
 With only six loci, the previously approved 3/4/5 ladder delayed the first
@@ -363,8 +395,9 @@ Fifteen laws. Each carries the question a reviewer asks to check compliance. The
 replace the deleted constraint lattice; amending any of them follows the procedure in
 the preamble.
 
-1. **Nothing interrupts a live run except the run's own decisions** — gene offers,
-   portal choices, surge choices, tactical hold, destructive-abandon confirmation, and
+1. **Nothing interrupts a live run except the run's own decisions** — deliberately
+   collected Gene relics, portal choices, surge choices, tactical hold,
+   destructive-abandon confirmation, and
    legally required consent. *Reviewer: does anything else render, fire, or sound
    between first input and run end?*
 
@@ -1844,6 +1877,7 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 31 | **Every affected ladder, one-step Splice path, liability ledger, and BANK/crash projection belongs in the live Tactical Loom** (v1.9) | **v1.10:** intuition in-run, Research outside. The live Loom shows only the immediate actionable delta and irreversible consequences; Codex/Workbench carries the complete visible future, direct experimentation, and on-demand arithmetic. No in-run expert expander. Explicit owner ruling, 2 August 2026; cooling period waived | The guarantee that every n-order possibility is visible without leaving the run. Gained: a mobile-legible decision beat, lower working-memory load, and preservation of flow. The permanent guardrail is that a player is never blind about what the current choice activates, breaks, costs, or exposes |
 | 32 | **v1.10's live surface shows only a newly activated or lost rung/Splice** | **v1.11:** the focused choice shows its complete affected 3/4/5 route and all directly connected Splice branches as a compact rune reaction map; unrelated systems and exhaustive research remain outside the run. Explicit owner ruling, 2 August 2026; cooling period waived | The smallest possible live consequence pane. Gained: visible second-/third-order strategy, explicit Strain identity, and learnable buildcraft without recreating a table, solver, or expert dashboard |
 | 33 | **Genome v2 Strain ladders activate at 3/4/5 points** | **v1.12:** the v2 ladder activates at 2/3/4, mapped to Minor/Expression/Apex; FTUE gates remain semantic, v1 remains unchanged, and every Loom/Workbench gene exposes rune + color + written Strain badge at first read. Explicit owner ruling, 2 August 2026; cooling period waived | The wider delay before a run's first Strain effect and the stricter concentration needed to reach Apex. Gained: meaningful family identity after two points within a six-locus Genome, earlier build feedback, and immediate legibility without requiring Codex memorisation. Pre-release compatibility condition: no production v2 session may exist before this correction ships |
+| 34 | **Genome v2 cadence decisions open automatically after food, and the complete affected reaction map is always expanded** (v1.9–v1.12 implementation) | **v1.13:** ordinary offers are 40-tick physical relics at deterministic 6 ± 2-food opportunities; only collection reveals and freezes. Ignore/expiry is not DECLINE/PASS. The Loom starts neutral with two equal, Strain-badged, salient choices and exposes the affected reaction map only through per-offer UNFOLD DETAILS; Recode remains forced-exact. Automatic-offer sessions retain interaction v1 through a start-negotiated sub-version. Explicit owner ruling, 3 August 2026; cooling period waived | The guarantee that every cadence opportunity becomes a decision and every affected path occupies the first live view. Gained: uninterrupted Snake flow, meaningful spatial pursuit, beginner-legible first read, deliberate strategy breaks, and safe rolling-deploy continuity without weakening Research depth |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
@@ -2031,9 +2065,13 @@ deliberately undecided pending data.
     collapses to zero, the price is too steep); revive survival rate (if a revived
     run ends within ~5 foods, the window is too short to matter and the revive is
     decorative).
-28. **The re-basing table** (v1.4; cadence ruled 29 July 2026). Gene offers use
+28. **The re-basing table** (v1.4; interaction ruled 3 August 2026). Gene offers use
     a dynasty-independent **6 ± 2-food interval, minimum 4**; Patient doubles the
-    sampled interval. This clock is deliberately independent of body growth so a
+    sampled interval. At each due opportunity a physical relic is placed on an
+    honest reachable/survivable cell for 40 movement ticks. Only collection rolls
+    and reveals candidates. Expiry advances the opportunity cursor but is not an
+    offer, PASS, or DECLINE; Ascetic suppresses ordinary relics. This clock is
+    deliberately independent of body growth so a
     +1 dynasty can still form a significant build before pressure ends the run.
     The validator derives its honest-pick bound from the same cadence. Hold bonus
     lengths and window genes (`deep_roots`, `ancient_grove`, `midnight_oil`,

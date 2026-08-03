@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_RULES_V2,
   createGenomeV2State,
   deriveGenomeV2Ftue,
@@ -101,6 +102,19 @@ function freshConfig(dynasty: DynastyName): GenomeEngineConfig {
     ftuePresentation: deriveGenomeV2FtuePresentation(10, 3),
     heirloom: {},
   };
+}
+
+function physicalRelicConfig(dynasty: DynastyName): GenomeEngineConfig {
+  return {
+    ...freshConfig(dynasty),
+    interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+  };
+}
+
+function eatStraightAhead(game: SnakeGameLogic): void {
+  const head = game.getState().snake[0];
+  game.placeFood({ x: head.x + 1, y: 0, z: head.z });
+  game.tick();
 }
 
 function gameplayState(game: SnakeGameLogic) {
@@ -207,6 +221,171 @@ describe('SnakeGameLogic Genome v2 authority boundary', () => {
       VOLT: 2,
       FERAL: 3,
     });
+  });
+
+  it('spawns a visible relic and opens the Loom only after deliberate collection', () => {
+    const game = new SnakeGameLogic({
+      gridSize: 40,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'physical-relic-engine',
+      genome: physicalRelicConfig('PRIMAL'),
+    });
+    const choices: unknown[] = [];
+    game.on('mutationChoice', (event) => choices.push(event));
+    game.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 6, y: 0, z: 5 }],
+    });
+    const dueAt = game.getState().nextMutationAtFood;
+    expect(dueAt).toBeGreaterThanOrEqual(4);
+    expect(dueAt).toBeLessThanOrEqual(8);
+    for (let eaten = 0; eaten < dueAt; eaten += 1) eatStraightAhead(game);
+
+    expect(game.getState().mutationTile).not.toBeNull();
+    expect(game.getState().genomeV2?.offer).toBeNull();
+    expect(choices).toHaveLength(0);
+
+    const head = game.getState().snake[0];
+    game.placeMutation({ x: head.x + 1, y: 0, z: head.z });
+    game.tick();
+    expect(game.getState().mutationTile).toBeNull();
+    expect(game.getState().genomeV2?.offer).not.toBeNull();
+    expect(choices).toHaveLength(1);
+    expect(choices[0]).toMatchObject({
+      source: 'cadence',
+      rulesVersion: GENOME_RULES_V2,
+    });
+  });
+
+  it('keeps an ignored relic out of the offer and Bond ledgers', () => {
+    const game = new SnakeGameLogic({
+      gridSize: 120,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'ignored-physical-relic-engine',
+      genome: physicalRelicConfig('PRIMAL'),
+    });
+    game.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 6, y: 0, z: 5 }],
+    });
+    const dueAt = game.getState().nextMutationAtFood;
+    for (let eaten = 0; eaten < dueAt; eaten += 1) eatStraightAhead(game);
+    expect(game.getState().mutationTicksRemaining).toBe(40);
+    for (let tick = 0; tick < 40; tick += 1) game.tick();
+
+    expect(game.getState().mutationTile).toBeNull();
+    expect(game.getState().genomeV2).toMatchObject({ offer: null, offerCount: 0, bonds: 0 });
+    expect(game.getState().nextMutationAtFood).toBeGreaterThan(
+      game.getState().foodEaten
+    );
+  });
+
+  it('restores an uncollected physical relic and its opportunity cursor exactly', () => {
+    const original = new SnakeGameLogic({
+      gridSize: 120,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'physical-relic-checkpoint-engine',
+      genome: physicalRelicConfig('PRIMAL'),
+    });
+    original.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 6, y: 0, z: 5 }],
+    });
+    const dueAt = original.getState().nextMutationAtFood;
+    for (let eaten = 0; eaten < dueAt; eaten += 1) eatStraightAhead(original);
+    original.placeMutation({ x: 2, y: 0, z: 2 }, 40);
+
+    const checkpointAt = Date.now();
+    const checkpoint = original.exportCheckpoint(checkpointAt);
+    expect(checkpoint.config.genome).toMatchObject({
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    });
+    const restored = new SnakeGameLogic();
+    restored.restoreCheckpoint(checkpoint, checkpointAt);
+    expect(restored.getState().mutationTile).toEqual({ x: 2, y: 0, z: 2 });
+
+    for (let tick = 0; tick < 40; tick += 1) {
+      original.tick();
+      restored.tick();
+    }
+    expect(gameplayState(restored)).toEqual(gameplayState(original));
+    expect(restored.getState().genomeV2).toMatchObject({
+      offer: null,
+      offerCount: 0,
+      bonds: 0,
+    });
+    expect(restored.getState().nextMutationAtFood).toBeGreaterThan(
+      restored.getState().foodEaten
+    );
+  });
+
+  it('keeps missing interaction stamps on the shipped automatic-offer behavior', () => {
+    const game = new SnakeGameLogic({
+      gridSize: 40,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'auto-offer-compatibility-engine',
+      genome: freshConfig('PRIMAL'),
+    });
+    game.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 6, y: 0, z: 5 }],
+    });
+    for (let eaten = 0; eaten < 4; eaten += 1) eatStraightAhead(game);
+    expect(game.getState().mutationTile).toBeNull();
+    expect(game.getState().genomeV2?.offer).not.toBeNull();
+  });
+
+  it('applies Patient and Ascetic to physical Genome-v2 relics', () => {
+    const patient = new SnakeGameLogic({
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'patient-physical-relic-engine',
+      traits: ['patient'],
+      genome: physicalRelicConfig('PRIMAL'),
+    });
+    patient.start();
+    expect(patient.getState().nextMutationAtFood).toBeGreaterThanOrEqual(8);
+    expect(patient.getState().nextMutationAtFood).toBeLessThanOrEqual(16);
+
+    const ascetic = new SnakeGameLogic({
+      gridSize: 40,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'ascetic-physical-relic-engine',
+      traits: ['ascetic'],
+      genome: physicalRelicConfig('PRIMAL'),
+    });
+    ascetic.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 6, y: 0, z: 5 }],
+    });
+    const dueAt = ascetic.getState().nextMutationAtFood;
+    for (let eaten = 0; eaten < dueAt; eaten += 1) eatStraightAhead(ascetic);
+    expect(ascetic.getState().mutationTile).toBeNull();
+    expect(ascetic.getState().genomeV2?.offer).toBeNull();
   });
 
   it('rejects checkpoint counters that diverge from the canonical reducer', () => {

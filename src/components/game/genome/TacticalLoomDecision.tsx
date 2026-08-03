@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
 import { GeneGlyph, StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
-import { STRAINS, type StrainId } from '@/shared/game/strains';
+import { STRAINS } from '@/shared/game/strains';
 import { TacticalLoomLite } from './TacticalLoomLite';
 import decisionStyles from './TacticalLoomDecision.module.css';
 import type {
@@ -41,13 +41,10 @@ export function TacticalLoomDecision({
   onDecline,
   onBack,
 }: TacticalLoomDecisionProps) {
-  const [selected, setSelected] = useState<ChoiceKey>(() =>
-    !model.candidates[0].disabledReason
-      ? 'candidate-0'
-      : !model.candidates[1].disabledReason
-        ? 'candidate-1'
-        : 'decline'
-  );
+  // Deliberately blank: focus is navigation, never consent. A fresh offer
+  // presents two equal possibilities without silently recommending A.
+  const [selected, setSelected] = useState<ChoiceKey | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [recodePhase, setRecodePhase] = useState(false);
   const [replacementSlot, setReplacementSlot] = useState<number | null>(null);
   const [declineOptionId, setDeclineOptionId] = useState<string | null>(
@@ -67,17 +64,33 @@ export function TacticalLoomDecision({
   );
   const selectedReplacement: TacticalLoomReplacementChoice | null =
     replacementChoices.find((choice) => choice.slotIndex === replacementSlot) ?? null;
-  const selectedDeclineOption = model.decline.options?.find(
-    (option) => option.id === declineOptionId
-  ) ?? model.decline.options?.[0] ?? null;
+  const declineSelected = selected === 'decline';
+  const selectedDeclineOption = declineSelected
+    ? model.decline.options?.find((option) => option.id === declineOptionId)
+      ?? model.decline.options?.[0]
+      ?? null
+    : null;
   const consequence = recodePhase && selectedReplacement
     ? selectedReplacement.consequence
-    : selectedCandidate?.consequence ?? selectedDeclineOption?.consequence ?? model.decline.consequence;
+    : selectedCandidate?.consequence
+      ?? (declineSelected
+        ? selectedDeclineOption?.consequence ?? model.decline.consequence
+        : null);
   const action = recodePhase && selectedCandidate
     ? `${selectedCandidate.action} ${selectedCandidate.name} · replace ${selectedReplacement?.label ?? 'one locus'}`
-    : selectedCandidate?.action ?? (selectedDeclineOption
-      ? `${model.decline.action} · ${selectedDeclineOption.label}`
-      : model.decline.action);
+    : selectedCandidate?.action ?? (declineSelected
+      ? selectedDeclineOption
+        ? `${model.decline.action} · ${selectedDeclineOption.label}`
+        : model.decline.action
+      : '');
+
+  useEffect(() => {
+    setSelected(null);
+    setDetailsOpen(false);
+    setRecodePhase(false);
+    setReplacementSlot(null);
+    setDeclineOptionId(model.decline.options?.[0]?.id ?? null);
+  }, [model]);
 
   useEffect(() => {
     if (!locked) {
@@ -103,11 +116,12 @@ export function TacticalLoomDecision({
   }, [model.candidates, model.decline.options]);
 
   const confirm = useCallback(() => {
-    if (locked) return;
-    if (selectedIndex === null) {
+    if (locked || selected === null) return;
+    if (declineSelected) {
       onDecline(selectedDeclineOption?.pinCandidateIndex);
       return;
     }
+    if (selectedIndex === null) return;
     if (selectedCandidate?.disabledReason) return;
     if (replacementChoices.length > 0 && !recodePhase) {
       setRecodePhase(true);
@@ -125,10 +139,12 @@ export function TacticalLoomDecision({
     locked,
     onChoose,
     onDecline,
+    declineSelected,
     recodePhase,
     replacementChoices,
     selectedDeclineOption,
     selectedCandidate,
+    selected,
     selectedIndex,
     selectedReplacement,
   ]);
@@ -152,7 +168,7 @@ export function TacticalLoomDecision({
           select('decline');
           dialogRef.current?.querySelector<HTMLButtonElement>('[data-testid="gene-decline"]')?.focus();
         }
-      } else if (event.key === 'Enter' || event.key === ' ') {
+      } else if ((event.key === 'Enter' || event.key === ' ') && selected !== null) {
         confirm();
       } else {
         return;
@@ -162,30 +178,20 @@ export function TacticalLoomDecision({
     };
     window.addEventListener('keydown', keydown, true);
     return () => window.removeEventListener('keydown', keydown, true);
-  }, [confirm, locked, onBack, recodePhase, select]);
+  }, [confirm, locked, onBack, recodePhase, select, selected]);
 
   const choices = useMemo(
-    () => [
-      ...model.candidates.map((candidate, index) => ({
+    () => model.candidates.map((candidate, index) => ({
         key: choiceKey(index as 0 | 1),
         action: candidate.action,
         name: candidate.name,
         category: candidate.category,
         geneId: candidate.geneId,
         strains: candidate.strains,
+        salience: candidate.consequence.salienceChip ?? candidate.consequence.effect,
         disabledReason: candidate.disabledReason,
       })),
-      {
-        key: 'decline' as const,
-        action: model.decline.action,
-        name: model.decline.name,
-        category: 'Opportunity cost',
-        geneId: null,
-        strains: [] as readonly StrainId[],
-        disabledReason: undefined,
-      },
-    ],
-    [model]
+    [model.candidates]
   );
 
   return (
@@ -205,16 +211,6 @@ export function TacticalLoomDecision({
       >
         <header className="flex shrink-0 flex-col items-stretch gap-1.5 border-b border-scale-blue-light/20 pb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
           <div className="flex min-w-0 items-start gap-2">
-            {onBack ? (
-              <button
-                type="button"
-                onClick={onBack}
-                className="-ml-1 inline-flex min-h-11 shrink-0 items-center rounded-full px-2 font-body text-sm font-bold text-beige/65 hover:bg-bone-white/8 hover:text-bone-white"
-                data-testid="loom-back-to-portal"
-              >
-                ‹ Portal
-              </button>
-            ) : null}
             <div className="min-w-0">
             <p className="font-body text-sm font-bold uppercase tracking-[0.14em] text-cosmic">
               Simulation held · {model.dynasty}
@@ -238,7 +234,7 @@ export function TacticalLoomDecision({
         >
           {choices.map((choice, index) => {
             const active = selected === choice.key;
-            const testId = index < 2 ? `gene-option-${index}` : 'gene-decline';
+            const testId = `gene-option-${index}`;
             const accent = choice.strains[0]
               ? STRAINS[choice.strains[0]].color
               : '#a855f7';
@@ -249,11 +245,10 @@ export function TacticalLoomDecision({
                 type="button"
                 role="radio"
                 aria-checked={active}
-                aria-label={`${index < 2 ? `${index === 0 ? 'A' : 'B'}, ` : ''}${choice.action} ${choice.name}${choice.strains.length > 0 ? `, Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}`}
-                aria-keyshortcuts={index === 0 ? '1' : index === 1 ? '2' : 'Escape'}
+                aria-label={`${index === 0 ? 'A' : 'B'}, ${choice.action} ${choice.name}${choice.strains.length > 0 ? `, Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}`}
+                aria-keyshortcuts={index === 0 ? '1' : '2'}
                 disabled={locked || Boolean(choice.disabledReason)}
                 onClick={() => select(choice.key)}
-                onFocus={() => select(choice.key)}
                 data-testid={testId}
                 data-active={active ? 'true' : 'false'}
                 className={decisionStyles.choiceToken}
@@ -265,7 +260,7 @@ export function TacticalLoomDecision({
                   </i>
                 </span>
                 <span className={decisionStyles.choiceAction}>
-                  {index < 2 ? `${index === 0 ? 'A' : 'B'} · ` : ''}{choice.action}
+                  {index === 0 ? 'A' : 'B'} · {choice.action}
                 </span>
                 <span className={decisionStyles.choiceName} data-testid={`${testId}-name`}>
                   {choice.name}
@@ -285,6 +280,9 @@ export function TacticalLoomDecision({
                     ))}
                   </span>
                 ) : null}
+                <span className={decisionStyles.choiceSignal} data-testid={`${testId}-salience`}>
+                  {choice.salience}
+                </span>
                 {choice.disabledReason ? (
                   <span className={decisionStyles.choiceDisabled} title={choice.disabledReason}>
                     {choice.disabledReason}
@@ -293,6 +291,25 @@ export function TacticalLoomDecision({
               </button>
             );
           })}
+        </div>
+
+        <div className={decisionStyles.quietActions}>
+          <button
+            type="button"
+            onClick={() => {
+              if (onBack) {
+                onBack();
+                return;
+              }
+              select('decline');
+            }}
+            disabled={locked}
+            className={decisionStyles.quietAction}
+            data-testid={onBack ? 'loom-back-to-portal' : 'gene-decline'}
+            data-active={declineSelected ? 'true' : 'false'}
+          >
+            {onBack ? '‹ Back to Portal' : 'Decline · keep this Genome'}
+          </button>
         </div>
 
         <div
@@ -353,7 +370,7 @@ export function TacticalLoomDecision({
             </section>
           ) : null}
 
-          {selectedIndex === null && model.decline.options && model.decline.options.length > 0 ? (
+          {declineSelected && model.decline.options && model.decline.options.length > 0 ? (
             <section className="mb-4 rounded-[14px] border border-cosmic/35 bg-cosmic/6 p-3" data-testid="loom-anchor-decline-step">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
@@ -386,20 +403,66 @@ export function TacticalLoomDecision({
             </section>
           ) : null}
 
-          <TacticalLoomLite
-            consequence={consequence}
-            action={action}
-            currentGenome={model.currentGenome}
-            geneId={selectedCandidate?.geneId ?? null}
-            geneName={selectedCandidate?.name ?? null}
-            strains={selectedCandidate?.strains ?? []}
-            showStrains={model.rulesVersion === 2}
-          />
+          {!consequence ? (
+            <div className={decisionStyles.emptyPrompt} data-testid="loom-empty-prompt">
+              <strong>Choose a thread.</strong>
+              <span>The two runes show their Strain and most important consequence now. Unfold only when you want the complete reaction map.</span>
+            </div>
+          ) : (
+            <>
+              {!recodePhase ? (
+                <section className={decisionStyles.quickRead} data-testid="loom-quick-read" aria-live="polite">
+                  <div className={decisionStyles.quickReadHeading}>
+                    <span>{action}</span>
+                    <strong>{selectedCandidate?.name ?? model.decline.name}</strong>
+                    <em>{consequence.salienceChip ?? consequence.category}</em>
+                  </div>
+                  {consequence.trigger ? (
+                    <p className={decisionStyles.quickTrigger}>
+                      <b>WHEN</b><span>{consequence.trigger.label}</span>
+                    </p>
+                  ) : null}
+                  <div className={decisionStyles.quickConsequences}>
+                    <p data-tone="gain"><b>GAIN</b><span>{consequence.effect}</span></p>
+                    <p data-tone="risk"><b>RISK</b><span>{consequence.cost}</span></p>
+                  </div>
+                </section>
+              ) : null}
+
+              {!recodePhase ? (
+                <button
+                  type="button"
+                  className={decisionStyles.detailsToggle}
+                  onClick={() => setDetailsOpen((open) => !open)}
+                  aria-expanded={detailsOpen}
+                  aria-controls="loom-full-reaction-map"
+                  data-testid="loom-details-toggle"
+                >
+                  {detailsOpen ? 'FOLD DETAILS' : 'UNFOLD DETAILS'}
+                  <span aria-hidden="true">{detailsOpen ? '⌃' : '⌄'}</span>
+                </button>
+              ) : null}
+
+              {detailsOpen || recodePhase ? (
+                <div id="loom-full-reaction-map" data-testid="loom-full-reaction-map">
+                  <TacticalLoomLite
+                    consequence={consequence}
+                    action={action}
+                    currentGenome={model.currentGenome}
+                    geneId={selectedCandidate?.geneId ?? null}
+                    geneName={selectedCandidate?.name ?? null}
+                    strains={selectedCandidate?.strains ?? []}
+                    showStrains={model.rulesVersion === 2}
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
 
-        <footer className="mt-3 flex shrink-0 items-center justify-between gap-3 border-t border-scale-blue-light/20 pt-3">
+        <footer className={`${decisionStyles.decisionFooter} mt-3 flex shrink-0 items-center justify-between gap-3 border-t border-scale-blue-light/20 pt-3`}>
           <p className="hidden font-body text-sm text-beige/45 sm:block">
-            1 / 2 previews · Esc {onBack ? 'returns to Portal' : 'selects DECLINE'} · Enter confirms
+            1 / 2 chooses · Esc {onBack ? 'returns to Portal' : 'selects DECLINE'} · Enter confirms
           </p>
           <div className="ml-auto flex gap-2">
             {recodePhase ? (
@@ -418,16 +481,18 @@ export function TacticalLoomDecision({
               type="button"
               className="btn-go min-h-11 min-w-[9rem] px-4 py-2 text-sm"
               onClick={confirm}
-              disabled={locked || (recodePhase && (!selectedReplacement || Boolean(selectedReplacement.disabledReason)))}
+              disabled={locked || selected === null || (recodePhase && (!selectedReplacement || Boolean(selectedReplacement.disabledReason)))}
               data-testid="loom-confirm"
             >
               {recodePhase && selectedReplacement
                 ? `RECODE +${selectedReplacement.growthCost}`
-                : selectedIndex === null
+                : declineSelected
                   ? selectedDeclineOption?.pinCandidateIndex !== undefined
                     ? `DECLINE · PIN ${model.candidates[selectedDeclineOption.pinCandidateIndex].name}`
                     : 'DECLINE OFFER'
-                  : selectedCandidate?.replacementChoices?.length
+                  : selected === null
+                    ? 'CHOOSE A THREAD'
+                    : selectedCandidate?.replacementChoices?.length
                     ? `${selectedCandidate.action} · RECODE`
                     : `${selectedCandidate?.action} ${selectedCandidate?.name}`}
             </button>

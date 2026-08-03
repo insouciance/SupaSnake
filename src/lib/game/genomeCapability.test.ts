@@ -1,5 +1,9 @@
 import { sanitizeGenomeCapability } from './genomeCapability';
-import { deriveGenomeV2FtuePresentation } from '@/shared/game/genomeV2';
+import {
+  deriveGenomeV2FtuePresentation,
+  GENOME_V2_INTERACTION_AUTO_OFFER,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+} from '@/shared/game/genomeV2';
 
 describe('sanitizeGenomeCapability', () => {
   it('accepts a server block and sanitizes every nested domain', () => {
@@ -96,6 +100,7 @@ describe('sanitizeGenomeCapability', () => {
 
     expect(capability).toEqual({
       rulesVersion: 2,
+      interactionVersion: GENOME_V2_INTERACTION_AUTO_OFFER,
       runSeed: 'genome-v2-server-seed',
       v2GenePool: ['phase_gate', 'live_wire', 'gold_trail'],
       heirloom: { FLUX: 2, AURUM: 0 },
@@ -107,6 +112,34 @@ describe('sanitizeGenomeCapability', () => {
     expect(capability).not.toHaveProperty('genePool');
     expect(capability).not.toHaveProperty('ftue');
     expect(capability).not.toHaveProperty('reducerState');
+  });
+
+  it('defaults historical v2 blocks to automatic offers and accepts only known interaction contracts', () => {
+    const ftuePresentation = deriveGenomeV2FtuePresentation(7, 3);
+    const base = {
+      rulesVersion: 2,
+      runSeed: 'genome-v2-server-seed',
+      v2GenePool: ['phase_gate', 'live_wire'],
+      heirloom: {},
+      ftuePresentation,
+      offerTiltStrain: null,
+      suppressedStrains: [],
+      strainThresholdDelta: {},
+    };
+
+    expect(sanitizeGenomeCapability(base)).toMatchObject({
+      interactionVersion: GENOME_V2_INTERACTION_AUTO_OFFER,
+    });
+    expect(sanitizeGenomeCapability({
+      ...base,
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    })).toMatchObject({
+      interactionVersion: GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+    });
+    expect(sanitizeGenomeCapability({
+      ...base,
+      interactionVersion: 3,
+    })).toBeNull();
   });
 
   it('never treats the v1 genePool alias as v2 offer authority', () => {

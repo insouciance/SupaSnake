@@ -1,11 +1,11 @@
 # SupaSnake — Tactical Genome v2
 
-**Version:** 2.2
+**Version:** 2.3
 
-**Date:** 2 August 2026
+**Date:** 3 August 2026
 
 **Status:** APPROVED for production by the Product Owner; governed by Product
-Constitution v1.12.
+Constitution v1.13.
 
 This contract supersedes the active catalog, tuning, FTUE, portal-Genome,
 Strain, Splice, and outcome-cap rules in `BUILDCRAFT_GENOME_DESIGN.md` v1.1.
@@ -40,17 +40,24 @@ every run.
 
 ## 2. Tactical Loom
 
-Every Gene Offer freezes the simulation while leaving the board visible as
-decision context. The three verbs are:
+An ordinary Gene Offer begins as a physical board relic, not a modal. The
+simulation freezes only when the snake collects that relic; portal MUTATE
+freezes only after the player deliberately opens MUTATE. In both cases the
+board remains visible as decision context. The three verbs are:
 
 - **THREAD** — take the focused candidate into an open locus;
 - **FORK** — pursue the focused candidate through an explicit replacement when
   all six loci are occupied;
 - **DECLINE** — spend the offer and keep the current Genome.
 
-One shared consequence pane follows the focused action. Its job is immediate
-intuition, not catalog research. It shows the focused reaction, including the
-small amount of future context required to understand that reaction:
+The first view has no preselected answer. It presents two equally weighted rune
+choices, each with written Strain badge(s) and one highest-salience consequence,
+plus a quiet DECLINE (or Back during portal inspection). Focus and hover never
+select. Once the player selects a choice, one shared quick read names its trigger,
+gain, and risk. Its job is immediate intuition, not catalog research.
+
+An optional **UNFOLD DETAILS** action reveals the focused reaction, including
+the small amount of future context required to understand that reaction:
 
 - the gene's primary identity, concrete gain, meaningful risk, and trigger rhythm;
 - the locus added or replaced;
@@ -64,17 +71,20 @@ small amount of future context required to understand that reaction:
   liability when the action changes it.
 
 It does not carry unrelated ladders, the full Splice catalog, unchanged ledgers,
-broad BANK/crash projections, or an expert expander. It never says `best`,
-`recommended`, or supplies an automatic ranking. Mobile uses compact rune
+broad BANK/crash projections, or a broad expert dashboard. The detail state is
+ephemeral and resets closed for each offer. It never says `best`, `recommended`,
+or supplies an automatic ranking. Mobile uses compact rune
 choices and the same single focused reaction map rather than three long cards.
 Every candidate and held/replacement locus makes Strain identity legible before
 inspection through a compact badge containing rune, independent family color,
 and the written name. Dual-Strain genes retain two distinct badges. Neither
 color alone nor description copy is an acceptable substitute.
-The first read must expose candidate identity, gain/risk, affected routes,
-immediate Splice fate, and confirmation in a practical phone viewport. A tapped
-rule may use the frozen surface's contained scroll rather than truncating a
-material consequence; catalog exploration still belongs outside the run.
+The first read must expose candidate identity, written Strain, one salient
+consequence, and confirmation in a practical phone viewport. Selecting exposes
+gain/risk and trigger; unfolding exposes the affected routes and immediate Splice
+fate. A tapped rule may use the frozen surface's contained scroll rather than
+truncating a material consequence; catalog exploration still belongs outside the
+run.
 
 A short input lock prevents the flick or key that opened the decision from
 selecting an action. After selection, a brief pointer-transparent callout names
@@ -145,8 +155,18 @@ may earn its configured one-time v2 reward. World-first records and Weaver
 completion are likewise version-scoped; the Weaver cosmetic grant itself remains
 account-idempotent.
 
-The first two cadence offers are approximately four foods apart. Later offers
-use a deterministic four-to-six-food interval, averaging five. DECLINE is a
+Ordinary cadence opportunities use a deterministic **6 ± 2-food interval
+(4–8)** independent of Dynasty and body growth. Patient doubles the sampled
+interval; Ascetic receives no ordinary relic. A due opportunity places one
+physical relic on a reachable, survivable free cell for **40 resolved movement
+ticks**. If no honest cell exists, placement retries after later food rather
+than creating an impossible objective.
+
+Only collecting the relic rolls and reveals the candidate pair. Ignoring it or
+letting it expire advances the separate opportunity cursor without creating an
+offer, DECLINE, PASS, Bond, or hidden candidate history. Portal MUTATE still
+opens its candidates immediately after the player deliberately chooses that
+verb. A revealed DECLINE is a
 real lost build opportunity; the offer algorithm must therefore normally
 present two viable but strategically different categories, while preserving a
 deliberate wildcard and deterministic surprise.
@@ -396,9 +416,13 @@ to v1, never to the newest default. New history never rewrites old payouts.
 
 ## 10. Authority, continuity, and validation
 
-The server stamps Genome rules version, active pool, FTUE, Ascendance curve and
-multiplier, Dynasty, build seed, and all immutable run facts. The client cannot
-change them after start.
+The server stamps Genome rules version, interaction sub-version, active pool,
+FTUE, Ascendance curve and multiplier, Dynasty, build seed, and all immutable run
+facts. The client cannot change them after start. Interaction v2 (physical relic)
+requires an explicit client capability at run start. Omitted and historical
+stamps remain interaction v1 (automatic offer), are fingerprint-compatible with
+their original start request, and retain that behavior through replay and
+checkpoint recovery.
 
 The live engine and authoritative replay consume the same deterministic event
 journal. Stable IDs bind offers, instances, targets, portal decisions, terrain,

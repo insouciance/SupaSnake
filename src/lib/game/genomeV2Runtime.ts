@@ -8,6 +8,8 @@
 
 import type { GenomeV2ActiveGeneId } from '@/shared/game/genes';
 import {
+  GENOME_V2_INTERACTION_AUTO_OFFER,
+  GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_RULES_V2,
   GENOME_V2_CONFIG,
   assertGenomeV2PersistenceBound,
@@ -19,6 +21,7 @@ import {
   genomeV2HasSplice,
   genomeV2MechanicEnabled,
   genomeV2OfferInterval,
+  genomeV2PhysicalRelicInterval,
   previewGenomeV2Recode,
   projectGenomeV2NextTarget,
   reduceGenomeV2Event,
@@ -27,6 +30,7 @@ import {
   type GenomeV2Event,
   type GenomeV2ExclusiveTargetKind,
   type GenomeV2Ftue,
+  type GenomeV2InteractionVersion,
   type GenomeV2NextTargetProjection,
   type GenomeV2PhoenixEffect,
   type GenomeV2RecodePreview,
@@ -78,6 +82,10 @@ export interface GenomeV2RuntimeOptions {
   suppressedStrains?: readonly StrainId[];
   strainThresholdDelta?: Readonly<Partial<Record<StrainId, number>>>;
   externalSecondLife?: 'iron_scales' | 'other' | null;
+  /** Missing preserves the already-issued automatic-offer interaction. */
+  interactionVersion?: GenomeV2InteractionVersion;
+  /** Patient owns the only supported cadence multiplier. */
+  cadenceMultiplier?: 1 | 2;
   reducerState?: GenomeV2State;
   snapshot?: GenomeV2RuntimeSnapshot;
   onEvent?: (event: GenomeV2Event) => void;
@@ -474,6 +482,8 @@ export function enclosedGenomeV2Cells(
 export class GenomeV2Runtime {
   private readonly initialState: GenomeV2State;
   private readonly onEvent?: (event: GenomeV2Event) => void;
+  private readonly interactionVersion: GenomeV2InteractionVersion;
+  private readonly cadenceMultiplier: 1 | 2;
   private state: GenomeV2State;
   private cadenceOfferCount = 0;
   private nextCadenceOfferAtFood = 4;
@@ -487,6 +497,9 @@ export class GenomeV2Runtime {
   private targetProgress = new Map<string, GenomeV2TargetProgress>();
 
   constructor(options: GenomeV2RuntimeOptions) {
+    this.interactionVersion =
+      options.interactionVersion ?? GENOME_V2_INTERACTION_AUTO_OFFER;
+    this.cadenceMultiplier = options.cadenceMultiplier ?? 1;
     const reducerState = options.reducerState
       ? clone(options.reducerState)
       : createGenomeV2State(options.dynasty, {
@@ -564,14 +577,23 @@ export class GenomeV2Runtime {
         'Active Genome v2 reducer state requires its runtime snapshot.'
       );
     }
-    if (options.snapshot) this.restoreSnapshot(options.snapshot);
+    if (options.snapshot) {
+      this.restoreSnapshot(options.snapshot);
+    } else if (
+      this.interactionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC
+    ) {
+      this.nextCadenceOfferAtFood = this.physicalRelicInterval(0);
+    }
     assertGenomeV2PersistenceBound(this.state);
   }
 
   reset(): void {
     this.state = clone(this.initialState);
     this.cadenceOfferCount = 0;
-    this.nextCadenceOfferAtFood = 4;
+    this.nextCadenceOfferAtFood =
+      this.interactionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC
+        ? this.physicalRelicInterval(0)
+        : 4;
     this.targetOrdinal = 0;
     this.portalOrdinal = 0;
     this.instanceOrdinal = 0;
@@ -695,6 +717,21 @@ export class GenomeV2Runtime {
     };
   }
 
+  private physicalRelicInterval(opportunityIndex: number): number {
+    return (
+      genomeV2PhysicalRelicInterval(this.state, opportunityIndex) *
+      this.cadenceMultiplier
+    );
+  }
+
+  usesPhysicalCadenceRelics(): boolean {
+    return this.interactionVersion === GENOME_V2_INTERACTION_PHYSICAL_RELIC;
+  }
+
+  nextCadenceOpportunityAtFood(): number {
+    return this.nextCadenceOfferAtFood;
+  }
+
   cadenceOfferDue(foodCount: number): boolean {
     return (
       this.state.offer === null &&
@@ -710,13 +747,21 @@ export class GenomeV2Runtime {
       this.nextCadenceOfferAtFood = Number.MAX_SAFE_INTEGER;
       return null;
     }
-    // Portal and cadence choices share one authoritative offer stream. The
-    // interval is rolled from the same pre-open offer index as the candidates,
-    // so opening a portal can advance later 4–6-food cadence entropy without
-    // maintaining a second, divergent RNG history.
-    const interval = genomeV2OfferInterval(this.state, this.state.offerCount);
-    this.cadenceOfferCount += 1;
-    this.nextCadenceOfferAtFood = foodCount + interval;
+    if (this.usesPhysicalCadenceRelics()) {
+      // The candidate stream is still shared with portal MUTATE. Cadence is
+      // not: ignoring a relic must not reveal or consume a candidate pair, so
+      // its opportunity clock has its own deterministic cursor.
+      this.cadenceOfferCount += 1;
+      this.nextCadenceOfferAtFood =
+        foodCount + this.physicalRelicInterval(this.cadenceOfferCount);
+    } else {
+      // Compatibility for already-started automatic-offer runs. Portal and
+      // cadence choices shared one stream and the 4/4/4–6 clock was indexed by
+      // the pre-open offer count; do not rewrite those in-flight semantics.
+      const interval = genomeV2OfferInterval(this.state, this.state.offerCount);
+      this.cadenceOfferCount += 1;
+      this.nextCadenceOfferAtFood = foodCount + interval;
+    }
     this.apply(
       {
         type: 'offer_opened',
@@ -728,6 +773,24 @@ export class GenomeV2Runtime {
       tick
     );
     return offer;
+  }
+
+  /**
+   * Let an uncollected physical relic disappear without opening, declining,
+   * or even rolling an offer. The next opportunity is deterministic and the
+   * authoritative reducer remains untouched.
+   */
+  expireCadenceRelic(foodCount: number): boolean {
+    if (
+      !this.usesPhysicalCadenceRelics() ||
+      !this.cadenceOfferDue(foodCount)
+    ) {
+      return false;
+    }
+    this.cadenceOfferCount += 1;
+    this.nextCadenceOfferAtFood =
+      foodCount + this.physicalRelicInterval(this.cadenceOfferCount);
+    return true;
   }
 
   previewOfferRecode(
