@@ -11,11 +11,10 @@ Production: <https://supasnake.com>
 
 - Next.js 15 App Router, React, TypeScript, react-three-fiber, and Zustand
 - Supabase Auth/Postgres with server-authoritative economy and progression
-- Migrations 001–064 deployed and aligned; additive Genome v2 migration 065 is
-  the reviewed next release migration
-- FTUE v2, the refined Run Cockpit, the Training Lab, Energy Commitment, and
-  Career Spine enabled in production; Genome v2 remains release-gated until the
-  reviewed production workflow enables its exact-`true` public flag
+- Migrations 001–065 deployed and aligned
+- FTUE v2, the refined Run Cockpit, the Training Lab, Energy Commitment,
+  Career Spine, and Tactical Genome v2 enabled in production; Genome v2 is live
+  with its exact-`true` public contract and immutable v1/v2 run compatibility
 - Stripe sandbox/test mode until the commercial-launch checklist is complete
 
 Energy recovers server-side to a six-unit cap. A rewarded run commits 1–6
@@ -37,6 +36,11 @@ Spine before the client receives completion. Settlement, progression, personal
 bests, career memory, recognition, and attention survive dropped responses,
 reloads, reconnects, and duplicate completion attempts without storing progress
 or recovery work in browser storage.
+
+Tactical Genome v2 turns each Gene offer into a compact strategic choice while
+keeping deeper research in Codex and Workbench. Six loci combine shared Genes,
+Dynasty signatures, Strain reactions, and eight Splices; every in-run candidate
+shows its Strain rune, independent family color, and written name at first read.
 
 ## Local development
 

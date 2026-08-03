@@ -1,17 +1,19 @@
 # Production Release Runbook
 
-Current pre-Genome baseline: cohesive UX runtime
-`23ba6e6fd95029cd9da4cea5b78a998b55aac782`, independently verified on
-2 August 2026 as production deployment `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`,
-with hosted migrations 001–064. Canonical health reports the exact release SHA,
-healthy database, Career phase `ready`, cohesive capability version 1, and
-21/21 public surfaces enabled. Stripe remains in sandbox/test mode.
+Current production baseline: Tactical Genome v2 runtime
+`2f9a9a61c57ecea04c8ea38804ce80c83b406c05`, independently verified on
+3 August 2026 as deployment `dpl_CYzmZ7FuhHjrBR9aHWutaJMCiLrF`
+(`supasnake-6txu1wlur-josef-bells-projects.vercel.app`), with hosted migrations
+001–065. Canonical health reports the exact release SHA, healthy database,
+Career ready, cohesive capability version 1, 22/22 public surfaces, and Genome
+schema/catalog/Ascendance 2/2/2 with eight Splices, rules version 2, and neutral
+2/3/4 Strain thresholds. Stripe remains in sandbox/test mode.
 
-The deployment above is the outgoing application for the Genome v2 cutover.
-Migration 065 is additive, but once any v2 session starts the outgoing
-application is not a safe rollback target because it cannot resume or settle
-that immutable v2 contract. Keep this volatile paragraph current in the
-release-record change; do not copy its IDs into workflow code.
+The retired pre-Genome deployment `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` is not a
+safe rollback target for issued v2 sessions because it cannot resume or settle
+that immutable contract. Use the dual-version, flag-off forward procedure below.
+Keep this volatile paragraph current in each release-record change; do not copy
+its IDs into workflow code.
 
 ## Release law
 
@@ -136,7 +138,13 @@ and exercise fixture state.
 
 ## Cohesive release states
 
-The Genome v2 release is allowed only through these observable states.
+The A/B/C state machine below records the completed first Genome v2 cutover and
+remains the recovery and incident-classification contract for a linked project
+that genuinely lacks migration 065. It is not the ordinary state machine for
+later application-only releases. Future releases start from the current 001–065
+baseline and follow the Release law and Automated sequence in this runbook;
+their linked migration plan is `none` unless an exact reviewed suffix is named
+at dispatch.
 
 ### A. Pre-bridge
 
@@ -180,9 +188,9 @@ while the new release is still only Preview.
 
 If the workflow stops here, production traffic and cron remain outgoing. Do not
 reverse migrations; forward-fix and retry with the exact ordered pending suffix
-(`065` from the current baseline, or `none` after it commits). The workflow also
-recognizes the longer ordered suffixes only for a host that genuinely missed an
-earlier bridge; the linked dry-run, never operator memory, decides.
+(`none` on the current linked baseline; only an independently reviewed recovery
+of a linked project that genuinely lacks 065 may name `065`). The linked dry-run,
+never operator memory, decides.
 
 ### C. Post-cutover
 

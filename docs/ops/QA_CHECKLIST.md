@@ -1,11 +1,11 @@
 # SupaSnake QA Checklist
 
-_Last updated: 2026-08-02_
+_Last updated: 2026-08-03_
 
 This is the current player-facing QA path for the deployed Redesign Wave,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle release, control responsiveness, Career Spine,
-cohesive UX/run continuity, and the Genome v2 release candidate.
+cohesive UX/run continuity, and the live Tactical Genome v2 release.
 Work from top to bottom when doing a broad playtest; use the focused matrices
 near the end when verifying a fix.
 
@@ -25,51 +25,77 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `23ba6e6` — cohesive UX/run integrity baseline before Genome v2 |
-| Current deployment | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` |
-| Outgoing pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe after any v2 session starts |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–064 deployed and aligned; 065 pending |
+| Production behavior commit | `2f9a9a61` — Tactical Genome v2, corrected Ascendance, cohesive UX/run integrity, and deterministic release gates |
+| Current deployment | `dpl_CYzmZ7FuhHjrBR9aHWutaJMCiLrF` (`supasnake-6txu1wlur-josef-bells-projects.vercel.app`) |
+| Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–065 deployed and aligned |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
-| Genome rollout flag | Production baseline has no Genome v2 surface; release target requires `NEXT_PUBLIC_GENOME_V2=true` and 22/22 manifest flags |
+| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 22/22 manifest flags enabled |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health currently reports exact SHA `23ba6e6` |
+| Canonical source | `main`; canonical health reports release SHA `2f9a9a61c57ecea04c8ea38804ce80c83b406c05` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle system, control responsiveness, and Career Spine
-are live through the cohesive 062–064 release. Genome v2 is not live until
-migration 065, the 22-flag public contract, the exact release SHA, and the
-Genome capability all pass together. After the first v2 session is issued, use
-a flag-off forward deployment of the dual-version code rather than the outgoing
-application as rollback.
+and Tactical Genome v2 are live through migration 065. The 22-flag public
+contract, exact release SHA, linked schema proof, Genome service capability,
+canonical alias, and cron owner passed together. Use a flag-off forward
+deployment of the dual-version code rather than the retired pre-v2 application
+as rollback.
 
 ### Genome v2 release checks
 
-- [ ] Until the exact outgoing Production artifact proves the full dual-version
-      Genome v2 capability and corrected 2/3/4 Strain profile, the dedicated
-      production read-only preflight proves
-      that no durable Genome v2 session evidence exists; any nonzero count stops
-      the first cutover and requires rules v3 or a frozen threshold profile.
-- [ ] Every offer explicitly names its Strain(s) and renders their runes.
-- [ ] The focused choice shows its affected 2/3/4 route and every directly
+- [x] Both first-cutover aggregate-only preflights proved zero durable Genome v2
+      session evidence before migration and again before Production. The exact
+      v2 production artifact with its 2/3/4 profile now retires that one-time
+      premise for ordinary later releases.
+- [x] Every offer explicitly names its Strain(s) and renders their runes.
+- [x] The focused choice shows its affected 2/3/4 route and every directly
       connected Splice fate without ranking or recommending a build.
-- [ ] Candidate, held, and Recode genes expose every Strain at first read through
+- [x] Candidate, held, and Recode genes expose every Strain at first read through
       a rune + independent color + written-name badge; dual-Strain genes show both.
-- [ ] The ordinary Loom remains compact and game-like at phone widths; any
+- [x] The ordinary Loom remains compact and game-like at phone widths; any
       post-choice callout is pointer-transparent after play resumes.
-- [ ] Codex and Workbench expose complete rules and direct six-locus Research
+- [x] Codex and Workbench expose complete rules and direct six-locus Research
       without hiding undiscovered recipes or resembling a ranking dashboard.
-- [ ] Results `Study this Genome` uses an authenticated, opaque, server-backed
+- [x] Results `Study this Genome` uses an authenticated, opaque, server-backed
       handoff; URLs and browser storage never contain authoritative run state.
-- [ ] Flag-off new starts remain v1 while an already-issued v2 run resumes and
+- [x] Flag-off new starts remain v1 while an already-issued v2 run resumes and
       settles under its immutable version.
-- [ ] Deterministic settlement proves a materially large Yield spread between a
+- [x] Deterministic settlement proves a materially large Yield spread between a
       coherent/executed Genome and a poor/misplayed one without declaring one
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Tactical Genome v2 production evidence
+
+- PR 53 merged the player-facing and server-authoritative release as
+  `a25f5c0557040ff35a55317973b8c9b9f6d378cf`; PRs 54–55 removed nondeterminism
+  from two unrelated probabilistic test fixtures. The exact production release is
+  `2f9a9a61c57ecea04c8ea38804ce80c83b406c05`.
+- Production workflow `30784902800` promoted
+  `dpl_CYzmZ7FuhHjrBR9aHWutaJMCiLrF` in Stripe test mode after protected-PR and
+  post-main Build, Lint, Test, isolated SQL, and both E2E profiles passed.
+- The release gate passed 466 Jest suites / 6,120 tests, TypeScript, ESLint,
+  runtime dependency audit, clean local migrations 001–065, ordinary and
+  two-session SQL contracts, and the manifest-driven Production build.
+- Both aggregate-only preflight probes found zero durable v2 session evidence.
+  Migration 065 then applied, the linked plan became empty, and the hosted
+  read-only structural proof passed before Production cutover.
+- Canonical `/api/health` reports the exact release SHA, healthy database,
+  22/22 flags, public-surface hash
+  `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`,
+  Genome schema/catalog/Ascendance 2/2/2, eight Splices, rules version 2, and
+  neutral Strain thresholds 2/3/4.
+- Canonical alias, production cron owner, and every cron host resolve to deployment
+  `dpl_CYzmZ7FuhHjrBR9aHWutaJMCiLrF`; the normalized cron-definition hash is
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
+- The remaining unchecked Genome item is an owner field test across real
+  desktop and mobile interruption/input conditions, not an automated release
+  or schema gap.
 
 Do not use live Stripe keys, products, prices, cards, or webhooks. Do not reset
 the hosted Supabase project or delete its test data. Final legal review and
