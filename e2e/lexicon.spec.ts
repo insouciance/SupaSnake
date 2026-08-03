@@ -20,6 +20,7 @@ import { seedConsent, signInAsGuest } from './helpers';
 
 const PHONE = { width: 390, height: 844 } as const;
 const GENOME_V2_ENABLED = process.env.NEXT_PUBLIC_GENOME_V2 === 'true';
+const WORKBENCH_V1_ENABLED = process.env.NEXT_PUBLIC_WORKBENCH_V1 === 'true';
 
 const CHARGE = {
   remaining: 4,
@@ -41,7 +42,11 @@ async function installAsceticSnake(page: Page): Promise<void> {
       status: 200,
       contentType: 'application/json',
       json: {
-        player: { id: 'lexicon-player', total_games_played: 20, high_score: 10_000 },
+        player: {
+          id: 'lexicon-player',
+          total_games_played: 20,
+          high_score: 10_000,
+        },
         charge: CHARGE,
         needsStarterSelection: false,
         hasCompletedFirstRun: true,
@@ -95,7 +100,7 @@ test.describe('Run Setup explains the snake on touch', () => {
     // The warning needs no tap at all: Ascetic deletes mutation foods from
     // the run, and that has to be readable before START.
     await expect(page.getByTestId('heirloom-notice-ascetic')).toContainText(
-      /no mutation foods/i
+      /no mutation foods/i,
     );
 
     // The chip itself is now a real control. Tap it.
@@ -121,7 +126,7 @@ test.describe('Run Setup explains the snake on touch', () => {
     expect(box!.y + box!.height).toBeLessThanOrEqual(PHONE.height);
     expect(
       box!.y + box!.height <= triggerBox!.y ||
-        box!.y >= triggerBox!.y + triggerBox!.height
+        box!.y >= triggerBox!.y + triggerBox!.height,
     ).toBe(true);
 
     // A second tap closes it, and a tap outside closes it.
@@ -161,28 +166,40 @@ test.describe('Genome Research has one Workbench destination', () => {
     await seedConsent(page);
   });
 
-  test('a signed-out visitor reaches one coherent research destination', async ({ page }) => {
+  test('a signed-out visitor reaches one coherent research destination', async ({
+    page,
+  }) => {
     // /codex remains in old links and the sitemap. It is now a compatibility
     // route into the Workbench, not a second Codex destination.
     await page.goto('/codex', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByTestId('codex-page')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('codex-page')).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(page.getByTestId('codex-rules')).toHaveCount(0);
-    if (GENOME_V2_ENABLED) {
+    if (GENOME_V2_ENABLED && WORKBENCH_V1_ENABLED) {
       await expect(page.getByTestId('workbench-view')).toBeVisible();
       await expect(page.getByTestId('workbench-public-research')).toBeVisible();
       await expect(page.getByTestId('workbench-research-table')).toBeVisible();
       await expect(page.getByTestId('workbench-strains')).toBeVisible();
       await expect(page.getByTestId('workbench-gene-palette')).toBeVisible();
+    } else if (!GENOME_V2_ENABLED && WORKBENCH_V1_ENABLED) {
+      await expect(page.getByTestId('workbench-signed-out')).toBeVisible();
+      await expect(
+        page.getByText(
+          'Sign in to plan a Genome against your collection and current conditions.',
+        ),
+      ).toBeVisible();
     } else {
-      // The CI rollback leg deliberately disables both Workbench generations.
-      // The compatibility route and Research Record must still compose, but a
-      // disabled feature must not be resurrected merely to satisfy this test.
+      // Full rollback and Genome-without-Workbench both keep the compatibility
+      // route and Research Record, but must not claim an active instrument.
       await expect(page.getByTestId('workbench-view')).toHaveCount(0);
       await expect(page.getByTestId('workbench-signed-out')).toHaveCount(0);
-      await expect(page.getByText(
-        'Genome research instruments are not active in this version.'
-      )).toBeVisible();
+      await expect(
+        page.getByText(
+          'Genome research instruments are not active in this version.',
+        ),
+      ).toBeVisible();
     }
 
     // Discovery history remains optional and subordinate. Opening it asks for
@@ -191,11 +208,17 @@ test.describe('Genome Research has one Workbench destination', () => {
     await researchRecord.locator('summary').click();
     const signedOutRecord = page.getByTestId('codex-signed-out');
     await expect(signedOutRecord).toBeVisible();
-    if (GENOME_V2_ENABLED) {
-      await expect(signedOutRecord).toContainText('The Workbench is open to everyone');
+    if (GENOME_V2_ENABLED && WORKBENCH_V1_ENABLED) {
+      await expect(signedOutRecord).toContainText(
+        'The Workbench is open to everyone',
+      );
     } else {
-      await expect(signedOutRecord).toContainText('Sign in to connect discoveries');
-      await expect(signedOutRecord).not.toContainText('The Workbench is open to everyone');
+      await expect(signedOutRecord).toContainText(
+        'Sign in to connect discoveries',
+      );
+      await expect(signedOutRecord).not.toContainText(
+        'The Workbench is open to everyone',
+      );
     }
   });
 
@@ -203,13 +226,15 @@ test.describe('Genome Research has one Workbench destination', () => {
     page,
   }) => {
     test.skip(
-      !GENOME_V2_ENABLED,
-      'The public catalog belongs to Genome v2; rollback composition is covered by the signed-out route test.'
+      !(GENOME_V2_ENABLED && WORKBENCH_V1_ENABLED),
+      'The public catalog belongs to Genome v2; rollback composition is covered by the signed-out route test.',
     );
     await signInAsGuest(page);
     await page.goto('/codex', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByTestId('workbench-view')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('workbench-view')).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(page.getByTestId('workbench-research-table')).toBeVisible();
     await expect(page.getByTestId('workbench-gene-palette')).toBeVisible();
     // The old behaviour was a bare "Bank 15 runs to open the Genome Codex".

@@ -65,7 +65,10 @@ describe('Genome Research compatibility page', () => {
     expect(screen.queryByTestId('codex-views')).not.toBeInTheDocument();
     expect(screen.queryByTestId('codex-rules')).not.toBeInTheDocument();
 
-    const source = fs.readFileSync(path.join(process.cwd(), 'src/app/codex/page.tsx'), 'utf8');
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/codex/page.tsx'),
+      'utf8',
+    );
     expect(source).not.toMatch(/premium_required|isPremium|hasPremium/);
   });
 
@@ -76,11 +79,21 @@ describe('Genome Research compatibility page', () => {
     });
     expect(genomeResearchCopy(false, true)).toMatchObject({
       intro: expect.stringContaining('Sign in to plan a Genome'),
-      signedOutRecord: expect.not.stringContaining('Workbench is open to everyone'),
+      signedOutRecord: expect.not.stringContaining(
+        'Workbench is open to everyone',
+      ),
     });
     expect(genomeResearchCopy(false, false)).toMatchObject({
       intro: expect.stringContaining('not active in this version'),
-      signedOutRecord: expect.not.stringContaining('Workbench is open to everyone'),
+      signedOutRecord: expect.not.stringContaining(
+        'Workbench is open to everyone',
+      ),
+    });
+    expect(genomeResearchCopy(true, false)).toMatchObject({
+      intro: expect.stringContaining('not active in this version'),
+      signedOutRecord: expect.not.stringContaining(
+        'Workbench is open to everyone',
+      ),
     });
   });
 
@@ -113,7 +126,7 @@ describe('Genome Research compatibility page', () => {
     expect(screen.getByTestId('workbench-view')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Your Research Record'));
     expect(screen.getByTestId('codex-signed-out')).toHaveTextContent(
-      'The Workbench is open to everyone'
+      'The Workbench is open to everyone',
     );
     expect(mockFetchCodex).not.toHaveBeenCalled();
     expect(mockResetCodex).toHaveBeenCalled();
@@ -128,16 +141,18 @@ describe('Genome Research compatibility page', () => {
       unlockAt: 15,
       data: {
         ...EMPTY_DATA,
-        splices: [{
-          id: 'splice_dragon_hoard',
-          rulesVersion: 2,
-          name: 'Dragon Hoard',
-          parents: ['gold_trail', 'compound_interest'],
-          strains: [],
-          discoveries: 2,
-          banks: 1,
-          discovered: true,
-        }],
+        splices: [
+          {
+            id: 'splice_dragon_hoard',
+            rulesVersion: 2,
+            name: 'Dragon Hoard',
+            parents: ['gold_trail', 'compound_interest'],
+            strains: [],
+            discoveries: 2,
+            banks: 1,
+            discovered: true,
+          },
+        ],
       },
       isLoading: false,
       error: null,
@@ -148,9 +163,9 @@ describe('Genome Research compatibility page', () => {
     fireEvent.click(screen.getByText('Your Research Record'));
 
     expect(screen.getByText('Genome Weaver')).toBeInTheDocument();
-    expect(screen.getByTestId('codex-recipe-splice_dragon_hoard')).toHaveTextContent(
-      'Gold Trail + Compound Interest'
-    );
+    expect(
+      screen.getByTestId('codex-recipe-splice_dragon_hoard'),
+    ).toHaveTextContent('Gold Trail + Compound Interest');
   });
 
   it('fails closed synchronously when player B sees player A store state', () => {
@@ -173,7 +188,9 @@ describe('Genome Research compatibility page', () => {
 
     render(<CodexPage />);
     fireEvent.click(screen.getByText('Your Research Record'));
-    expect(screen.getByText('Reading your Genome history…')).toBeInTheDocument();
+    expect(
+      screen.getByText('Reading your Genome history…'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Genome Weaver')).not.toBeInTheDocument();
     expect(mockFetchCodex).toHaveBeenCalledWith('user-b', 'token-b');
   });
