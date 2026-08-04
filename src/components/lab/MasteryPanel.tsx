@@ -20,6 +20,7 @@ import {
 import type { DynastyName } from '@/shared/game/rulesets';
 import { IconCheck, IconDna, IconLock } from '@/components/ui/icons';
 import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
+import { formatAmount } from '@/shared/format/amount';
 
 export interface MasteryTrackRung {
   level: number;
@@ -117,7 +118,7 @@ export function MasteryPanel({
           <span data-testid="mastery-to-next">
             {toNext === null
               ? 'Track complete — Sovereign'
-              : `${intoLevel.toLocaleString()} / ${levelSpan.toLocaleString()} XP to M${level + 1}`}
+              : `${formatAmount(intoLevel)} / ${formatAmount(levelSpan)} XP to M${level + 1}`}
           </span>
         </div>
       </div>

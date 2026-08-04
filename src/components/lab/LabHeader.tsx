@@ -16,6 +16,7 @@ import {
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
 import { resolveSafeRunSetupReturnPath } from '@/lib/game/runSetupDraft';
+import { formatAmount as formatWithCommas } from '@/shared/format/amount';
 
 interface LabHeaderProps {
   /** Recovering Energy (§8.6); null hides the readout. */
@@ -34,15 +35,6 @@ export function resolveLabBackLink(returnTo: string | null | undefined): {
   return safeSetupPath
     ? { href: safeSetupPath, label: 'Back to Setup' }
     : { href: '/', label: 'Back Home' };
-}
-
-/**
- * Format a number with comma separators
- * @param num - Number to format
- * @returns Formatted string (e.g., 2450 -> "2,450")
- */
-function formatWithCommas(num: number): string {
-  return num.toLocaleString('en-US');
 }
 
 /**

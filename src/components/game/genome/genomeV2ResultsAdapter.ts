@@ -64,8 +64,12 @@ function signedScaled(value: number): string {
   return value > 0 ? `+${absolute}` : absolute;
 }
 
+/**
+ * Whole Yield units for the numeric fallback. Rounds, so it agrees with the
+ * rounded `amountLabel` rendered beside it.
+ */
 function integerFallback(value: number): number {
-  return Math.trunc(value / 10_000);
+  return Math.round(value / 10_000);
 }
 
 function row(

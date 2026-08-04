@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
+import { formatAmount } from '@/shared/format/amount';
 
 interface BattleView {
   live?: boolean;
@@ -99,13 +100,13 @@ function RewardHistory({
                         : 'Participation'}
               </p>
               <p className="shrink-0 font-mono font-bold text-venom-orange">
-                +{reward.amount.toLocaleString()} DNA
+                +{formatAmount(reward.amount)} DNA
               </p>
             </div>
             <p className="mt-0.5 font-body text-xs text-beige/65">
               {reward.type === 'battle'
                 ? `${reward.participationDna ?? 0} participation${(reward.bonusDna ?? 0) > 0 ? ` + ${reward.bonusDna} outcome bonus` : ''}`
-                : `${reward.countedDepth.toLocaleString()} eligible Depth`}
+                : `${formatAmount(reward.countedDepth)} eligible Depth`}
               {' · '}
               {reward.clan?.tag ? `[${reward.clan.tag}] ` : ''}
               {reward.clan?.name ?? `Cycle ${reward.cycleIndex}`}
@@ -221,7 +222,7 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
         <div className="rounded-arcade border border-cosmic/40 bg-cosmic/10 p-3">
           <p className="text-xs uppercase text-beige/55">{view.clan?.tag ?? 'Your clan'}</p>
           <p className="font-mono text-xl font-bold text-bone-white">
-            {(view.team?.score ?? 0).toLocaleString()}
+            {formatAmount(view.team?.score ?? 0)}
           </p>
         </div>
         <div className="rounded-arcade border border-scale-blue-light/35 bg-void/50 p-3">
@@ -229,7 +230,7 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
             {view.opponent?.clan?.tag ?? 'Opponent forming'}
           </p>
           <p className="font-mono text-xl font-bold text-bone-white">
-            {(view.opponent?.score ?? 0).toLocaleString()}
+            {formatAmount(view.opponent?.score ?? 0)}
           </p>
         </div>
       </div>
@@ -270,7 +271,7 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
             </div>
             <p className="font-body text-xs text-beige/70">
               {topFive.length >= 5
-                ? `Beat ${(view.you?.fifthBest ?? 0).toLocaleString()} Yield`
+                ? `Beat ${formatAmount(view.you?.fifthBest ?? 0)} Yield`
                 : `${5 - topFive.length} open slot${5 - topFive.length === 1 ? '' : 's'}`}
             </p>
           </div>
@@ -284,7 +285,7 @@ export function EnergyBattlePanel({ accessToken, compact = false }: EnergyBattle
                 <span className="text-beige/65">
                   #{result.rank} · {result.energyCommitted}E · Gen {result.generation}
                 </span>
-                <span className="font-bold text-bone-white">{result.score.toLocaleString()}</span>
+                <span className="font-bold text-bone-white">{formatAmount(result.score)}</span>
               </li>
             ))}
             {topFive.length === 0 && (

@@ -47,6 +47,7 @@ import type {
   OwnedSnake,
   DowngradeSnakeResponse,
 } from '@/shared/types/snake-data-model';
+import { formatAmount } from '@/shared/format/amount';
 
 // =============================================================================
 // COMPONENT
@@ -490,7 +491,7 @@ function LabPageContent() {
       closeDetailModal();
       await refresh();
       showToast(
-        `Gen ${data.fromGeneration ?? selectedSnake.generation} → Gen ${data.toGeneration ?? downgradeFacts.toGeneration} · +${(data.refundedDna ?? downgradeFacts.refundDna).toLocaleString()} DNA`,
+        `Gen ${data.fromGeneration ?? selectedSnake.generation} → Gen ${data.toGeneration ?? downgradeFacts.toGeneration} · +${formatAmount(data.refundedDna ?? downgradeFacts.refundDna)} DNA`,
         'success'
       );
     } catch (error) {

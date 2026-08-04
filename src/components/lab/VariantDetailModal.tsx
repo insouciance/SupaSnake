@@ -39,6 +39,7 @@ import {
   AscendanceProgressionInstrument,
 } from '@/components/progression/AscendanceProgressionInstrument';
 import { buildAscendanceProgressionModel } from '@/components/progression/ascendancePresentationAdapter';
+import { formatAmount } from '@/shared/format/amount';
 
 export interface VariantDetailModalProps {
   variant: SnakeVariant;
@@ -312,7 +313,7 @@ export function VariantDetailModal({
                 {isDowngrading ? <Spinner /> : <IconDna size={16} />}
                 {isDowngrading
                   ? 'Refunding…'
-                  : `+${downgradeRefundDna.toLocaleString()} DNA`}
+                  : `+${formatAmount(downgradeRefundDna)} DNA`}
               </button>
             </div>
           </div>
@@ -326,7 +327,7 @@ export function VariantDetailModal({
               aria-label={`Downgrade generation and refund ${downgradeRefundDna} DNA`}
             >
               <IconDna size={16} />
-              <span>Downgrade · +{downgradeRefundDna.toLocaleString()} DNA</span>
+              <span>Downgrade · +{formatAmount(downgradeRefundDna)} DNA</span>
             </button>
             {downgradeBlockedReason && (
               <p className="mt-2 font-body text-xs text-beige/60">

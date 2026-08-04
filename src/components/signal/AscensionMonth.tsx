@@ -75,6 +75,7 @@ import {
   previousAscensionMonth,
   type AscensionMonthReading,
 } from '@/shared/game/ascension';
+import { formatAmount } from '@/shared/format/amount';
 
 /** The shape `GET /api/signal/ascension` publishes (see that route's contract). */
 export interface AscensionView {
@@ -238,7 +239,7 @@ function AscensionMonthInner({ token }: AscensionMonthProps) {
                 Signal #{day.index}
               </span>
               <span className={day.counted ? 'text-bone-white' : 'text-beige/50'}>
-                {day.score.toLocaleString('en-US')}
+                {formatAmount(day.score)}
                 {day.counted ? ' · counts' : ''}
               </span>
             </li>

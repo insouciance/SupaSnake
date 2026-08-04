@@ -17,6 +17,7 @@ import {
   type RecordsCabinetData,
 } from '@/lib/chronicle/types';
 import { IconCrown } from '@/components/ui/icons';
+import { formatAmount as formatValue } from '@/shared/format/amount';
 
 const CATEGORY_ORDER: RecordCategory[] = [
   'extraction',
@@ -42,10 +43,6 @@ const TIER_DOT_BG: Record<string, string> = {
   epic: 'bg-rarity-epic',
   legendary: 'bg-rarity-legendary',
 };
-
-function formatValue(value: number): string {
-  return value.toLocaleString();
-}
 
 /** Capstone progress ring: minTier across the category, out of 5. */
 function CapstoneRing({

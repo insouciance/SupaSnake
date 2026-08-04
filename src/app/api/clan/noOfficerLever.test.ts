@@ -101,7 +101,9 @@ describe('economy and factual reads', () => {
       /p_founding_cost: CLAN_ECONOMY_CONFIG\.foundingDnaCost/
     );
     expect(clanPage).toMatch(/Founding commitment/);
-    expect(clanPage).toMatch(/Creating this clan spends \{cost\.toLocaleString\(\)\} DNA/);
+    // Still the server-quoted `cost` variable and never a hardcoded number;
+    // now rendered through the shared whole-number amount formatter.
+    expect(clanPage).toMatch(/Creating this clan spends \{formatAmount\(cost\)\} DNA/);
     expect(clanPage).toMatch(/confirmedFoundingDnaCost: cost/);
     expect(clanPage).toMatch(/data-testid="confirm-found-clan"/);
   });

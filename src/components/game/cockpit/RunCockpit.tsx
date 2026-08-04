@@ -21,6 +21,7 @@ import {
 } from './CockpitGlyphs';
 import type { RunCockpitModel } from './types';
 import type { GenomeV2OverclockSource } from '@/components/game/genome/genomeV2RuntimeAdapter';
+import { formatNonNegativeAmount } from '@/shared/format/amount';
 import styles from './CockpitPrototype.module.css';
 
 interface RunCockpitProps {
@@ -44,9 +45,8 @@ type TokenStyle = CSSProperties & Record<`--${string}`, string>;
 
 const EMPTY_GENE_SLOTS = Array.from({ length: 6 }, (_, index) => index);
 
-function formatTelemetry(value: number): string {
-  return Math.max(0, Math.round(value)).toLocaleString('en-US');
-}
+/** Live instrument amounts are whole numbers; the trays are sized for them. */
+const formatTelemetry = formatNonNegativeAmount;
 
 function Instrument({
   className,
