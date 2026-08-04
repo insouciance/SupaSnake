@@ -1,11 +1,11 @@
 # SupaSnake — Tactical Genome v2
 
-**Version:** 2.4
+**Version:** 2.5
 
-**Date:** 3 August 2026
+**Date:** 4 August 2026
 
 **Status:** APPROVED for production by the Product Owner; governed by Product
-Constitution v1.13.
+Constitution v1.14.
 
 This contract supersedes the active catalog, tuning, FTUE, portal-Genome,
 Strain, Splice, and outcome-cap rules in `BUILDCRAFT_GENOME_DESIGN.md` v1.1.
@@ -152,7 +152,42 @@ inspect every Strain rung in Research without receiving every verb immediately.
 The server returns the unmet condition and progress for every locked action.
 The UI does not reproduce thresholds from literals.
 
-### 3.1 Research: the Genome Workbench
+### 3.1 Gene offer eligibility (v1.14 follow-on)
+
+Feature activation and Gene offer eligibility are separate. The table above decides
+whether a verb or reaction may operate; the account eligibility contract decides
+which current-ruleset Genes may enter a new live offer. The complete roster and its
+rules remain inspectable from run one.
+
+A new account begins with a server-authored **seven-Gene** Dynasty starter pool that
+contains its Dynasty Signature. After the first BANK it may choose a legal trial in
+the Workbench. That trial occupies one bounded candidate position alongside an
+ordinary alternative and DECLINE; resolving its versioned learning event through
+success or failure grants ordinary eligibility. The exact starter lists, trial order,
+guarantee, migration, pool-health proof, and rollout contract are owned by
+`PLAYER_EVOLUTION_ONBOARDING.md`, with the measured evidence in
+`PLAYER_EVOLUTION_STARTER_POOL_SIMULATION.md` and the data/API boundary in
+`PLAYER_EVOLUTION_SERVER_CONTRACT.md`.
+
+Two arithmetic constraints bind any future change to those lists. `rollGenomeV2Offer`
+returns null once fewer than two unseen legal entries remain, and a null roll parks
+`nextCadenceOfferAtFood` at `Number.MAX_SAFE_INTEGER` — relics stop for the rest of
+the run. So (a) an eligible pool of *n* supports at most *n − 1* acquisitions, making
+seven the floor for a six-locus Genome, and (b) because a Splice frees a locus, a
+splicing run consumes more than six Genes and the eligible pool must reach nine before
+Splices activate at six banks.
+
+Section 9's promise that a Dynasty's signature is always part of its run's pool
+becomes literally true under this contract: the `apexesUnlocked` offer filter is
+deleted in WP-B. Apex *tier activation* keeps its existing ramp.
+
+The run-start manifest stamps the actual eligible pool. Unlocking a Gene never changes
+an in-flight run, and Codex history never substitutes for server eligibility. Existing
+authoritative use grants migration credit; graduated veterans keep the complete legal
+roster. Until the curriculum is explicitly rolled out—and whenever reviewed legacy
+state is absent under rollback—the server retains the prior complete-pool behavior.
+
+### 3.2 Research: the Genome Workbench
 
 The Workbench is the one free Research destination reached from the Home
 chamber's five-rune relic. The historical `/codex` path remains a compatibility
@@ -214,10 +249,13 @@ wildcard and deterministic surprise.
 
 ## 4. Active v2 gene roster
 
-A v2 run receives the 13 shared genes plus its Dynasty signature. CYBER excludes
-Time Dilation, so its total pool is 13; PRIMAL and COSMIC each have 14. Rotation
-may replace catalog entries inside the constitutional 12–16 bound, never append
-past it. Magnetism and magnet-derived mechanics are not active in v2.
+The v2 ruleset roster contains 13 shared genes plus each Dynasty signature. CYBER
+excludes Time Dilation, so its legal roster is 13; PRIMAL and COSMIC each have 14.
+Under the v1.14 follow-on, a new run receives the server-stamped intersection of that
+legal roster, current rotation/World Condition, and the account's offer-eligible
+subset; existing full-pool behavior remains the rollout and malformed-state fallback.
+Rotation may replace catalog entries inside the constitutional 12–16 bound, never
+append past it. Magnetism and magnet-derived mechanics are not active in v2.
 
 | Gene | Strain | Primary identity |
 |---|---|---|
@@ -463,9 +501,11 @@ to v1, never to the newest default. New history never rewrites old payouts.
 
 ## 10. Authority, continuity, and validation
 
-The server stamps Genome rules version, interaction sub-version, active pool,
+The server stamps Genome rules version, interaction sub-version, eligibility-contract
+version, the actual eligible pool, the account curriculum provenance that produced it,
 FTUE, Ascendance curve and multiplier, Dynasty, build seed, and all immutable run
-facts. The client cannot change them after start. Interaction v2 (physical relic)
+facts. The client cannot add a locked Gene or change any of them after start. A later
+eligibility change applies only to a later run. Interaction v2 (physical relic)
 requires an explicit client capability at run start. Omitted and historical
 stamps remain interaction v1 (automatic offer), are fingerprint-compatible with
 their original start request, and retain that behavior through replay and
@@ -498,7 +538,9 @@ falsifiable and gives board-render regressions a precise source to investigate.
 
 Track the start-stamped interaction sub-version; sampled opportunity interval and
 cursor; relic placement attempt, retry, and success; relic collection and expiry;
-foods eaten during each live relic lifetime; offer category diversity;
+foods eaten during each live relic lifetime; offer category diversity; eligibility
+prefix and contract version; trial invitation, Show me/Not now, trial selection and
+switch, guarantee consumption, learning-event resolution, full-roster graduation;
 THREAD/FORK/DECLINE; UNFOLD DETAILS open/close and focused reaction; Recode
 source/target and cost; Strain and Splice paths; gene state activation/miss;
 target queue depth; body/committed occupancy; terrain creation; portal actions;

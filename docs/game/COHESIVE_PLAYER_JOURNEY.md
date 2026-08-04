@@ -3,7 +3,7 @@
 **Status:** Product Owner approved · implementation contract · 31 July 2026;
 authority reconciled 3 August 2026
 
-**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.13 remains design law. This
+**Authority:** `docs/PRODUCT_CONSTITUTION.md` v1.14 remains design law. This
 contract defines the approved end-to-end player journey, information
 architecture, run-continuity presentation, and cross-system attention behavior;
 it is the direct authority within the Constitution's protected bounds. The Career
@@ -12,7 +12,9 @@ authority for their narrower calculations and implementation details. They do no
 override this document's Home, Setup/run-start ownership, end-to-end journey,
 continuity presentation, or attention hierarchy. Where another document says a
 disconnect itself ends a run, Home creates a run, or a Lab action silently starts
-one, this contract supersedes that journey language.
+one, this contract supersedes that journey language. `PLAYER_EVOLUTION_ONBOARDING.md` owns staged Gene offer
+eligibility, contextual system reveals, and the path from first BANK to clan
+responsibility; this contract continues to own the route those reveals travel.
 
 ## 1. Outcome and design thesis
 
