@@ -4429,6 +4429,26 @@ export default function GamePage() {
           }
         } else if (disposition === 'recover') {
           terminalClosedWithoutSettlement = true;
+        } else {
+          // 'retry' means the server refused in a way this client cannot
+          // classify. That used to be a silent dead end: the modal simply
+          // re-rendered unchanged, so a permanently rejected settlement was
+          // indistinguishable from a slow one and the player had nothing to
+          // report. Surface what the server actually said.
+          const refusal =
+            responseBody && typeof responseBody === 'object'
+              ? (responseBody as Record<string, unknown>).error
+              : null;
+          console.error('Terminal settlement was refused by the server:', {
+            sessionId: active.sessionId,
+            status: response.status,
+            body: responseBody,
+          });
+          setStartError(
+            typeof refusal === 'string' && refusal.length > 0
+              ? `The server could not finish this result yet (${response.status}): ${refusal}`
+              : `The server could not finish this result yet (${response.status}). Retrying automatically.`
+          );
         }
       } catch (error) {
         console.error('Terminal run settlement remains secured:', error);
