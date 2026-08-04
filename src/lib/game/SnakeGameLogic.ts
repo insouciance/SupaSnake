@@ -2270,7 +2270,9 @@ export class SnakeGameLogic {
                 }
           )
         ) {
-          throw new Error('Replay resolves no Genome v2 offer');
+          throw new Error(
+            this.withGenomeV2Refusal('Replay resolves no Genome v2 offer')
+          );
         }
         return;
       case 'genome_v2_portal': {
@@ -2304,7 +2306,9 @@ export class SnakeGameLogic {
                     : {}),
                 };
         if (!this.resolveGenomeV2Portal(resolution)) {
-          throw new Error('Replay resolves no Genome v2 portal');
+          throw new Error(
+            this.withGenomeV2Refusal('Replay resolves no Genome v2 portal')
+          );
         }
         return;
       }
@@ -2320,7 +2324,9 @@ export class SnakeGameLogic {
             activationId: action.activationId,
           })
         ) {
-          throw new Error('Replay activates no Genome v2 overclock');
+          throw new Error(
+            this.withGenomeV2Refusal('Replay activates no Genome v2 overclock')
+          );
         }
         return;
       default:
@@ -2404,6 +2410,20 @@ export class SnakeGameLogic {
         return;
       }
     }
+  }
+
+  /**
+   * Attach the reducer's own words to a caller-level refusal.
+   *
+   * The runtime absorbs a reducer throw to answer its caller with a boolean;
+   * the caller then has to fail, and used to fail with a generic sentence that
+   * named the mechanic and nothing else. The specific guard that refused is
+   * the only useful part, so it travels with the message. Absent detail leaves
+   * the historical wording untouched.
+   */
+  private withGenomeV2Refusal(message: string): string {
+    const detail = this.genomeV2Runtime?.takeReducerRefusal();
+    return detail ? `${message} (${detail})` : message;
   }
 
   private recordReplayAction(action: SnakeReplayAction): void {
@@ -2938,7 +2958,9 @@ export class SnakeGameLogic {
         if (genomeV2WallRush) {
           if (!this.genomeV2Runtime?.recordWallRedirect(this.replayTicks)) {
             throw new Error(
-              'Genome v2 Wall Rush reducer rejected a charged live redirect.'
+              this.withGenomeV2Refusal(
+                'Genome v2 Wall Rush reducer rejected a charged live redirect.'
+              )
             );
           }
           this.syncGenomeV2State();
@@ -5030,7 +5052,11 @@ export class SnakeGameLogic {
           this.replayTicks
         )
       ) {
-        throw new Error('Genome v2 Gilded Fork rejected its board choice.');
+        throw new Error(
+          this.withGenomeV2Refusal(
+            'Genome v2 Gilded Fork rejected its board choice.'
+          )
+        );
       }
     }
     if (
@@ -5134,7 +5160,11 @@ export class SnakeGameLogic {
       enclosed.length >= GENOME_V2_CONFIG.coilkeeper.minimumSealedCells
     ) {
       if (!runtime.recordCoilSeal(this.replayTicks, enclosed)) {
-        throw new Error('Genome v2 reducer rejected a live Coil seal.');
+        throw new Error(
+          this.withGenomeV2Refusal(
+            'Genome v2 reducer rejected a live Coil seal.'
+          )
+        );
       }
       // Recovery geometry is measured after the sealed cells become terrain.
       this.syncGenomeV2State();
@@ -5164,7 +5194,11 @@ export class SnakeGameLogic {
           source: heartwood ? 'heartwood' : 'feral_ladder',
         })
       ) {
-        throw new Error('Genome v2 reducer rejected live territory facts.');
+        throw new Error(
+          this.withGenomeV2Refusal(
+            'Genome v2 reducer rejected live territory facts.'
+          )
+        );
       }
     }
     this.syncGenomeV2State();

@@ -504,6 +504,12 @@ export class GenomeV2Runtime {
   private activationOrdinal = 0;
   private waveOrdinal = 0;
   private targetProgress = new Map<string, GenomeV2TargetProgress>();
+  /**
+   * Last reducer refusal absorbed by a guarded `apply`, kept only until a
+   * caller reads it. Deliberately NOT checkpoint state: it describes an event
+   * that was rejected, so it can never be part of the simulation.
+   */
+  private lastRefusal: string | null = null;
 
   constructor(options: GenomeV2RuntimeOptions) {
     this.interactionVersion =
@@ -697,6 +703,44 @@ export class GenomeV2Runtime {
     return `${domain}:${genomeV2EventId(this.state.runSeed, ordinal)}`;
   }
 
+  /**
+   * Absorb a reducer refusal WITHOUT destroying it.
+   *
+   * The reducer's roughly one hundred guards each carry a specific,
+   * carefully-worded message, and every one of them used to die in a bare
+   * `catch {}` here - the exact point where the diagnosis is created. The
+   * caller then turned a bare `false`/`null` into a generic fatal error, so
+   * production saw "Genome v2 Wall Rush reducer rejected a charged live
+   * redirect" and never learned WHY. Both shipped incidents in this class were
+   * diagnosed only because a player reported them.
+   *
+   * `apply` is transactional - `reduceGenomeV2Event` returns a new state and
+   * `this.state` is replaced only on success - so a refusal leaves the runtime
+   * exactly as it was, and recording it costs nothing but the truth.
+   *
+   * Full Sentry routing is CE-5's job. Until then the reason is logged with
+   * its method for context and retained for exactly one reader, so a caller
+   * that must still fail can fail WITH the reducer's own words.
+   */
+  private refuse(method: string, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.lastRefusal = `${method}: ${message}`;
+    console.error(
+      `[genomeV2Runtime] ${method} refused by the reducer: ${message}`,
+      error
+    );
+  }
+
+  /**
+   * Read and clear the last absorbed reducer refusal. A caller converting a
+   * falsy return into a thrown error uses this to carry the reason with it.
+   */
+  takeReducerRefusal(): string | null {
+    const refusal = this.lastRefusal;
+    this.lastRefusal = null;
+    return refusal;
+  }
+
   private apply(
     facts: GenomeV2EventFacts,
     tick: number
@@ -816,7 +860,8 @@ export class GenomeV2Runtime {
         replacementGeneId,
         slot,
       });
-    } catch {
+    } catch (error) {
+      this.refuse('previewOfferRecode', error);
       return null;
     }
   }
@@ -901,7 +946,8 @@ export class GenomeV2Runtime {
         tick
       );
       return true;
-    } catch {
+    } catch (error) {
+      this.refuse('declineOffer', error);
       return false;
     }
   }
@@ -951,7 +997,8 @@ export class GenomeV2Runtime {
         replacementGeneId,
         slot,
       });
-    } catch {
+    } catch (error) {
+      this.refuse('previewPortalRecode', error);
       return null;
     }
   }
@@ -962,7 +1009,8 @@ export class GenomeV2Runtime {
     try {
       this.apply({ type: 'portal_continued', portalId, activateMirror }, tick);
       return true;
-    } catch {
+    } catch (error) {
+      this.refuse('continuePortal', error);
       return false;
     }
   }
@@ -1260,7 +1308,8 @@ export class GenomeV2Runtime {
     try {
       this.apply({ type: 'gilded_fork_chosen', targetId, choice }, tick);
       return true;
-    } catch {
+    } catch (error) {
+      this.refuse('chooseGildedFork', error);
       return false;
     }
   }
@@ -1327,7 +1376,8 @@ export class GenomeV2Runtime {
         tick
       );
       return true;
-    } catch {
+    } catch (error) {
+      this.refuse('recordWallRedirect', error);
       return false;
     }
   }
@@ -1355,7 +1405,8 @@ export class GenomeV2Runtime {
       this.apply({ type: 'coil_sealed', terrainId, cells }, tick);
       this.terrainOrdinal = ordinal;
       return terrainId;
-    } catch {
+    } catch (error) {
+      this.refuse('recordCoilSeal', error);
       return null;
     }
   }
@@ -1383,7 +1434,8 @@ export class GenomeV2Runtime {
       );
       this.territoryOrdinal = ordinal;
       return territoryId;
-    } catch {
+    } catch (error) {
+      this.refuse('recordTerritory', error);
       return null;
     }
   }
@@ -1406,7 +1458,8 @@ export class GenomeV2Runtime {
       this.apply({ type: 'overclock_started', activationId, source }, tick);
       this.activationOrdinal = ordinal;
       return activationId;
-    } catch {
+    } catch (error) {
+      this.refuse('startOverclock', error);
       return null;
     }
   }
@@ -1451,7 +1504,8 @@ export class GenomeV2Runtime {
       );
       this.waveOrdinal = ordinal;
       return waveId;
-    } catch {
+    } catch (error) {
+      this.refuse('openCrownWave', error);
       return null;
     }
   }
