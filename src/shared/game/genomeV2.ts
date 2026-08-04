@@ -1582,6 +1582,45 @@ export function genomeV2CrownWaveBindingRefusal(
   return null;
 }
 
+/**
+ * The one truth about whether a previewed Phase Gate may be entered.
+ *
+ * `genomeV2MechanicEnabled` is satisfied by holding the gene OR a qualifying
+ * Splice, and a portal recode changes that set MID-RUN while a gate target is
+ * already drawn on the board. Only the reducer used to consult it, so the
+ * engine would preview the gate, move the head to the exit, and only then meet
+ * a refusal it could not undo. Every layer now asks this before any mutation.
+ *
+ * `cells` is optional so a caller holding only a target id (the preview) and a
+ * caller holding the exact route it is about to commit (the reducer) share one
+ * predicate.
+ */
+export function genomeV2PhaseGateAvailable(
+  state: GenomeV2State,
+  targetId: string,
+  cells?: readonly GenomeV2Cell[]
+): boolean {
+  const target = state.targets[targetId];
+  if (
+    !genomeV2MechanicEnabled(state, 'phase_gate') ||
+    !target ||
+    !['phase_gate', 'wall_rush'].includes(target.kind) ||
+    !['active', 'armed'].includes(target.lifecycle) ||
+    !target.optionalRouteCells
+  ) {
+    return false;
+  }
+  if (cells === undefined) return true;
+  return (
+    cells.length === 2 &&
+    new Set(cells.map((cell) => `${cell.x}:${cell.z}`)).size === 2 &&
+    cells.every((cell, index) => {
+      const expected = target.optionalRouteCells?.[index];
+      return !!expected && cell.x === expected.x && cell.z === expected.z;
+    })
+  );
+}
+
 function geneInstance(
   state: GenomeV2State,
   geneId: GenomeV2ActiveGeneId
@@ -2987,18 +3026,8 @@ export function reduceGenomeV2Event(
       break;
     case 'phase_gate_used':
       if (
-        !genomeV2MechanicEnabled(state, 'phase_gate') ||
-        event.cells.length !== 2 ||
-        !state.targets[event.targetId] ||
-        !['phase_gate', 'wall_rush'].includes(state.targets[event.targetId].kind) ||
-        !['active', 'armed'].includes(state.targets[event.targetId].lifecycle) ||
-        state.permanentTerrain.some((fact) => fact.terrainId === event.terrainId) ||
-        new Set(event.cells.map((cell) => `${cell.x}:${cell.z}`)).size !== 2 ||
-        !state.targets[event.targetId].optionalRouteCells ||
-        event.cells.some((cell, index) => {
-          const expected = state.targets[event.targetId].optionalRouteCells?.[index];
-          return !expected || cell.x !== expected.x || cell.z !== expected.z;
-        })
+        !genomeV2PhaseGateAvailable(state, event.targetId, event.cells) ||
+        state.permanentTerrain.some((fact) => fact.terrainId === event.terrainId)
       ) {
         throw new Error('Genome v2 Phase Gate use is invalid.');
       }

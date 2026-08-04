@@ -6,8 +6,12 @@ import {
   deriveGenomeV2Ftue,
   deriveGenomeV2FtuePresentation,
   genomeV2EventId,
+  genomeV2MechanicEnabled,
+  genomeV2PhaseGateAvailable,
+  previewGenomeV2Recode,
   projectGenomeV2NextTarget,
   reduceGenomeV2Event,
+  type GenomeV2Cell,
   type GenomeV2Event,
   type GenomeV2InteractionVersion,
   type GenomeV2State,
@@ -23,6 +27,7 @@ import {
   type Direction,
   type GameOverData,
   type GenomeEngineConfig,
+  type SnakeCheckpointV1,
 } from './SnakeGameLogic';
 import { shortestGenomeV2Route } from './genomeV2Runtime';
 
@@ -1162,6 +1167,143 @@ describe('SnakeGameLogic Genome v2 contract degradation', () => {
       projectGenomeV2NextTarget(state.genomeV2!, { cadenceEligible: true })
         .requiresOptionalRouteCells
     ).toBe(true);
+  });
+
+  /**
+   * The Phase Gate boundary the audit named: a portal Recode drops the gene
+   * while a gate target is already drawn on the board.
+   * `genomeV2MechanicEnabled` is satisfied by the gene OR a qualifying Splice,
+   * so the recode flips it false mid-run - and the engine used to preview the
+   * gate anyway, move the head to the exit, and only then meet the reducer's
+   * refusal, with the board already mid-mutation.
+   */
+  const GATE_CELLS = [
+    { x: 6, z: 5 },
+    { x: 9, z: 5 },
+  ];
+  const GATE_CHECKPOINT_AT = Date.UTC(2026, 7, 3, 8, 0, 0);
+
+  function phaseGateCheckpoint(): SnakeCheckpointV1 {
+    const game = new SnakeGameLogic({
+      gridSize: 20,
+      ruleset: RULESETS.CYBER,
+      simulationSeed: 'phase-gate-recode',
+      genome: configForState(reducerWithGene('CYBER', 'phase_gate', 4)),
+    });
+    game.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 4, y: 0, z: 5 },
+        { x: 3, y: 0, z: 5 },
+      ],
+      direction: 'RIGHT',
+      foods: [{ x: 10, y: 0, z: 5 }],
+    });
+    const gate = Object.values(game.getState().genomeV2?.targets ?? {}).find(
+      (target) => target.kind === 'phase_gate'
+    );
+    expect(gate?.optionalRouteCells).toEqual(GATE_CELLS);
+    return game.exportCheckpoint(GATE_CHECKPOINT_AT);
+  }
+
+  /** Recode the gene away, leaving the gate target exactly where it is. */
+  function recodePhaseGateAway(checkpoint: SnakeCheckpointV1): void {
+    let state = checkpoint.state.genomeV2!;
+    const seen = new Set(
+      Object.values(state.instances).map((instance) => instance.geneId)
+    );
+    const candidates = state.genePool.filter((geneId) => !seen.has(geneId));
+    const replacementGeneId = candidates[0];
+    state = apply(state, {
+      type: 'portal_opened',
+      portalId: 'gate-portal',
+      genomeOffer: {
+        offerId: 'gate-offer',
+        candidates: [replacementGeneId, candidates[1]],
+      },
+    });
+    const preview = previewGenomeV2Recode(state, {
+      source: 'portal',
+      offerId: 'gate-offer',
+      replacementGeneId,
+      slot: 0,
+    });
+    state = apply(state, {
+      type: 'offer_recoded',
+      source: 'portal',
+      offerId: 'gate-offer',
+      instanceId: 'gate-recode',
+      replacementGeneId,
+      slot: 0,
+      growthCharged: preview.growthCharged,
+    });
+    expect(genomeV2MechanicEnabled(state, 'phase_gate')).toBe(false);
+    expect(
+      Object.values(state.targets).find(
+        (target) => target.kind === 'phase_gate'
+      )?.optionalRouteCells
+    ).toEqual(GATE_CELLS);
+    checkpoint.state.genomeV2 = state;
+  }
+
+  it('enters a previewed Phase Gate while the mechanic is held', () => {
+    const game = new SnakeGameLogic();
+    game.restoreCheckpoint(phaseGateCheckpoint(), GATE_CHECKPOINT_AT);
+    game.tick();
+    expect(game.getState().snake[0]).toMatchObject({ x: 9, z: 5 });
+    expect(game.getState().genomeV2?.permanentTerrain[0]).toMatchObject({
+      source: 'phase_gate_scar',
+      cells: GATE_CELLS,
+    });
+  });
+
+  it('ignores a gate whose mechanic a Recode removed, instead of halting mid-move', () => {
+    const checkpoint = phaseGateCheckpoint();
+    recodePhaseGateAway(checkpoint);
+    const game = new SnakeGameLogic();
+    game.restoreCheckpoint(checkpoint, GATE_CHECKPOINT_AT);
+
+    expect(() => game.tick()).not.toThrow();
+    const state = game.getState();
+    // The entry cell is an ordinary cell now: no teleport, no scar, no fault.
+    expect(state.snake[0]).toMatchObject({ x: 6, z: 5 });
+    expect(state.genomeV2?.permanentTerrain).toEqual([]);
+    expect(state.isGameOver).toBe(false);
+    expect(() => game.tick()).not.toThrow();
+    expect(game.getState().snake[0]).toMatchObject({ x: 7, z: 5 });
+  });
+
+  it('answers the Phase Gate question the same way in every layer', () => {
+    const checkpoint = phaseGateCheckpoint();
+    const held = checkpoint.state.genomeV2!;
+    const gateId = Object.values(held.targets).find(
+      (target) => target.kind === 'phase_gate'
+    )!.targetId;
+    expect(genomeV2PhaseGateAvailable(held, gateId)).toBe(true);
+    expect(genomeV2PhaseGateAvailable(held, gateId, GATE_CELLS)).toBe(true);
+    expect(
+      genomeV2PhaseGateAvailable(held, gateId, [
+        { x: 6, z: 5 },
+        { x: 8, z: 5 },
+      ])
+    ).toBe(false);
+
+    recodePhaseGateAway(checkpoint);
+    const recoded = checkpoint.state.genomeV2!;
+    expect(genomeV2PhaseGateAvailable(recoded, gateId)).toBe(false);
+    // The reducer keeps refusing a forged use - the fix is that no honest
+    // caller can reach it any more, not that the guard was relaxed.
+    expect(() =>
+      reduceGenomeV2Event(recoded, {
+        type: 'phase_gate_used',
+        terrainId: 'forged-scar',
+        targetId: gateId,
+        cells: GATE_CELLS as [GenomeV2Cell, GenomeV2Cell],
+        index: recoded.eventIndex + 1,
+        tick: recoded.tick + 1,
+        eventId: genomeV2EventId(recoded.runSeed, recoded.eventIndex + 1),
+      })
+    ).toThrow('Genome v2 Phase Gate use is invalid.');
   });
 
   it('keeps playing after a deferred contract instead of faulting the run', () => {

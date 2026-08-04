@@ -23,6 +23,7 @@ import {
   genomeV2HasSplice,
   genomeV2MechanicEnabled,
   genomeV2OfferInterval,
+  genomeV2PhaseGateAvailable,
   genomeV2PhysicalRelicInterval,
   previewGenomeV2Recode,
   projectGenomeV2NextTarget,
@@ -1264,15 +1265,25 @@ export class GenomeV2Runtime {
     }
   }
 
+  /**
+   * Whether this target's optional route may still be entered. Reducer
+   * legality comes from the shared predicate; the unused-route half is engine
+   * progress the reducer does not hold, so it is checked beside it.
+   */
+  phaseGateAvailable(targetId: string): boolean {
+    return (
+      genomeV2PhaseGateAvailable(this.state, targetId) &&
+      this.targetProgress.get(targetId)?.usedOptionalRoute === false
+    );
+  }
+
   phaseGateAtEntry(cell: GenomeV2Cell): GenomeV2PhaseGatePreview | null {
-    const target = activeTargets(this.state).find((candidate) => {
-      const progress = this.targetProgress.get(candidate.targetId);
-      return (
+    const target = activeTargets(this.state).find(
+      (candidate) =>
         candidate.optionalRouteCells !== null &&
-        progress?.usedOptionalRoute === false &&
-        sameCell(candidate.optionalRouteCells[0], cell)
-      );
-    });
+        sameCell(candidate.optionalRouteCells[0], cell) &&
+        this.phaseGateAvailable(candidate.targetId)
+    );
     if (!target?.optionalRouteCells) return null;
     return {
       targetId: target.targetId,
@@ -1283,13 +1294,8 @@ export class GenomeV2Runtime {
   usePhaseGate(targetId: string, tick: number): boolean {
     const target = this.state.targets[targetId];
     const progress = this.targetProgress.get(targetId);
-    if (
-      !target?.optionalRouteCells ||
-      !progress ||
-      progress.usedOptionalRoute
-    ) {
-      return false;
-    }
+    if (!target?.optionalRouteCells || !progress) return false;
+    if (!this.phaseGateAvailable(targetId)) return false;
     const ordinal = this.terrainOrdinal + 1;
     this.apply(
       {
