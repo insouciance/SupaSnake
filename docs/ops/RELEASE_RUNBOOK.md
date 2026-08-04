@@ -1,10 +1,11 @@
 # Production Release Runbook
 
-Current production baseline: Gilded Fork engine-fix runtime
-`2fe33cabb5dd9488e53d5f75a2e38f41a4da77ea`, independently verified on
-4 August 2026 by successful production workflow `30887227521` (07:17:39 to
-07:35:29 UTC) as deployment `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT`
-(`supasnake-yoyq183cf-josef-bells-projects.vercel.app`). This release carried no
+Current production baseline: the settlement-recovery, integer-display,
+Player-Evolution-contracts and merge-queue-CI train
+`381491e23b60c004a843266169fd7a30d4436378`, independently verified on
+4 August 2026 by successful production workflow `30907807862` (12:08:50 to
+12:27:26 UTC) as deployment `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM`
+(`supasnake-pk5b7d8bv-josef-bells-projects.vercel.app`). This release carried no
 migration and no `SNAKE_RULES_VERSION` bump; hosted migrations remain aligned
 through 065 with no pending plan.
 Canonical health reports the exact release SHA, healthy database, project ref
@@ -20,13 +21,16 @@ Stripe remains in sandbox/test mode.
 The live interaction-v2 contract uses optional physical Gene relics on a
 deterministic 6 ± 2-food cadence; already-issued or omitted interaction stamps
 retain automatic-offer v1 compatibility. The now-previous deployment
-`dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`4fb6271`) is dual-version and shares hosted
+`dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`2fe33ca`) is dual-version and shares hosted
 schema 001–065, so it is the only artifact-level rollback candidate for this
-application-only release — and it restores the fatal Gilded Fork rejection for
-Gene-only golden food, so prefer a forward fix. The older
-`dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`8bb3ef9`) additionally restores the
-blocking reconnect surface, session-unbound terminal settlement, and the pre-fix
-five-star wave preflight. The retired pre-Genome deployment
+application-only release — and it restores the stranded-settlement trap that
+hard-blocked two production accounts behind the “Result secured” modal, so
+prefer a forward fix. Older artifacts additionally restore the fatal Gilded Fork
+rejection for Gene-only golden food (`dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw`,
+`4fb6271`) and the blocking reconnect surface, session-unbound terminal
+settlement, and pre-fix five-star wave preflight
+(`dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ`, `8bb3ef9`). The retired pre-Genome
+deployment
 `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` is still not a safe rollback target for
 issued v2 sessions because it cannot resume or settle that immutable contract.
 Use the dual-version, flag-off forward procedure below. Keep this volatile
