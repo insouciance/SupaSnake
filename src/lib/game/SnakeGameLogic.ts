@@ -4886,9 +4886,11 @@ export class SnakeGameLogic {
         });
         futureTargetId = future.targetId;
       }
-      // The binding was preflighted above and the preview cell is chosen clear
-      // of every other Crown preview, so this cannot refuse; if it ever does,
-      // the wave is skipped and the reason recorded rather than thrown.
+      // The binding was preflighted above, and the only remaining reducer
+      // check is that exactly one LIVE preview sits on the chosen cell - which
+      // holds because every live target's cells are already reserved against
+      // this chooser. If it ever refuses anyway, the wave is skipped and the
+      // reason recorded, never thrown: no half-registered wave, no halt.
       runtime.openCrownWave(this.replayTicks, currentTargetIds, futureTargetId);
     }
     if (foods.length > 0) this.state.food = { ...foods[0] };
