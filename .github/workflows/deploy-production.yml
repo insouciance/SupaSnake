@@ -50,6 +50,11 @@ jobs:
             exit 1
           fi
       - uses: actions/checkout@v4
+      # Before `npm ci` and the Supabase image pull open outbound connections
+      # the kernel could source from 54320-54322. See
+      # scripts/isolated-supabase.sh.
+      - name: Reserve the isolated Supabase ports
+        run: bash scripts/isolated-supabase.sh reserve-ports
       - name: Require the exact current main commit
         run: bash scripts/verify-exact-main.sh
       - uses: actions/setup-node@v4
@@ -63,7 +68,7 @@ jobs:
           version: 2.109.1
       - name: Start clean isolated Supabase for SQL contracts
         run: |
-          supabase start --exclude realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit
+          bash scripts/isolated-supabase.sh start
           supabase db reset --local
       - name: Run isolated SQL contracts, including two-session races
         run: bash scripts/run-local-sql-contracts.sh

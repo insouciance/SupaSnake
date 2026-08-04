@@ -30,13 +30,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # Before anything opens a socket. See scripts/isolated-supabase.sh: the
+      # stack's ports live inside the kernel's ephemeral range, so an outbound
+      # connection can be handed one of them moments before Docker publishes it.
+      - name: Reserve the isolated Supabase ports
+        run: bash scripts/isolated-supabase.sh reserve-ports
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
           version: 2.109.1
       - name: Start clean isolated Supabase
         run: |
-          supabase start --exclude realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit
+          bash scripts/isolated-supabase.sh start
           supabase db reset --local
       - name: Run ordinary and two-connection SQL contracts
         run: bash scripts/run-local-sql-contracts.sh
@@ -97,6 +102,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # First, deliberately: `npm ci`, the Playwright download and the Supabase
+      # image pull all open outbound connections, and the kernel draws their
+      # source ports from a range that contains 54320-54322. The reservation
+      # only governs assignments made after it runs.
+      - name: Reserve the isolated Supabase ports
+        run: bash scripts/isolated-supabase.sh reserve-ports
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -140,7 +152,7 @@ jobs:
 
       - name: Start isolated Supabase
         run: |
-          supabase start --exclude realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit
+          bash scripts/isolated-supabase.sh start
           # `status --output env` shell-quotes every value. Appending that
           # output directly makes the quotes part of GitHub Actions values and
           # produces an invalid Supabase URL during `next build`. Export only

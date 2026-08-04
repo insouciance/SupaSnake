@@ -63,14 +63,31 @@ code .env  # or vim .env
    ```
 
 3. **Initialize Schema**
-   ```bash
-   # Option 1: Supabase Dashboard
-   # Go to SQL Editor and run your schema
 
-   # Option 2: Local migrations
-   npx supabase init
-   npx supabase link --project-ref your-project-ref
-   npx supabase db push
+   SupaSnake develops against the isolated local stack, never against a hosted
+   project. `supabase/migrations/` is applied by bringing the local stack up:
+
+   ```bash
+   bash scripts/isolated-supabase.sh start   # applies every migration
+   bash scripts/run-local-sql-contracts.sh   # the SQL contracts CI runs
+   ```
+
+   Hosted schema changes are the release workflow's job alone
+   (`docs/ops/RELEASE_RUNBOOK.md`); do not run `supabase db push` by hand.
+
+   **Pin the CLI to 2.109.1.** The version is not cosmetic: 2.65.5 refuses to
+   parse `supabase/config.toml` over its `local_smtp` key and cannot apply
+   migration 061, and both failures look like repository bugs rather than a
+   stale tool. CI installs 2.109.1 via `supabase/setup-cli`, and the scripts
+   above resolve the same version through `scripts/supabase-cli.sh` — they use
+   an installed 2.109.1 if you have one and otherwise fall back to
+   `npx supabase@2.109.1`, so no global install has to be kept in sync.
+
+   Invoking the CLI directly, use the pin explicitly:
+
+   ```bash
+   npx supabase@2.109.1 status
+   npx supabase@2.109.1 migration list --local
    ```
 
 **Security Notes:**

@@ -10,10 +10,13 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_root"
 
+# shellcheck source=scripts/supabase-cli.sh
+. "$repo_root/scripts/supabase-cli.sh"
+
 if [ -n "${SUPABASE_LOCAL_DB_URL:-}" ]; then
   database_url=$SUPABASE_LOCAL_DB_URL
 else
-  database_url=$(supabase status --output json | jq -er '.DB_URL')
+  database_url=$(supabase_cli status --output json | jq -er '.DB_URL')
 fi
 
 # Fixture contracts create users, sessions, clans, and economy rows. A typo or
