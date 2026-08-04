@@ -300,6 +300,7 @@ export type MechanicId =
   | 'extraction_bank'
   | 'extraction_pass'
   | 'extraction_infuse'
+  | 'power_pod'
   | 'charges'
   | 'strain_minor'
   | 'strain_expression'
@@ -326,6 +327,11 @@ const MECHANICS: Record<MechanicId, Omit<LexiconEntry, 'kind' | 'id'>> = {
     name: 'TRADE UP',
     effect: 'Trade body length for a new power.',
     cost: `Your snake grows to carry it. Max ${GENOME_V2_CONFIG.portalGenome.maxActions} per run.`,
+  },
+  power_pod: {
+    name: 'Power Pod',
+    effect: 'Drive into it to choose a power.',
+    cost: 'It fades if you leave it. Nothing is lost, but nothing is offered either.',
   },
   charges: {
     name: 'Energy Commitment',
@@ -571,6 +577,7 @@ export const MECHANIC_IDS: readonly MechanicId[] = [
   'extraction_bank',
   'extraction_pass',
   'extraction_infuse',
+  'power_pod',
   'charges',
   'strain_minor',
   'strain_expression',
