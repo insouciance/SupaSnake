@@ -74,10 +74,10 @@ const IMPACT_DESTINATION: Record<ProgressionDestination, {
   mastery: { href: '/profile#mastery', label: 'Mastery' },
   records: { href: '/profile#records', label: 'Records' },
   codex: { href: '/codex', label: 'Genome Research' },
-  signal: { href: '/#signal', label: 'World Signal' },
+  signal: { href: '/#signal', label: "Today's Challenge" },
   clan: { href: '/clan', label: 'Clan' },
   lab: { href: '/lab', label: 'Lab' },
-  lineage: { href: '/lab#lineage', label: 'Lineage' },
+  lineage: { href: '/lab#lineage', label: 'Bloodline' },
 };
 
 const CHRONICLE: ResultsNextAction = {

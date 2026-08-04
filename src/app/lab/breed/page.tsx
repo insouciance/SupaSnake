@@ -697,7 +697,7 @@ export default function BreedPage() {
                 className="pt-2 space-y-2 border-t border-scale-blue-light/20"
                 data-testid="lineage-draft"
               >
-                <p className="text-xs font-body text-beige/70">Lineage</p>
+                <p className="text-xs font-body text-beige/70">Bloodline</p>
                 {/*
                   Display-only chips: each is the label of a toggle button,
                   so a popover trigger here would nest one button in

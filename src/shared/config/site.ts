@@ -38,10 +38,10 @@ export const SITE_DESCRIPTION =
 /** Longer form for the /play intent page and structured data. */
 export const SITE_LONG_DESCRIPTION =
   'SupaSnake is a three-minute precision snake game that runs instantly in any browser. ' +
-  'The signature moment is extraction: a portal appears and you choose — BANK your run for a ' +
-  'secured multiplier, PASS to push your luck, or INFUSE body length into build power. ' +
+  'The signature moment is extraction: a portal appears and you choose — BANK what you have, ' +
+  'RIDE ON to push your luck, or TRADE UP body length for a power. ' +
   'Three dynasties (CYBER, PRIMAL, COSMIC) are genuinely different rulesets, and everything ' +
-  'you keep compounds into a mastery record and a bred lineage. No install, no ads, and ' +
+  'you keep compounds into a mastery record and a bred bloodline. No install, no ads, and ' +
   'nothing you can buy moves a number.';
 
 function trimTrailingSlash(value: string): string {

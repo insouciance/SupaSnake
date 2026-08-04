@@ -256,7 +256,7 @@ export function SignalSurface({
         <NotificationBadge
           kind={signalBadge.kind}
           count={signalBadge.count}
-          label="New World Signal activity"
+          label="New activity on today's challenge"
           className="absolute -right-1 -top-1"
         />
       </button>

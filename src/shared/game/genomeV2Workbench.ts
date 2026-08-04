@@ -190,7 +190,7 @@ function candidatePair(
 function firstOpenSlot(state: GenomeV2State): GenomeV2SlotIndex {
   const slot = state.slots.find((entry) => entry.occupant === null);
   if (!slot) {
-    throw new GenomeV2ExperimentError('All six loci are occupied. Use Recode.');
+    throw new GenomeV2ExperimentError('All six slots are full. Use SWAP.');
   }
   return slot.index;
 }
@@ -335,7 +335,7 @@ function locusReading(state: GenomeV2State): GenomeV2ResearchLocus[] {
       return {
         slot: slot.index,
         kind: 'empty',
-        label: 'Open locus',
+        label: 'Empty slot',
         geneIds: [],
         strains: [],
         spliceId: null,

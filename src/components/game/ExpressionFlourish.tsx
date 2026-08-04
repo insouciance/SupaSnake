@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import {
   STRAINS,
-  STRAIN_TIER_NAMES,
   type StrainId,
 } from '@/shared/game/strains';
+import { strainTierLabel } from '@/shared/game/lexicon';
 
 interface ExpressionFlourishProps {
   strain: StrainId;
@@ -23,9 +23,7 @@ export function ExpressionFlourish({
 }: ExpressionFlourishProps) {
   const [reducedMotion, setReducedMotion] = useState(false);
   const def = STRAINS[strain];
-  const name = tier === 3
-    ? STRAIN_TIER_NAMES[strain].apex
-    : STRAIN_TIER_NAMES[strain].expression;
+  const name = strainTierLabel(strain, tier === 3 ? 3 : 2);
 
   useEffect(() => {
     const prefersReducedMotion =

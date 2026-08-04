@@ -13,10 +13,11 @@ import { GeneGlyph, StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs'
 import { STRAINS } from '@/shared/game/strains';
 import { TacticalLoomLite } from './TacticalLoomLite';
 import decisionStyles from './TacticalLoomDecision.module.css';
-import type {
-  TacticalLoomCandidate,
-  TacticalLoomDecisionModel,
-  TacticalLoomReplacementChoice,
+import {
+  loomActionLabel,
+  type TacticalLoomCandidate,
+  type TacticalLoomDecisionModel,
+  type TacticalLoomReplacementChoice,
 } from './tacticalLoomPresentation';
 
 type ChoiceKey = 'candidate-0' | 'candidate-1' | 'decline';
@@ -78,12 +79,14 @@ export function TacticalLoomDecision({
         ? selectedDeclineOption?.consequence ?? model.decline.consequence
         : null);
   const action = recodePhase && selectedCandidate
-    ? `${selectedCandidate.action} ${selectedCandidate.name} · replace ${selectedReplacement?.label ?? 'one locus'}`
-    : selectedCandidate?.action ?? (declineSelected
-      ? selectedDeclineOption
-        ? `${model.decline.action} · ${selectedDeclineOption.label}`
-        : model.decline.action
-      : '');
+    ? `${loomActionLabel(selectedCandidate.action)} ${selectedCandidate.name} · replace ${selectedReplacement?.label ?? 'one slot'}`
+    : selectedCandidate
+      ? loomActionLabel(selectedCandidate.action)
+      : (declineSelected
+        ? selectedDeclineOption
+          ? `${loomActionLabel(model.decline.action)} · ${selectedDeclineOption.label}`
+          : loomActionLabel(model.decline.action)
+        : '');
 
   useEffect(() => {
     setSelected(null);
@@ -198,7 +201,7 @@ export function TacticalLoomDecision({
   const choices = useMemo(
     () => model.candidates.map((candidate, index) => ({
         key: choiceKey(index as 0 | 1),
-        action: candidate.action,
+        action: loomActionLabel(candidate.action),
         name: candidate.name,
         category: candidate.category,
         geneId: candidate.geneId,
@@ -238,11 +241,14 @@ export function TacticalLoomDecision({
           <div className="flex min-w-0 items-start gap-2">
             <div className="min-w-0">
             <p className="font-body text-sm font-bold uppercase tracking-[0.14em] text-cosmic">
-              Simulation held · {model.dynasty}
+              Paused for your choice · {model.dynasty}
             </p>
             <h2 id="tactical-loom-title" className="heading-display text-xl leading-tight text-[#c4b5fd] text-glow sm:text-2xl">
               {model.title}
             </h2>
+            <p className="mt-0.5 font-body text-sm leading-snug text-beige/60">
+              Two powers. Take one, or take neither.
+            </p>
             </div>
           </div>
           <p className="font-body text-sm leading-snug text-beige/50 sm:max-w-[12rem] sm:text-right">
@@ -258,7 +264,7 @@ export function TacticalLoomDecision({
         >
           <div
             role="radiogroup"
-            aria-label="Genome decision"
+            aria-label="Power choice"
             className={decisionStyles.choiceWeave}
             data-testid="loom-choice-rail"
             data-responsive-composition="portrait-bottom landscape-side"
@@ -276,7 +282,7 @@ export function TacticalLoomDecision({
                   type="button"
                   role="radio"
                   aria-checked={active}
-                  aria-label={`${index === 0 ? 'A' : 'B'}, ${choice.action} ${choice.name}${choice.strains.length > 0 ? `, Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}`}
+                  aria-label={`${index === 0 ? 'A' : 'B'}, ${choice.action} ${choice.name}${choice.strains.length > 0 ? `, Paths ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}`}
                   aria-keyshortcuts={index === 0 ? '1' : '2'}
                   disabled={locked || Boolean(choice.disabledReason)}
                   onClick={() => select(choice.key)}
@@ -297,7 +303,7 @@ export function TacticalLoomDecision({
                     {choice.name}
                   </span>
                   {choice.strains.length > 0 ? (
-                    <span className={decisionStyles.choiceStrains} aria-label={`Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}`}>
+                    <span className={decisionStyles.choiceStrains} aria-label={`Paths ${choice.strains.map((id) => STRAINS[id].name).join(', ')}`}>
                       {choice.strains.map((id) => (
                         <span
                           key={id}
@@ -339,7 +345,7 @@ export function TacticalLoomDecision({
               data-testid={onBack ? 'loom-back-to-portal' : 'gene-decline'}
               data-active={declineSelected ? 'true' : 'false'}
             >
-              {onBack ? '‹ Back to Portal' : 'Decline · keep this Genome'}
+              {onBack ? '‹ Back to Portal' : 'Skip · keep your powers'}
             </button>
           </div>
 
@@ -347,21 +353,21 @@ export function TacticalLoomDecision({
             <section className="mb-4 rounded-[14px] border border-venom-orange/40 bg-venom-orange/7 p-3" data-testid="loom-recode-step">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
-                  <p className="font-display text-sm text-venom-orange">Recode · choose one locus</p>
+                  <p className="font-display text-sm text-venom-orange">Swap · choose one slot</p>
                   <p className="mt-1 font-body text-sm text-beige/65">
-                    {selectedCandidate.name} enters only after you choose what leaves the active Genome.
+                    {selectedCandidate.name} comes in only after you choose which power goes out.
                   </p>
                 </div>
                 <span className="font-body text-xs font-bold uppercase tracking-[0.12em] text-beige/45">Step 2 of 2</span>
               </div>
-              <div role="radiogroup" aria-label="Locus to replace" className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              <div role="radiogroup" aria-label="Slot to replace" className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                 {replacementChoices.map((choice) => (
                   <button
                     key={choice.slotIndex}
                     type="button"
                     role="radio"
                     aria-checked={replacementSlot === choice.slotIndex}
-                    aria-label={`Replace ${choice.label}${choice.strains.length > 0 ? `, Strains ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}, +${choice.growthCost} growth`}
+                    aria-label={`Replace ${choice.label}${choice.strains.length > 0 ? `, Paths ${choice.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}, +${choice.growthCost} growth`}
                     disabled={Boolean(choice.disabledReason)}
                     onClick={() => setReplacementSlot(choice.slotIndex)}
                     className={`min-h-11 rounded-[10px] border px-2 py-2 text-left text-sm ${
@@ -399,12 +405,12 @@ export function TacticalLoomDecision({
             <section className="mb-4 rounded-[14px] border border-cosmic/35 bg-cosmic/6 p-3" data-testid="loom-anchor-decline-step">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
-                  <p className="font-display text-sm text-cosmic">Loom Anchor · choose what DECLINE preserves</p>
-                  <p className="mt-1 font-body text-sm text-beige/65">Pinning spends the charged Anchor. Declining without a pin keeps the charge only when the authoritative rule allows it.</p>
+                  <p className="font-display text-sm text-cosmic">Put one on ice</p>
+                  <p className="mt-1 font-body text-sm text-beige/65">Keep one power you skipped — it comes back in your next drop. You only get one save.</p>
                 </div>
                 <span className="font-body text-xs font-bold uppercase tracking-[0.12em] text-beige/45">Before confirmation</span>
               </div>
-              <div role="radiogroup" aria-label="Loom Anchor decline outcome" className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div role="radiogroup" aria-label="What to keep on ice" className="mt-3 grid gap-2 sm:grid-cols-3">
                 {model.decline.options.map((option) => (
                   <button
                     key={option.id}
@@ -429,8 +435,8 @@ export function TacticalLoomDecision({
 
           {!consequence ? (
             <div className={decisionStyles.emptyPrompt} data-testid="loom-empty-prompt">
-              <strong>Choose a thread.</strong>
-              <span>The two runes show their Strain and most important consequence now. Unfold only when you want the complete reaction map.</span>
+              <strong>Pick one.</strong>
+              <span>Each card shows its Path and what it changes. Open the details for the full picture.</span>
             </div>
           ) : (
             <>
@@ -462,7 +468,7 @@ export function TacticalLoomDecision({
                   aria-controls="loom-full-reaction-map"
                   data-testid="loom-details-toggle"
                 >
-                  {detailsOpen ? 'FOLD DETAILS' : 'UNFOLD DETAILS'}
+                  {detailsOpen ? 'HIDE DETAILS' : 'SHOW DETAILS'}
                   <span aria-hidden="true">{detailsOpen ? '⌃' : '⌄'}</span>
                 </button>
               ) : null}
@@ -494,7 +500,7 @@ export function TacticalLoomDecision({
           data-action-surface="integrated"
         >
           <p className="hidden font-body text-sm text-beige/45 sm:block">
-            1 / 2 chooses · Esc {onBack ? 'returns to Portal' : 'selects DECLINE'} · Enter confirms
+            1 / 2 to pick · Esc {onBack ? 'returns to the portal' : 'to skip'} · Enter to confirm
           </p>
           <div className="ml-auto flex gap-2">
             {recodePhase ? (
@@ -517,16 +523,14 @@ export function TacticalLoomDecision({
               data-testid="loom-confirm"
             >
               {recodePhase && selectedReplacement
-                ? `RECODE +${selectedReplacement.growthCost}`
+                ? `SWAP +${selectedReplacement.growthCost}`
                 : declineSelected
                   ? selectedDeclineOption?.pinCandidateIndex !== undefined
-                    ? `DECLINE · PIN ${model.candidates[selectedDeclineOption.pinCandidateIndex].name}`
-                    : 'DECLINE OFFER'
+                    ? `SKIP · ON ICE ${model.candidates[selectedDeclineOption.pinCandidateIndex].name}`
+                    : 'SKIP'
                   : selected === null
-                    ? 'CHOOSE A THREAD'
-                    : selectedCandidate?.replacementChoices?.length
-                    ? `${selectedCandidate.action} · RECODE`
-                    : `${selectedCandidate?.action} ${selectedCandidate?.name}`}
+                    ? 'PICK ONE'
+                    : 'LOCK IN'}
             </button>
           </div>
         </footer>

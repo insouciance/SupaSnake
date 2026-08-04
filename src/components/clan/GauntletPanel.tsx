@@ -32,6 +32,7 @@ import {
 } from '@/shared/game/gauntlet';
 import { GENES, type GeneId } from '@/shared/game/genes';
 import { STRAINS, STRAIN_IDS } from '@/shared/game/strains';
+import { dynastyDisplayName } from '@/shared/game/rulesets';
 import { modifierName } from './DuelPanel';
 import { PlayerCard } from '@/components/identity/PlayerCard';
 import { identityFromEmbedded, type EmbeddedIdentity } from '@/lib/identity/types';
@@ -387,9 +388,9 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
             <div className="mb-4" data-testid="gauntlet-my-picks">
               <p className="label-arcade mb-2">Our picks {gauntlet.revealed ? '' : '(locked, blind)'}</p>
               <p className="text-sm font-body text-beige">
-                <span className="text-bone-white font-display">{gauntlet.myPicks.dynasty}</span>
+                <span className="text-bone-white font-display">{dynastyDisplayName(gauntlet.myPicks.dynasty)}</span>
                 {gauntlet.myPicks.dynasty2 && (
-                  <span className="text-bone-white font-display"> + {gauntlet.myPicks.dynasty2}</span>
+                  <span className="text-bone-white font-display"> + {dynastyDisplayName(gauntlet.myPicks.dynasty2)}</span>
                 )}
                 {gauntlet.myPicks.modifier && <> &middot; {modifierName(gauntlet.myPicks.modifier)}</>}
                 {gauntlet.myPicks.ban && <> &middot; ban: {gauntletBanName(gauntlet.myPicks.ban)}</>}
@@ -402,9 +403,9 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
             <div className="mb-4" data-testid="gauntlet-their-picks">
               <p className="label-arcade mb-2">Their picks (revealed)</p>
               <p className="text-sm font-body text-beige">
-                <span className="text-bone-white font-display">{gauntlet.theirPicks.dynasty}</span>
+                <span className="text-bone-white font-display">{dynastyDisplayName(gauntlet.theirPicks.dynasty)}</span>
                 {gauntlet.theirPicks.dynasty2 && (
-                  <span className="text-bone-white font-display"> + {gauntlet.theirPicks.dynasty2}</span>
+                  <span className="text-bone-white font-display"> + {dynastyDisplayName(gauntlet.theirPicks.dynasty2)}</span>
                 )}
                 {gauntlet.theirPicks.modifier && <> &middot; {modifierName(gauntlet.theirPicks.modifier)}</>}
                 {gauntlet.theirPicks.ban && <> &middot; banned vs us: {gauntletBanName(gauntlet.theirPicks.ban)}</>}
@@ -457,7 +458,7 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
                     {gauntlet.scouting.lastPicks
                       .map(
                         (pick) =>
-                          `${pick.dynasty}${pick.modifier ? ` (${modifierName(pick.modifier)})` : ''}`
+                          `${dynastyDisplayName(pick.dynasty)}${pick.modifier ? ` (${modifierName(pick.modifier)})` : ''}`
                       )
                       .join(' · ')}
                   </p>

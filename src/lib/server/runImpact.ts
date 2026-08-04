@@ -244,7 +244,7 @@ export function buildRunImpactEnvelope(
         pillar: 'calendar',
         kind: 'signal_completion',
         significance: 'notable',
-        headline: 'World Signal completed',
+        headline: "Today's Challenge completed",
         before: 0,
         after: input.signal.target,
         delta: input.signal.target,

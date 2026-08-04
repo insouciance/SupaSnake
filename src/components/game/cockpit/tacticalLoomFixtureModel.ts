@@ -93,7 +93,7 @@ function geneSlot(index: number, geneId: GenomeV2ActiveGeneId): FixtureGeneSlot 
 }
 
 function emptySlot(index: number): FixtureGeneSlot {
-  return { index, kind: 'empty', label: 'Open locus', strains: [] };
+  return { index, kind: 'empty', label: 'Empty slot', strains: [] };
 }
 
 function afterAdding(
@@ -319,7 +319,7 @@ function openDeclineConsequence(): TacticalLoomConsequence {
       after: '4–6 foods',
       detail: 'DECLINE is economic only because it gives up two viable build paths now.',
     }],
-    body: [{ id: 'open-loci', label: 'Open loci', before: '2', after: '2' }],
+    body: [{ id: 'open-loci', label: 'Empty slots', before: '2', after: '2' }],
     outcomes: outcomeFacts('×2.2656'),
     dynastyFacts: [
       'PRIMAL can use the preserved slots to wait for a more territorial combination, but the current execution paths are gone.',
@@ -414,13 +414,13 @@ function recodeCandidate(geneId: 'live_wire' | 'phase_gate') {
       id: 'recode-next-step',
       label: 'Next step',
       before: 'incoming gene',
-      after: 'choose outgoing locus',
-      detail: 'Strain and Splice consequences appear only after the outgoing locus is known.',
+      after: 'choose the slot going out',
+      detail: 'Path and Combo consequences appear only after the slot going out is known.',
     }],
     body: [{ id: 'length', label: 'Length', before: '96', after: '104', tone: 'warning' }],
     outcomes: outcomeFacts(),
     dynastyFacts: [
-      'The correct outgoing locus depends on current geometry, liabilities, target queue, and the Splice path you intend to preserve.',
+      'The right slot to drop depends on current geometry, what you owe, the food queue, and the Combo you intend to keep.',
     ],
     retainedFacts: [
       'earned Yield',
@@ -459,7 +459,7 @@ export function tacticalLoomFixtureModel(
     return {
       decisionId: 'fixture-recode-offer',
       rulesVersion: 2,
-      title: 'Tactical Loom · Full Genome',
+      title: 'The Drop · every slot full',
       sourceLabel: 'Cadence offer · 43 foods · Recode 1',
       dynasty: 'PRIMAL',
       currentGenome: FULL_GENOME,
@@ -487,7 +487,7 @@ export function tacticalLoomFixtureModel(
   return {
     decisionId: 'fixture-thread-offer',
     rulesVersion: 2,
-    title: 'Tactical Loom',
+    title: 'The Drop',
     sourceLabel: 'Cadence offer · 18 foods · 2 open loci',
     dynasty: 'PRIMAL',
     currentGenome: OPEN_GENOME,

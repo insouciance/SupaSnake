@@ -81,9 +81,9 @@ export function GenomeStrategyAtlas({ model }: { model: GenomeStrategyAtlasModel
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-scale-blue-light/20 pb-4">
         <div>
           <p className="font-body text-[10px] font-bold uppercase tracking-[0.18em] text-cosmic">Strategy atlas</p>
-          <h2 id="genome-atlas-title" className="heading-display text-2xl text-bone-white">Read the Loom before it opens</h2>
+          <h2 id="genome-atlas-title" className="heading-display text-2xl text-bone-white">Read the Drop before it opens</h2>
           <p className="mt-1 max-w-2xl font-body text-sm text-beige/65">
-            A gene changes more than one number. Trace its rule into Strain thresholds, possible Splices, body pressure, and the next BANK or crash decision.
+            A power changes more than one number. Trace its rule into Path levels, possible Combos, body pressure, and the next BANK or crash decision.
           </p>
         </div>
         <span className="rounded-full border border-cosmic/35 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.12em] text-cosmic">
@@ -91,8 +91,8 @@ export function GenomeStrategyAtlas({ model }: { model: GenomeStrategyAtlasModel
         </span>
       </header>
 
-      <ol className="my-4 grid grid-cols-4 gap-1 text-center font-body text-[9px] font-bold uppercase tracking-[0.08em] text-beige/55 sm:text-xs" aria-label="Genome consequence chain">
-        {['Offer', 'Strain', 'Splice', 'BANK / crash'].map((step, index) => (
+      <ol className="my-4 grid grid-cols-4 gap-1 text-center font-body text-[9px] font-bold uppercase tracking-[0.08em] text-beige/55 sm:text-xs" aria-label="Power consequence chain">
+        {['Offer', 'Path', 'Combo', 'BANK / crash'].map((step, index) => (
           <li key={step} className="relative rounded-[9px] border border-scale-blue-light/20 bg-void-deep/35 px-1 py-2">
             {step}{index < 3 ? <span className="absolute -right-1.5 top-1/2 z-10 -translate-y-1/2 text-cosmic" aria-hidden="true">›</span> : null}
           </li>

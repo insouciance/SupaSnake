@@ -2463,7 +2463,7 @@ export default function GamePage() {
     gameRef.current.on('infused', () => {
       setPortalChoicePending(false);
       mirrorGenomeState();
-      showToast('Portal infused — body became build power', 'triumph', 2600);
+      showToast('Traded up — body became power', 'triumph', 2600);
       secureRunBoundary();
     });
 

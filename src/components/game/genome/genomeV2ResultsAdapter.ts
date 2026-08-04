@@ -111,7 +111,7 @@ function settlementRows(settlement: GenomeV2SettlementBreakdown): GenomeYieldRec
     row('loan-forfeit', 'Loan Escrow forfeited', -settlement.loanEscrowForfeited, 'Incomplete contract value did not enter settlement.'),
     row('bonds', `BANK Bonds (${settlement.bondCount})`, settlement.bondBonus, 'Prospective Bonds pay only on BANK.'),
     row('ladder-dividend', 'AURUM execution dividend', expanded.ladderDividendBonus ?? 0, 'A visible ladder dividend paid only on BANK.'),
-    row('loom-bond', 'Loom Bond matured', expanded.loomBondBonus ?? 0, 'A pinned gene matured into a BANK-only Genome bonus.'),
+    row('loom-bond', 'Paid to Wait matured', expanded.loomBondBonus ?? 0, 'A power you kept on ice matured into a BANK-only bonus.'),
     row('treasury-paid', 'Treasury reserve paid', expanded.treasuryPaid ?? 0, `${genomeV2PresentationFormat.scaledYield(expanded.treasuryReserve ?? 0)} was exposed in Treasury.`),
     row('treasury-forfeit', 'Treasury reserve forfeited', -(expanded.treasuryForfeited ?? 0), 'Crash forfeited this visible deferred reserve.'),
     row('crown-bond-paid', 'Crown Bond paid', expanded.crownBondPaid ?? 0, `${genomeV2PresentationFormat.scaledYield(expanded.crownBondReserve ?? 0)} was exposed in the Crown Bond.`),

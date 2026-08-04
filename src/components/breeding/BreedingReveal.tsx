@@ -149,7 +149,7 @@ export function BreedingReveal({
 
         {offspring.lineage && (
           <div className="w-full max-w-xs text-center space-y-2" data-testid="reveal-lineage">
-            <p className="label-arcade">Lineage</p>
+            <p className="label-arcade">Bloodline</p>
             <div className="flex justify-center items-center gap-2 flex-wrap">
               {offspring.lineage.strains.map((strain, index) => (
                 <span

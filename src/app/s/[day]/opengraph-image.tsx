@@ -17,7 +17,7 @@ import {
   signalIndexToDayKey,
 } from '@/shared/game/challenge';
 
-export const alt = 'SupaSnake — World Signal';
+export const alt = "SupaSnake — Today's Challenge";
 export const size = ARTIFACT_IMAGE_SIZE;
 export const contentType = ARTIFACT_IMAGE_CONTENT_TYPE;
 

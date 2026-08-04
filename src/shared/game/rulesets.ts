@@ -641,6 +641,23 @@ export function normalizeDynastyName(value: unknown): DynastyName {
 }
 
 /**
+ * The label for a Dynasty, from anywhere — including a raw server string.
+ *
+ * Every surface that used to interpolate `{dynasty}` was rendering a database
+ * value. That is the coupling `displayName` exists to break, and the break
+ * only holds if the surfaces stop reaching for the id. Unknown values pass
+ * through unchanged rather than being silently normalised to PRIMAL: a
+ * mislabelled row should look wrong, not look like another Dynasty.
+ */
+export function dynastyDisplayName(value: unknown): string {
+  const name = typeof value === 'string' ? value.toUpperCase() : '';
+  if (name === 'PRIMAL' || name === 'CYBER' || name === 'COSMIC') {
+    return RULESETS[name].displayName;
+  }
+  return typeof value === 'string' ? value : '';
+}
+
+/**
  * One-line ruleset identity text - the UI's replacement for the retired
  * "+5% stat" copy (starter cards, variant details, pre-game overlay).
  */

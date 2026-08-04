@@ -140,7 +140,7 @@ function headline(outcome: RunResultsOutcome, practice: boolean) {
     testId: 'gameover-crashed',
     title: 'Game Over',
     tone: 'text-strike-red',
-    detail: 'Crashed — the run salvaged what it could',
+    detail: "Crashed — this is what's left",
   };
 }
 
@@ -317,13 +317,13 @@ function buildClaimBeats(envelope: RunImpactEnvelope): ClaimBeat[] {
     const committedUnits = envelope.receipt.energyCommitted;
     beats.push({
       id: 'dna',
-      eyebrow: envelope.outcome === 'crashed' ? 'Salvage capsule' : 'Harvest capsule',
+      eyebrow: envelope.outcome === 'crashed' ? "What's left" : 'Harvest capsule',
       headline: `+${formatAmount(credited)} DNA`,
       detail:
         committedUnits > 0
           ? `${committedUnits} Energy committed · ×${formatCommitmentMultiplier(envelope.receipt.commitmentMultiplierBps)} harvest. Your balance is already secured.`
           : 'The server has already secured this harvest in your balance.',
-      collectLabel: envelope.outcome === 'crashed' ? 'Collect salvage' : 'Collect DNA',
+      collectLabel: envelope.outcome === 'crashed' ? 'Collect what is left' : 'Collect DNA',
       payoff: `${formatAmount(credited)} DNA secured in your vault`,
       impacts: [],
       tone: 'border-venom-orange/70 bg-venom-orange/10 text-venom-orange',
@@ -346,7 +346,7 @@ function buildClaimBeats(envelope: RunImpactEnvelope): ClaimBeat[] {
       eyebrow: primaryIsMastery
         ? 'Mastery promotion'
         : primaryIsDiscovery
-          ? 'Genome discovery'
+          ? 'Power discovery'
           : 'Progress secured',
       headline: first.headline,
       detail:
@@ -591,6 +591,11 @@ function DestinationHighlights({ items }: { items: readonly ResultDestinationHig
  * Closing Results cannot revoke value, and replay never waits for collection.
  */
 function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
+  // A crashed run still earns things, and a crashed run can still set a
+  // personal best — `personal_best` is the LOWEST claimable tier, so it fires
+  // often. Calling that a victory lap is the sequence promising something the
+  // run did not deliver. The beats are identical; only the framing changes.
+  const crashed = envelope.outcome === 'crashed';
   const beats = useMemo(() => buildClaimBeats(envelope), [envelope]);
   const attention = useMemo(() => destinationHighlights(envelope), [envelope]);
   const routine = useMemo(
@@ -681,14 +686,14 @@ function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
     <div className="space-y-3" data-testid="impact-victory-lap" aria-label="Run rewards and progress collection">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="label-arcade text-rarity-uncommon">Victory lap</p>
+          <p className="label-arcade text-rarity-uncommon">{crashed ? 'What you kept' : 'Victory lap'}</p>
           <p className="mt-1 flex items-start gap-1.5 font-body text-xs leading-relaxed text-beige/70">
             <IconLock size={14} className="mt-0.5 shrink-0 text-rarity-uncommon" />
             <span>Everything is already yours. Each tap reveals and celebrates it.</span>
           </p>
         </div>
         <p className={`shrink-0 whitespace-nowrap font-mono text-[11px] uppercase ${reducedMotion ? 'text-rarity-uncommon' : 'text-beige/60'}`} aria-live="polite">
-          {reducedMotion || finished ? 'Lap complete' : `${collectedCount + 1} of ${beats.length}`}
+          {reducedMotion || finished ? (crashed ? 'All collected' : 'Lap complete') : `${collectedCount + 1} of ${beats.length}`}
         </p>
       </div>
       <div className="flex gap-1" aria-hidden="true">
@@ -734,8 +739,14 @@ function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
         <div className="space-y-3" role="status" data-testid="impact-victory-complete">
           <div className="rounded-arcade border border-rarity-uncommon/45 bg-rarity-uncommon/10 p-4 text-center">
             <IconTrophy size={34} className="mx-auto text-rarity-legendary drop-shadow-[0_0_12px_currentColor]" />
-            <p className="mt-2 heading-display text-xl text-bone-white">Victory lap complete</p>
-            <p className="mt-1 font-body text-xs text-beige/65">Your prizes are collected. Their story continues in your world.</p>
+            <p className="mt-2 heading-display text-xl text-bone-white">
+              {crashed ? 'That is what you kept' : 'Victory lap complete'}
+            </p>
+            <p className="mt-1 font-body text-xs text-beige/65">
+              {crashed
+                ? 'The run ended early. What you kept is yours, and it stays yours.'
+                : 'Your prizes are collected. Their story continues in your world.'}
+            </p>
           </div>
           <DestinationHighlights items={attention} />
         </div>
@@ -804,7 +815,7 @@ function CrashConsequences({
         <div>
           <p className="label-arcade text-venom-orange">Personal</p>
           <p className="mt-1 font-display text-sm text-bone-white">
-            {formatAmount(salvage)} DNA salvaged
+            {formatAmount(salvage)} DNA kept
           </p>
         </div>
       ) : null}
@@ -957,7 +968,7 @@ export function RunResults({
           </span>
         </p>
         <p className="flex items-center justify-center gap-2 text-2xl text-bone-white" data-testid="results-yield">
-          <IconDna size={22} className="text-venom-orange" /> Yield:{' '}
+          <IconDna size={22} className="text-venom-orange" /> Payout:{' '}
           <span className="font-bold text-venom-orange text-glow-orange">
             {settlementPending ? 'Finalizing…' : formatAmount(settledYield)}
           </span>
@@ -976,11 +987,11 @@ export function RunResults({
 
         {!settlementPending && (yieldBreakdown || (!practice && credited !== null)) && (
           <details className="mx-auto max-w-sm rounded-arcade border border-scale-blue-light/25 bg-void-deep/40 px-4 py-2 text-left" data-testid="results-receipt-details">
-            <summary className="cursor-pointer text-xs text-beige/65">How Yield was settled</summary>
+            <summary className="cursor-pointer text-xs text-beige/65">How the payout was settled</summary>
             <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 text-sm" data-testid={yieldBreakdown ? 'results-yield-breakdown' : undefined}>
               {yieldBreakdown && <>
-                <span className="text-beige/70">Base run Yield</span><span className="text-right font-mono text-bone-white">{formatAmount(yieldBreakdown.baseYield)}</span>
-                <span className="text-beige/70">Gen {yieldBreakdown.generation} Yield ×{formatYieldMultiplier(yieldBreakdown.multiplier)}</span><span className="text-right font-mono text-venom-orange">+{formatAmount(yieldBreakdown.bonusYield)}</span>
+                <span className="text-beige/70">Base run payout</span><span className="text-right font-mono text-bone-white">{formatAmount(yieldBreakdown.baseYield)}</span>
+                <span className="text-beige/70">Gen {yieldBreakdown.generation} Legacy ×{formatYieldMultiplier(yieldBreakdown.multiplier)}</span><span className="text-right font-mono text-venom-orange">+{formatAmount(yieldBreakdown.bonusYield)}</span>
               </>}
               {!practice && credited !== null && <>
                 <span className="text-beige/70">Harvest multiplier</span><span className="text-right font-mono text-bone-white">×{(multiplier / 10_000).toFixed(multiplier < 10_000 ? 2 : 1)}</span>
@@ -997,7 +1008,7 @@ export function RunResults({
             className="mx-auto flex min-h-[44px] max-w-sm items-center justify-center gap-2 rounded-full border border-cosmic/50 bg-cosmic/10 px-5 py-2 font-display text-sm text-cosmic transition-colors hover:border-cosmic hover:bg-cosmic/20"
             data-testid="results-study-genome"
           >
-            <IconFlask size={16} /> Study this Genome <IconArrowRight size={15} />
+            <IconFlask size={16} /> Study these powers <IconArrowRight size={15} />
           </Link>
         ) : null}
         {!settlementPending && ascendanceProgression ? (

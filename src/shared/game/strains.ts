@@ -31,32 +31,32 @@ export interface StrainDef {
 export const STRAINS: Record<StrainId, StrainDef> = {
   AURUM: {
     id: 'AURUM',
-    name: 'Aurum',
-    identity: 'Greed — DNA value manipulation',
+    name: 'Gold',
+    identity: 'Make food worth more.',
     color: '#f5c542',
   },
   VOLT: {
     id: 'VOLT',
-    name: 'Volt',
-    identity: 'Tempo — tick speed, cadence, windows',
+    name: 'Pulse',
+    identity: 'Play with time, tempo and tight windows.',
     color: '#42e0f5',
   },
   FERAL: {
     id: 'FERAL',
-    name: 'Feral',
-    identity: 'Body — length as a resource',
+    name: 'Coils',
+    identity: 'Turn your own length into a weapon.',
     color: '#5ff542',
   },
   FLUX: {
     id: 'FLUX',
-    name: 'Flux',
-    identity: 'Space — walls, wrap, portals, pull',
+    name: 'Warp',
+    identity: 'Bend walls, wrap edges, pull food to you.',
     color: '#a642f5',
   },
   UMBRA: {
     id: 'UMBRA',
-    name: 'Umbra',
-    identity: 'Risk — death-defiance and wagers',
+    name: 'Risk',
+    identity: 'Cheat death and gamble your payout.',
     color: '#f54263',
   },
 };
@@ -70,7 +70,15 @@ export const STRAIN_IDS: readonly StrainId[] = [
   'UMBRA',
 ] as const;
 
-/** Player-facing names for the three activation tiers. */
+/**
+ * The v1 activation-tier names. **NOT a display source.**
+ *
+ * The rungs a player sees come from `GENOME_V2_STRAIN_LADDERS`, read through
+ * `strainTierLabel` in `lexicon.ts`. This table survives only because the v1
+ * strain-tier mechanics it names are still referenced by v1 engine code; the
+ * day that goes, so does this. Do not render it — two tables of names for one
+ * ladder is exactly the drift the plain-language pass deleted.
+ */
 export const STRAIN_TIER_NAMES: Record<
   StrainId,
   { minor: string; expression: string; apex: string }

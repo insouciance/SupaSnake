@@ -446,8 +446,8 @@ The Serpent unlock remains **8 validated banks**
 (`src/lib/serpent/config.ts:45`). The guided handoff is:
 
 1. At the first settlement at or past eight validated banks, the **single
-   recommended Results action becomes the clan reveal**: *Your Yield can now
-   strengthen a Clan.* No additional prompt is added to Results and the three-layer
+   recommended Results action becomes the clan reveal**: *Your runs can now power a
+   Clan.* No additional prompt is added to Results and the three-layer
    Results cap is untouched. **Owner ruling 2, 4 August 2026.**
 2. That action routes to **`/clan`**, where the existing founding flow already
    lives. It is not routed to Compete: the Compete nav item points at

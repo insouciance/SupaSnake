@@ -1,6 +1,7 @@
 import { GENES, isGeneId } from '@/shared/game/genes';
 import { SPLICES, isSpliceId } from '@/shared/game/splices';
-import { STRAINS, isStrainId, STRAIN_TIER_NAMES, type StrainId } from '@/shared/game/strains';
+import { STRAINS, isStrainId, type StrainId } from '@/shared/game/strains';
+import { strainTierLabel } from '@/shared/game/lexicon';
 import { canonicalUrl } from '@/shared/config/site';
 import { formatAmount } from '@/shared/format/amount';
 
@@ -131,7 +132,7 @@ export function buildGenomeCardModel(
       milestones.push({
         strain,
         tier: 'Expression',
-        name: STRAIN_TIER_NAMES[strain].expression,
+        name: strainTierLabel(strain, 2),
       });
     }
   }
@@ -140,7 +141,7 @@ export function buildGenomeCardModel(
       milestones.push({
         strain,
         tier: 'Apex',
-        name: STRAIN_TIER_NAMES[strain].apex,
+        name: strainTierLabel(strain, 3),
       });
     }
   }
