@@ -279,6 +279,7 @@ import {
   saveActiveRunCheckpoint,
   type ActiveRunView,
 } from '@/lib/game/runContinuityClient';
+import { startTerminalRecoveryLoop } from '@/lib/game/terminalRecoveryLoop';
 import {
   useRunContinuityWatchdog,
   type RunContinuityHeartbeat,
@@ -336,6 +337,14 @@ const DIRECTION_BY_KEY: Record<string, Direction> = {
 const ACTIVE_RUN_CHECKPOINT_INTERVAL_MS = 3_000;
 const ACTIVE_RUN_CONNECTION_HOLD_MS = 10_000;
 const TERMINAL_CLIENT_DEADLINE_MS = 8_000;
+/**
+ * Recovering a stranded terminal run re-enters the server's full earning
+ * settlement, which `/api/game/session` budgets `maxDuration = 300` for. The
+ * 8s deadline above is a *live gameplay* latency budget — applying it to the
+ * recovery fold aborted every attempt slower than a cold start, and because
+ * nothing else drives that fold the run stayed locked forever.
+ */
+const TERMINAL_RECOVERY_DEADLINE_MS = 60_000;
 
 function withClientDeadline<T>(
   promise: Promise<T>,
@@ -4380,7 +4389,7 @@ export default function GamePage() {
         const terminalController = new AbortController();
         const terminalTimeout = window.setTimeout(
           () => terminalController.abort(),
-          TERMINAL_CLIENT_DEADLINE_MS
+          TERMINAL_RECOVERY_DEADLINE_MS
         );
         let response: Response;
         let responseBody: unknown;
@@ -4631,6 +4640,37 @@ export default function GamePage() {
     interruptedRun,
     session?.access_token,
     session?.user?.id,
+  ]);
+
+  // Depend on the identity of the stranded run, never on the view object.
+  // `recoverServerRun` rebuilds that object on every attempt, so an object
+  // dependency would tear the retry loop down and restart its backoff on each
+  // pass.
+  const strandedTerminalSessionId =
+    interruptedRun?.phase === 'terminal' ? interruptedRun.sessionId : null;
+
+  // A terminal run is an outcome the server has already locked but not yet
+  // folded, and this client is its ONLY driver: `expire_stale_game_sessions`
+  // skips continuity rows, and both pending-settlement sweeps require a durable
+  // envelope this run never staged. The shipped recovery took exactly one shot
+  // per page load, so a single slow or failed fold left the row open forever —
+  // and an open row makes `action: 'start'` answer 409 on every device, which
+  // is how one interrupted run became an account that could not play at all.
+  // Keep asking, with backoff, for as long as this surface is open.
+  useEffect(() => {
+    const token = session?.access_token;
+    const userId = session?.user?.id;
+    if (!strandedTerminalSessionId || !token || !userId) return;
+    return startTerminalRecoveryLoop(() => recoverServerRun(), {
+      onError: (error) => {
+        console.error('Terminal settlement retry failed:', error);
+      },
+    });
+  }, [
+    recoverServerRun,
+    session?.access_token,
+    session?.user?.id,
+    strandedTerminalSessionId,
   ]);
 
   // Consume Home/Lab's prepared run once. This effect is declared after the
@@ -6254,7 +6294,8 @@ export default function GamePage() {
                   <p className="font-body text-sm text-beige/70">
                     Your result is locked on the server. It cannot be abandoned
                     or replayed while progression finishes. Results will open
-                    automatically when its canonical receipt is ready.
+                    automatically when its canonical receipt is ready, and you
+                    can start a new run in the meantime — this one is safe.
                   </p>
                 )}
                 {showInterruptedAbandonConfirm &&
@@ -6340,6 +6381,28 @@ export default function GamePage() {
                           ? 'Continue run'
                           : 'Check again'}
                     </button>
+                    {/* A secured PAST outcome is not a reason to withhold the
+                        next run. Its value is already server-locked and cannot
+                        be lost, so this surface reports progress instead of
+                        holding the account hostage — the same philosophy the
+                        checkpoint path applies when it lets play continue. The
+                        start itself stays server-authoritative: the route folds
+                        the stranded outcome first and only then opens the new
+                        run, so nothing here can skip a settlement. */}
+                    {(interruptedRun.phase === 'settling' ||
+                      interruptedRun.phase === 'terminal') && (
+                      <button
+                        type="button"
+                        data-testid="interrupted-run-start-new"
+                        className="min-h-[44px] px-4 font-body text-sm text-scale-blue-light underline"
+                        disabled={isStarting || !equippedSnake}
+                        onClick={() => {
+                          void handleStart(gameMode);
+                        }}
+                      >
+                        Start a new run
+                      </button>
+                    )}
                     {interruptedRun.phase !== 'settling' &&
                     interruptedRun.phase !== 'terminal' && (
                       <button
