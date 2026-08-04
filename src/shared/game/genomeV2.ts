@@ -32,6 +32,7 @@ import {
   rollGeneOfferInterval,
   rollGenomeV2GeneOfferInterval,
 } from '@/shared/game/geneCadence';
+import { formingTicksForSeconds } from '@/shared/game/terrain';
 
 export const GENOME_RULES_V1 = 1 as const;
 export const GENOME_RULES_V2 = 2 as const;
@@ -136,6 +137,17 @@ export const GENOME_V2_CONFIG = {
      * a two-tick reaction budget and a three-tick one.
      */
     arrivalBeatTicks: 1,
+    /**
+     * Seconds the two Scar cells spend forming before they turn lethal.
+     *
+     * 2.0 s is COSMIC calcification's and the CYBER arena's number verbatim
+     * (`rulesets.ts`), not a bespoke one: one forming duration across the
+     * whole game is one rule for the player to learn. The exit cell has the
+     * head standing on it at the moment of creation, so a Scar that were
+     * solid immediately would be a block the player could not have read -
+     * the exact defect `isPositionOnTerrain` already names for food.
+     */
+    scarFormingSeconds: 2.0,
   },
   mirrorWager: {
     divertedYieldBps: 4_000,
@@ -498,6 +510,43 @@ export interface GenomeV2TerrainFact {
   cells: readonly GenomeV2Cell[];
   createdAtFood: number;
   permanent: true;
+  /**
+   * Simulation tick the forming phase started on, and how many ticks it
+   * lasts. Present on Side Door Scars; absent on Coilkeeper seals, which
+   * claim ground the snake has already surrounded and has therefore already
+   * read.
+   *
+   * DERIVED, NEVER MUTATED. Solidity is `tick >= from + total`
+   * (`genomeV2TerrainSolidAt`), so the countdown needs no per-tick reducer
+   * event, replays exactly from the journal, and survives a checkpoint
+   * round-trip without a second copy of the truth. Both fields are optional
+   * so a checkpoint written before forming existed still reads - such a fact
+   * is solid, which is exactly what it was.
+   *
+   * `formingTotalTicks` is kept alongside the start tick for the same reason
+   * `TerrainBlock` keeps `formingTotal`: a fill cannot be drawn from the
+   * remaining count alone, and the fill is the entire fairness argument.
+   */
+  formingFromTick?: number;
+  formingTotalTicks?: number;
+}
+
+/**
+ * Is this permanent-terrain fact lethal yet, at this simulation tick?
+ *
+ * THE ONE AUTHORITY (FM-1). The engine's collision test, the board
+ * projection and any server replay all ask here; nowhere else compares a
+ * forming window to a tick. A fact with no forming window has always been
+ * solid and still is.
+ */
+export function genomeV2TerrainSolidAt(
+  fact: GenomeV2TerrainFact,
+  tick: number
+): boolean {
+  const from = fact.formingFromTick;
+  const total = fact.formingTotalTicks;
+  if (typeof from !== 'number' || typeof total !== 'number') return true;
+  return tick >= from + total;
 }
 
 export interface GenomeV2TerritoryFact {
@@ -3044,6 +3093,17 @@ export function reduceGenomeV2Event(
         cells: event.cells.map((cell) => ({ ...cell })),
         createdAtFood: state.foodCount,
         permanent: true,
+        // The Scar forms before it bites (E'). Converted at the tick rate the
+        // DOOR was priced at - the target's own `speedAtSpawnMs` - because
+        // the door and its Scar are one contract, and because a reducer that
+        // reached for a live speed would stop being a pure fold over the
+        // journal. Permanent as it ever was: forming delays lethality, it
+        // never takes a cell back (R15).
+        formingFromTick: event.tick,
+        formingTotalTicks: formingTicksForSeconds(
+          GENOME_V2_CONFIG.phaseGate.scarFormingSeconds,
+          state.targets[event.targetId]?.speedAtSpawnMs ?? 0
+        ),
       });
       break;
     case 'wall_redirected': {

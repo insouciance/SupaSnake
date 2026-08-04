@@ -181,6 +181,7 @@ import {
   genomeV2FtueFromPresentation,
   genomeV2RunRecord,
   genomeV2StrainPoints,
+  genomeV2TerrainSolidAt,
   genomeV2Yield,
   genomeV2YieldFloor,
   projectGenomeV2Ladders,
@@ -515,6 +516,8 @@ type GameEvent =
   | 'ironScalesTriggered'
   /** COSMIC: the live constellation's survivors have calcified. */
   | 'constellationCalcified'
+  /** Side Door: the head came out at the exit and two Scars began forming. */
+  | 'sideDoorUsed'
   // Genome events (never fire in legacy mode)
   | 'portalChoice'
   | 'infused'
@@ -3053,7 +3056,9 @@ export class SnakeGameLogic {
       (this.state.terrain.some(
         (b) => b.solid && b.x === newHead.x && b.z === newHead.z
       ) ||
-        this.isGenomeV2PermanentTerrain(newHead));
+        // `solid`, not merely present - a Scar still forming is a decal the
+        // snake passes over, exactly like every other forming block.
+        this.isGenomeV2SolidTerrain(newHead));
 
     const exitExistedAtTickStart = this.state.exitTile !== null;
     const mutationExistedAtTickStart = this.state.mutationTile !== null;
@@ -3222,7 +3227,17 @@ export class SnakeGameLogic {
         'Genome v2 Phase Gate could not commit its previewed route.'
       );
     }
-    if (pendingPhaseGate) this.syncGenomeV2State();
+    if (pendingPhaseGate) {
+      this.syncGenomeV2State();
+      // The traversal had no sound at all, and the only feedback was a status
+      // line that pulls the eye OFF the board at the exact moment the player
+      // must find their head again. COSMIC's calcification already treats the
+      // moment as the feedback; the door gets the same courtesy.
+      this.emit('sideDoorUsed', {
+        entry: { ...pendingPhaseGate.cells[0] },
+        exit: { ...pendingPhaseGate.cells[1] },
+      });
+    }
 
     // Mutation food pickup: the helix is not food (no growth, no DNA) -
     // stepping onto it opens the choice-of-2 hold after the move resolves.
@@ -5682,9 +5697,34 @@ export class SnakeGameLogic {
     );
   }
 
+  /**
+   * Genome terrain in this cell, forming or solid - the OCCUPANCY question.
+   *
+   * Deliberately blind to the forming phase, because every caller is asking
+   * "may something else be put here?", and a cell that is two seconds from
+   * lethal is not a cell to spawn food or route a gate exit through.
+   */
   private isGenomeV2PermanentTerrain(pos: { x: number; z: number }): boolean {
     return (this.state.genomeV2?.permanentTerrain ?? []).some((fact) =>
       fact.cells.some((cell) => cell.x === pos.x && cell.z === pos.z)
+    );
+  }
+
+  /**
+   * Genome terrain in this cell that is LETHAL RIGHT NOW - the collision
+   * question, and the only one a forming Scar answers differently.
+   *
+   * A Scar is created under the head by construction: the exit cell is where
+   * the door put you. Killing on contact with a block that appeared beneath
+   * you is the trap `terrain.ts` spent three dynasties learning not to build,
+   * so the Scar forms for two seconds first, exactly as COSMIC's
+   * calcification and CYBER's arena do. Then it is permanent, forever (R15).
+   */
+  private isGenomeV2SolidTerrain(pos: { x: number; z: number }): boolean {
+    return (this.state.genomeV2?.permanentTerrain ?? []).some(
+      (fact) =>
+        genomeV2TerrainSolidAt(fact, this.replayTicks) &&
+        fact.cells.some((cell) => cell.x === pos.x && cell.z === pos.z)
     );
   }
 

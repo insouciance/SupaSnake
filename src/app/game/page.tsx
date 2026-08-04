@@ -2538,6 +2538,13 @@ export default function GamePage() {
       audioManager.play('uiClick');
     });
 
+    // Side Door: the head just moved across the board without a sound. The
+    // rail line arrives at the same instant and pulls the eye off the board,
+    // so the moment itself has to be audible where the head actually is.
+    gameRef.current.on('sideDoorUsed', () => {
+      audioManager.play('uiClick');
+    });
+
     gameRef.current.on('gameOver', async (rawData: unknown) => {
       const data = rawData as GameOverData;
       setTerminalRecoveryState('submitting');

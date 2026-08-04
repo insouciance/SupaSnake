@@ -198,6 +198,65 @@ describe('Genome v2 board projection', () => {
     expect(projectGenomeV2Board(state, [{ x: 2, z: 3 }], 20).gates).toHaveLength(0);
   });
 
+  it('draws a Scar as a forming decal until its window closes, then as a block', () => {
+    const state = stateWithTargets([]);
+    state.permanentTerrain = [{
+      terrainId: 'scar:forming',
+      source: 'phase_gate_scar',
+      cells: [{ x: 4, z: 4 }],
+      createdAtFood: 10,
+      permanent: true,
+      formingFromTick: 100,
+      formingTotalTicks: 12,
+    }];
+
+    const at = (tick: number) =>
+      projectGenomeV2Board(state, [], tick).permanentTerrain[0];
+
+    // Created: claimed, drawn, and not yet lethal - progress starts at zero
+    // so the fill grows from nothing rather than appearing half-built.
+    expect(at(100)).toMatchObject({ forming: true, formingProgress: 0 });
+    expect(at(106)).toMatchObject({ forming: true, formingProgress: 0.5 });
+    // The last forming tick still reads as forming, so the fill never jumps.
+    expect(at(111).forming).toBe(true);
+    // ...and at from + total it is a block, and stays one forever (R15).
+    expect(at(112)).toMatchObject({ forming: false, formingProgress: 1 });
+    expect(at(100_000)).toMatchObject({ forming: false, formingProgress: 1 });
+  });
+
+  it('treats a Scar written before forming existed as the block it always was', () => {
+    const state = stateWithTargets([]);
+    state.permanentTerrain = [{
+      terrainId: 'scar:legacy',
+      source: 'phase_gate_scar',
+      cells: [{ x: 7, z: 7 }],
+      createdAtFood: 3,
+      permanent: true,
+    }];
+    expect(projectGenomeV2Board(state, [], 0).permanentTerrain[0]).toMatchObject({
+      forming: false,
+      formingProgress: 1,
+    });
+  });
+
+  it('hands each live gate the heading the door will give back', () => {
+    const route = [{ x: 5, z: 5 }, { x: 9, z: 9 }] as const;
+    const state = stateWithTargets([
+      target('gate', { kind: 'phase_gate', optionalRouteCells: route }),
+    ]);
+
+    // The door preserves heading exactly, so the chevron is the live one -
+    // and it turns with the player before they ever reach the entry.
+    for (const heading of ['UP', 'DOWN', 'LEFT', 'RIGHT'] as const) {
+      const [gate] = projectGenomeV2Board(state, [{ x: 2, z: 3 }], 20, heading).gates;
+      expect(gate).toMatchObject({
+        entry: { x: 5, z: 5 },
+        exit: { x: 9, z: 9 },
+        arrivalHeading: heading,
+      });
+    }
+  });
+
   it('turns armed reducer facts into concise, bounded cockpit signals', () => {
     const state = stateWithTargets([target('live')]);
     state.mirrorLeg = { portalId: 'portal:1', frozenCarryBps: 10_000 };

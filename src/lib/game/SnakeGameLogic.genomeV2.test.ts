@@ -755,8 +755,8 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
       targetId: 'diagnostic-gate-target',
       cell: { x: 12, z: 12 },
       optionalRouteCells: [
-        { x: 6, z: 5 },
-        { x: 11, z: 12 },
+        { x: 4, z: 5 },
+        { x: 17, z: 5 },
       ],
       speedAtSpawnMs: 170,
       shortestSafeMoves: 8,
@@ -767,8 +767,8 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
       terrainId: 'diagnostic-phase-scar',
       targetId: 'diagnostic-gate-target',
       cells: [
-        { x: 6, z: 5 },
-        { x: 11, z: 12 },
+        { x: 4, z: 5 },
+        { x: 17, z: 5 },
       ],
     });
     reducer = apply(reducer, {
@@ -793,21 +793,37 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
     });
     game.startDriven({
       snake: [
-        { x: 5, y: 0, z: 5 },
-        { x: 4, y: 0, z: 5 },
         { x: 3, y: 0, z: 5 },
+        { x: 2, y: 0, z: 5 },
+        { x: 1, y: 0, z: 5 },
       ],
       direction: 'RIGHT',
       foods: [{ x: 15, y: 0, z: 15 }],
     });
 
+    const scar = game.getState().genomeV2!.permanentTerrain[0];
+    const solidAtTick = scar.formingFromTick! + scar.formingTotalTicks!;
+    // 2.0 s at the door's own 170 ms tick. The same number COSMIC and CYBER
+    // already use, deliberately, so there is one forming rule to learn.
+    expect(scar.formingTotalTicks).toBe(12);
+
+    // E': the near Scar is still forming, so the snake crosses it. A block
+    // that killed on the tick it appeared would be the unreadable trap
+    // `isPositionOnTerrain` already refuses to spawn food into.
     game.tick();
+    expect(game.getSimulationTick()).toBeLessThan(solidAtTick);
+    expect(game.getState().snake[0]).toMatchObject({ x: 4, z: 5 });
+    expect(terminal).toBeNull();
+
+    // ...and then it is permanent, and it kills, and it says what it was.
+    while (!game.getState().isGameOver) game.tick();
+    expect(game.getSimulationTick()).toBeGreaterThan(solidAtTick);
 
     expect(terminal).toMatchObject({
       deathCause: 'wall',
       collisionDiagnostic: {
         contact: 'permanent_terrain',
-        cell: { x: 6, y: 0, z: 5 },
+        cell: { x: 17, y: 0, z: 5 },
         terrainSource: 'phase_gate_scar',
       },
     });

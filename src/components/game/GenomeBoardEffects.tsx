@@ -57,6 +57,13 @@ const scarMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.24,
   roughness: 0.58,
 });
+// The same amber `TerrainBlocks` uses for every forming block in the game.
+// Deliberately NOT the Scar's violet: amber is the universal "this cell is
+// being claimed" signal, and cause is carried by the FLUX rune on top of it.
+const scarFormingMaterial = new THREE.MeshBasicMaterial({
+  color: '#f2a640',
+  toneMapped: false,
+});
 const runeMaterial = new THREE.MeshBasicMaterial({
   color: '#ffffff',
   toneMapped: false,
@@ -79,6 +86,13 @@ const GATE_TETHER_OPACITY = 0.45;
 const GATE_TETHER_WIDTH = 0.055;
 const GATE_TETHER_DASH_DUTY = 0.55;
 const GATE_TETHER_MAX_DASHES = 12;
+
+// Forming Scars borrow `TerrainBlocks`' grammar verbatim: a low fill that
+// grows, and perimeter rails that close inward. One forming picture for the
+// whole game, so a player learns "this cell is being claimed" exactly once.
+const SCAR_FORMING_HEIGHT = 0.035;
+const SCAR_FORMING_FOOTPRINT = 0.86;
+const MAX_GENOME_FORMING_INSTANCES = MAX_GENOME_TERRAIN_CELLS * 5;
 
 export const GENOME_TARGET_COLORS: Record<GenomeV2BoardTarget['kind'], string> = {
   crown_future: '#f0abfc',
@@ -120,20 +134,38 @@ function GenomePermanentTerrain({
   const sealRef = useRef<THREE.InstancedMesh>(null);
   const scarRef = useRef<THREE.InstancedMesh>(null);
   const runeRef = useRef<THREE.InstancedMesh>(null);
+  const formingRef = useRef<THREE.InstancedMesh>(null);
 
   useEffect(() => {
     const seal = sealRef.current;
     const scar = scarRef.current;
     const rune = runeRef.current;
-    if (!seal || !scar || !rune) return;
+    const forming = formingRef.current;
+    if (!seal || !scar || !rune || !forming) return;
     let sealCount = 0;
     let scarCount = 0;
     let runeCount = 0;
+    let formingCount = 0;
 
+    const addForming = (
+      x: number,
+      y: number,
+      z: number,
+      sx: number,
+      sy: number,
+      sz: number
+    ) => {
+      if (formingCount >= MAX_GENOME_FORMING_INSTANCES) return;
+      writeMatrix(forming, formingCount, x, y, z, sx, sy, sz);
+      formingCount += 1;
+    };
+
+    const solidRuneY = FLOOR_CLEARANCE + TERRAIN_HEIGHT + RUNE_HEIGHT / 2 + 0.006;
     const addRune = (
       source: GenomeV2BoardTerrainSource,
       x: number,
-      z: number
+      z: number,
+      y: number = solidRuneY
     ) => {
       const strokes = genomeRuneEngravingStrokes(TERRAIN_STRAIN[source]);
       for (const stroke of strokes) {
@@ -148,7 +180,7 @@ function GenomePermanentTerrain({
           rune,
           runeCount,
           centerX,
-          FLOOR_CLEARANCE + TERRAIN_HEIGHT + RUNE_HEIGHT / 2 + 0.006,
+          y,
           centerZ,
           length,
           RUNE_HEIGHT,
@@ -164,6 +196,32 @@ function GenomePermanentTerrain({
     for (const cell of terrain) {
       const x = cell.x + 0.5;
       const z = cell.z + 0.5;
+
+      if (cell.forming) {
+        // Flat means passable; raised means lethal. The Scar keeps that
+        // categorical grammar while it counts down, so a player never has to
+        // ask whether this particular block is live yet.
+        const progress = cell.formingProgress;
+        const fill = (0.22 + 0.78 * progress) * SCAR_FORMING_FOOTPRINT;
+        addForming(
+          x,
+          FLOOR_CLEARANCE + SCAR_FORMING_HEIGHT / 2,
+          z,
+          fill,
+          SCAR_FORMING_HEIGHT,
+          fill
+        );
+        const rail = 0.2 + 0.66 * progress;
+        addForming(x, FLOOR_CLEARANCE + 0.04, z - 0.43, rail, 0.035, 0.035);
+        addForming(x, FLOOR_CLEARANCE + 0.04, z + 0.43, rail, 0.035, 0.035);
+        addForming(x - 0.43, FLOOR_CLEARANCE + 0.04, z, 0.035, 0.035, rail);
+        addForming(x + 0.43, FLOOR_CLEARANCE + 0.04, z, 0.035, 0.035, rail);
+        // The rune names WHY the cell is being claimed while the fill says
+        // WHEN, and it lifts with the block when it locks.
+        addRune(cell.source, x, z, FLOOR_CLEARANCE + SCAR_FORMING_HEIGHT + 0.008);
+        continue;
+      }
+
       const mesh = cell.source === 'phase_gate_scar' ? scar : seal;
       const index = cell.source === 'phase_gate_scar'
         ? scarCount++
@@ -185,9 +243,11 @@ function GenomePermanentTerrain({
     seal.count = Math.min(sealCount, MAX_GENOME_TERRAIN_CELLS);
     scar.count = Math.min(scarCount, MAX_GENOME_TERRAIN_CELLS);
     rune.count = Math.min(runeCount, MAX_GENOME_TERRAIN_RUNES);
+    forming.count = Math.min(formingCount, MAX_GENOME_FORMING_INSTANCES);
     seal.instanceMatrix.needsUpdate = true;
     scar.instanceMatrix.needsUpdate = true;
     rune.instanceMatrix.needsUpdate = true;
+    forming.instanceMatrix.needsUpdate = true;
     if (rune.instanceColor) rune.instanceColor.needsUpdate = true;
   }, [terrain]);
 
@@ -208,6 +268,11 @@ function GenomePermanentTerrain({
       <instancedMesh
         ref={runeRef}
         args={[unitBoxGeometry, runeMaterial, MAX_GENOME_TERRAIN_RUNES]}
+        frustumCulled={false}
+      />
+      <instancedMesh
+        ref={formingRef}
+        args={[unitBoxGeometry, scarFormingMaterial, MAX_GENOME_FORMING_INSTANCES]}
         frustumCulled={false}
       />
     </group>

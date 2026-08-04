@@ -16,6 +16,7 @@ import {
   genomeV2OfferInterval,
   genomeV2RunRecord,
   genomeV2SerializedBytes,
+  genomeV2TerrainSolidAt,
   genomeV2Yield,
   previewGenomeV2Recode,
   projectGenomeV2,
@@ -617,6 +618,58 @@ describe('Genome v2 Splices', () => {
       cells: route,
     });
     expect(state.ledger.bankableYield).toBe(genomeV2Yield(4));
+  });
+
+  it('gives a Side Door Scar the same 2.0 s forming window dynasty terrain gets', () => {
+    let state = acquire(createGenomeV2State('COSMIC'), 'phase_gate', 0);
+    // The door opens on every fifth food after acquisition.
+    for (let index = 0; index < 4; index += 1) {
+      state = ordinary(state, `forming-${index}`);
+    }
+    const route = [{ x: 3, z: 4 }, { x: 11, z: 4 }] as const;
+    state = spawn(state, 'forming-gate', {
+      optionalRouteCells: route,
+      speedAtSpawnMs: 160,
+    });
+    const usedAtTick = state.tick + 1;
+    state = apply(state, {
+      type: 'phase_gate_used',
+      terrainId: 'forming-scar',
+      targetId: 'forming-gate',
+      cells: route,
+    });
+
+    const scar = state.permanentTerrain.at(-1)!;
+    // 2.0 s at COSMIC's 160 ms tick is 13 ticks - the same conversion, from
+    // the same helper, that COSMIC's own calcification uses. Priced at the
+    // tick rate the DOOR was offered at, so the fold stays pure.
+    expect(scar).toMatchObject({
+      source: 'phase_gate_scar',
+      permanent: true,
+      formingFromTick: usedAtTick,
+      formingTotalTicks: 13,
+    });
+
+    // Forming delays lethality; it never gives a cell back (R15).
+    expect(genomeV2TerrainSolidAt(scar, usedAtTick)).toBe(false);
+    expect(genomeV2TerrainSolidAt(scar, usedAtTick + 12)).toBe(false);
+    expect(genomeV2TerrainSolidAt(scar, usedAtTick + 13)).toBe(true);
+    expect(genomeV2TerrainSolidAt(scar, usedAtTick + 100_000)).toBe(true);
+
+    // A Coilkeeper seal claims ground the body has already closed around, so
+    // it has always been readable and keeps no forming window.
+    expect(
+      genomeV2TerrainSolidAt(
+        {
+          terrainId: 'seal',
+          source: 'coilkeeper_seal',
+          cells: route,
+          createdAtFood: 1,
+          permanent: true,
+        },
+        0
+      )
+    ).toBe(true);
   });
 
   it('Paid to Wait offers one plain and two atomic pin consequences, then matures on take', () => {
