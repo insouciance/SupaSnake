@@ -6,7 +6,8 @@ This is the current player-facing QA path for the deployed Redesign Wave,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle release, control responsiveness, Career Spine,
 cohesive UX/run continuity, the live player-pulled Tactical Genome v2 release,
-and the run-continuity, terminal-authority and Tactical Loom hotfix.
+the run-continuity, terminal-authority and Tactical Loom hotfix, and the Gilded
+Fork engine fix.
 Work from top to bottom when doing a broad playtest; use the focused matrices
 near the end when verifying a fix.
 
@@ -26,9 +27,9 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `4fb62712a5ecf57015aedab98cf732bfa11c69ad` — run continuity, terminal authority, Tactical Loom presentation, and the dependency-audit lockfile fix |
-| Current deployment | `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`supasnake-m3mpjs2ij-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`8bb3ef9`); dual-version and schema-compatible, but reinstates the blocking reconnect surface |
+| Production behavior commit | `2fe33cabb5dd9488e53d5f75a2e38f41a4da77ea` — Gilded Fork engine fix on top of run continuity, terminal authority, Tactical Loom presentation, and the dependency-audit lockfile fix |
+| Current deployment | `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`supasnake-yoyq183cf-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`4fb6271`); dual-version and schema-compatible, but reinstates the fatal Gilded Fork rejection |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–065 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
@@ -36,17 +37,18 @@ Design references:
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `4fb62712a5ecf57015aedab98cf732bfa11c69ad` |
+| Canonical source | `main`; canonical health reports exact SHA `2fe33cabb5dd9488e53d5f75a2e38f41a4da77ea` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle system, control responsiveness, Career Spine, and
 player-pulled Tactical Genome v2 are live through migration 065. The 22-flag
 public contract, exact release SHA, linked schema proof, Genome service
-capability, canonical alias, and cron owner passed together. The current
-run-continuity, terminal-authority and Tactical Loom release is
-application-only and adds no migration. Use a flag-off forward deployment of the
-dual-version code rather than the retired pre-v2 application as rollback.
+capability, canonical alias, and cron owner passed together. The
+run-continuity, terminal-authority and Tactical Loom release and the current
+Gilded Fork engine fix are application-only and add no migration. Use a flag-off
+forward deployment of the dual-version code rather than the retired pre-v2
+application as rollback.
 
 ### Genome v2 release checks
 
@@ -73,6 +75,49 @@ dual-version code rather than the retired pre-v2 application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Gilded Fork engine-fix production evidence
+
+- PR 62 merged as exact main SHA
+  `2fe33cabb5dd9488e53d5f75a2e38f41a4da77ea`. Engine and reducer now share one
+  availability predicate, `genomeV2GildedForkChoiceAvailable`, so a fork choice
+  is only committed where the Gilded Fork Splice actually draws a second cell.
+  Eating Gold Trail's golden food without that Splice is ordinary play and no
+  longer raises the fatal `Gilded Fork rejected its board choice` engine fault.
+  The containment throw is retained but unreachable in legal play. The change is
+  replay-compatible — only previously crashing states change behavior — so there
+  is no `SNAKE_RULES_VERSION` bump and no migration.
+- PR 62 passed all ten protected checks: build 2m17s, lint 43s, test 9m11s,
+  isolated SQL contracts 1m41s, GitGuardian, the aggregate `e2e` gate, and the
+  four E2E flag shapes — production 14m8s, rollback 8m39s, legacy-workbench
+  3m42s, genome-without-workbench 3m39s.
+- The regression proof reproduced the exact prior failure before the fix. After
+  the final rebase the local gates passed 81 focused suites / 1,518 tests, the
+  full suite at 469 suites / 6,194 tests under the CI environment, plus
+  `npx tsc --noEmit`, `npm run lint`, `git diff --check`, and
+  `npm run verify:constitution`.
+- Post-main push workflows on `2fe33ca` all succeeded: Lint `30886087338`,
+  Build `30886087408`, Test `30886087356`, E2E `30886087341`.
+- Production workflow `30887227521` succeeded in Stripe test mode between
+  07:17:39 and 07:35:29 UTC on 2026-08-04 and deployed and verified
+  `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT`
+  (`supasnake-yoyq183cf-josef-bells-projects.vercel.app`) as READY/production.
+  The outgoing deployment was `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` on `4fb6271`.
+- Canonical `/api/health` and `/api/release-contract` report healthy application
+  and database, the exact release SHA, project ref `gmpwyzqafoyowndbvlma`,
+  22/22 flags, public-surface hash
+  `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, Genome
+  schema/catalog/Ascendance 2/2/2, rules version 2, eight Splices, and neutral
+  Strain thresholds 2/3/4. Migrations remain 001–065 aligned with no pending
+  plan.
+- Canonical alias, production cron owner, and every cron host resolve to the new
+  deployment. Cron remains enabled and its normalized definition hash is
+  unchanged at
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
+- Deferred, not fixed: in automatic-offer interaction mode a spliced
+  `gold_trail` would pay ×1 rather than ×4. It was verified genuinely
+  unreachable today because spliced gold trails always require a fork cell, and
+  it is folded into the Gene-boost audit rather than this fix.
 
 ### Run continuity, terminal authority, and Tactical Loom production evidence
 
