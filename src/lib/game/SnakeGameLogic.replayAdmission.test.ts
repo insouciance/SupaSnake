@@ -149,6 +149,37 @@ describe('replay turn admission', () => {
     );
   });
 
+  it('replays a turn admitted as a reserved pre-turn intention', () => {
+    // The mobile path: with the queue at its standard depth of three, a fourth
+    // press inside the fractional-tick grace is admitted against the last
+    // QUEUED turn and reserved as `preTurnIntent`, then promoted after the
+    // next movement boundary. Its admission reference is therefore still the
+    // turn the previous tick consumed - the chain survives promotion.
+    const game = newEngine();
+    game.activatePrepared(STARTED_AT);
+    const opening = game.exportCheckpoint(STARTED_AT);
+
+    expect(game.setDirection('UP', 'standard')).toBe('accepted');
+    expect(game.setDirection('RIGHT', 'standard')).toBe('accepted');
+    expect(game.setDirection('DOWN', 'standard')).toBe('accepted');
+    expect(game.getQueuedDirections()).toEqual(['UP', 'RIGHT', 'DOWN']);
+
+    expect(game.setDirection('RIGHT', 'standard', { nextTickInMs: 5 })).toBe(
+      'accepted'
+    );
+    // Reserved, not queued: the hard cap of three is intact.
+    expect(game.getQueuedDirections()).toEqual(['UP', 'RIGHT', 'DOWN']);
+
+    for (let index = 0; index < 5; index += 1) game.tick();
+    const trace = game.getReplayTrace();
+    expect(trace.actions.map((action) => action.tick)).toEqual([0, 1, 2, 3]);
+
+    const replay = replayEngineFrom(opening);
+    expect(() => replay.applyReplayTrace(trace, 0)).not.toThrow();
+    expect(replay.getState().snake).toEqual(game.getState().snake);
+    expect(replay.getState().direction).toBe(game.getState().direction);
+  });
+
   it('leaves live admission untouched', () => {
     const game = newEngine();
     game.activatePrepared(STARTED_AT);
