@@ -176,7 +176,7 @@ describe('VariantDetailModal reads the selected sibling', () => {
       'Yield ×1.00'
     );
     expect(screen.getByTestId('variant-ascendance')).toHaveTextContent(
-      'Ascendance begins at Gen4'
+      'Legacy begins at Gen4'
     );
   });
 

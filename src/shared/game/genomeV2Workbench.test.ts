@@ -42,7 +42,7 @@ describe('Genome v2 Research model', () => {
     expect(reading.activeSplices).toEqual(['splice_gilded_fork']);
     expect(reading.loci[0]).toMatchObject({
       kind: 'splice',
-      label: 'Gilded Fork',
+      label: 'The Bag',
       geneIds: ['gold_trail', 'overgrowth'],
     });
     expect(reading.loci[1].kind).toBe('empty');
@@ -70,8 +70,8 @@ describe('Genome v2 Research model', () => {
       GENOME_V2_CONFIG.portalGenome.infuseGrowth[0]
         + GENOME_V2_CONFIG.portalGenome.recodeGrowth[0]
     );
-    expect(reading.loci[0]).toMatchObject({ kind: 'empty', label: 'Open locus' });
-    expect(reading.loci[5]).toMatchObject({ kind: 'splice', label: 'Riftline' });
+    expect(reading.loci[0]).toMatchObject({ kind: 'empty', label: 'Empty slot' });
+    expect(reading.loci[5]).toMatchObject({ kind: 'splice', label: 'The Opening' });
     expect(reading.seenGenes).toContain('live_wire');
     expect(reading.availableGenes).not.toContain('live_wire');
   });
@@ -140,7 +140,7 @@ describe('Genome v2 Research model', () => {
     expect(aurum?.tiers.map((tier) => tier.points)).toEqual([3, 4, 5]);
     expect(aurum?.tiers.map((tier) => tier.active)).toEqual([true, true, false]);
     expect(aurum?.tiers[2]).toMatchObject({
-      name: 'Treasury',
+      name: 'Vault',
       reached: false,
       lockedReason: 'Apex progress not yet unlocked',
     });
@@ -156,7 +156,7 @@ describe('Genome v2 Research model', () => {
     ).strains.find((strain) => strain.id === 'AURUM');
 
     expect(beforeReading?.tiers[0]).toMatchObject({
-      name: 'Mint',
+      name: 'Cut',
       reached: false,
       active: false,
       lockedReason: null,

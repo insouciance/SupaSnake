@@ -38,7 +38,7 @@ describe('AscendanceProgressionInstrument', () => {
         }}
       />
     );
-    expect(screen.getByTestId('ascendance-v1-legacy')).toHaveTextContent('retained its v1 Ascendance stamp');
+    expect(screen.getByTestId('ascendance-v1-legacy')).toHaveTextContent('retained its v1 Legacy stamp');
     expect(screen.queryByText(/every generation/)).toBeNull();
   });
 
@@ -58,7 +58,7 @@ describe('AscendanceProgressionInstrument', () => {
         }}
       />
     );
-    expect(screen.getByTestId('ascendance-begins')).toHaveTextContent('Ascendance begins at Gen4');
+    expect(screen.getByTestId('ascendance-begins')).toHaveTextContent('Legacy begins at Gen4');
     expect(screen.getByTestId('ascendance-progression')).not.toHaveTextContent('curve v2');
   });
 });

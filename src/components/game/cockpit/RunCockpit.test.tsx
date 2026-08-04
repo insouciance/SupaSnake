@@ -23,13 +23,13 @@ const MODEL: RunCockpitModel = {
   bankDna: 168,
   crashDna: 52,
   constellation: { stars: 3, fraction: 0.55 },
-  genes: [{ id: 'gold_trail', name: 'Gold Trail', strains: ['AURUM'] }],
+  genes: [{ id: 'gold_trail', name: 'Golden Hour', strains: ['AURUM'] }],
   strains: [
-    { id: 'AURUM', name: 'Aurum', color: '#f5c542', points: 3, tier: 2, suppressed: false },
-    { id: 'VOLT', name: 'Volt', color: '#42e0f5', points: 2, tier: 1, suppressed: false },
-    { id: 'FERAL', name: 'Feral', color: '#5ff542', points: 4, tier: 3, suppressed: false },
-    { id: 'FLUX', name: 'Flux', color: '#a642f5', points: 1, tier: 0, suppressed: false },
-    { id: 'UMBRA', name: 'Umbra', color: '#f54263', points: 2, tier: 1, suppressed: true },
+    { id: 'AURUM', name: 'Gold', color: '#f5c542', points: 3, tier: 2, suppressed: false },
+    { id: 'VOLT', name: 'Pulse', color: '#42e0f5', points: 2, tier: 1, suppressed: false },
+    { id: 'FERAL', name: 'Coils', color: '#5ff542', points: 4, tier: 3, suppressed: false },
+    { id: 'FLUX', name: 'Warp', color: '#a642f5', points: 1, tier: 0, suppressed: false },
+    { id: 'UMBRA', name: 'Risk', color: '#f54263', points: 2, tier: 1, suppressed: true },
   ],
   holds: { remaining: 2, total: 4 },
   showGenome: true,
@@ -54,9 +54,9 @@ describe('RunCockpit', () => {
     // The hold budget is stated from tick zero, not discovered by running out.
     expect(screen.getByTestId('hold-budget')).toHaveTextContent('2/4');
     expect(screen.getByTestId('hold-budget')).toHaveAttribute('data-spent', 'false');
-    expect(screen.getByLabelText('Gold Trail')).toBeInTheDocument();
+    expect(screen.getByLabelText('Golden Hour')).toBeInTheDocument();
     expect(screen.getByLabelText(
-      /Umbra 2 of 4, tier 1, Dampened: Minor remains available; Expression and Apex capped/i
+      /Risk 2 of 4, tier 1, Dampened: Minor remains available; Expression and Apex capped/i
     )).toBeInTheDocument();
     expect(screen.getByTestId('first-movement-prompt')).toHaveTextContent(
       'Swipe or press an arrow to move'
@@ -99,7 +99,7 @@ describe('RunCockpit', () => {
         <canvas />
       </RunCockpit>
     );
-    expect(screen.getByLabelText(/Aurum 4 of 4, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Gold 4 of 4, tier 2/i)).toBeInTheDocument();
     expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(4);
 
     rerender(
@@ -107,7 +107,7 @@ describe('RunCockpit', () => {
         <canvas />
       </RunCockpit>
     );
-    expect(screen.getByLabelText(/Aurum 3 of 4, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Gold 3 of 4, tier 2/i)).toBeInTheDocument();
     expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(4);
   });
 
@@ -128,7 +128,7 @@ describe('RunCockpit', () => {
         <canvas />
       </RunCockpit>
     );
-    expect(screen.getByLabelText(/Aurum 3 of 3, tier 3/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Gold 3 of 3, tier 3/i)).toBeInTheDocument();
     expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(3);
 
     rerender(
@@ -147,7 +147,7 @@ describe('RunCockpit', () => {
         <canvas />
       </RunCockpit>
     );
-    expect(screen.getByLabelText(/Aurum 4 of 5, tier 2/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Gold 4 of 5, tier 2/i)).toBeInTheDocument();
     expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(5);
 
     rerender(
@@ -166,7 +166,7 @@ describe('RunCockpit', () => {
         <canvas />
       </RunCockpit>
     );
-    expect(screen.getByLabelText(/Aurum 5 of 5, tier 3/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Gold 5 of 5, tier 3/i)).toBeInTheDocument();
   });
 
   it('shows exact Genome v2 Yield labels without pretending they are final DNA', () => {

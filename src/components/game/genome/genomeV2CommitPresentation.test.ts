@@ -78,11 +78,11 @@ describe('Genome v2 post-commit presentation', () => {
     const presentation = buildGenomeV2CommitPresentation(before, after, ACTIVATION);
     expect(presentation).toMatchObject({
       title: 'Dragon Hoard',
-      rule: expect.stringContaining('Crown Bond'),
+      rule: expect.stringContaining('treasure that grows at BANK'),
     });
     expect(presentation?.moments).toEqual(expect.arrayContaining([
       expect.objectContaining({ label: 'Dragon Hoard formed' }),
-      expect.objectContaining({ label: 'Aurum 3 · Dividend' }),
+      expect.objectContaining({ label: 'Gold 3 · Payday' }),
     ]));
   });
 
@@ -115,7 +115,7 @@ describe('Genome v2 post-commit presentation', () => {
     const presentation = buildGenomeV2CommitPresentation(opened, after, activation);
     expect(presentation?.moments).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        label: 'Feral 4 · Worldbody',
+        label: 'Coils 4 · Titan',
         detail: expect.stringContaining('activation remains locked'),
         tone: 'warning',
       }),
@@ -145,7 +145,7 @@ describe('Genome v2 post-commit presentation', () => {
 
     expect(buildGenomeV2CommitPresentation(before, after, ACTIVATION)?.moments)
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ label: 'Aurum 3 · Mint', tone: 'positive' }),
+        expect.objectContaining({ label: 'Gold 3 · Cut', tone: 'positive' }),
       ]));
   });
 
@@ -173,7 +173,7 @@ describe('Genome v2 post-commit presentation', () => {
     expect(buildGenomeV2CommitPresentation(before, after, ACTIVATION)?.moments)
       .toEqual(expect.arrayContaining([
         expect.objectContaining({
-          label: 'Aurum 3 · Dividend',
+          label: 'Gold 3 · Payday',
           detail: expect.stringContaining('Dampened'),
           tone: 'warning',
         }),

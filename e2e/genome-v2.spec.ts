@@ -95,8 +95,8 @@ test.describe('Genome v2 live player journey', () => {
 
     const phoenix = page.getByTestId('gene-option-0');
     await expect(phoenix).toContainText('Phoenix');
-    await expect(phoenix).toContainText('UMBRA');
-    await expect(phoenix).toContainText('FERAL');
+    await expect(phoenix).toContainText('RISK');
+    await expect(phoenix).toContainText('COILS');
     await expect(page.getByTestId('gene-option-0-strain-UMBRA')).toBeVisible();
     await expect(page.getByTestId('gene-option-0-strain-FERAL')).toBeVisible();
 
@@ -134,10 +134,10 @@ test.describe('Genome v2 live player journey', () => {
 
     // The choice names the immediate Strain crossing and the next threshold;
     // the player is never expected to memorize either ladder.
-    await expect(page.getByTestId('loom-strain-UMBRA')).toContainText('UMBRA');
+    await expect(page.getByTestId('loom-strain-UMBRA')).toContainText('RISK');
     await expect(page.getByTestId('loom-strain-UMBRA')).toContainText('2 → 3');
     await expect(page.getByTestId('loom-strain-UMBRA-rule')).toContainText('NOW');
-    await expect(page.getByTestId('loom-strain-FERAL')).toContainText('FERAL');
+    await expect(page.getByTestId('loom-strain-FERAL')).toContainText('COILS');
     await expect(page.getByTestId('loom-strain-FERAL')).toContainText('1 → 2');
     await expect(page.getByTestId('loom-strain-FERAL-rule')).toContainText('NOW');
 
@@ -147,10 +147,10 @@ test.describe('Genome v2 live player journey', () => {
     });
 
     const spliceMap = page.getByTestId('loom-lite-splices');
-    await expect(spliceMap).toContainText('Styx Contract');
+    await expect(spliceMap).toContainText('Death Deal');
     await expect(spliceMap).toContainText('FORMS');
-    await expect(spliceMap).toContainText('HELD Mirror Wager');
-    await expect(spliceMap).toContainText('Ashen Stake');
+    await expect(spliceMap).toContainText('HELD Split Bet');
+    await expect(spliceMap).toContainText('Last Call');
     await expect(spliceMap).toContainText('CLOSED');
 
     // Selection and commitment remain two explicit actions even on a phone;
@@ -161,7 +161,7 @@ test.describe('Genome v2 live player journey', () => {
     await expect(loom).toHaveCount(0);
     const callout = page.getByTestId('genome-commit-callout');
     await expect(callout).toBeVisible();
-    await expect(callout).toContainText('Styx Contract');
+    await expect(callout).toContainText('Death Deal');
     await expect(callout).toHaveCSS('pointer-events', 'none');
 
     await testInfo.attach('genome-commit-callout-mobile', {

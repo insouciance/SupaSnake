@@ -44,12 +44,12 @@ describe('Genome Codex discovery contract', () => {
   });
 
   it('provides stable player-facing names', () => {
-    expect(codexEntryName('gene', 'gold_trail')).toBe('Gold Trail');
+    expect(codexEntryName('gene', 'gold_trail')).toBe('Golden Hour');
     expect(codexEntryName('splice', 'splice_dragon_hoard')).toBe('Dragon Hoard');
-    expect(codexEntryName('expression', 'AURUM')).toBe('Aurum Expression');
-    expect(codexEntryName('apex', 'UMBRA')).toBe('Umbra Apex');
-    expect(codexEntryName('gene', 'live_wire', 2)).toBe('Live Wire');
-    expect(codexEntryName('splice', 'splice_riftline', 2)).toBe('Riftline');
+    expect(codexEntryName('expression', 'AURUM')).toBe('Gold Expression');
+    expect(codexEntryName('apex', 'UMBRA')).toBe('Risk Apex');
+    expect(codexEntryName('gene', 'live_wire', 2)).toBe('Straight Shot');
+    expect(codexEntryName('splice', 'splice_riftline', 2)).toBe('The Opening');
   });
 
   it('rejects a v2-only id when the server stamps it as v1', () => {

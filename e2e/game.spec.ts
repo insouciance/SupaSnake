@@ -125,7 +125,7 @@ test.describe('Equipped-snake game flow', () => {
     // extraction banking hint are on the pre-game screen
     await expect(page.getByTestId('ruleset-explainer')).toBeVisible();
     await expect(
-      page.getByText(/exit portal banks \+25%/i)
+      page.getByText(/bank at a portal pays \+25%/i)
     ).toBeVisible();
   });
 

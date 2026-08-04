@@ -60,8 +60,8 @@ describe('/play intent page', () => {
     it('explains the extraction decision, which is the product', () => {
       const { container } = render(<PlayPage />);
       expect(container.textContent).toMatch(/BANK/);
-      expect(container.textContent).toMatch(/PASS/);
-      expect(container.textContent).toMatch(/INFUSE/);
+      expect(container.textContent).toMatch(/RIDE ON/);
+      expect(container.textContent).toMatch(/TRADE UP/);
     });
 
     it('emits VideoGame structured data', () => {

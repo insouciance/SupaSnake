@@ -6,11 +6,11 @@ import type {
   TacticalLoomDecisionModel,
 } from './genome/tacticalLoomPresentation';
 
-function slots(label = 'Gold Trail') {
+function slots(label = 'Golden Hour') {
   return Array.from({ length: 6 }, (_, index) => ({
     index,
     kind: index === 0 ? 'gene' as const : index === 5 ? 'ash' as const : 'empty' as const,
-    label: index === 0 ? label : index === 5 ? 'Ash' : 'Open locus',
+    label: index === 0 ? label : index === 5 ? 'Ash' : 'Empty slot',
     strains: index === 0 ? ['AURUM' as const] : [],
   }));
 }
@@ -24,24 +24,24 @@ function consequence(name: string): TacticalLoomConsequence {
     genomeAfter: slots(name),
     strains: [{
       id: 'VOLT',
-      name: 'Volt',
+      name: 'Pulse',
       color: '#42e0f5',
       before: 2,
       after: 3,
       thresholds: [
-        { points: 2, name: 'Telemetry', rule: 'Route budgets reveal their exact margin.', state: 'active', progressLabel: 'active' },
-        { points: 3, name: 'Relay', rule: 'A clean route arms a compatible challenge.', state: 'locked', progressLabel: '3 / 3', lockedReason: 'Bank 2 runs to activate Expressions' },
-        { points: 4, name: 'Overclock', rule: 'Trigger a rewarded bounded burst.', state: 'locked', progressLabel: '1 away', lockedReason: 'Bank 10 runs or reach M3' },
+        { points: 2, name: 'Clock', rule: 'Route budgets reveal their exact margin.', state: 'active', progressLabel: 'active' },
+        { points: 3, name: 'Chain', rule: 'A clean route arms a compatible challenge.', state: 'locked', progressLabel: '3 / 3', lockedReason: 'Bank 2 runs to activate Expressions' },
+        { points: 4, name: 'Turbo', rule: 'Trigger a rewarded bounded burst.', state: 'locked', progressLabel: '1 away', lockedReason: 'Bank 10 runs or reach M3' },
       ],
     }],
     splices: [{
       id: 'perfect-circuit',
-      name: 'Perfect Circuit',
+      name: 'Round Trip',
       stage: 'immediate',
       rule: 'Successful Live routes arm a linked return leg.',
       cost: 'Either failed leg burns the circuit.',
       recipeKnown: true,
-      recipeLabel: 'Live Wire + Circuit Run',
+      recipeLabel: 'Straight Shot + Food Chain',
       activation: 'available',
     }],
     ledgers: [
@@ -62,7 +62,7 @@ function model(): TacticalLoomDecisionModel {
   return {
     decisionId: 'test-offer-1',
     rulesVersion: 2,
-    title: 'Tactical Loom',
+    title: 'The Drop',
     sourceLabel: 'Cadence offer · 18 foods',
     dynasty: 'CYBER',
     currentGenome: slots(),
@@ -70,18 +70,18 @@ function model(): TacticalLoomDecisionModel {
       {
         action: 'THREAD',
         geneId: 'live_wire',
-        name: 'Live Wire',
+        name: 'Straight Shot',
         category: 'Execution',
         strains: ['VOLT'],
-        consequence: consequence('Live Wire'),
+        consequence: consequence('Straight Shot'),
       },
       {
         action: 'THREAD',
         geneId: 'phase_gate',
-        name: 'Phase Gate',
+        name: 'Side Door',
         category: 'Terrain',
         strains: ['FLUX'],
-        consequence: { ...consequence('Phase Gate'), splices: [] },
+        consequence: { ...consequence('Side Door'), splices: [] },
       },
     ],
     decline: {
@@ -120,14 +120,14 @@ describe('GeneChoiceOverlay tactical Loom', () => {
         onDecline={jest.fn()}
       />
     );
-    expect(screen.getByRole('dialog', { name: 'Tactical Loom' })).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByRole('dialog', { name: 'The Drop' })).toHaveAttribute('aria-modal', 'true');
     expect(screen.queryByTestId('loom-consequence-pane')).toBeNull();
     expect(screen.queryByTestId('loom-details-toggle')).toBeNull();
-    expect(screen.getByTestId('loom-empty-prompt')).toHaveTextContent('Choose a thread');
+    expect(screen.getByTestId('loom-empty-prompt')).toHaveTextContent('Pick one');
     expect(screen.getByTestId('loom-confirm')).toBeDisabled();
-    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('VOLT');
-    expect(screen.getByTestId('gene-option-0-salience')).toHaveTextContent('Live Wire creates');
-    expect(screen.getByTestId('gene-option-1-salience')).toHaveTextContent('Phase Gate creates');
+    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('PULSE');
+    expect(screen.getByTestId('gene-option-0-salience')).toHaveTextContent('Straight Shot creates');
+    expect(screen.getByTestId('gene-option-1-salience')).toHaveTextContent('Side Door creates');
     expect(screen.queryByTestId('loom-lite')).toBeNull();
 
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
@@ -135,20 +135,20 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(screen.getByTestId('gene-option-0')).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByTestId('loom-confirm')).toBeDisabled();
     fireEvent.click(screen.getByTestId('gene-option-0'));
-    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Live Wire creates');
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Straight Shot creates');
     expect(screen.getByTestId('loom-details-toggle')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByTestId('loom-lite')).toBeNull();
     fireEvent.click(screen.getByTestId('loom-details-toggle'));
     expect(screen.getByTestId('loom-details-toggle')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('loom-lite')).toHaveTextContent('Live Wire creates');
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('Straight Shot creates');
     expect(screen.getByTestId('loom-lite-trigger')).toHaveTextContent('Every third eligible target');
-    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
-    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Live Wire');
-    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Telemetry');
-    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Relay');
-    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Overclock');
+    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Golden Hour');
+    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Straight Shot');
+    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Clock');
+    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Chain');
+    expect(screen.getByTestId('loom-lite-activations')).toHaveTextContent('Turbo');
     expect(screen.getByTestId('loom-strain-VOLT-rule')).toHaveTextContent('REACHED · LOCKED');
-    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Perfect Circuit');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Round Trip');
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('FORMS');
     expect(screen.getByText('Bank 2 runs to activate Expressions')).toBeInTheDocument();
     expect(screen.queryByText('Bank 10 runs or reach M3')).toBeNull();
@@ -235,33 +235,33 @@ describe('GeneChoiceOverlay tactical Loom', () => {
         consequence: {
           ...baseModel.candidates[0].consequence,
           strains: [
-            { ...voltage, id: 'UMBRA', name: 'Umbra', color: '#f54263' },
-            { ...voltage, id: 'FERAL', name: 'Feral', color: '#6fe65d' },
+            { ...voltage, id: 'UMBRA', name: 'Risk', color: '#f54263' },
+            { ...voltage, id: 'FERAL', name: 'Coils', color: '#6fe65d' },
           ],
           splices: [
             {
               id: 'splice_styx_contract:immediate',
-              name: 'Styx Contract',
+              name: 'Death Deal',
               stage: 'immediate',
               projectionState: 'forms-now',
               rule: 'The visible Stake can fund Phoenix.',
               cost: 'Using Phoenix consumes the Stake.',
               recipeKnown: true,
-              recipeLabel: 'Mirror Wager + Phoenix',
-              partnerLabel: 'Mirror Wager',
+              recipeLabel: 'Split Bet + Phoenix',
+              partnerLabel: 'Split Bet',
               partnerState: 'held',
               activation: 'available',
             },
             {
               id: 'splice_ashen_stake:future',
-              name: 'Ashen Stake',
+              name: 'Last Call',
               stage: 'one-step',
               projectionState: 'closed',
               rule: 'A completed Loan can fund Phoenix.',
               cost: 'The contract pays no ordinary Yield.',
               recipeKnown: true,
-              recipeLabel: 'Loan Shark + Phoenix',
-              partnerLabel: 'Loan Shark',
+              recipeLabel: 'Double or Nothing + Phoenix',
+              partnerLabel: 'Double or Nothing',
               partnerState: 'needed',
               activation: 'available',
             },
@@ -279,19 +279,19 @@ describe('GeneChoiceOverlay tactical Loom', () => {
       />
     );
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
-    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('UMBRA');
-    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('FERAL');
+    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('RISK');
+    expect(screen.getByTestId('gene-option-0')).toHaveTextContent('COILS');
     expect(screen.getByTestId('gene-option-0-strain-UMBRA')).toBeVisible();
     expect(screen.getByTestId('gene-option-0-strain-FERAL')).toBeVisible();
     fireEvent.click(screen.getByTestId('gene-option-0'));
     fireEvent.click(screen.getByTestId('loom-details-toggle'));
-    expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('UMBRA');
-    expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('FERAL');
-    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Styx Contract');
-    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('HELD Mirror Wager');
-    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Ashen Stake');
+    expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('RISK');
+    expect(screen.getByTestId('loom-gene-core')).toHaveTextContent('COILS');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Death Deal');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('HELD Split Bet');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Last Call');
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('CLOSED');
-    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('NEEDS Loan Shark');
+    expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('NEEDS Double or Nothing');
   });
 
   it('previews THREAD, FORK, and DECLINE before an explicit confirmation', () => {
@@ -308,7 +308,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
 
     fireEvent.click(screen.getByTestId('gene-option-1'));
-    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Phase Gate creates');
+    expect(screen.getByTestId('loom-quick-read')).toHaveTextContent('Side Door creates');
     expect(onChoose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onChoose).toHaveBeenCalledWith(1);
@@ -393,7 +393,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(onChoose).toHaveBeenCalledWith(1);
   });
 
-  it('makes a charged Loom Anchor pin a deliberate final DECLINE choice', () => {
+  it('makes a charged On Ice pin a deliberate final DECLINE choice', () => {
     const onDecline = jest.fn();
     const baseModel = model();
     const anchoredModel: TacticalLoomDecisionModel = {
@@ -409,12 +409,12 @@ describe('GeneChoiceOverlay tactical Loom', () => {
           },
           {
             id: 'pin-a',
-            label: 'Pin Live Wire',
-            detail: 'Spend the charged Anchor; Live Wire enters the next offer.',
+            label: 'Pin Straight Shot',
+            detail: 'Spend the charged Anchor; Straight Shot enters the next offer.',
             pinCandidateIndex: 0,
             consequence: {
               ...baseModel.decline.consequence,
-              effect: 'Spend the charged Anchor and pin Live Wire. This anchored DECLINE mints no Bond.',
+              effect: 'Spend the charged Anchor and pin Straight Shot. This anchored DECLINE mints no Bond.',
             },
           },
         ],
@@ -440,7 +440,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     const onRecode = jest.fn();
     const baseModel = model();
     const replacementConsequence = {
-      ...consequence('Live Wire replacing Gold Trail'),
+      ...consequence('Straight Shot replacing Golden Hour'),
       retainedFacts: ['Bonds', 'Escrow', 'Stake', 'Scars', 'Ash', 'prior growth'],
     };
     const recodeModel: TacticalLoomDecisionModel = {
@@ -449,7 +449,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
         ...baseModel.candidates[0],
         replacementChoices: [{
           slotIndex: 0,
-          label: 'Gold Trail',
+          label: 'Golden Hour',
           kind: 'gene',
           strains: ['AURUM'],
           growthCost: 8,
@@ -479,9 +479,9 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.keyDown(screen.getByTestId('loom-replace-0'), { key: 'Enter' });
     expect(onRecode).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('loom-replace-0'));
-    expect(screen.getByTestId('loom-lite')).toHaveTextContent('THREAD Live Wire · replace Gold Trail');
-    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Gold Trail');
-    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Live Wire');
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('TAKE Straight Shot · replace Golden Hour');
+    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Golden Hour');
+    expect(screen.getByTestId('loom-lite-loci')).toHaveTextContent('Straight Shot');
     fireEvent.click(screen.getByTestId('loom-confirm'));
     expect(onRecode).toHaveBeenCalledWith(0, 0);
   });
@@ -490,7 +490,7 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     const longNameModel = model();
     longNameModel.candidates[0] = {
       ...longNameModel.candidates[0],
-      name: 'Compound Interest',
+      name: 'Stash',
     };
     render(
       <GeneChoiceOverlay
@@ -504,12 +504,12 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     expect(rail).toHaveAttribute('data-responsive-composition', 'portrait-bottom landscape-side');
     expect(screen.getByTestId('loom-scroll-region')).toHaveClass('[touch-action:pan-y]');
     const thread = screen.getByTestId('gene-option-0');
-    expect(thread).toHaveAccessibleName(/Compound Interest/i);
-    expect(within(thread).getByText('Compound Interest')).not.toHaveClass('truncate');
+    expect(thread).toHaveAccessibleName(/Stash/i);
+    expect(within(thread).getByText('Stash')).not.toHaveClass('truncate');
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
     fireEvent.click(thread);
     fireEvent.click(screen.getByTestId('loom-details-toggle'));
-    expect(screen.getByTestId('loom-focused-gene-name')).toHaveTextContent('Compound Interest');
+    expect(screen.getByTestId('loom-focused-gene-name')).toHaveTextContent('Stash');
   });
 
   it('keeps one stable panel while optional analysis expands only inside its scroll owner', () => {
@@ -568,6 +568,6 @@ describe('GeneChoiceOverlay tactical Loom', () => {
     fireEvent.click(screen.getByTestId('loom-details-toggle'));
     expect(screen.getByTestId('loom-lite-splices')).toHaveTextContent('Uncatalogued Splice');
     fireEvent.click(screen.getByTestId('gene-decline'));
-    expect(screen.getByTestId('loom-lite')).toHaveTextContent('forced to FERAL');
+    expect(screen.getByTestId('loom-lite')).toHaveTextContent('forced to COILS');
   });
 });

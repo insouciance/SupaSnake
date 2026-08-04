@@ -49,14 +49,14 @@ describe('Genome v2 Results adapter', () => {
 
     expect(recap).not.toBeNull();
     expect(recap?.factorLabel).toBe('Genome v2');
-    expect(recap?.baseYieldLabel).toBe('3 Yield');
+    expect(recap?.baseYieldLabel).toBe('3 Payout');
     // Display-only rounding: the settlement still carries 3.75 scaled Yield,
     // but no player-facing readout of an AMOUNT shows a decimal place.
-    expect(recap?.genomeYieldLabel).toBe('4 Yield');
-    expect(recap?.genomeDeltaLabel).toBe('+1 Yield');
+    expect(recap?.genomeYieldLabel).toBe('4 Payout');
+    expect(recap?.genomeDeltaLabel).toBe('+1 Payout');
     expect(recap?.genomeYield).toBe(4);
     expect(recap?.rows.find((row) => row.id === 'carry')).toMatchObject({
-      amountLabel: '+1 Yield',
+      amountLabel: '+1 Payout',
     });
     expect(parsed?.settlement.genomeYield).toBe(37_500);
   });

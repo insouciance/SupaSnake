@@ -385,7 +385,7 @@ describe('Genome v2 ladder mechanics', () => {
     });
     state = acquire(state, 'live_wire', 0);
     expect(projectGenomeV2Ladders(state).VOLT.tiers[0]).toMatchObject({
-      name: 'Telemetry',
+      name: 'Clock',
       active: true,
     });
     state = ordinary(state, 'volt-1');
@@ -463,7 +463,7 @@ describe('Genome v2 ladder mechanics', () => {
     });
     state = acquire(state, 'phase_gate', 0);
     expect(projectGenomeV2Ladders(state).FLUX.tiers[0]).toMatchObject({
-      name: 'Vector',
+      name: 'Scout',
       active: true,
     });
     for (let index = 0; index < 4; index += 1) state = ordinary(state, `flux-${index}`);
@@ -530,7 +530,7 @@ describe('Genome v2 Splices', () => {
     expect(genomeV2MechanicEnabled(state, 'overgrowth')).toBe(false);
   });
 
-  it('Gilded Fork makes a no-timer exclusive greed/body choice', () => {
+  it('The Bag makes a no-timer exclusive greed/body choice', () => {
     let state = acquire(createGenomeV2State('PRIMAL'), 'gold_trail', 0);
     state = acquire(state, 'overgrowth', 1);
     for (let index = 0; index < 4; index += 1) state = ordinary(state, `fork-${index}`);
@@ -556,7 +556,7 @@ describe('Genome v2 Splices', () => {
     expect(state.ledger.bankableYield).toBe(genomeV2Yield(8));
   });
 
-  it('Styx Contract consumes visible Mirror Stake when Phoenix fires', () => {
+  it('Death Deal consumes visible Mirror Stake when Phoenix fires', () => {
     let state = acquire(createGenomeV2State('PRIMAL'), 'mirror_wager', 0);
     state = acquire(state, 'phoenix', 1);
     state = continuePortal(openPortal(state, 'styx-door'), 'styx-door', true);
@@ -569,7 +569,7 @@ describe('Genome v2 Splices', () => {
     expect(state.lastPhoenixEffect?.consumedMirrorStake).toBe(stake);
   });
 
-  it('Perfect Circuit requires two visible legs and pays ×5 only on a full clear', () => {
+  it('Round Trip requires two visible legs and pays ×5 only on a full clear', () => {
     let state = acquire(createGenomeV2State('PRIMAL'), 'live_wire', 0);
     state = acquire(state, 'circuit_run', 1);
     state = ordinary(state, 'circuit-1');
@@ -585,7 +585,7 @@ describe('Genome v2 Splices', () => {
     expect(state.ledger.bankableYield).toBe(genomeV2Yield(7));
   });
 
-  it('Worldcoil keeps sealed terrain permanent and raises the charged target ceiling', () => {
+  it('Full Circle keeps sealed terrain permanent and raises the charged target ceiling', () => {
     let state = acquire(createGenomeV2State('PRIMAL'), 'coilkeeper', 0);
     state = acquire(state, 'overgrowth', 1);
     for (let index = 0; index < 8; index += 1) state = ordinary(state, `worldcoil-${index}`);
@@ -597,7 +597,7 @@ describe('Genome v2 Splices', () => {
     expect(state.ledger.bankableYield - before).toBeGreaterThan(genomeV2Yield(7));
   });
 
-  it('Riftline spends Wall Rush and turns its exact optional route into permanent Scars', () => {
+  it('The Opening spends Wall Bounce and turns its exact optional route into permanent Scars', () => {
     let state = acquire(createGenomeV2State('PRIMAL'), 'wall_rush', 0, 'wall');
     state = acquire(state, 'phase_gate', 1, 'phase');
     expect(state.wallRushCharges).toBe(1);
@@ -618,7 +618,7 @@ describe('Genome v2 Splices', () => {
     expect(state.ledger.bankableYield).toBe(genomeV2Yield(4));
   });
 
-  it('Loom Bond offers one plain and two atomic pin consequences, then matures on take', () => {
+  it('Paid to Wait offers one plain and two atomic pin consequences, then matures on take', () => {
     let state = acquire(createGenomeV2State('PRIMAL'), 'compound_interest', 0);
     state = acquire(state, 'loom_anchor', 1);
     state = apply(state, {
@@ -659,7 +659,7 @@ describe('Genome v2 Splices', () => {
     expect(state.loomBond?.matured).toBe(true);
   });
 
-  it('Ashen Stake defers completed Loan Yield and can fund Phoenix', () => {
+  it('Last Call defers completed Loan Yield and can fund Phoenix', () => {
     let state = acquire(createGenomeV2State('PRIMAL'), 'loan_shark', 0);
     state = acquire(state, 'phoenix', 1);
     state = continuePortal(openPortal(state, 'ashen-door'), 'ashen-door');
@@ -691,7 +691,7 @@ describe('Genome v2 Dynasty signatures', () => {
     expect(state.ledger.bankableYield).toBe(35_000);
   });
 
-  it('Zenith Protocol activates only by player event and pays its bounded CYBER window', () => {
+  it('Redline activates only by player event and pays its bounded CYBER window', () => {
     let state = acquire(createGenomeV2State('CYBER'), 'zenith_protocol', 0);
     expect(state.overclock).toBeNull();
     state = apply(state, {
@@ -713,7 +713,7 @@ describe('Genome v2 Dynasty signatures', () => {
     expect(state.overclock).toBeNull();
   });
 
-  it('Constellation Crown keeps future stars non-edible and pays a perfect clear', () => {
+  it('Night Vision keeps future stars non-edible and pays a perfect clear', () => {
     let state = acquire(createGenomeV2State('COSMIC'), 'constellation_crown', 0);
     state = spawn(state, 'star-a', { cell: { x: 1, z: 1 }, crownRole: 'current' });
     state = spawn(state, 'star-b', { cell: { x: 2, z: 2 }, crownRole: 'current' });

@@ -14,9 +14,9 @@ describe('StrainChip', () => {
   it('renders the catalog name, identity tooltip, and capped point pips', () => {
     render(<StrainChip strain="FERAL" points={7} />);
     const chip = screen.getByTestId('strain-chip-FERAL');
-    expect(chip).toHaveTextContent('Feral');
+    expect(chip).toHaveTextContent('Coils');
     expect(chip).toHaveTextContent('••••');
-    expect(chip).toHaveAttribute('title', expect.stringContaining('Body'));
+    expect(chip).toHaveAttribute('title', expect.stringContaining('length into a weapon'));
     expect(screen.getByLabelText('7 points')).toBeInTheDocument();
   });
 
@@ -28,7 +28,7 @@ describe('StrainChip', () => {
   it('can pair the family rune with its visible written identity', () => {
     render(<StrainChip strain="VOLT" showGlyph />);
     const chip = screen.getByTestId('strain-chip-VOLT');
-    expect(chip).toHaveTextContent('Volt');
+    expect(chip).toHaveTextContent('Pulse');
     expect(chip.querySelector('svg')).toBeInTheDocument();
   });
 
@@ -64,7 +64,7 @@ describe('StrainChip', () => {
   it('names the trigger with the strain and its points, not the identity', () => {
     render(<StrainChip strain="VOLT" points={1} interactive />);
     expect(
-      screen.getByRole('button', { name: 'Volt, 1 point: what it does' })
+      screen.getByRole('button', { name: 'Pulse, 1 point: what it does' })
     ).toBeInTheDocument();
   });
 });

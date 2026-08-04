@@ -309,7 +309,7 @@ describe('Layer 2', () => {
     render(<RunResults {...props()} />);
     const details = screen.getByTestId('results-receipt-details') as HTMLDetailsElement;
     expect(details.open).toBe(false);
-    expect(screen.getByTestId('results-yield-breakdown')).toHaveTextContent('Gen 11 Yield ×1.1273');
+    expect(screen.getByTestId('results-yield-breakdown')).toHaveTextContent('Gen 11 Legacy ×1.1273');
   });
 
   it('shows only the clan delta and never repeats the full five', () => {
@@ -368,7 +368,7 @@ describe('Layer 2', () => {
     })} />);
 
     const consequences = screen.getByTestId('results-crash-consequences');
-    expect(consequences).toHaveTextContent('1,902 DNA salvaged');
+    expect(consequences).toHaveTextContent('1,902 DNA kept');
     expect(consequences).toHaveTextContent('No clan contribution banked');
     expect(consequences).not.toHaveTextContent(/potential|fifth-best|short|gap/i);
     expect(screen.queryByTestId('results-clan-battle-lost')).toBeNull();
@@ -389,7 +389,7 @@ describe('Layer 2', () => {
     })} />);
 
     const consequences = screen.getByTestId('results-crash-consequences');
-    expect(consequences).toHaveTextContent('572 DNA salvaged');
+    expect(consequences).toHaveTextContent('572 DNA kept');
     expect(consequences).not.toHaveTextContent(/clan|fifth-best|threshold/i);
   });
 });

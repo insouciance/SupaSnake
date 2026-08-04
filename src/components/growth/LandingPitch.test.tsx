@@ -27,8 +27,8 @@ describe('LandingPitch', () => {
   it('leads with the extraction, which is the product', () => {
     render(<LandingPitch />);
     expect(screen.getByText('BANK')).toBeInTheDocument();
-    expect(screen.getByText('PASS')).toBeInTheDocument();
-    expect(screen.getByText('INFUSE')).toBeInTheDocument();
+    expect(screen.getByText('RIDE ON')).toBeInTheDocument();
+    expect(screen.getByText('TRADE UP')).toBeInTheDocument();
   });
 
   it('publishes the player contract as the pitch (§11.1)', () => {

@@ -145,7 +145,7 @@ describe('ModeToggle', () => {
     );
     const hint = screen.getByTestId('mode-anomaly-hint');
     expect(hint).toHaveTextContent(/This week: Blackout/);
-    expect(hint).toHaveTextContent(/Umbra strain/);
+    expect(hint).toHaveTextContent(/Risk strain/);
     expect(hint).toHaveTextContent(/normal DNA, own leaderboard/);
   });
 

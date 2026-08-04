@@ -227,7 +227,7 @@ test.describe('artifact landing pages', () => {
     const subtitle = page.getByTestId('artifact-subtitle');
     await expect(subtitle).toBeVisible();
     await expect(subtitle).toContainText('Slipstream');
-    await expect(subtitle).toContainText('Gold Trail');
+    await expect(subtitle).toContainText('Golden Hour');
     await expect(subtitle).not.toContainText('Unwritten');
   });
 

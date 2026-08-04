@@ -187,7 +187,7 @@ test.describe('Genome Research has one Workbench destination', () => {
       await expect(page.getByTestId('workbench-signed-out')).toBeVisible();
       await expect(
         page.getByText(
-          'Sign in to plan a Genome against your collection and current conditions.',
+          'Sign in to plan your Powers against your collection and current conditions.',
         ),
       ).toBeVisible();
     } else {
@@ -197,7 +197,7 @@ test.describe('Genome Research has one Workbench destination', () => {
       await expect(page.getByTestId('workbench-signed-out')).toHaveCount(0);
       await expect(
         page.getByText(
-          'Genome research instruments are not active in this version.',
+          'Power research instruments are not active in this version.',
         ),
       ).toBeVisible();
     }

@@ -198,7 +198,7 @@ describe('CollectionGrid', () => {
     const card = screen.getByTestId('variant-card-variant-0');
     expect(card).toHaveAttribute(
       'aria-label',
-      'PRIMAL 0, Generation 4, Yield multiplier 1.02, Aurum lineage, traits Scavenger'
+      'PRIMAL 0, Generation 4, Yield multiplier 1.02, Gold lineage, traits Scavenger'
     );
     expect(within(card).queryAllByRole('button')).toHaveLength(0);
   });

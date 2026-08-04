@@ -9,5 +9,5 @@ it('renders the responsive Research Loom visual specimen', () => {
   render(<GenomeResearchFixture />);
   expect(screen.getByTestId('workbench-research-table')).toBeInTheDocument();
   expect(screen.getByTestId('workbench-loci').children).toHaveLength(6);
-  expect(screen.getAllByText('Gilded Fork').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('The Bag').length).toBeGreaterThan(0);
 });
