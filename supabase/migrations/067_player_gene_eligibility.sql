@@ -485,16 +485,36 @@ COMMENT ON FUNCTION read_gene_eligibility(UUID, SMALLINT) IS
   'the composer resolves to the complete legal Dynasty roster.';
 
 -- ---------------------------------------------------------------------------
--- 6. Privileges — service role only, exactly as 057 does
+-- 6. Privileges — service role only
 -- ---------------------------------------------------------------------------
+--
+-- REVOKED FROM THE BROWSER ROLES BY NAME, NOT ONLY FROM PUBLIC.
+--
+-- `REVOKE ... FROM PUBLIC` alone is enough here *only because of who applies
+-- this file*. The `public` schema carries two default ACLs for functions, one
+-- per grantor:
+--
+--   grantor postgres        -> postgres=X, service_role=X
+--   grantor supabase_admin  -> postgres=X, anon=X, authenticated=X, service_role=X
+--
+-- The CLI applies migrations as `postgres`, so locally these functions are
+-- born without an anon/authenticated grant and revoking PUBLIC finishes the
+-- job. Applied by `supabase_admin` instead, every one of them would be born
+-- with an EXPLICIT browser-role grant that a PUBLIC revoke does not touch —
+-- and four of these seven take `p_player_id` as a parameter, so an executable
+-- one would let a browser client write another account's curriculum.
+--
+-- Naming the roles removes the dependence on the grantor entirely. This is
+-- what 062, 065 and 066 do; 057, which this file otherwise follows, revokes
+-- only from PUBLIC and is the weaker precedent of the two.
 
-REVOKE ALL ON FUNCTION genome_eligibility_active_gene_ids(SMALLINT, TEXT[]) FROM PUBLIC;
-REVOKE ALL ON FUNCTION grant_starter_eligibility(UUID, SMALLINT, TEXT[]) FROM PUBLIC;
-REVOKE ALL ON FUNCTION select_gene_trial(UUID, SMALLINT, TEXT) FROM PUBLIC;
-REVOKE ALL ON FUNCTION record_trial_offer(UUID, SMALLINT, TEXT, UUID) FROM PUBLIC;
-REVOKE ALL ON FUNCTION resolve_learning_event(UUID, SMALLINT, TEXT, UUID, SMALLINT) FROM PUBLIC;
-REVOKE ALL ON FUNCTION graduate_full_roster(UUID, SMALLINT, TEXT[]) FROM PUBLIC;
-REVOKE ALL ON FUNCTION read_gene_eligibility(UUID, SMALLINT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION genome_eligibility_active_gene_ids(SMALLINT, TEXT[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION grant_starter_eligibility(UUID, SMALLINT, TEXT[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION select_gene_trial(UUID, SMALLINT, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION record_trial_offer(UUID, SMALLINT, TEXT, UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION resolve_learning_event(UUID, SMALLINT, TEXT, UUID, SMALLINT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION graduate_full_roster(UUID, SMALLINT, TEXT[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION read_gene_eligibility(UUID, SMALLINT) FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION genome_eligibility_active_gene_ids(SMALLINT, TEXT[]) TO service_role;
 GRANT EXECUTE ON FUNCTION grant_starter_eligibility(UUID, SMALLINT, TEXT[]) TO service_role;
@@ -515,9 +535,24 @@ GRANT EXECUTE ON FUNCTION read_gene_eligibility(UUID, SMALLINT) TO service_role;
 -- nothing to `anon`, and no write verb to either. `player_ladders` (057) has
 -- the policy and NOT the grant, so its own-row read is currently unreachable;
 -- that is recorded in this work package's PR rather than changed here.
+--
+-- REVOKE EVERYTHING FIRST, THEN GRANT THE ONE READ. Same grantor hazard as the
+-- functions above, and worse on a table: `postgres`'s default ACL for public
+-- tables grants the browser roles `Dxtm`, but `supabase_admin`'s grants them
+-- `arwdDxtm` — SELECT, INSERT, UPDATE and DELETE included. Enumerating the
+-- write verbs to revoke would therefore have left `anon` holding SELECT on
+-- every host that applies migrations as `supabase_admin`. Revoking ALL and
+-- granting back exactly one privilege cannot express that mistake.
+--
+-- AUTHENTICATED ONLY, AND ANON NEVER. Every row here is keyed to a
+-- `players.id`, and the policy resolves it through `players.user_id =
+-- auth.uid()`, which an unauthenticated session has no value for — so an
+-- `anon` SELECT could only ever return zero rows while widening the blast
+-- radius of any future policy mistake. Note this does NOT affect SupaSnake's
+-- anonymous players: a Supabase anonymous sign-in is the `authenticated` role
+-- with `is_anonymous = true`, not the `anon` role, so they keep their read.
+REVOKE ALL ON player_gene_eligibility FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON player_gene_eligibility TO authenticated;
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
-  ON player_gene_eligibility FROM authenticated, anon;
 
 -- ---------------------------------------------------------------------------
 -- 7. Backfill (server contract §6)

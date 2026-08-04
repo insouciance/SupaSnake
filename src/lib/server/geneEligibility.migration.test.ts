@@ -69,14 +69,23 @@ describe('migration 067: the table', () => {
     expect(normalized).not.toMatch(/FOR (INSERT|UPDATE|DELETE|ALL)/);
   });
 
-  it('grants the browser roles a read and nothing else', () => {
+  it('grants authenticated a read, anon nothing, and revokes before granting', () => {
+    // Enumerating write verbs to revoke would leave SELECT behind wherever the
+    // default ACL grants it (supabase_admin's grants the browser roles
+    // `arwdDxtm`). Revoke ALL, then grant back exactly one privilege.
+    expect(normalized).toContain(
+      'REVOKE ALL ON player_gene_eligibility FROM PUBLIC, anon, authenticated'
+    );
     expect(normalized).toContain(
       'GRANT SELECT ON player_gene_eligibility TO authenticated'
     );
-    expect(normalized).toContain(
-      'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON player_gene_eligibility FROM authenticated, anon'
-    );
     expect(normalized).not.toContain('TO anon');
+    // The revoke must precede the grant, or it undoes it.
+    expect(
+      normalized.indexOf('REVOKE ALL ON player_gene_eligibility')
+    ).toBeLessThan(
+      normalized.indexOf('GRANT SELECT ON player_gene_eligibility')
+    );
   });
 });
 
@@ -98,16 +107,33 @@ describe('migration 067: the functions', () => {
     }
   });
 
-  it('revokes every function from PUBLIC and grants only the service role', () => {
+  it('revokes every function from the browser roles BY NAME, not only from PUBLIC', () => {
+    // A bare `FROM PUBLIC` is enough only when the migration is applied by
+    // `postgres`, whose default ACL for public functions grants postgres and
+    // service_role. Applied by `supabase_admin`, whose default ACL also grants
+    // anon and authenticated, every one of these would be born with an
+    // explicit browser-role grant that a PUBLIC revoke leaves in place — and
+    // four of the seven take `p_player_id`, so an executable one is a write
+    // path into another account's curriculum. Naming the roles removes the
+    // dependence on the grantor. The SQL contract can only observe the
+    // effective privilege in the database it runs against; this assertion is
+    // what pins the source form.
     for (const signature of functions) {
-      expect(normalized).toContain(`REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC`);
+      expect(normalized).toContain(
+        `REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC, anon, authenticated`
+      );
       expect(normalized).toContain(
         `GRANT EXECUTE ON FUNCTION ${signature} TO service_role`
       );
       expect(normalized).not.toContain(
         `GRANT EXECUTE ON FUNCTION ${signature} TO authenticated`
       );
+      expect(normalized).not.toContain(
+        `GRANT EXECUTE ON FUNCTION ${signature} TO anon`
+      );
     }
+    // No function may be left on the weaker form.
+    expect(normalized).not.toMatch(/REVOKE ALL ON FUNCTION [^;]*? FROM PUBLIC;/);
   });
 
   it('pins SECURITY DEFINER search_path on every function', () => {

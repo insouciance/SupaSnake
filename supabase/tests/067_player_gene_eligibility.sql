@@ -170,6 +170,23 @@ BEGIN
     RAISE EXCEPTION 'Gene eligibility table privilege boundary is wrong';
   END IF;
 
+  -- And the table ACL must give `anon` no data privilege at all, for the same
+  -- grantor reason as the functions below: `postgres`'s default ACL for public
+  -- tables grants the browser roles `Dxtm`, `supabase_admin`'s grants them
+  -- `arwdDxtm`. Asserting the effective privilege alone would pass here and
+  -- fail only on the host that hands out the wider default.
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class AS rel
+    CROSS JOIN LATERAL unnest(COALESCE(rel.relacl, ARRAY[]::ACLITEM[]))
+      AS entry(item)
+    WHERE rel.oid = 'public.player_gene_eligibility'::REGCLASS
+      AND split_part(entry.item::TEXT, '=', 1) = 'anon'
+      AND split_part(split_part(entry.item::TEXT, '=', 2), '/', 1) ~ '[arwdD]'
+  ) THEN
+    RAISE EXCEPTION 'Gene eligibility table ACL still gives anon a data privilege';
+  END IF;
+
   FOREACH v_signature IN ARRAY ARRAY[
     'public.genome_eligibility_active_gene_ids(smallint,text[])',
     'public.grant_starter_eligibility(uuid,smallint,text[])',
@@ -179,12 +196,37 @@ BEGIN
     'public.graduate_full_roster(uuid,smallint,text[])',
     'public.read_gene_eligibility(uuid,smallint)'
   ]::TEXT[] LOOP
+    -- Effective privilege: neither browser role may execute any of them, and
+    -- service_role must. Four of the seven take `p_player_id`, so an
+    -- executable one is a write path into another account's curriculum.
     IF to_regprocedure(v_signature) IS NULL
        OR has_function_privilege('authenticated', v_signature, 'EXECUTE')
        OR has_function_privilege('anon', v_signature, 'EXECUTE')
        OR NOT has_function_privilege('service_role', v_signature, 'EXECUTE') THEN
       RAISE EXCEPTION 'Gene eligibility service function boundary is wrong: %', v_signature;
     END IF;
+
+    -- And the ACL itself must not name them. `has_function_privilege` reports
+    -- the effective answer IN THIS DATABASE, and this database applies
+    -- migrations as `postgres`, whose default ACL for public functions grants
+    -- only postgres and service_role. Applied by `supabase_admin` — whose
+    -- default ACL also grants anon and authenticated — a bare
+    -- `REVOKE ... FROM PUBLIC` would leave an explicit browser-role grant that
+    -- the effective check above would then correctly report as executable, but
+    -- only on that host. Asserting the ACL text catches the missing revoke
+    -- HERE rather than in the environment that grants it.
+    IF EXISTS (
+      SELECT 1
+      FROM pg_proc AS routine
+      CROSS JOIN LATERAL unnest(COALESCE(routine.proacl, ARRAY[]::ACLITEM[]))
+        AS entry(item)
+      WHERE routine.oid = v_signature::REGPROCEDURE
+        AND split_part(entry.item::TEXT, '=', 1) IN ('anon', 'authenticated')
+    ) THEN
+      RAISE EXCEPTION
+        'Gene eligibility function ACL still names a browser role: %', v_signature;
+    END IF;
+
     IF NOT EXISTS (
       SELECT 1 FROM pg_proc
       WHERE oid = v_signature::REGPROCEDURE
