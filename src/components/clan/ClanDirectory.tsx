@@ -9,6 +9,7 @@ import { formatWeekStart } from '@/lib/serpent/briefing';
 import { IconShield } from '@/components/ui/icons';
 import { clanReportHref } from '@/lib/clan/report';
 import type { ClanDirectoryRow as DirectoryRow } from './useClanFull';
+import { formatAmount } from '@/shared/format/amount';
 
 export type ClanDirectoryRow = DirectoryRow;
 
@@ -212,7 +213,7 @@ export function ClanDirectory({
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-body">
                         <span className="text-bone-white">
-                          Best battle <strong className="text-venom-orange">{clan.bestWeekDepth.toLocaleString()}</strong> Depth
+                          Best battle <strong className="text-venom-orange">{formatAmount(clan.bestWeekDepth)}</strong> Depth
                         </span>
                         {clan.lastHuntedWeek && (
                           <Link

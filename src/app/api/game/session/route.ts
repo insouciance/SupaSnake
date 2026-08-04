@@ -188,6 +188,83 @@ function pendingSettlementJson(sessionId: string) {
   );
 }
 
+/**
+ * A run the server already terminalized (`continuity_phase = 'terminal'`,
+ * `ended_at IS NULL`) has exactly one driver in the shipped design: a browser
+ * re-posting `action: 'end'`. Nothing on the server sweeps it —
+ * `expire_stale_game_sessions` skips every continuity row (it requires
+ * `start_request_id IS NULL`), `list_pending_game_session_ends` needs a
+ * `pending_game_session_ends` envelope this run never staged, and
+ * `list_pending_game_progression_sessions` needs `ended_at IS NOT NULL` plus an
+ * adopted `atomic_v1` stamp it never earned. So one failed fold strands the row
+ * permanently, and because `readActiveRun` keeps returning it, the start guard
+ * below refuses every future run on the account.
+ *
+ * The fix is to fold it here, inside the start the player just asked for, by
+ * re-entering this route's own audited settlement branch with this request's
+ * own credentials. Nothing is duplicated and nothing is recomputed differently:
+ * it is the same code path the client would have driven, and it is idempotent
+ * by session, so a concurrent client retry cannot double-pay.
+ */
+const INTERNAL_ABSORB_HEADER = 'x-supasnake-absorb-stranded-run';
+
+function isInternalAbsorbRequest(request: NextRequest): boolean {
+  return request.headers.get(INTERNAL_ABSORB_HEADER) === '1';
+}
+
+async function absorbStrandedTerminalRun(
+  request: NextRequest,
+  sessionId: string,
+  context: { playerId: string }
+): Promise<void> {
+  const authorization = request.headers.get('authorization');
+  if (!authorization) return;
+  try {
+    const internal = new NextRequest(request.nextUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization,
+        [INTERNAL_ABSORB_HEADER]: '1',
+      },
+      body: JSON.stringify({ action: 'end', sessionId }),
+    });
+    const response = await POST(internal);
+    // A 202 is success, not failure: the outcome is now durably staged and the
+    // existing sweep owns finishing it. Only a server fault is worth an alert.
+    if (response.status >= 500) {
+      console.error('Stranded terminal run absorption did not settle:', {
+        playerId: context.playerId,
+        sessionId,
+        status: response.status,
+      });
+      Sentry.captureMessage('Stranded terminal run absorption did not settle', {
+        level: 'warning',
+        tags: { progression_stage: 'stranded_terminal_absorb' },
+        extra: { playerId: context.playerId, sessionId, status: response.status },
+      });
+    }
+  } catch (error) {
+    // Absorption is best-effort recovery. Its failure must never turn into a
+    // different failure for the start the player actually asked for; the guard
+    // below re-reads server truth and answers from that.
+    console.error('Stranded terminal run absorption failed:', {
+      playerId: context.playerId,
+      sessionId,
+      error,
+    });
+    Sentry.captureException(
+      error instanceof Error
+        ? error
+        : new Error('Stranded terminal run absorption failed'),
+      {
+        tags: { progression_stage: 'stranded_terminal_absorb' },
+        extra: { playerId: context.playerId, sessionId },
+      }
+    );
+  }
+}
+
 function storedNonNegativeNumber(value: unknown): number | null {
   const parsed = typeof value === 'number'
     ? value
@@ -833,9 +910,23 @@ export async function POST(request: NextRequest) {
           preparingShell = existing;
         }
 
-        const activeRun = preparingShell
+        let activeRun = preparingShell
           ? null
           : await readActiveRun(supabase, player.id);
+        // Absorb a server-locked outcome that no sweeper can reach before
+        // refusing the start (see `absorbStrandedTerminalRun`). Forward-only:
+        // the fold either closes the row, or durably stages it and hands it to
+        // the existing pending-settlement sweep. Either way the refusal below
+        // stops being permanent.
+        if (
+          activeRun?.phase === 'terminal' &&
+          !isInternalAbsorbRequest(request)
+        ) {
+          await absorbStrandedTerminalRun(request, activeRun.sessionId, {
+            playerId: player.id,
+          });
+          activeRun = await readActiveRun(supabase, player.id);
+        }
         if (activeRun) {
           return progressionJson(
             {

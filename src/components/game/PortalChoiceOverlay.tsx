@@ -15,6 +15,7 @@ import {
 } from '@/shared/game/portals';
 import { ladderSalvageFloor } from '@/shared/game/ladder';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
+import { formatAmount } from '@/shared/format/amount';
 import { FunnelStages, trackFunnelStageOnce } from '@/lib/analytics/funnel';
 import { TacticalLoomDecision } from '@/components/game/genome/TacticalLoomDecision';
 import type { TacticalLoomDecisionModel } from '@/components/game/genome/tacticalLoomPresentation';
@@ -214,11 +215,11 @@ export function PortalChoiceOverlay({
           <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-scale-blue-light/25 bg-void-deep/40 p-2" data-testid="portal-current-stake">
             <div>
               <p className="font-body text-sm uppercase tracking-[0.1em] text-beige/45">Secure now</p>
-              <p className="font-mono text-base font-bold text-rarity-uncommon">{bankOutcomeLabel ?? `${bankDna.toLocaleString()} DNA`}</p>
+              <p className="font-mono text-base font-bold text-rarity-uncommon">{bankOutcomeLabel ?? `${formatAmount(bankDna)} DNA`}</p>
             </div>
             <div className="text-right">
               <p className="font-body text-sm uppercase tracking-[0.1em] text-beige/45">Crash now</p>
-              <p className="font-mono text-base font-bold text-strike-red">{crashOutcomeLabel ?? `${crashDna.toLocaleString()} DNA`}</p>
+              <p className="font-mono text-base font-bold text-strike-red">{crashOutcomeLabel ?? `${formatAmount(crashDna)} DNA`}</p>
             </div>
           </div>
           {outcomeUnitLabel ? (
@@ -239,7 +240,7 @@ export function PortalChoiceOverlay({
               className={`${option} border-rarity-uncommon/60 bg-rarity-uncommon/10 disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
             >
               <span className="font-display text-sm text-rarity-uncommon">1 · BANK</span>
-              <p className="mt-1 font-body text-sm text-beige">Secure {bankOutcomeLabel ?? `${bankDna.toLocaleString()} DNA`} and end this run.</p>
+              <p className="mt-1 font-body text-sm text-beige">Secure {bankOutcomeLabel ?? `${formatAmount(bankDna)} DNA`} and end this run.</p>
               <p className="mt-2 font-mono text-sm text-beige/55" data-testid="portal-bank-carry">Carry {carry.bankCurrent}{doorsPassed > 0 ? ` · ${doorsPassed} continued` : ''}</p>
             </button>
 

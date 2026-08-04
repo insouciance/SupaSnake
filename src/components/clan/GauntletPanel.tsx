@@ -35,6 +35,7 @@ import { STRAINS, STRAIN_IDS } from '@/shared/game/strains';
 import { modifierName } from './DuelPanel';
 import { PlayerCard } from '@/components/identity/PlayerCard';
 import { identityFromEmbedded, type EmbeddedIdentity } from '@/lib/identity/types';
+import { formatAmount } from '@/shared/format/amount';
 
 interface ResearchState {
   pool: number;
@@ -474,7 +475,7 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
             <span className="label-arcade">Clan Research</span>
             <span className="px-3 py-1 bg-void/60 border border-scale-blue-light/50 rounded-arcade text-sm font-display text-bone-white flex items-center gap-1.5">
               <IconDna size={14} />
-              {research.pool.toLocaleString()} DNA pooled
+              {formatAmount(research.pool)} DNA pooled
             </span>
           </div>
 
@@ -503,7 +504,7 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-bone-white font-display text-xs uppercase">{node.name}</span>
-                          <span className="text-beige/60 text-xs">{node.cost.toLocaleString()}</span>
+                          <span className="text-beige/60 text-xs">{formatAmount(node.cost)}</span>
                         </div>
                         <p className="text-beige/70 text-xs mt-1">{node.description}</p>
 
@@ -518,7 +519,7 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
                               />
                             </div>
                             <p className="text-xs text-beige/60 mt-1">
-                              {Math.min(research.pool, node.cost).toLocaleString()} / {node.cost.toLocaleString()}
+                              {formatAmount(Math.min(research.pool, node.cost))} / {formatAmount(node.cost)}
                             </p>
                           </div>
                         )}
@@ -596,7 +597,7 @@ export function GauntletPanel({ accessToken }: { accessToken?: string | null }) 
                     <span className="text-bone-white">{tithe.name}</span>
                     <span className="text-venom-orange font-display flex items-center gap-1">
                       <IconDna size={12} />
-                      {tithe.amount.toLocaleString()}
+                      {formatAmount(tithe.amount)}
                     </span>
                   </li>
                 ))}

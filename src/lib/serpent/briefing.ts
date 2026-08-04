@@ -35,6 +35,7 @@ import {
   serpentWeekStart,
   type SerpentModifier,
 } from '@/shared/game/serpent';
+import { formatAmount } from '@/shared/format/amount';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const WEEK_KEY = /^\d{4}-\d{2}-\d{2}$/;
@@ -172,7 +173,7 @@ export function readWeekBriefing(
 
 /** `1234` -> `"1,234 segments"`. Singular is a real case at N=1. */
 export function segments(count: number): string {
-  return `${count.toLocaleString('en-US')} ${count === 1 ? 'segment' : 'segments'}`;
+  return `${formatAmount(count)} ${count === 1 ? 'segment' : 'segments'}`;
 }
 
 /** A signed segment delta, e.g. `"+240 segments"` / `"-90 segments"`. */

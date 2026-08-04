@@ -2,6 +2,7 @@ import { GENES, isGeneId } from '@/shared/game/genes';
 import { SPLICES, isSpliceId } from '@/shared/game/splices';
 import { STRAINS, isStrainId, STRAIN_TIER_NAMES, type StrainId } from '@/shared/game/strains';
 import { canonicalUrl } from '@/shared/config/site';
+import { formatAmount } from '@/shared/format/amount';
 
 export interface GenomeCardGene {
   id: string;
@@ -286,7 +287,7 @@ export function drawGenomeCard(
     ctx.textAlign = 'right';
     ctx.fillStyle = '#f4f1e8';
     ctx.font = index === rows.length - 1 ? '700 32px "Space Grotesk", sans-serif' : '700 24px "Space Grotesk", sans-serif';
-    ctx.fillText(`${row.value.toLocaleString()} DNA`, 1110, y);
+    ctx.fillText(`${formatAmount(row.value)} DNA`, 1110, y);
     if (row.factor !== null) {
       ctx.fillStyle = '#64748b';
       ctx.font = '500 15px Inter, sans-serif';
@@ -354,7 +355,7 @@ export const GENOME_CARD_SHARE_URL = canonicalUrl('/');
  */
 export function genomeCardShareText(model: GenomeCardModel): string {
   return [
-    `${model.cascade.total.toLocaleString()} DNA · ${model.genes.length} genes`,
+    `${formatAmount(model.cascade.total)} DNA · ${model.genes.length} genes`,
     GENOME_CARD_SHARE_URL,
   ].join('\n');
 }

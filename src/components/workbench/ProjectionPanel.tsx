@@ -26,11 +26,9 @@
 
 import type { WorkbenchExclusion, WorkbenchProjection } from '@/shared/game/workbench';
 import { FLOOR_LABEL } from '@/shared/game/workbench';
+import { formatNonNegativeAmount as num } from '@/shared/format/amount';
 
-function num(value: number): string {
-  return Math.max(0, Math.round(value)).toLocaleString('en-US');
-}
-
+/** A FACTOR, not an amount: the decimal is the value and stays. */
 function multiplier(value: number): string {
   return `×${value.toFixed(2)}`;
 }

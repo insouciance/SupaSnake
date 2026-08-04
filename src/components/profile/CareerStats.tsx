@@ -18,6 +18,7 @@ import {
   IconSnake,
   IconTrophy,
 } from '@/components/ui/icons';
+import { formatAmount } from '@/shared/format/amount';
 
 interface StatCardProps {
   icon: ReactElement;
@@ -111,18 +112,18 @@ export function CareerStats() {
         <StatCard
           icon={<IconTrophy size={26} />}
           label="High Score"
-          value={stats.highScore.toLocaleString()}
+          value={formatAmount(stats.highScore)}
           color="text-rarity-legendary"
         />
         <StatCard
           icon={<IconPlay size={26} />}
           label="Games Played"
-          value={stats.totalGamesPlayed.toLocaleString()}
+          value={formatAmount(stats.totalGamesPlayed)}
         />
         <StatCard
           icon={<IconDna size={26} />}
           label="DNA Earned"
-          value={stats.totalDnaEarned.toLocaleString()}
+          value={formatAmount(stats.totalDnaEarned)}
           color="text-venom-orange"
         />
         <StatCard

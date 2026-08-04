@@ -18,6 +18,7 @@ import {
   parseGauntletBan,
   type GauntletModifierId,
 } from '@/shared/game/gauntlet';
+import { formatAmount } from '@/shared/format/amount';
 
 export interface DuelOpponent {
   name: string;
@@ -332,7 +333,7 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
                   <span className="text-venom-orange font-display uppercase">My Clan</span>
                   <span className="text-bone-white flex items-center gap-1">
                     <IconDna size={12} />
-                    {duel.myScore.toLocaleString()}
+                    {formatAmount(duel.myScore)}
                   </span>
                 </div>
                 <div className="h-3 bg-void/60 border border-scale-blue-light/40 rounded-arcade overflow-hidden">
@@ -348,7 +349,7 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
                   <span className="text-strike-red font-display uppercase">{duel.opponent.name}</span>
                   <span className="text-bone-white flex items-center gap-1">
                     <IconDna size={12} />
-                    {duel.theirScore.toLocaleString()}
+                    {formatAmount(duel.theirScore)}
                   </span>
                 </div>
                 <div className="h-3 bg-void/60 border border-scale-blue-light/40 rounded-arcade overflow-hidden">
@@ -392,7 +393,7 @@ export function DuelPanel({ accessToken }: { accessToken?: string | null }) {
                       </span>
                       <span className="text-venom-orange flex items-center gap-1 font-display">
                         <IconDna size={12} />
-                        {contributor.dna.toLocaleString()}
+                        {formatAmount(contributor.dna)}
                       </span>
                     </li>
                   ))}

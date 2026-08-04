@@ -31,6 +31,7 @@ import { LeadLadder } from '@/components/growth/LeadLadder';
 import type { LadderState } from '@/lib/growth/leadLadder';
 import { AscensionMonth } from '@/components/signal/AscensionMonth';
 import { ClanGateway } from '@/components/compete/ClanGateway';
+import { formatAmount } from '@/shared/format/amount';
 
 type DynastyId = 'CYBER' | 'PRIMAL' | 'COSMIC';
 
@@ -413,7 +414,7 @@ export default function LeaderboardPage() {
                     {entry.playerName}
                   </p>
                   <p className={`font-display ${metal.text} ${rank === 1 ? 'text-2xl' : 'text-lg'}`}>
-                    {entry.score.toLocaleString()}
+                    {formatAmount(entry.score)}
                   </p>
                 </div>
               );
@@ -494,7 +495,7 @@ export default function LeaderboardPage() {
                   entry.rank === 3 ? 'text-amber-500' :
                   'text-bone-white'
                 }`}>
-                  {entry.score.toLocaleString()}
+                  {formatAmount(entry.score)}
                 </div>
               </div>
               );
@@ -506,7 +507,7 @@ export default function LeaderboardPage() {
         {/* Total Count */}
         {!anomalyTab && (
         <div className="text-center text-beige/60 mt-6 text-sm font-body">
-          {total.toLocaleString()} ranked players
+          {formatAmount(total)} ranked players
         </div>
         )}
 

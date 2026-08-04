@@ -10,6 +10,7 @@
 import React from 'react';
 import { IconShield } from '@/components/ui/icons';
 import type { ClanSection } from '@/lib/chronicle/types';
+import { formatAmount } from '@/shared/format/amount';
 
 function outcomeLabel(outcome: ClanSection['battleHistory'][number]['outcome']): string {
   switch (outcome) {
@@ -63,9 +64,9 @@ export function ClanChapter({ clan }: { clan: ClanSection }): React.ReactElement
                 <p className="font-mono text-xs text-beige/55">{dateLabel(battle.startedAt)}</p>
               </div>
               <p className="mt-1 font-mono text-xs text-beige/65">
-                [{clan.tag}] {battle.clanDepth.toLocaleString()}
+                [{clan.tag}] {formatAmount(battle.clanDepth)}
                 {battle.opponent
-                  ? ` · [${battle.opponent.tag ?? battle.opponent.name}] ${battle.opponent.depth.toLocaleString()}`
+                  ? ` · [${battle.opponent.tag ?? battle.opponent.name}] ${formatAmount(battle.opponent.depth)}`
                   : ' · no rival formed'}
               </p>
             </div>
