@@ -123,6 +123,7 @@ import {
 } from '@/shared/game/worldCondition';
 import type { StrainId } from '@/shared/game/strains';
 import { genomeV2ActivePool } from '@/shared/game/genes';
+import { projectGenomeForSettlement } from '@/shared/game/settlementGenome';
 import {
   deriveGenomeV2Ftue,
   deriveGenomeV2FtuePresentation,
@@ -220,7 +221,10 @@ async function absorbStrandedTerminalRun(
   const authorization = request.headers.get('authorization');
   if (!authorization) return;
   try {
-    const internal = new NextRequest(request.nextUrl, {
+    // `new URL(request.url)` rather than `request.nextUrl`: NextURL is not a
+    // URL instance, and passing a non-Request, non-URL input to the Request
+    // constructor is a runtime hazard that would surface only in production.
+    const internal = new NextRequest(new URL(request.url), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -230,18 +234,32 @@ async function absorbStrandedTerminalRun(
       body: JSON.stringify({ action: 'end', sessionId }),
     });
     const response = await POST(internal);
-    // A 202 is success, not failure: the outcome is now durably staged and the
-    // existing sweep owns finishing it. Only a server fault is worth an alert.
-    if (response.status >= 500) {
+    // FAIL LOUDLY. The first version of this absorb reported only 5xx, so a
+    // 4xx/503 rejection left no trace at all — a permanently stranded run
+    // looked identical to a healthy refusal, and the incident it was written
+    // to fix stayed invisible through a full deploy. Anything that is not a
+    // settlement (200) or a durable staging (202) is reported with its body.
+    if (response.status !== 200 && response.status !== 202) {
+      const detail = await response
+        .clone()
+        .text()
+        .then((body) => body.slice(0, 1000))
+        .catch(() => '<unreadable>');
       console.error('Stranded terminal run absorption did not settle:', {
         playerId: context.playerId,
         sessionId,
         status: response.status,
+        body: detail,
       });
       Sentry.captureMessage('Stranded terminal run absorption did not settle', {
-        level: 'warning',
+        level: 'error',
         tags: { progression_stage: 'stranded_terminal_absorb' },
-        extra: { playerId: context.playerId, sessionId, status: response.status },
+        extra: {
+          playerId: context.playerId,
+          sessionId,
+          status: response.status,
+          body: detail,
+        },
       });
     }
   } catch (error) {
@@ -2793,7 +2811,14 @@ export async function POST(request: NextRequest) {
           ? masteryXpForRun(validation.masteryRawDna, true)
           : 0,
         ladderRung: settledRung,
-        genome: validation.valid ? validation.genome : null,
+        // The durable payload carries the settlement projection, never the
+        // unbounded per-tick genome: `journal`/`targets` grow with run length
+        // and pushed real runs past the database's envelope byte cap, which
+        // strands them permanently. See `settlementGenome.ts` for the
+        // consumer enumeration proving the projection is lossless.
+        genome: validation.valid
+          ? projectGenomeForSettlement(validation.genome)
+          : null,
         rewardMetadata: {
           food_count: validation.foodCount,
           extracted: validation.extracted,
@@ -2919,7 +2944,11 @@ export async function POST(request: NextRequest) {
                   validation.errors.length > 0 ? validation.errors : null,
                 foodsCollected: validation.foodCount,
                 mutations: mutationsRecord ?? null,
-                genome: validation.valid ? validation.genome : null,
+                // Same bound as the earning envelope: `complete_free_run_continuity`
+                // caps `p_facts` too, and a long practice run overflowed it.
+                genome: validation.valid
+                  ? projectGenomeForSettlement(validation.genome)
+                  : null,
               },
             });
             endedRows = [{ id: sessionId }];

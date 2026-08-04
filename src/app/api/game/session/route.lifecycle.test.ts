@@ -79,6 +79,36 @@ const db: {
 };
 
 const rpcCalls: Array<{ fn: string; params: unknown }> = [];
+
+/**
+ * The database's payload byte caps, enforced here so the fake cannot accept a
+ * payload the real SQL rejects.
+ *
+ * This harness previously let `stage_continuity_game_session_end` and
+ * `complete_free_run_continuity` succeed unconditionally. That blind spot let a
+ * settlement ship that every test passed and production could never complete:
+ * two real accounts were locked out of play because their envelopes exceeded
+ * `store_pending_game_session_end`'s bound (060:105) and were rejected on every
+ * single retry, forever.
+ *
+ * MEASURE THE WAY POSTGRES DOES. The guard is
+ * `octet_length(payload::TEXT)`, and jsonb's canonical text form puts a space
+ * after every `:` and `,`. The stranded production envelope measured 63,687 B
+ * with `JSON.stringify` — under the old 65,536 cap — but 70,113 B as
+ * `jsonb::text`, which is the number that actually rejected it. Measuring the
+ * compact form here would re-create the exact blind spot this test closes.
+ */
+const SETTLEMENT_PAYLOAD_MAX_BYTES = 262_144;
+
+function assertSettlementPayloadBytes(fn: string, payload: unknown) {
+  const bytes = jsonbTextByteLength(payload);
+  if (bytes > SETTLEMENT_PAYLOAD_MAX_BYTES) {
+    throw new Error(
+      `${fn}: payload is ${bytes} bytes, over the ${SETTLEMENT_PAYLOAD_MAX_BYTES} cap`
+    );
+  }
+}
+
 let impactPersistError: Row | null = null;
 let careerCapabilityError: Row | null = null;
 let careerCapability: Row = {
@@ -123,6 +153,7 @@ jest.mock('@supabase/supabase-js', () => ({
       }
       if (fn === 'stage_pending_game_session_end') {
         const p = (params ?? {}) as Row;
+        assertSettlementPayloadBytes(fn, p.p_envelope);
         const target = db.game_sessions.find((row) => row.id === p.p_session_id);
         if (target) {
           target.end_reason = 'completed';
@@ -145,6 +176,7 @@ jest.mock('@supabase/supabase-js', () => ({
       }
       if (fn === 'stage_continuity_game_session_end') {
         const p = (params ?? {}) as Row;
+        assertSettlementPayloadBytes(fn, p.p_envelope);
         const target = db.game_sessions.find((row) => row.id === p.p_session_id);
         if (target) {
           target.end_reason = 'completed';
@@ -155,6 +187,7 @@ jest.mock('@supabase/supabase-js', () => ({
       }
       if (fn === 'complete_free_run_continuity') {
         const p = (params ?? {}) as Row;
+        assertSettlementPayloadBytes(fn, p.p_facts);
         const target = db.game_sessions.find((row) => row.id === p.p_session_id);
         if (target) {
           const facts = (p.p_facts ?? {}) as Row;
@@ -331,6 +364,7 @@ import {
 } from '@/lib/game/SnakeGameLogic';
 import { RULESETS } from '@/shared/game/rulesets';
 import { createHash } from 'crypto';
+import { jsonbTextByteLength } from '@/shared/game/settlementGenome';
 
 const PLAYER_ID = 'player-1';
 const START_REQUEST_ID = '2f515f00-908b-4f7d-86fb-721db70fed83';
