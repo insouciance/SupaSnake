@@ -10,7 +10,7 @@ import {
   type GenomeV2TargetLifecycle,
 } from '@/shared/game/genomeV2';
 import { GENOME_V2_GENES } from '@/shared/game/genes';
-import { formatNonNegativeAmount } from '@/shared/format/amount';
+import { genomeV2PresentationFormat } from './genomeV2PresentationAdapter';
 
 export type GenomeV2BoardTerrainSource =
   | 'coilkeeper_seal'
@@ -318,9 +318,15 @@ export function projectGenomeV2Board(
   };
 }
 
-/** Yield is an AMOUNT: the rail reads whole units, never a fractional tail. */
+/**
+ * The rail's compact payout, from the one formatter.
+ *
+ * This used to be a private duplicate that rendered "42Y" while the Loom
+ * rendered "42 Yield" for the same number. The short form is now an option on
+ * `genomeV2PresentationFormat.scaledYield`, not a second implementation.
+ */
 function scaledYield(value: number): string {
-  return `${formatNonNegativeAmount(value / GENOME_V2_YIELD_SCALE)}Y`;
+  return genomeV2PresentationFormat.scaledYield(value, { short: true });
 }
 
 /** Highest-value live facts for the fixed, non-interactive status rail. */

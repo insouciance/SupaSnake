@@ -100,7 +100,7 @@ const LENSES: Array<{
   label: string;
   mark: string;
 }> = [
-  { id: 'yield', label: 'Yield', mark: '◇' },
+  { id: 'yield', label: 'Payout', mark: '◇' },
   { id: 'risk', label: 'Risk', mark: '△' },
   { id: 'space', label: 'Space', mark: '○' },
 ];
@@ -357,7 +357,7 @@ function AuthoritativeRunStudy({
           <h3>{terminal === 'bank' ? 'BANK secured' : 'Crash resolved'} · {reading.dynasty}</h3>
           <span>The powers this run ended with, opened for inspection without rewriting its history.</span>
         </div>
-        <strong>{genomeV2PresentationFormat.scaledYield(settlement.genomeYield)} Yield</strong>
+        <strong>{genomeV2PresentationFormat.scaledYield(settlement.genomeYield)}</strong>
       </header>
 
       <div className={styles.studyBody}>
@@ -375,10 +375,10 @@ function AuthoritativeRunStudy({
         </div>
 
         <div className={styles.mathRibbon}>
-          <span><b>BANK</b>{genomeV2PresentationFormat.scaledYield(reading.bank.genomeYield)}</span>
-          <span><b>CRASH</b>{genomeV2PresentationFormat.scaledYield(reading.crash.genomeYield)}</span>
-          <span><b>BODY</b>{reading.growthCommitted === null ? 'COMPACTED' : `+${reading.growthCommitted}`}</span>
-          <span><b>BURNED</b>{reading.loci.filter((locus) => locus.kind === 'ash').length}</span>
+          <span><b>BANK</b> {genomeV2PresentationFormat.scaledYield(reading.bank.genomeYield)}</span>
+          <span><b>CRASH</b> {genomeV2PresentationFormat.scaledYield(reading.crash.genomeYield)}</span>
+          <span><b>BODY</b> {reading.growthCommitted === null ? 'COMPACTED' : `+${reading.growthCommitted}`}</span>
+          <span><b>BURNED</b> {reading.loci.filter((locus) => locus.kind === 'ash').length}</span>
         </div>
         <StrainRail reading={reading} focusedStrains={[]} />
 
@@ -532,10 +532,10 @@ export function ResearchTable({
       </section>
 
       <div className={styles.mathRibbon} data-testid="workbench-math-ribbon">
-        <span><b>BANK</b>{formatBps(reading.projection.liabilities.bankMultiplierBps)}</span>
-        <span><b>CRASH</b>{formatBps(reading.projection.liabilities.salvageMultiplierBps)}</span>
-        <span><b>BODY</b>{reading.growthCommitted ? `+${reading.growthCommitted}` : 'UNCHANGED'}</span>
-        <span><b>BURNED</b>{reading.loci.filter((locus) => locus.kind === 'ash').length}</span>
+        <span><b>BANK</b> {formatBps(reading.projection.liabilities.bankMultiplierBps)}</span>
+        <span><b>CRASH</b> {formatBps(reading.projection.liabilities.salvageMultiplierBps)}</span>
+        <span><b>BODY</b> {reading.growthCommitted ? `+${reading.growthCommitted}` : 'UNCHANGED'}</span>
+        <span><b>BURNED</b> {reading.loci.filter((locus) => locus.kind === 'ash').length}</span>
       </div>
 
       <StrainRail reading={reading} focusedStrains={focusedStrains} />

@@ -265,13 +265,20 @@ function formatBps(value: number): string {
 }
 
 /**
- * Yield is an AMOUNT, so it reads as a whole number. The scaled ledger keeps its
- * four-decimal precision; only this readout rounds.
+ * The ONE formatter for a payout figure. Three shipped before this: this one
+ * appended " Yield", the Workbench appended a second " Yield" to its output
+ * (players read "42 Yield Yield"), and the HUD rail kept a private copy that
+ * rendered "42Y". Same quantity, three answers.
+ *
+ * Payout is an AMOUNT, so it reads as a whole number. The scaled ledger keeps
+ * its four-decimal precision; only this readout rounds. `short` is the rail's
+ * compact form and is an option on this function rather than a second one.
  */
-function formatScaledYield(value: number): string {
+function formatScaledYield(value: number, options?: { short?: boolean }): string {
   const sign = value < 0 ? '−' : '';
   const safe = Number.isSafeInteger(value) ? Math.abs(value) : 0;
-  return `${sign}${formatAmount(safe / GENOME_V2_YIELD_SCALE)} Yield`;
+  const amount = formatAmount(safe / GENOME_V2_YIELD_SCALE);
+  return options?.short ? `${sign}${amount}P` : `${sign}${amount} Payout`;
 }
 
 function uniqueStrains(values: readonly StrainId[]): StrainId[] {
