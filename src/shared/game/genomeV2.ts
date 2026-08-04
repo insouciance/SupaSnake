@@ -105,6 +105,19 @@ export const GENOME_V2_CONFIG = {
     maxYieldMultiplierBps: 25_000,
     /** Pressure ratio at which the maximum reward is reached. */
     maxPressureBps: 7_500,
+    /**
+     * Board pressure at which Overgrowth's own lesson has been taught.
+     *
+     * GAP-2 of the learning-event catalog: Overgrowth's growth is shared with
+     * every other body mechanic and its Yield folds into
+     * `ledger.continuousDelta`, a field explicitly covering more than one
+     * source — neither is attributable to the Gene. What IS attributable is
+     * the trade the Gene exists to teach: a longer body raises pressure, and
+     * pressure raises the multiplier off its floor. A quarter of the way from
+     * `0` to `maxPressureBps` is the first target whose payout has visibly
+     * moved, so that is the threshold. Tuning value, not a rule.
+     */
+    learningPressureBps: 1_875,
   },
   coilkeeper: {
     // constitution-allow: energy-commerce gameplay-food cadence, never Energy or a commercial benefit
@@ -622,6 +635,43 @@ export interface GenomeV2State {
   compactedTargetDigest: string;
   ledger: GenomeV2YieldLedger;
   journal: GenomeV2Event[];
+  /**
+   * Curriculum learning events resolved in this run (WP-B, server contract
+   * §4; catalog `PLAYER_EVOLUTION_LEARNING_EVENTS.md`).
+   *
+   * BOUNDED, APPEND-ONLY, NEVER CLEARED — at most one entry per roster Gene,
+   * so at most 16 short strings against the 384 KiB persistence bound. Written
+   * by the pure reducer, so it is identical under live play and under replay.
+   *
+   * IT EXISTS BECAUSE THE JOURNAL COMPACTS. Above 256 entries the oldest 64
+   * are folded into a digest and discarded, and resolved targets compact the
+   * same way above 96 — so a settlement-time scan for "did event X happen"
+   * answers false for exactly the long runs an engaged learner produces.
+   * Several of the durable facts are non-monotone within a run as well
+   * (`wallRushCharges` is restored by a portal CONTINUE, `overclock` clears,
+   * `anchor.pinnedGeneId` clears on delivery, `ledger.mirrorStake` is zeroed
+   * by Phoenix), so none of them can be read at the end as "this happened".
+   *
+   * OPTIONAL AND OMITTED WHILE EMPTY. A run in which no learning event fired
+   * serializes exactly the bytes it serialized before this field existed,
+   * which keeps the flag-off path byte-for-byte identical and keeps a
+   * checkpoint written by an adjacent deploy comparable.
+   */
+  learningEventsResolved?: GenomeV2ActiveGeneId[];
+  /**
+   * Extra body segments Time Dilation has actually cost this run.
+   *
+   * GAP-1 of the learning-event catalog: Time Dilation's whole effect is
+   * passive (world speed x0.88 and one extra segment on every fourth food), so
+   * it emits no journal event and writes no named field — there was nothing in
+   * the settled record that said a player had experienced it. The first extra
+   * segment is the moment the rule becomes visible (the snake grew when the
+   * player did not expect it) and is the Gene's actual cost, so it is the
+   * learning event. Counted rather than flagged because the count is the cost.
+   *
+   * Omitted while zero, for the same reason as the field above.
+   */
+  timeDilationExtraGrowth?: number;
 }
 
 interface GenomeV2EventBase {
@@ -1726,6 +1776,52 @@ export function assertGenomeV2PersistenceBound(state: GenomeV2State): void {
   }
 }
 
+/**
+ * The learning-event catalog this build resolves against
+ * (`PLAYER_EVOLUTION_LEARNING_EVENTS.md`). A Gene's event may only change
+ * under a new version, and a resolution completed at an older version stays
+ * completed — eligibility is monotonic (Constitution §8.3).
+ */
+export const GENOME_V2_LEARNING_EVENT_VERSION = 1;
+
+/**
+ * Target kinds whose terminal lifecycle IS their Gene's learning event.
+ * `coilkeeper`, `wall_rush` and `phase_gate` also spawn targets, but the
+ * catalog names their terrain action rather than the reward that follows it,
+ * so they resolve at `coil_sealed` / `wall_redirected` / `phase_gate_used`.
+ */
+const GENOME_V2_TARGET_LEARNING_KINDS: readonly GenomeV2ExclusiveTargetKind[] = [
+  'gold_trail',
+  'live_wire',
+  'circuit_run',
+];
+
+/**
+ * Record that a Gene's catalog learning event happened in this run.
+ *
+ * Idempotent and monotone: the field is created on first use, an entry is
+ * never repeated and never removed. Success and failure both resolve — the
+ * lesson is "you now know what this does", not "you executed it well".
+ */
+function recordGenomeV2LearningEvent(
+  state: GenomeV2State,
+  geneId: GenomeV2ActiveGeneId
+): void {
+  const resolved = state.learningEventsResolved;
+  if (!resolved) {
+    state.learningEventsResolved = [geneId];
+    return;
+  }
+  if (!resolved.includes(geneId)) resolved.push(geneId);
+}
+
+/** The run's resolved learning events, absent and empty being the same thing. */
+export function genomeV2LearningEventsResolved(
+  state: Pick<GenomeV2State, 'learningEventsResolved'>
+): readonly GenomeV2ActiveGeneId[] {
+  return state.learningEventsResolved ?? [];
+}
+
 function ensureActivePool(state: GenomeV2State, geneId: unknown): asserts geneId is GenomeV2ActiveGeneId {
   if (
     !isGenomeV2ActiveGeneId(geneId) ||
@@ -1733,12 +1829,9 @@ function ensureActivePool(state: GenomeV2State, geneId: unknown): asserts geneId
   ) {
     throw new Error(`Genome v2 gene ${String(geneId)} is not legal for ${state.dynasty}.`);
   }
-  if (
-    geneId === genomeV2SignatureForDynasty(state.dynasty) &&
-    !state.ftue.apexesUnlocked
-  ) {
-    throw new Error('Genome v2 Dynasty signature is still locked.');
-  }
+  // The paired Signature assertion is DELETED with the offer filter above:
+  // they were the same rule written twice, and the run-start pool is now the
+  // only authority on which Genes an account may acquire.
 }
 
 function ensureUnseenDistinctCandidates(
@@ -2401,6 +2494,13 @@ function applyResolvedTarget(
       state.foodCount % GENOME_V2_CONFIG.timeDilation.extraGrowthCadence === 0
     ) {
       growth += 1;
+      // Time Dilation (catalog GAP-1): its effect is otherwise entirely
+      // passive, so the first extra segment — the snake growing when the
+      // player did not expect it — is both the Gene's real cost and the moment
+      // its rule becomes visible. Counted rather than flagged because the
+      // count IS the cost.
+      state.timeDilationExtraGrowth = (state.timeDilationExtraGrowth ?? 0) + 1;
+      recordGenomeV2LearningEvent(state, 'time_dilation');
     }
     if (
       genomeV2HasSplice(state, 'splice_gilded_fork') &&
@@ -2553,6 +2653,11 @@ export function reduceGenomeV2Event(
         offerIndex: state.offerCount,
       };
       state.offerCount += 1;
+      // Loom Anchor: a pinned candidate DELIVERED into the next offer is the
+      // lesson. Pinning is the intent; arrival is the proof.
+      if (event.pinnedGeneId) {
+        recordGenomeV2LearningEvent(state, 'loom_anchor');
+      }
       break;
     case 'offer_declined':
     case 'offer_expired': {
@@ -2583,6 +2688,9 @@ export function reduceGenomeV2Event(
           GENOME_V2_CONFIG.compoundInterest.maxBonds,
           state.bonds + 1
         );
+        // Compound Interest: a deliberate DECLINE minting a Bond. The Bond
+        // exists whether the run banks or crashes; a crash simply pays nothing.
+        recordGenomeV2LearningEvent(state, 'compound_interest');
       }
       if (
         event.type === 'offer_declined' &&
@@ -2677,8 +2785,18 @@ export function reduceGenomeV2Event(
             event.portalId,
             mirrorCarryAtDecision
           );
+          // Mirror Wager: a CONTINUE freezing a visible Stake. BANK doubles
+          // it, a crash loses only the Stake — both outcomes teach the rule.
+          recordGenomeV2LearningEvent(state, 'mirror_wager');
         }
+        const loanBefore = state.loan;
         startLoanIfEligible(state, event.portalId);
+        // Loan Shark: a CONTINUE opening the six-food Escrow contract.
+        // Release is success, BANK or a crash before completion is failure,
+        // and the catalog resolves on either.
+        if (!loanBefore && state.loan) {
+          recordGenomeV2LearningEvent(state, 'loan_shark');
+        }
         if (genomeV2MechanicEnabled(state, 'loom_anchor')) {
           state.anchor.charges = GENOME_V2_CONFIG.loomAnchor.maximumCharges;
         }
@@ -2965,6 +3083,28 @@ export function reduceGenomeV2Event(
           : 'burnt';
       applyResolvedTarget(state, target, event);
       target.resolvedBaseYield = event.baseYield;
+      // Gilded, Live Wire and Circuit targets teach their Gene the moment they
+      // reach a terminal lifecycle, in-window or burnt.
+      if (
+        GENOME_V2_TARGET_LEARNING_KINDS.includes(
+          target.kind as GenomeV2ExclusiveTargetKind
+        )
+      ) {
+        recordGenomeV2LearningEvent(
+          state,
+          target.kind as GenomeV2ActiveGeneId
+        );
+      }
+      // Overgrowth (catalog GAP-2): its growth is shared with every other body
+      // mechanic and its Yield folds into a multi-source ledger field, so the
+      // attributable moment is the first target collected under enough board
+      // pressure that the multiplier has visibly left its floor.
+      if (
+        genomeV2HasGene(state, 'overgrowth') &&
+        event.pressureBps >= GENOME_V2_CONFIG.overgrowth.learningPressureBps
+      ) {
+        recordGenomeV2LearningEvent(state, 'overgrowth');
+      }
       compactResolvedTargets(state);
       break;
     }
@@ -2979,6 +3119,9 @@ export function reduceGenomeV2Event(
       if (genomeV2HasSplice(state, 'splice_dragon_hoard')) {
         state.crownBondReserve = 0;
       }
+      // Gold Trail's premium window expiring unclaimed is the failure half of
+      // its lesson, and resolves it exactly as a collection does.
+      recordGenomeV2LearningEvent(state, 'gold_trail');
       target.kind = 'ordinary';
       target.contractId = null;
       target.moveBudget = null;
@@ -3023,6 +3166,9 @@ export function reduceGenomeV2Event(
           );
         }
       }
+      // Coilkeeper: the seal itself is the lesson; the empowered target that
+      // follows it is the payoff.
+      recordGenomeV2LearningEvent(state, 'coilkeeper');
       break;
     case 'phase_gate_used':
       if (
@@ -3038,6 +3184,8 @@ export function reduceGenomeV2Event(
         createdAtFood: state.foodCount,
         permanent: true,
       });
+      // Phase Gate: taking the shortcut is the lesson; the Scar is its cost.
+      recordGenomeV2LearningEvent(state, 'phase_gate');
       break;
     case 'wall_redirected': {
       const instance = state.instances[event.sourceInstanceId];
@@ -3052,6 +3200,9 @@ export function reduceGenomeV2Event(
       }
       state.wallRushCharges -= 1;
       enqueueContract(state, instance, 'wall_rush');
+      // Wall Rush: an armed impact redirecting along its previewed tangent.
+      // A missed route still spends the charge and still teaches the rule.
+      recordGenomeV2LearningEvent(state, 'wall_rush');
       break;
     }
     case 'territory_claimed': {
@@ -3082,6 +3233,12 @@ export function reduceGenomeV2Event(
         createdAtFood: state.foodCount,
         recoveryExitCount: event.recoveryExitCount,
       });
+      // Heartwood: deliberate body geometry claiming territory. The FERAL
+      // ladder claims the same shape without teaching the Signature, so only
+      // the Heartwood source resolves.
+      if (event.source === 'heartwood') {
+        recordGenomeV2LearningEvent(state, 'heartwood');
+      }
       break;
     }
     case 'overclock_started': {
@@ -3114,6 +3271,9 @@ export function reduceGenomeV2Event(
           ? GENOME_V2_CONFIG.signatures.zenithSpeedMultiplierBps
           : GENOME_V2_CONFIG.ladders.voltOverclockSpeedMultiplierBps,
       };
+      // Zenith Protocol: an overclock window opening. A mistimed window still
+      // teaches what the Signature does, so opening is the whole event.
+      if (zenith) recordGenomeV2LearningEvent(state, 'zenith_protocol');
       break;
     }
     case 'overclock_ended':
@@ -3245,6 +3405,9 @@ export function reduceGenomeV2Event(
         }
       }
       state.crownWave = null;
+      // Constellation Crown: a wave closing. `perfect` and `failed` BOTH
+      // resolve — the clearest failure-teaches case in the roster.
+      recordGenomeV2LearningEvent(state, 'constellation_crown');
       updateDisplayGross(state);
       break;
     }
@@ -3259,6 +3422,9 @@ export function reduceGenomeV2Event(
       }
       life.consumed = true;
       life.consumedAtFood = state.foodCount;
+      // Phoenix: the second life being consumed. There is no failure mode —
+      // firing is the lesson.
+      recordGenomeV2LearningEvent(state, 'phoenix');
       const consumedMirrorStake = genomeV2HasSplice(
         state,
         'splice_styx_contract'
@@ -3978,11 +4144,16 @@ export function rollGenomeV2Offer(
   const seen = new Set(
     Object.values(state.instances).map((instance) => instance.geneId)
   );
+  // The `apexesUnlocked` disjunct that used to sit here — withholding the
+  // Dynasty Signature from offers until Apex at ten banked runs — is DELETED
+  // (Constitution v1.14 overturn #36, owner ruling 1). Dynasty identity is not
+  // advanced content, and the arithmetic made the lock load-bearing in the
+  // wrong direction: with it, a seven-Gene starter pool behaves like a six and
+  // starves before the sixth locus can fill. Apex *tier activation* keeps its
+  // ramp — `tierCap` in the session route is untouched.
   const legal = state.genePool.filter(
     (geneId) =>
       !seen.has(geneId) &&
-      (state.ftue.apexesUnlocked ||
-        geneId !== genomeV2SignatureForDynasty(state.dynasty)) &&
       !(geneId === 'phoenix' && state.externalSecondLife !== null)
   );
   if (legal.length < 2) return null;

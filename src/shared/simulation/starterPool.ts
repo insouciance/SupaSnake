@@ -29,16 +29,18 @@
  * MODELLING THE OWNER RULING OF 4 AUGUST 2026
  *
  * Ruling 1 puts the Dynasty Signature in the run-one starter pool and deletes
- * the `apexesUnlocked` signature lock from the offer filter
- * (`genomeV2.ts:3933-3934`). That deletion is WP-B's work, not this package's.
- * The harness models the post-ruling filter exactly by setting
- * `ftue.apexesUnlocked = true`: read the filter and the disjunct
- * `(state.ftue.apexesUnlocked || geneId !== signature)` is unconditionally true
- * under that setting, which is precisely what deleting it yields. Offer
- * weighting never reads `apexesUnlocked`, so the substitution is exact for
- * everything measured here. The pre-ruling behaviour is still measured, under
- * `signatureLocked: true`, because the size of that gap is the evidence for the
- * ruling.
+ * the `apexesUnlocked` signature lock from the offer filter. WP-B SHIPPED THAT
+ * DELETION, so the post-ruling filter is simply the filter now: `apexesUnlocked`
+ * no longer appears in it, and every cohort measures the live engine directly.
+ *
+ * The pre-ruling behaviour is still measured, under `signatureLocked: true`,
+ * because the size of that gap is the evidence for the ruling. It can no longer
+ * be modelled by clearing an FTUE gate the filter does not read, so the harness
+ * reproduces it structurally instead: the lock's entire effect was to withhold
+ * the Signature from `legal`, which is exactly what removing the Signature from
+ * that cohort's pool does. Offer weighting reads the pool, not the gate, so the
+ * substitution is exact for everything measured here — and it stays exact
+ * whatever a later build does with `apexesUnlocked`.
  */
 
 import {
@@ -245,16 +247,14 @@ export interface CohortDefinition {
   /** World Condition tilt, exercised so legality is proved under one. */
   offerTiltStrain: StrainId | null;
   /**
-   * `true` reproduces today's shipped filter, which withholds the Signature
-   * until Apex. `false` is the post-ruling filter WP-B implements.
+   * `true` reproduces the PRE-RULING filter, which withheld the Signature from
+   * offers until Apex, by removing the Signature from the cohort's pool.
+   * `false` is the shipped filter.
    */
   signatureLocked: boolean;
 }
 
-function ftueAt(
-  bankedRuns: number,
-  signatureLocked: boolean
-): GenomeV2Ftue {
+function ftueAt(bankedRuns: number): GenomeV2Ftue {
   return {
     strainTagsUnlocked: true,
     minorUnlocked: true,
@@ -263,8 +263,10 @@ function ftueAt(
     portalGenomeUnlocked: bankedRuns >= 4,
     spawnPointsUnlocked: bankedRuns >= 6,
     splicesUnlocked: bankedRuns >= 6,
-    // See the module header: this is the offer-filter model, not an Apex grant.
-    apexesUnlocked: !signatureLocked,
+    // The offer filter no longer reads this gate at all; it is the Apex tier
+    // ramp and nothing else, and the signature-lock cohort models the deleted
+    // filter through its pool instead. See the module header.
+    apexesUnlocked: bankedRuns >= 10,
   };
 }
 
@@ -273,35 +275,35 @@ export const COHORTS: readonly CohortDefinition[] = [
   {
     id: 'bank0',
     bankedRuns: 0,
-    ftue: ftueAt(0, false),
+    ftue: ftueAt(0),
     offerTiltStrain: null,
     signatureLocked: false,
   },
   {
     id: 'bank2',
     bankedRuns: 2,
-    ftue: ftueAt(2, false),
+    ftue: ftueAt(2),
     offerTiltStrain: null,
     signatureLocked: false,
   },
   {
     id: 'bank6-splices',
     bankedRuns: 6,
-    ftue: ftueAt(6, false),
+    ftue: ftueAt(6),
     offerTiltStrain: null,
     signatureLocked: false,
   },
   {
     id: 'bank10-tilt',
     bankedRuns: 10,
-    ftue: ftueAt(10, false),
+    ftue: ftueAt(10),
     offerTiltStrain: 'AURUM',
     signatureLocked: false,
   },
   {
     id: 'bank0-signature-locked',
     bankedRuns: 0,
-    ftue: ftueAt(0, true),
+    ftue: ftueAt(0),
     offerTiltStrain: null,
     signatureLocked: true,
   },
@@ -418,9 +420,15 @@ export function traverseOffers(
   policy: OfferPolicy,
   runSeed: string
 ): TraversalResult {
+  // The deleted signature lock withheld the Signature from `legal` and nothing
+  // else, so a cohort that models it simply hands the engine a pool without it.
+  const signature = signatureFor(dynasty);
+  const traversalPool = cohort.signatureLocked
+    ? pool.filter((geneId) => geneId !== signature)
+    : pool;
   let state = createGenomeV2State(dynasty, {
     runSeed,
-    genePool: pool,
+    genePool: traversalPool,
     ftue: cohort.ftue,
     offerTiltStrain: cohort.offerTiltStrain,
   });

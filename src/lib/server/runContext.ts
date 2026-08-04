@@ -37,6 +37,9 @@
 
 import { isMutationId, type MutationId } from '@/shared/game/mutations';
 import {
+  GENOME_V2_ELIGIBILITY_CONTRACT_VERSION,
+  genomeV2DynastyForVocabulary,
+  genomeV2PlayableVocabulary,
   isGeneId,
   isGenomeV2ActiveGeneId,
   type GeneId,
@@ -63,8 +66,36 @@ import type { LineageBias } from '@/shared/game/offerGravity';
 import { isGrowthProfileId, type GrowthProfileId } from '@/shared/game/growth';
 import { DEFAULT_LADDER_RUNG, isLadderRung } from '@/shared/game/ladder';
 
-/** The current context version. A future shape change bumps this. */
-export const RUN_CONTEXT_VERSION = 1;
+/**
+ * The context version this build WRITES when a run carries a curriculum
+ * eligibility block (WP-B).
+ *
+ * A run without one still writes version 1, byte-for-byte the blob it wrote
+ * before the curriculum existed — which is what makes the flag-off path a true
+ * no-op rather than a re-serialization that merely looks equivalent.
+ */
+export const RUN_CONTEXT_VERSION = 2;
+
+/** The pre-curriculum shape, still written and still read. */
+export const RUN_CONTEXT_LEGACY_VERSION = 1;
+
+/**
+ * Every version this build can read.
+ *
+ * A KNOWN OLDER VERSION IS NOT MALFORMED. Rejecting version 1 the moment this
+ * deploy landed would turn every run already in flight into an `error`-level
+ * alert and a re-derive, which is the exact failure this module exists to
+ * prevent. Same tolerance as `growthProfileId` and `ladderRung`: a staged
+ * deploy is ordinary, not a bug.
+ */
+export type RunContextVersion =
+  | typeof RUN_CONTEXT_LEGACY_VERSION
+  | typeof RUN_CONTEXT_VERSION;
+
+const READABLE_RUN_CONTEXT_VERSIONS: readonly number[] = [
+  RUN_CONTEXT_LEGACY_VERSION,
+  RUN_CONTEXT_VERSION,
+];
 
 interface RunStartGenomeContextCommon {
   /** Starting strain points from lineage + traits. */
@@ -107,6 +138,25 @@ export interface RunStartGenomeV1Context extends RunStartGenomeContextCommon {
   genePool: GeneId[] | null;
 }
 
+/**
+ * The account facts the run's Gene vocabulary was composed from (WP-B, server
+ * contract §3.2).
+ *
+ * NEVER TRUST A BARE ARRAY. Stored beside the pool rather than instead of it,
+ * so `parseGenome` can recompose the vocabulary from the declared inputs and
+ * deep-compare — the same shape `genomeV2FtueFromPresentation` uses for the
+ * FTUE block. A stamp whose pool does not follow from its own inputs is
+ * malformed, not merely surprising.
+ */
+export interface RunStartEligibilityInputs {
+  /** Offer-eligible Genes the account held at run start, sorted. */
+  eligibleGeneIds: GenomeV2ActiveGeneId[];
+  /** The single selected trial, or null. */
+  trialGeneId: GenomeV2ActiveGeneId | null;
+  bankedRuns: number;
+  masteryLevel: number;
+}
+
 export interface RunStartGenomeV2Context extends RunStartGenomeContextCommon {
   rulesVersion: typeof GENOME_RULES_V2;
   /** Missing is the already-issued automatic-offer interaction. */
@@ -117,6 +167,17 @@ export interface RunStartGenomeV2Context extends RunStartGenomeContextCommon {
   ftuePresentation: GenomeV2FtuePresentation;
   /** Phoenix is mutually exclusive with a run-start-frozen outside revive. */
   externalSecondLife: 'iron_scales' | 'other' | null;
+  /**
+   * The curriculum contract the pool was composed under. All three curriculum
+   * keys are absent together on a run started with the flag off or before the
+   * satellite table existed, and their absence means exactly what it meant
+   * before WP-B: the pool is the complete legal Dynasty roster.
+   */
+  eligibilityContractVersion?: number;
+  /** The learning-event catalog version this run resolves against. */
+  learningEventVersion?: number;
+  /** The inputs `genePool` must be re-derivable from. */
+  eligibilityInputs?: RunStartEligibilityInputs;
 }
 
 /** The genome half — present only on a run the server issued a seed for. */
@@ -125,7 +186,7 @@ export type RunStartGenomeContext =
   | RunStartGenomeV2Context;
 
 export interface RunStartContext {
-  v: typeof RUN_CONTEXT_VERSION;
+  v: RunContextVersion;
   /** The equipped snake, as it was at the moment the run started. */
   snake: {
     id: string;
@@ -239,6 +300,86 @@ function parseLineageBias(raw: unknown): LineageBias | null | 'invalid' {
   };
 }
 
+/**
+ * Parse and VERIFY the curriculum block.
+ *
+ * Returns `undefined` when the run carries no curriculum stamp (flag off, or
+ * started before the satellite table existed), the verified block when it does,
+ * and `'invalid'` when a stamp is present but its pool does not follow from its
+ * own declared inputs.
+ *
+ * The Dynasty is recovered from the pool rather than read from the blob: every
+ * composed vocabulary contains exactly one Signature, so a stamp cannot name a
+ * Dynasty whose roster it was not composed against.
+ */
+function parseEligibility(
+  raw: Record<string, unknown>,
+  genePool: GenomeV2ActiveGeneId[]
+):
+  | undefined
+  | 'invalid'
+  | {
+      eligibilityContractVersion: number;
+      learningEventVersion: number;
+      eligibilityInputs: RunStartEligibilityInputs;
+    } {
+  const present =
+    raw.eligibilityContractVersion !== undefined ||
+    raw.learningEventVersion !== undefined ||
+    raw.eligibilityInputs !== undefined;
+  if (!present) return undefined;
+  if (
+    !Number.isSafeInteger(raw.eligibilityContractVersion) ||
+    (raw.eligibilityContractVersion as number) < 1 ||
+    !Number.isSafeInteger(raw.learningEventVersion) ||
+    (raw.learningEventVersion as number) < 1 ||
+    !isPlainObject(raw.eligibilityInputs)
+  ) {
+    return 'invalid';
+  }
+  const inputs = raw.eligibilityInputs;
+  if (
+    !Array.isArray(inputs.eligibleGeneIds) ||
+    !inputs.eligibleGeneIds.every(isGenomeV2ActiveGeneId) ||
+    new Set(inputs.eligibleGeneIds).size !== inputs.eligibleGeneIds.length ||
+    (inputs.trialGeneId !== null &&
+      !isGenomeV2ActiveGeneId(inputs.trialGeneId)) ||
+    !Number.isSafeInteger(inputs.bankedRuns) ||
+    (inputs.bankedRuns as number) < 0 ||
+    !Number.isSafeInteger(inputs.masteryLevel) ||
+    (inputs.masteryLevel as number) < 0
+  ) {
+    return 'invalid';
+  }
+  const eligibilityInputs: RunStartEligibilityInputs = {
+    eligibleGeneIds: [...(inputs.eligibleGeneIds as GenomeV2ActiveGeneId[])],
+    trialGeneId: inputs.trialGeneId as GenomeV2ActiveGeneId | null,
+    bankedRuns: inputs.bankedRuns as number,
+    masteryLevel: inputs.masteryLevel as number,
+  };
+  // Only this build's contract can be re-derived. An older or newer contract
+  // number is a stamp this deploy must not claim to have verified.
+  if (
+    raw.eligibilityContractVersion !== GENOME_V2_ELIGIBILITY_CONTRACT_VERSION
+  ) {
+    return 'invalid';
+  }
+  const dynasty = genomeV2DynastyForVocabulary(genePool);
+  if (!dynasty) return 'invalid';
+  const rederived = genomeV2PlayableVocabulary(dynasty, eligibilityInputs);
+  if (
+    rederived.length !== genePool.length ||
+    rederived.some((geneId, index) => geneId !== genePool[index])
+  ) {
+    return 'invalid';
+  }
+  return {
+    eligibilityContractVersion: raw.eligibilityContractVersion as number,
+    learningEventVersion: raw.learningEventVersion as number,
+    eligibilityInputs,
+  };
+}
+
 function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
   if (raw === null || raw === undefined) return null;
   if (!isPlainObject(raw)) return 'invalid';
@@ -336,6 +477,11 @@ function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
     raw.externalSecondLife !== 'iron_scales' &&
     raw.externalSecondLife !== 'other'
   ) return 'invalid';
+  const eligibility = parseEligibility(
+    raw,
+    genePool as GenomeV2ActiveGeneId[]
+  );
+  if (eligibility === 'invalid') return 'invalid';
   return {
     ...common,
     rulesVersion: GENOME_RULES_V2,
@@ -345,6 +491,7 @@ function parseGenome(raw: unknown): RunStartGenomeContext | null | 'invalid' {
     genePool: genePool as GenomeV2ActiveGeneId[],
     ftuePresentation,
     externalSecondLife: raw.externalSecondLife,
+    ...(eligibility ?? {}),
   };
 }
 
@@ -364,13 +511,17 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
   if (!isPlainObject(raw)) {
     return { ok: false, reason: 'not an object', malformed: true };
   }
-  if (raw.v !== RUN_CONTEXT_VERSION) {
+  if (
+    typeof raw.v !== 'number' ||
+    !READABLE_RUN_CONTEXT_VERSIONS.includes(raw.v)
+  ) {
     return {
       ok: false,
       reason: `unsupported version ${JSON.stringify(raw.v)}`,
       malformed: true,
     };
   }
+  const version = raw.v as RunContextVersion;
   if (!isPlainObject(raw.snake)) {
     return { ok: false, reason: 'snake block missing', malformed: true };
   }
@@ -428,6 +579,19 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
   if (genome === 'invalid') {
     return { ok: false, reason: 'genome block malformed', malformed: true };
   }
+  // The version and the curriculum block have to agree in both directions:
+  // a version-1 blob predates the curriculum and cannot carry one, and a
+  // version-2 blob exists only because one was written.
+  const carriesEligibility =
+    genome?.rulesVersion === GENOME_RULES_V2 &&
+    genome.eligibilityInputs !== undefined;
+  if (carriesEligibility !== (version === RUN_CONTEXT_VERSION)) {
+    return {
+      ok: false,
+      reason: `version ${version} disagrees with its eligibility block`,
+      malformed: true,
+    };
+  }
 
   // Deliberately NOT strict: an absent or unrecognised profile resolves to
   // `baseline` instead of failing the parse. A stamp written by a newer build
@@ -449,7 +613,7 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
   return {
     ok: true,
     context: {
-      v: RUN_CONTEXT_VERSION,
+      v: version,
       snake: {
         id,
         generation,
@@ -476,8 +640,17 @@ export function parseRunStartContext(raw: unknown): RunStartContextParse {
 export function serializeRunStartContext(
   context: RunStartContext
 ): Record<string, unknown> {
+  // Derived, never taken from the caller: the version IS "does this run carry
+  // a curriculum stamp", and a run without one has to serialize the exact
+  // pre-curriculum bytes so that flag-off is a genuine no-op and a rolled-back
+  // deploy can still read it.
+  const version: RunContextVersion =
+    context.genome?.rulesVersion === GENOME_RULES_V2 &&
+    context.genome.eligibilityInputs !== undefined
+      ? RUN_CONTEXT_VERSION
+      : RUN_CONTEXT_LEGACY_VERSION;
   return {
-    v: RUN_CONTEXT_VERSION,
+    v: version,
     snake: {
       id: context.snake.id,
       generation: context.snake.generation,
@@ -510,6 +683,27 @@ export function serializeRunStartContext(
                   : {}),
                 ftuePresentation: context.genome.ftuePresentation,
                 externalSecondLife: context.genome.externalSecondLife,
+                // Omitted together when the curriculum is off, so the stored
+                // blob is byte-identical to the pre-WP-B one.
+                ...(context.genome.eligibilityInputs
+                  ? {
+                      eligibilityContractVersion:
+                        context.genome.eligibilityContractVersion,
+                      learningEventVersion:
+                        context.genome.learningEventVersion,
+                      eligibilityInputs: {
+                        eligibleGeneIds: [
+                          ...context.genome.eligibilityInputs.eligibleGeneIds,
+                        ],
+                        trialGeneId:
+                          context.genome.eligibilityInputs.trialGeneId,
+                        bankedRuns:
+                          context.genome.eligibilityInputs.bankedRuns,
+                        masteryLevel:
+                          context.genome.eligibilityInputs.masteryLevel,
+                      },
+                    }
+                  : {}),
               }
             : context.genome.rulesVersion === GENOME_RULES_V1
               ? { rulesVersion: GENOME_RULES_V1 }

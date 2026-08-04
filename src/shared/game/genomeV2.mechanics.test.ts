@@ -192,17 +192,23 @@ describe('Genome v2 run-start authority and deterministic offers', () => {
     )).toThrow('deterministic run stream');
   });
 
-  it('excludes seen genes, locked signatures, and Phoenix with an external life', () => {
+  it('excludes seen genes and Phoenix with an external life, and offers the Signature from run one', () => {
     let state = createGenomeV2State('PRIMAL', {
       runSeed: 'run-seed-filter-001',
       externalSecondLife: 'iron_scales',
       ftue: deriveGenomeV2Ftue(0, 0),
     });
+    let sawSignature = false;
     for (let index = 0; index < 24; index += 1) {
       const offer = rollGenomeV2Offer(state, index);
       expect(offer?.candidates).not.toContain('phoenix');
-      expect(offer?.candidates).not.toContain('heartwood');
+      if (offer?.candidates.includes('heartwood')) sawSignature = true;
     }
+    // Constitution v1.14 overturn #36 / owner ruling 1: the Dynasty Signature
+    // is offerable from the first run at zero banks. Dynasty identity is not
+    // advanced content, and with the old lock a seven-Gene starter pool
+    // behaved like a six and could never fill the sixth locus.
+    expect(sawSignature).toBe(true);
     state = acquire(state, 'gold_trail', 0, 'seen-gold');
     for (let index = 0; index < 24; index += 1) {
       expect(rollGenomeV2Offer(state, index)?.candidates).not.toContain('gold_trail');
@@ -341,18 +347,34 @@ describe('Genome v2 FTUE activation authority', () => {
     })).toThrow('disagrees');
   });
 
-  it('rejects locked portal actions and locked Dynasty signatures', () => {
+  it('rejects locked portal actions but admits the Dynasty signature at zero banks', () => {
     const locked = createGenomeV2State('PRIMAL', {
       ftue: deriveGenomeV2Ftue(0, 0),
     });
     const portal = openPortal(locked, 'locked-door');
     expect(() => continuePortal(portal, 'locked-door')).toThrow('CONTINUE is locked');
+    // Ruling 1 deleted the paired signature assertion with the offer filter:
+    // the run-start pool is now the only authority on what may be acquired.
+    // Apex TIER activation keeps its own ramp and is untouched by this.
+    expect(locked.ftue.apexesUnlocked).toBe(false);
     expect(() => apply(locked, {
       type: 'offer_opened',
-      offerId: 'locked-signature',
+      offerId: 'signature-in-run-one',
       source: 'cadence',
       candidates: ['heartwood', 'gold_trail'],
-    })).toThrow('signature is still locked');
+    })).not.toThrow();
+    // A Gene outside the run-start pool is still refused, at the pool.
+    expect(() => apply(
+      createGenomeV2State('PRIMAL', {
+        genePool: ['gold_trail', 'compound_interest', 'phoenix'],
+      }),
+      {
+        type: 'offer_opened',
+        offerId: 'outside-the-pool',
+        source: 'cadence',
+        candidates: ['heartwood', 'gold_trail'],
+      }
+    )).toThrow('is not legal for PRIMAL');
   });
 });
 

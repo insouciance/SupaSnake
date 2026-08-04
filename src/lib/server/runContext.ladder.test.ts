@@ -20,14 +20,14 @@ import { describe, it, expect } from '@jest/globals';
 import {
   parseRunStartContext,
   serializeRunStartContext,
-  RUN_CONTEXT_VERSION,
+  RUN_CONTEXT_LEGACY_VERSION,
   type RunStartContext,
 } from './runContext';
 import { LADDER_MAX_RUNG, resolveLadderRung } from '@/shared/game/ladder';
 
 function baseContext(): RunStartContext {
   return {
-    v: RUN_CONTEXT_VERSION,
+    v: RUN_CONTEXT_LEGACY_VERSION,
     snake: { id: 'snake-1', generation: 2, traits: [] },
     mutationPool: ['gold_trail'],
     freePlay: false,

@@ -8,6 +8,9 @@
  */
 
 import {
+  GENOME_V2_ELIGIBILITY_CONTRACT_VERSION,
+  genomeV2DynastyForVocabulary,
+  genomeV2PlayableVocabulary,
   isGeneId,
   isGenomeV2ActiveGeneId,
   type GeneId,
@@ -68,6 +71,21 @@ export interface SanitizedGenomeV2Capability {
   offerTiltStrain: StrainId | null;
   suppressedStrains: StrainId[];
   strainThresholdDelta: Partial<Record<StrainId, number>>;
+  /**
+   * The curriculum stamp (WP-B), present only on a run started with the
+   * curriculum live. All three keys arrive and are validated together, and a
+   * pool that does not follow from its own declared inputs sanitizes to null —
+   * the same refusal a malformed FTUE presentation gets, which routes the
+   * client through the legacy engine path rather than a guessed vocabulary.
+   */
+  eligibilityContractVersion?: number;
+  learningEventVersion?: number;
+  eligibilityInputs?: {
+    eligibleGeneIds: GenomeV2ActiveGeneId[];
+    trialGeneId: GenomeV2ActiveGeneId | null;
+    bankedRuns: number;
+    masteryLevel: number;
+  };
   /** Keeps shared callers type-safe without emitting a legacy FTUE alias. */
   ftue?: never;
 }
@@ -207,6 +225,70 @@ export function sanitizeGenomeFtue(raw: unknown): GenomeFtueCapability {
   };
 }
 
+/**
+ * Strict, all-or-nothing parse of the curriculum stamp on an issued manifest.
+ *
+ * `undefined` means the run carries none (curriculum off, or a manifest issued
+ * before WP-B) and the pool is the complete legal Dynasty roster — today's
+ * behaviour, unchanged. `null` means a stamp is present but does not
+ * re-derive, which fails the whole capability closed.
+ */
+function strictV2Eligibility(
+  value: Record<string, unknown>,
+  v2GenePool: GenomeV2ActiveGeneId[]
+): SanitizedGenomeV2Capability['eligibilityInputs'] | null | undefined {
+  const keys = [
+    'eligibilityContractVersion',
+    'learningEventVersion',
+    'eligibilityInputs',
+  ] as const;
+  const present = keys.filter((key) =>
+    Object.prototype.hasOwnProperty.call(value, key)
+  );
+  if (present.length === 0) return undefined;
+  if (present.length !== keys.length) return null;
+  if (
+    value.eligibilityContractVersion !==
+      GENOME_V2_ELIGIBILITY_CONTRACT_VERSION ||
+    !Number.isSafeInteger(value.learningEventVersion) ||
+    (value.learningEventVersion as number) < 1
+  ) {
+    return null;
+  }
+  const raw = value.eligibilityInputs;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const inputs = raw as Record<string, unknown>;
+  if (
+    !Array.isArray(inputs.eligibleGeneIds) ||
+    !inputs.eligibleGeneIds.every(isGenomeV2ActiveGeneId) ||
+    new Set(inputs.eligibleGeneIds).size !== inputs.eligibleGeneIds.length ||
+    (inputs.trialGeneId !== null &&
+      !isGenomeV2ActiveGeneId(inputs.trialGeneId)) ||
+    !Number.isSafeInteger(inputs.bankedRuns) ||
+    (inputs.bankedRuns as number) < 0 ||
+    !Number.isSafeInteger(inputs.masteryLevel) ||
+    (inputs.masteryLevel as number) < 0
+  ) {
+    return null;
+  }
+  const sanitized = {
+    eligibleGeneIds: [...(inputs.eligibleGeneIds as GenomeV2ActiveGeneId[])],
+    trialGeneId: inputs.trialGeneId as GenomeV2ActiveGeneId | null,
+    bankedRuns: inputs.bankedRuns as number,
+    masteryLevel: inputs.masteryLevel as number,
+  };
+  const dynasty = genomeV2DynastyForVocabulary(v2GenePool);
+  if (!dynasty) return null;
+  const rederived = genomeV2PlayableVocabulary(dynasty, sanitized);
+  if (
+    rederived.length !== v2GenePool.length ||
+    rederived.some((geneId, index) => geneId !== v2GenePool[index])
+  ) {
+    return null;
+  }
+  return sanitized;
+}
+
 function sanitizeGenomeV2Capability(
   value: Record<string, unknown>
 ): SanitizedGenomeV2Capability | null {
@@ -247,6 +329,9 @@ function sanitizeGenomeV2Capability(
     return null;
   }
 
+  const eligibilityInputs = strictV2Eligibility(value, v2GenePool);
+  if (eligibilityInputs === null) return null;
+
   return {
     rulesVersion: GENOME_RULES_V2,
     interactionVersion:
@@ -258,6 +343,14 @@ function sanitizeGenomeV2Capability(
     offerTiltStrain: value.offerTiltStrain,
     suppressedStrains,
     strainThresholdDelta,
+    ...(eligibilityInputs
+      ? {
+          eligibilityContractVersion:
+            value.eligibilityContractVersion as number,
+          learningEventVersion: value.learningEventVersion as number,
+          eligibilityInputs,
+        }
+      : {}),
   };
 }
 
