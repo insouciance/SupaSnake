@@ -195,6 +195,55 @@ describe('Genome v2 server-authoritative settlement', () => {
     ).toThrow(/run-start authority/);
   });
 
+  it('refuses a learning event the run could not have taught (WP-B)', () => {
+    const { context, input } = fixture();
+    // `learningEventsResolved` is the ONLY input to an eligibility promotion,
+    // so a record claiming a Gene that was never in the run's own frozen
+    // vocabulary is refused before settlement reads it. CYBER's Signature is
+    // not in a PRIMAL pool.
+    for (const learningEventsResolved of [
+      ['zenith_protocol'],
+      ['gold_trail', 'gold_trail'],
+      'gold_trail',
+    ]) {
+      expect(() =>
+        validateGameResult(
+          {
+            ...input,
+            genome: { ...(input.genome as object), learningEventsResolved },
+          },
+          new Date(Date.now() - 30_000),
+          'PRIMAL',
+          [],
+          null,
+          null,
+          context
+        )
+      ).toThrow(/learning event outside its own pool/);
+    }
+
+    // A Gene the run could offer is accepted and survives to the settled record.
+    const accepted = validateGameResult(
+      {
+        ...input,
+        genome: {
+          ...(input.genome as object),
+          learningEventsResolved: ['gold_trail'],
+        },
+      },
+      new Date(Date.now() - 30_000),
+      'PRIMAL',
+      [],
+      null,
+      null,
+      context
+    );
+    expect(
+      (accepted.genome as { learningEventsResolved?: string[] })
+        .learningEventsResolved
+    ).toEqual(['gold_trail']);
+  });
+
   it('refuses a pre-authored settlement or forged journal identity', () => {
     const { state, context, input } = fixture();
     expect(() =>

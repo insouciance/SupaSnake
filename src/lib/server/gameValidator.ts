@@ -792,6 +792,25 @@ function authoritativeGenomeV2Record(
     }
     priorTick = event.tick;
   }
+  // Curriculum learning events (WP-B). The field is written by the pure
+  // reducer, so a well-formed record can only ever carry Genes that were in
+  // the run's own frozen vocabulary — a resolution for a Gene the run could
+  // not offer did not happen in this run. Bounded and distinct for the same
+  // reason the persistence check exists below it: this field is the only
+  // input to an eligibility promotion, and it must not be able to grow.
+  if (record.learningEventsResolved !== undefined) {
+    const resolved = record.learningEventsResolved;
+    if (
+      !Array.isArray(resolved) ||
+      resolved.length > ctx.genePool.length ||
+      new Set(resolved).size !== resolved.length ||
+      resolved.some((geneId) => !ctx.genePool.includes(geneId))
+    ) {
+      throw new Error(
+        'Genome v2 terminal record claims a learning event outside its own pool.'
+      );
+    }
+  }
   assertGenomeV2PersistenceBound(record);
   return record;
 }
