@@ -178,6 +178,10 @@ jobs:
           bash scripts/verify-linked-migration-plan.sh
           actual=$(grep '^actual=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
 
+          # A closed allowlist. Every branch below is one exact plan a human
+          # reviewed, and each one names the apply/validate steps that carry
+          # it. Never add a generic, inferred, or additive path: an unknown
+          # plan must reach the final else and stop the release.
           rollout=''
           if [ -z "$actual" ]; then
             rollout=none
@@ -193,6 +197,8 @@ jobs:
               || ",$actual," == *",065_genome_v2.sql,"* ]]; then
             echo "::error::Genome v2 migrations require the exact reviewed chain or an ordered suffix"
             exit 1
+          elif [ "$actual" = '066_settlement_payload_bounds.sql' ]; then
+            rollout=settlement-payload-bounds
           else
             echo "::error::This release workflow rejects migrations without an explicit reviewed rollout contract: $actual"
             exit 1
@@ -375,11 +381,23 @@ jobs:
           node scripts/verify-github-sha-workflows.mjs
           bash scripts/verify-linked-migration-plan.sh
 
-      - name: Apply reviewed Genome v2 bridge migrations
-        if: ${{ steps.migration_plan.outputs.rollout == 'genome-v2-initial' || steps.migration_plan.outputs.rollout == 'genome-v2-resume' }}
+      # Both steps name every reviewed rollout explicitly. The push mutates
+      # exactly the plan the step above re-proved: it is the same
+      # `--include-all` set the dry-run classified, whether that is the
+      # 062-065 Genome v2 bridge or the single 066 settlement-bounds file.
+      # `db lint` is not Genome-specific — it is the linked plpgsql check, and
+      # 066 redefines two SECURITY DEFINER functions, so it applies unchanged.
+      - name: Apply the reviewed migration rollout
+        if: >-
+          ${{ steps.migration_plan.outputs.rollout == 'genome-v2-initial'
+          || steps.migration_plan.outputs.rollout == 'genome-v2-resume'
+          || steps.migration_plan.outputs.rollout == 'settlement-payload-bounds' }}
         run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
-      - name: Validate reviewed Genome v2 bridge schema
-        if: ${{ steps.migration_plan.outputs.rollout == 'genome-v2-initial' || steps.migration_plan.outputs.rollout == 'genome-v2-resume' }}
+      - name: Validate the reviewed migration rollout schema
+        if: >-
+          ${{ steps.migration_plan.outputs.rollout == 'genome-v2-initial'
+          || steps.migration_plan.outputs.rollout == 'genome-v2-resume'
+          || steps.migration_plan.outputs.rollout == 'settlement-payload-bounds' }}
         run: supabase db lint --linked --level warning --fail-on error
 
       - name: Prove the linked migration plan is empty after the reviewed push

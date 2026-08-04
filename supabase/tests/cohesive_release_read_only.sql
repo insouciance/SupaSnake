@@ -382,6 +382,62 @@ genome_definer_contract AS (
   LEFT JOIN pg_catalog.pg_proc AS procedure_row
     ON procedure_row.oid = pg_catalog.to_regprocedure(required.signature)
 ),
+-- Migration 066 widened one column CHECK and two settlement bounds to the
+-- 262144 the terminal facts already accept. The column CHECK and the earning
+-- ingress are rewritten unconditionally, but the practice-run bound is patched
+-- by a DO block that returns quietly when it cannot find the old literal, so a
+-- successful push is not by itself proof that the stranding bound is gone.
+-- This asserts the applied result structurally, without invoking either
+-- function.
+settlement_bounds_contract AS (
+  SELECT
+    EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_constraint AS constraint_row
+      WHERE constraint_row.conrelid =
+            pg_catalog.to_regclass('public.pending_game_session_ends')
+        AND constraint_row.contype = 'c'
+        AND constraint_row.convalidated
+        AND constraint_row.conname =
+            'pending_game_session_ends_envelope_check'
+        AND pg_catalog.pg_get_constraintdef(constraint_row.oid)
+            LIKE '%262144%'
+        AND pg_catalog.pg_get_constraintdef(constraint_row.oid)
+            NOT LIKE '%65536%'
+    )
+    AND (
+      SELECT COALESCE(pg_catalog.bool_and(
+        procedure_row.oid IS NOT NULL
+        AND pg_catalog.strpos(
+          pg_catalog.regexp_replace(
+            procedure_row.prosrc, '[[:space:]]+', '', 'g'
+          ),
+          required.settling_bound
+        ) > 0
+        AND pg_catalog.strpos(
+          pg_catalog.regexp_replace(
+            procedure_row.prosrc, '[[:space:]]+', '', 'g'
+          ),
+          required.stranding_bound
+        ) = 0
+      ), FALSE)
+      FROM (
+        VALUES
+          (
+            'public.store_pending_game_session_end(uuid,uuid,uuid,jsonb)'::TEXT,
+            'octet_length(p_envelope::TEXT)NOTBETWEEN2AND262144'::TEXT,
+            'octet_length(p_envelope::TEXT)NOTBETWEEN2AND65536'::TEXT
+          ),
+          (
+            'public.complete_free_run_continuity(uuid,uuid,text,jsonb)',
+            'octet_length(p_facts::TEXT)>262144',
+            'octet_length(p_facts::TEXT)>65536'
+          )
+      ) AS required(signature, settling_bound, stranding_bound)
+      LEFT JOIN pg_catalog.pg_proc AS procedure_row
+        ON procedure_row.oid = pg_catalog.to_regprocedure(required.signature)
+    ) AS settlement_bounds_aligned
+),
 cohesive_contract AS (
   SELECT
     execution_contract.read_only_execution,
@@ -397,7 +453,8 @@ cohesive_contract AS (
     genome_contract.genome_catalog_valid,
     genome_table_privilege_contract.genome_table_privileges_valid,
     genome_codex_version_contract.genome_codex_versions_valid,
-    genome_definer_contract.genome_definers_hardened
+    genome_definer_contract.genome_definers_hardened,
+    settlement_bounds_contract.settlement_bounds_aligned
   FROM execution_contract
   CROSS JOIN founding_bridge_contract
   CROSS JOIN function_contract
@@ -409,6 +466,7 @@ cohesive_contract AS (
   CROSS JOIN genome_table_privilege_contract
   CROSS JOIN genome_codex_version_contract
   CROSS JOIN genome_definer_contract
+  CROSS JOIN settlement_bounds_contract
 )
 SELECT pg_catalog.jsonb_build_object(
   'status', CASE
@@ -427,10 +485,11 @@ SELECT pg_catalog.jsonb_build_object(
       AND cohesive_contract.genome_table_privileges_valid
       AND cohesive_contract.genome_codex_versions_valid
       AND cohesive_contract.genome_definers_hardened
+      AND cohesive_contract.settlement_bounds_aligned
     THEN 'ready'
     ELSE 'invalid'
   END,
-  'probe', 'cohesive_release_read_only_v3',
+  'probe', 'cohesive_release_read_only_v4',
   'checks', pg_catalog.jsonb_build_object(
     'readOnlyExecution',
       cohesive_contract.read_only_execution,
@@ -459,7 +518,9 @@ SELECT pg_catalog.jsonb_build_object(
     'genomeCodexVersionsValid',
       cohesive_contract.genome_codex_versions_valid,
     'genomeDefinersHardened',
-      cohesive_contract.genome_definers_hardened
+      cohesive_contract.genome_definers_hardened,
+    'settlementBoundsAligned',
+      cohesive_contract.settlement_bounds_aligned
   )
 ) AS cohesive_release_probe
 FROM cohesive_contract;
