@@ -1524,6 +1524,30 @@ export function genomeV2MechanicEnabled(
   }
 }
 
+/**
+ * The one truth about whether a golden target carries a branch to commit.
+ *
+ * The Gold Trail Gene spawns golden food on its own cadence, but only the
+ * Gilded Fork Splice draws the second cell that makes a choice meaningful —
+ * `targetMultiplierBps` likewise reads `forkChoice` only under that Splice.
+ * The reducer guards `gilded_fork_chosen` with this predicate and the engine
+ * asks it before committing, so board geometry and reducer legality can never
+ * disagree about whether a choice is owed.
+ */
+export function genomeV2GildedForkChoiceAvailable(
+  state: GenomeV2State,
+  targetId: string
+): boolean {
+  const target = state.targets[targetId];
+  return (
+    genomeV2HasSplice(state, 'splice_gilded_fork') &&
+    !!target &&
+    target.kind === 'gold_trail' &&
+    target.lifecycle === 'active' &&
+    target.forkChoice === null
+  );
+}
+
 function geneInstance(
   state: GenomeV2State,
   geneId: GenomeV2ActiveGeneId
@@ -2889,17 +2913,10 @@ export function reduceGenomeV2Event(
       break;
     }
     case 'gilded_fork_chosen': {
-      const target = state.targets[event.targetId];
-      if (
-        !genomeV2HasSplice(state, 'splice_gilded_fork') ||
-        !target ||
-        target.kind !== 'gold_trail' ||
-        target.lifecycle !== 'active' ||
-        target.forkChoice !== null
-      ) {
+      if (!genomeV2GildedForkChoiceAvailable(state, event.targetId)) {
         throw new Error('Genome v2 Gilded Fork choice is unavailable.');
       }
-      target.forkChoice = event.choice;
+      state.targets[event.targetId].forkChoice = event.choice;
       break;
     }
     case 'coil_sealed':
