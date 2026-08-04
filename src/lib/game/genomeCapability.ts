@@ -22,6 +22,7 @@ import {
   GENOME_RULES_V1,
   GENOME_RULES_V2,
   GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT,
+  GENOME_V2_TRIAL_OFFER_GUARANTEE,
   genomeV2FtueFromPresentation,
   isGenomeV2InteractionVersion,
   type GenomeV2FtuePresentation,
@@ -85,6 +86,12 @@ export interface SanitizedGenomeV2Capability {
     trialGeneId: GenomeV2ActiveGeneId | null;
     bankedRuns: number;
     masteryLevel: number;
+    /**
+     * Guaranteed trial appearances left at run start (WP-C). Absent means the
+     * run carries no guarantee and the trial is drawn ordinarily — the same
+     * thing a stamp written before the trial mechanism existed means.
+     */
+    trialOffersRemaining?: number;
   };
   /** Keeps shared callers type-safe without emitting a legacy FTUE alias. */
   ftue?: never;
@@ -271,11 +278,27 @@ function strictV2Eligibility(
   ) {
     return null;
   }
+  // A guarantee with no trial attached, or one outside the ratified three, is
+  // not a manifest this server writes. Fail the capability rather than clamp:
+  // the run would otherwise pin a candidate the server did not authorise.
+  if (
+    inputs.trialOffersRemaining !== undefined &&
+    (inputs.trialGeneId === null ||
+      !Number.isSafeInteger(inputs.trialOffersRemaining) ||
+      (inputs.trialOffersRemaining as number) < 1 ||
+      (inputs.trialOffersRemaining as number) >
+        GENOME_V2_TRIAL_OFFER_GUARANTEE)
+  ) {
+    return null;
+  }
   const sanitized = {
     eligibleGeneIds: [...(inputs.eligibleGeneIds as GenomeV2ActiveGeneId[])],
     trialGeneId: inputs.trialGeneId as GenomeV2ActiveGeneId | null,
     bankedRuns: inputs.bankedRuns as number,
     masteryLevel: inputs.masteryLevel as number,
+    ...(inputs.trialOffersRemaining !== undefined
+      ? { trialOffersRemaining: inputs.trialOffersRemaining as number }
+      : {}),
   };
   const dynasty = genomeV2DynastyForVocabulary(v2GenePool);
   if (!dynasty) return null;
@@ -287,6 +310,33 @@ function strictV2Eligibility(
     return null;
   }
   return sanitized;
+}
+
+/**
+ * The runtime trial option a curriculum stamp implies (WP-C).
+ *
+ * ONE READER FOR EVERY HOST. `SnakeGameLogic` (live play) and the checkpoint
+ * comparator (`runContinuity`) both start engines from the same stamp, and a
+ * disagreement between them would surface as a refused checkpoint rather than
+ * as a wrong offer — so they read it through the same function.
+ *
+ * `null` means "no guaranteed appearances": no curriculum stamp, no selected
+ * trial, or a guarantee already spent. In all three the Gene is still an
+ * ordinary member of the frozen vocabulary.
+ */
+export function genomeV2StampedTrial(
+  inputs:
+    | {
+        trialGeneId: GenomeV2ActiveGeneId | null;
+        trialOffersRemaining?: number;
+      }
+    | null
+    | undefined
+): { geneId: GenomeV2ActiveGeneId; offersRemaining: number } | null {
+  if (!inputs || inputs.trialGeneId === null) return null;
+  const remaining = inputs.trialOffersRemaining ?? 0;
+  if (remaining <= 0) return null;
+  return { geneId: inputs.trialGeneId, offersRemaining: remaining };
 }
 
 function sanitizeGenomeV2Capability(

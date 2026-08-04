@@ -79,10 +79,12 @@ import {
 import {
   GENOME_RULES_V1,
   GENOME_RULES_V2,
+  GENOME_V2_TRIAL_OFFER_GUARANTEE,
   assertGenomeV2PersistenceBound,
   genomeV2EventId,
   genomeV2FtueFromPresentation,
   genomeV2RunRecord,
+  genomeV2TrialStamp,
   genomeV2YieldFloor,
   settleGenomeV2,
   type GenomeV2FtuePresentation,
@@ -281,6 +283,17 @@ export interface GenomeV2ValidationContext {
   authoritativeTerminal: boolean;
   growthProfileId?: GrowthProfileId;
   ladderRung?: number;
+  /**
+   * The curriculum trial the run was STAMPED with (WP-C), from
+   * `runContext.genome.eligibilityInputs` and never from the payload.
+   *
+   * Absent on every legacy, Free Play and flag-off run. Present, it is the
+   * authority the terminal record's own trial is checked against — the record
+   * is the only input to consuming guaranteed appearances against the account,
+   * so a record that renamed the trial or enlarged its guarantee would be
+   * spending someone else's guarantee.
+   */
+  trial?: { geneId: GenomeV2ActiveGeneId; offersRemaining: number } | null;
 }
 
 /** Server-derived, run-start-stamped Genome authority. */
@@ -810,6 +823,26 @@ function authoritativeGenomeV2Record(
         'Genome v2 terminal record claims a learning event outside its own pool.'
       );
     }
+  }
+  // The curriculum trial (WP-C). Re-derived from the START STAMP with the same
+  // function the engine stamped with, so "the run had no trial" and "the run
+  // had this trial with this guarantee" are both checkable facts rather than
+  // claims. Only `offersConsumed` may have moved, and only within the bound the
+  // guarantee sets: it is the number settlement spends against the account.
+  const expectedTrial = genomeV2TrialStamp(ctx.genePool, ctx.trial ?? null);
+  const carriedTrial = record.trial ?? null;
+  if (
+    expectedTrial?.geneId !== carriedTrial?.geneId ||
+    expectedTrial?.offersRemainingAtStart !==
+      carriedTrial?.offersRemainingAtStart ||
+    (carriedTrial !== null &&
+      (!Number.isSafeInteger(carriedTrial.offersConsumed) ||
+        carriedTrial.offersConsumed < 0 ||
+        carriedTrial.offersConsumed > GENOME_V2_TRIAL_OFFER_GUARANTEE))
+  ) {
+    throw new Error(
+      'Genome v2 terminal record disagrees with its run-start trial.'
+    );
   }
   assertGenomeV2PersistenceBound(record);
   return record;

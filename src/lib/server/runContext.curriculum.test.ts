@@ -241,3 +241,73 @@ describe('the curriculum stamp: forgery', () => {
     expect(roundTrip(source)).toEqual({ ok: true, context: source });
   });
 });
+
+// ---------------------------------------------------------------------------
+// The trial guarantee on the stamp (WP-C)
+// ---------------------------------------------------------------------------
+
+describe('the stamped trial guarantee', () => {
+  const guaranteed: RunStartEligibilityInputs = {
+    ...INPUTS,
+    trialOffersRemaining: 2,
+  };
+
+  it('round-trips beside the inputs the pool was composed from', () => {
+    const source = context(guaranteed);
+    expect(roundTrip(source)).toEqual({ ok: true, context: source });
+  });
+
+  it('is omitted, not zeroed, when the account has none left', () => {
+    // A spent guarantee stores the same bytes a pre-WP-C curriculum run
+    // stored: the trial is simply an ordinary member of the vocabulary.
+    const raw = serializeRunStartContext(context());
+    const inputs = (raw.genome as Record<string, unknown>)
+      .eligibilityInputs as Record<string, unknown>;
+    expect('trialOffersRemaining' in inputs).toBe(false);
+  });
+
+  it('reads a stamp written before the guarantee existed as no guarantee', () => {
+    // The staged-deploy case: WP-B's shape is not malformed here, it just
+    // carries no guaranteed appearances.
+    const parsed = roundTrip(context());
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok || parsed.context.genome?.rulesVersion !== GENOME_RULES_V2) {
+      throw new Error('expected a v2 curriculum context');
+    }
+    expect(
+      parsed.context.genome.eligibilityInputs?.trialOffersRemaining
+    ).toBeUndefined();
+  });
+
+  it('rejects a guarantee that is enlarged, invented, or attached to no trial', () => {
+    for (const mutate of [
+      (inputs: Record<string, unknown>) => {
+        inputs.trialOffersRemaining = 4;
+      },
+      (inputs: Record<string, unknown>) => {
+        inputs.trialOffersRemaining = 0;
+      },
+      (inputs: Record<string, unknown>) => {
+        inputs.trialOffersRemaining = 1.5;
+      },
+      (inputs: Record<string, unknown>) => {
+        inputs.trialOffersRemaining = '3';
+      },
+      (inputs: Record<string, unknown>) => {
+        // A guarantee with nothing to guarantee: the pool still re-derives, so
+        // only the shape check catches this one.
+        inputs.trialGeneId = null;
+        inputs.trialOffersRemaining = 3;
+      },
+    ]) {
+      const raw = stamped();
+      const genome = raw.genome as Record<string, unknown>;
+      const inputs = genome.eligibilityInputs as Record<string, unknown>;
+      mutate(inputs);
+      const parsed = parseRunStartContext(raw);
+      expect(parsed.ok).toBe(false);
+      if (parsed.ok) return;
+      expect(parsed.malformed).toBe(true);
+    }
+  });
+});

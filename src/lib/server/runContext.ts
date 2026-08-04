@@ -49,6 +49,7 @@ import {
   GENOME_RULES_V1,
   GENOME_RULES_V2,
   GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT,
+  GENOME_V2_TRIAL_OFFER_GUARANTEE,
   genomeV2FtueFromPresentation,
   isGenomeV2InteractionVersion,
   type GenomeRulesVersion,
@@ -155,6 +156,20 @@ export interface RunStartEligibilityInputs {
   trialGeneId: GenomeV2ActiveGeneId | null;
   bankedRuns: number;
   masteryLevel: number;
+  /**
+   * Guaranteed trial appearances the account had left at run start (WP-C),
+   * `1..GENOME_V2_TRIAL_OFFER_GUARANTEE`.
+   *
+   * AN INPUT TO THE OFFER ROLL, NOT TO THE VOCABULARY — the re-derive below
+   * ignores it by construction, because a spent guarantee changes which
+   * candidate position the trial occupies and never which Genes are eligible.
+   *
+   * ABSENT MEANS NO GUARANTEE, WHICH IS EXACTLY WP-B's SHIPPED BEHAVIOUR: the
+   * trial is still in the vocabulary and is still drawn ordinarily. That makes
+   * a stamp written by a build without the trial mechanism readable here
+   * instead of malformed, which is what a staged deploy needs.
+   */
+  trialOffersRemaining?: number;
 }
 
 export interface RunStartGenomeV2Context extends RunStartGenomeContextCommon {
@@ -351,11 +366,26 @@ function parseEligibility(
   ) {
     return 'invalid';
   }
+  // A guarantee without a trial to guarantee is not a shape this server ever
+  // writes, so reading one means the blob was edited.
+  if (
+    inputs.trialOffersRemaining !== undefined &&
+    (inputs.trialGeneId === null ||
+      !Number.isSafeInteger(inputs.trialOffersRemaining) ||
+      (inputs.trialOffersRemaining as number) < 1 ||
+      (inputs.trialOffersRemaining as number) >
+        GENOME_V2_TRIAL_OFFER_GUARANTEE)
+  ) {
+    return 'invalid';
+  }
   const eligibilityInputs: RunStartEligibilityInputs = {
     eligibleGeneIds: [...(inputs.eligibleGeneIds as GenomeV2ActiveGeneId[])],
     trialGeneId: inputs.trialGeneId as GenomeV2ActiveGeneId | null,
     bankedRuns: inputs.bankedRuns as number,
     masteryLevel: inputs.masteryLevel as number,
+    ...(inputs.trialOffersRemaining !== undefined
+      ? { trialOffersRemaining: inputs.trialOffersRemaining as number }
+      : {}),
   };
   // Only this build's contract can be re-derived. An older or newer contract
   // number is a stamp this deploy must not claim to have verified.
@@ -701,6 +731,18 @@ export function serializeRunStartContext(
                           context.genome.eligibilityInputs.bankedRuns,
                         masteryLevel:
                           context.genome.eligibilityInputs.masteryLevel,
+                        // Omitted when the account has no guaranteed
+                        // appearances left, so a curriculum run whose trial is
+                        // already an ordinary candidate stores the same bytes
+                        // it stored before the guarantee existed.
+                        ...(context.genome.eligibilityInputs
+                          .trialOffersRemaining !== undefined
+                          ? {
+                              trialOffersRemaining:
+                                context.genome.eligibilityInputs
+                                  .trialOffersRemaining,
+                            }
+                          : {}),
                       },
                     }
                   : {}),
