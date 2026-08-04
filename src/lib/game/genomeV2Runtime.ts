@@ -15,6 +15,7 @@ import {
   assertGenomeV2PersistenceBound,
   createGenomeV2State,
   genomeV2BodyGrowthDelta,
+  genomeV2CrownWaveBindingRefusal,
   genomeV2EventId,
   genomeV2GildedForkChoiceAvailable,
   genomeV2HasGene,
@@ -1414,12 +1415,20 @@ export class GenomeV2Runtime {
     return true;
   }
 
+  /**
+   * Whether a Constellation wave may bind these Stars. Asked before the
+   * preview Star is spawned so an unbindable wave costs the board nothing.
+   */
+  crownWaveBindable(currentTargetIds: readonly string[]): boolean {
+    return genomeV2CrownWaveBindingRefusal(this.state, currentTargetIds) === null;
+  }
+
   openCrownWave(
     tick: number,
     currentTargetIds: readonly string[],
     futureTargetId: string | null
   ): string | null {
-    if (this.state.crownWave) return null;
+    if (!this.crownWaveBindable(currentTargetIds)) return null;
     const future = futureTargetId ? this.state.targets[futureTargetId] : null;
     const ordinal = this.waveOrdinal + 1;
     const waveId = this.stableId('crown-wave', ordinal);

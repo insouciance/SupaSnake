@@ -6,6 +6,7 @@ import {
   deriveGenomeV2Ftue,
   deriveGenomeV2FtuePresentation,
   genomeV2EventId,
+  projectGenomeV2NextTarget,
   reduceGenomeV2Event,
   type GenomeV2Event,
   type GenomeV2InteractionVersion,
@@ -1068,6 +1069,116 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
       kind: 'genome_v2_overclock',
       source: 'zenith_protocol',
       activationId,
+    });
+  });
+});
+
+/**
+ * A crowded board is difficulty, not corruption. Five cells, a body coiled
+ * around the head, and exactly one legal step - to the food itself. No relay
+ * and no gate pair exist, which used to halt the whole run mid-registration.
+ */
+const CROWDED_OPENING = {
+  snake: [
+    { x: 0, y: 0, z: 0 },
+    { x: 0, y: 0, z: 1 },
+    { x: 0, y: 0, z: 2 },
+    { x: 1, y: 0, z: 2 },
+    { x: 1, y: 0, z: 1 },
+  ],
+  direction: 'UP' as Direction,
+  foods: [{ x: 1, y: 0, z: 0 }],
+};
+
+describe('SnakeGameLogic Genome v2 contract degradation', () => {
+  it('defers a Circuit contract instead of halting when no relay geometry exists', () => {
+    const reducer = reducerWithGene('CYBER', 'circuit_run', 3);
+    expect(
+      projectGenomeV2NextTarget(reducer, { cadenceEligible: true })
+        .requiresSecondaryCell
+    ).toBe(true);
+    const game = new SnakeGameLogic({
+      gridSize: 5,
+      ruleset: RULESETS.CYBER,
+      simulationSeed: 'circuit-crowded-board',
+      genome: configForState(reducer),
+    });
+
+    expect(() => game.startDriven(CROWDED_OPENING)).not.toThrow();
+
+    const state = game.getState();
+    // The food stays exactly where it was placed: no relay was invented.
+    expect(state.foods).toEqual([{ x: 1, y: 0, z: 0 }]);
+    const spawned = Object.values(state.genomeV2?.targets ?? {}).filter(
+      (target) => target.lifecycle === 'active' || target.lifecycle === 'armed'
+    );
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]).toMatchObject({
+      kind: 'ordinary',
+      secondaryCell: null,
+      contractId: null,
+    });
+    // Deferred, not consumed: the cadence clock did not advance, so the very
+    // next eligible target still owes the same Circuit.
+    expect(state.genomeV2?.eligibleTargetCount).toBe(
+      reducer.eligibleTargetCount
+    );
+    expect(
+      projectGenomeV2NextTarget(state.genomeV2!, { cadenceEligible: true })
+        .requiresSecondaryCell
+    ).toBe(true);
+  });
+
+  it('defers a Phase contract instead of halting when no gate geometry exists', () => {
+    const reducer = reducerWithGene('CYBER', 'phase_gate', 4);
+    expect(
+      projectGenomeV2NextTarget(reducer, { cadenceEligible: true })
+        .requiresOptionalRouteCells
+    ).toBe(true);
+    const game = new SnakeGameLogic({
+      gridSize: 5,
+      ruleset: RULESETS.CYBER,
+      simulationSeed: 'phase-crowded-board',
+      genome: configForState(reducer),
+    });
+
+    expect(() => game.startDriven(CROWDED_OPENING)).not.toThrow();
+
+    const state = game.getState();
+    expect(state.foods).toEqual([{ x: 1, y: 0, z: 0 }]);
+    const spawned = Object.values(state.genomeV2?.targets ?? {}).filter(
+      (target) => target.lifecycle === 'active' || target.lifecycle === 'armed'
+    );
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]).toMatchObject({
+      kind: 'ordinary',
+      optionalRouteCells: null,
+      contractId: null,
+    });
+    expect(state.genomeV2?.eligibleTargetCount).toBe(
+      reducer.eligibleTargetCount
+    );
+    expect(
+      projectGenomeV2NextTarget(state.genomeV2!, { cadenceEligible: true })
+        .requiresOptionalRouteCells
+    ).toBe(true);
+  });
+
+  it('keeps playing after a deferred contract instead of faulting the run', () => {
+    const reducer = reducerWithGene('CYBER', 'circuit_run', 3);
+    const game = new SnakeGameLogic({
+      gridSize: 5,
+      ruleset: RULESETS.CYBER,
+      simulationSeed: 'circuit-crowded-continues',
+      genome: configForState(reducer),
+    });
+    game.startDriven(CROWDED_OPENING);
+    // The single legal step is onto the food, and it must resolve normally.
+    expect(game.setDirection('RIGHT')).toBe('accepted');
+    expect(() => game.tick()).not.toThrow();
+    expect(game.getState()).toMatchObject({
+      foodEaten: 1,
+      isGameOver: false,
     });
   });
 });

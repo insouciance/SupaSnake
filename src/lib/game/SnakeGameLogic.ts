@@ -4755,6 +4755,14 @@ export class SnakeGameLogic {
         readonly [{ x: number; z: number }, { x: number; z: number }] | null =
         null;
       let shortestSafeMoves = Math.max(0, route.length - 1);
+      // A contract needs geometry the board can still honestly provide. A long
+      // snake on a small board legitimately leaves no relay or gate route -
+      // that is the game getting hard, not corruption - so an unroutable
+      // contract DEFERS: this food stays ordinary, the queued contract is not
+      // consumed and returns on a later target, exactly as the Gilded Fork
+      // branch below already degrades. Halting the run over difficulty is the
+      // one outcome that is never correct.
+      let contractGeometryFound = true;
 
       if (projection.requiresSecondaryCell) {
         const circuit = genomeV2CircuitRoute(
@@ -4764,16 +4772,17 @@ export class SnakeGameLogic {
           blocked,
           this.ruleset.torus === true
         );
-        if (!circuit) {
-          throw new Error('Genome v2 Circuit has no legal relay geometry.');
+        if (circuit) {
+          secondaryCell = { x: food.x, z: food.z };
+          cell = { ...circuit.relay };
+          shortestSafeMoves = circuit.shortestSafeMoves;
+          foods[index] = { ...cell, y: 0 };
+        } else {
+          contractGeometryFound = false;
         }
-        secondaryCell = { x: food.x, z: food.z };
-        cell = { ...circuit.relay };
-        shortestSafeMoves = circuit.shortestSafeMoves;
-        foods[index] = { ...cell, y: 0 };
       }
 
-      if (projection.requiresOptionalRouteCells) {
+      if (contractGeometryFound && projection.requiresOptionalRouteCells) {
         optionalRouteCells = genomeV2PhaseRoute(
           this.gridSize,
           head,
@@ -4781,14 +4790,10 @@ export class SnakeGameLogic {
           blocked,
           this.ruleset.torus === true
         );
-        if (!optionalRouteCells) {
-          throw new Error(
-            'Genome v2 Phase contract has no legal gate geometry.'
-          );
-        }
+        if (!optionalRouteCells) contractGeometryFound = false;
       }
 
-      if (projection.requiresForkCell) {
+      if (contractGeometryFound && projection.requiresForkCell) {
         const forkBlocked = this.waveBlockedGrid();
         for (const occupied of foods) {
           markBlocked(
@@ -4817,14 +4822,25 @@ export class SnakeGameLogic {
         // If the board cannot honestly fit two reachable branches, this food
         // stays ordinary and the queued Fork remains available for a later
         // target. A one-cell or unsafe "choice" would violate the mechanic.
-        cadenceEligible: !projection.requiresForkCell || forkCell !== null,
+        cadenceEligible:
+          contractGeometryFound &&
+          (!projection.requiresForkCell || forkCell !== null),
         crownRole: currentCrownWave ? 'current' : null,
       });
       currentTargetIds.push(spawned.targetId);
       if (forkCell) foods.push({ ...forkCell, y: 0 });
     }
 
-    if (currentCrownWave && currentTargetIds.length >= 2) {
+    // Ask whether the wave can bind BEFORE spawning its preview Star. A wave
+    // that cannot bind now costs the board nothing - no orphan preview object
+    // is left behind, the Stars stay ordinary collectibles, and the Crown
+    // simply does not open this cadence. The old throw landed after the wave
+    // was already half-registered, which is unrecoverable by construction.
+    if (
+      currentCrownWave &&
+      currentTargetIds.length >= 2 &&
+      runtime.crownWaveBindable(currentTargetIds)
+    ) {
       const futureCell = this.chooseGenomeV2CrownPreviewCell();
       let futureTargetId: string | null = null;
       if (futureCell) {
@@ -4848,17 +4864,10 @@ export class SnakeGameLogic {
         });
         futureTargetId = future.targetId;
       }
-      if (
-        !runtime.openCrownWave(
-          this.replayTicks,
-          currentTargetIds,
-          futureTargetId
-        )
-      ) {
-        throw new Error(
-          'Genome v2 Crown wave could not bind its target geometry.'
-        );
-      }
+      // The binding was preflighted above and the preview cell is chosen clear
+      // of every other Crown preview, so this cannot refuse; if it ever does,
+      // the wave is skipped and the reason recorded rather than thrown.
+      runtime.openCrownWave(this.replayTicks, currentTargetIds, futureTargetId);
     }
     if (foods.length > 0) this.state.food = { ...foods[0] };
     this.syncGenomeV2State();

@@ -9,6 +9,7 @@ import {
   deriveGenomeV2Ftue,
   deriveGenomeV2FtuePresentation,
   genomeV2BodyGrowthDelta,
+  genomeV2CrownWaveBindingRefusal,
   genomeV2EventId,
   genomeV2FtueFromPresentation,
   genomeV2MechanicEnabled,
@@ -761,6 +762,58 @@ describe('Genome v2 Dynasty signatures', () => {
       edible: false,
       collidable: false,
     });
+  });
+
+  it('binds a later Crown wave on a cell a dead preview Star still holds', () => {
+    let state = acquire(createGenomeV2State('COSMIC'), 'constellation_crown', 0);
+    state = spawn(state, 'first-a', { cell: { x: 1, z: 1 }, crownRole: 'current' });
+    state = spawn(state, 'first-b', { cell: { x: 2, z: 2 }, crownRole: 'current' });
+    state = spawn(state, 'first-future', { cell: { x: 3, z: 3 }, crownRole: 'future' });
+    state = apply(state, {
+      type: 'crown_wave_opened',
+      waveId: 'crown-first',
+      currentTargetIds: ['first-a', 'first-b'],
+      futureCells: [{ x: 3, z: 3 }],
+    });
+    state = resolve(state, 'first-a', { resolution: 'missed' });
+    state = apply(state, {
+      type: 'crown_wave_closed',
+      waveId: 'crown-first',
+      outcome: 'failed',
+    });
+    // Closing expires the preview IN PLACE: it keeps `crownRole: 'future'` and
+    // lingers in state until compaction, and its cell is not reserved.
+    expect(state.targets['first-future']).toMatchObject({
+      lifecycle: 'expired',
+      crownRole: 'future',
+    });
+
+    // A crowded board legitimately reuses that cell for the next wave.
+    state = spawn(state, 'second-a', { cell: { x: 4, z: 4 }, crownRole: 'current' });
+    state = spawn(state, 'second-b', { cell: { x: 5, z: 5 }, crownRole: 'current' });
+    state = spawn(state, 'second-future', { cell: { x: 3, z: 3 }, crownRole: 'future' });
+    expect(
+      genomeV2CrownWaveBindingRefusal(state, ['second-a', 'second-b'])
+    ).toBeNull();
+    state = apply(state, {
+      type: 'crown_wave_opened',
+      waveId: 'crown-second',
+      currentTargetIds: ['second-a', 'second-b'],
+      futureCells: [{ x: 3, z: 3 }],
+    });
+    expect(state.crownWave).toMatchObject({ waveId: 'crown-second' });
+  });
+
+  it('refuses an unbindable Crown wave with the shared predicate, not a surprise throw', () => {
+    let state = acquire(createGenomeV2State('COSMIC'), 'constellation_crown', 0);
+    state = spawn(state, 'lone-star', { cell: { x: 1, z: 1 }, crownRole: 'current' });
+    expect(genomeV2CrownWaveBindingRefusal(state, ['lone-star'])).toBe(
+      'Genome v2 Crown wave requires distinct current targets.'
+    );
+    state = spawn(state, 'preview-only', { cell: { x: 3, z: 3 }, crownRole: 'future' });
+    expect(
+      genomeV2CrownWaveBindingRefusal(state, ['lone-star', 'preview-only'])
+    ).toBe('Genome v2 Crown current target is ambiguous.');
   });
 });
 

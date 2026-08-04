@@ -1548,6 +1548,40 @@ export function genomeV2GildedForkChoiceAvailable(
   );
 }
 
+/**
+ * The one truth about whether a Constellation wave may bind its current Stars.
+ *
+ * Returns the reducer's own refusal message, or null when the binding is
+ * legal, so engine, runtime and reducer ask one question and get one answer.
+ * The engine needs the answer BEFORE it spawns the preview Star: a wave that
+ * cannot bind must degrade to "no wave this cadence" rather than halt the run,
+ * and it must not leave a preview object behind on the way out.
+ */
+export function genomeV2CrownWaveBindingRefusal(
+  state: GenomeV2State,
+  currentTargetIds: readonly string[]
+): string | null {
+  if (!genomeV2HasGene(state, 'constellation_crown') || state.crownWave) {
+    return 'Genome v2 Crown wave is unavailable.';
+  }
+  const uniqueIds = new Set(currentTargetIds);
+  if (uniqueIds.size < 2 || uniqueIds.size !== currentTargetIds.length) {
+    return 'Genome v2 Crown wave requires distinct current targets.';
+  }
+  for (const targetId of currentTargetIds) {
+    const target = state.targets[targetId];
+    if (
+      !target ||
+      !['current', 'crown'].includes(target.crownRole ?? '') ||
+      !target.edible ||
+      !target.collidable
+    ) {
+      return 'Genome v2 Crown current target is ambiguous.';
+    }
+  }
+  return null;
+}
+
 function geneInstance(
   state: GenomeV2State,
   geneId: GenomeV2ActiveGeneId
@@ -3060,32 +3094,25 @@ export function reduceGenomeV2Event(
       state.overclock = null;
       break;
     case 'crown_wave_opened': {
-      if (!genomeV2HasGene(state, 'constellation_crown') || state.crownWave) {
-        throw new Error('Genome v2 Crown wave is unavailable.');
-      }
-      const uniqueIds = new Set(event.currentTargetIds);
-      if (uniqueIds.size < 2 || uniqueIds.size !== event.currentTargetIds.length) {
-        throw new Error('Genome v2 Crown wave requires distinct current targets.');
-      }
-      for (const targetId of event.currentTargetIds) {
-        const target = state.targets[targetId];
-        if (
-          !target ||
-          !['current', 'crown'].includes(target.crownRole ?? '') ||
-          !target.edible ||
-          !target.collidable
-        ) {
-          throw new Error('Genome v2 Crown current target is ambiguous.');
-        }
-      }
+      const refusal = genomeV2CrownWaveBindingRefusal(
+        state,
+        event.currentTargetIds
+      );
+      if (refusal) throw new Error(refusal);
       const futureKeys = event.futureCells.map((cell) => `${cell.x}:${cell.z}`);
       if (new Set(futureKeys).size !== futureKeys.length) {
         throw new Error('Genome v2 Crown future stars must occupy distinct cells.');
       }
       for (const cell of event.futureCells) {
+        // Only a LIVE preview can be this wave's future Star. Closing a wave
+        // expires its previews in place (they keep `crownRole: 'future'`) and
+        // they linger until compaction, so counting resolved objects here made
+        // a later wave ambiguous - and fatal - merely because the board reused
+        // a cell a dead preview once occupied.
         const matches = Object.values(state.targets).filter(
           (target) =>
             target.crownRole === 'future' &&
+            ['active', 'armed'].includes(target.lifecycle) &&
             !target.edible &&
             !target.collidable &&
             target.cell.x === cell.x &&
