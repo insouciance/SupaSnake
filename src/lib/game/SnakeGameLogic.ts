@@ -855,6 +855,22 @@ const CLOCKWISE: Record<Direction, Direction> = {
 };
 
 /**
+ * The one rule that decides whether a turn may enter the buffer, expressed
+ * against the heading it will turn away from. Live input and server replay
+ * must never answer this question with two different pieces of code: that
+ * divergence is what let a turn accepted at the keyboard be rejected as
+ * "illegal" during settlement.
+ */
+function turnAdmission(
+  reference: Direction,
+  dir: Direction
+): Extract<SetDirectionResult, 'accepted' | 'duplicate' | 'reversal'> {
+  if (dir === reference) return 'duplicate';
+  if (dir === OPPOSITES[reference]) return 'reversal';
+  return 'accepted';
+}
+
+/**
  * SnakeGameLogic Class
  * Handles all game mechanics
  */
@@ -1005,6 +1021,21 @@ export class SnakeGameLogic {
   private preTurnIntent: QueuedDirection | null = null;
   /** Last two accepted flick turns, retained only to classify a third. */
   private recentFlickTurns: RecentFlickTurn[] = [];
+  /**
+   * Direction consumed by the previous movement tick, or null when that tick
+   * consumed nothing or the buffer was cleared.
+   *
+   * This is the missing half of turn admission. `enqueueDirection` validates a
+   * press against the LAST QUEUED direction when the buffer is occupied and
+   * against the live heading when it is empty; the trace records only the
+   * direction and the tick that consumed it. Replay therefore cannot see which
+   * reference live play used - and after Wall Rush rewrites `state.direction`
+   * mid-tick, the two references differ, which is exactly how a legal buffered
+   * turn became an "illegal" one on replay. Retaining the previous tick's
+   * consumed direction makes both references reconstructible from state the
+   * replay already reproduces, with no change to the recorded trace format.
+   */
+  private lastConsumedTurn: Direction | null = null;
   /** Food count at the last FLUX-apex Singularity pull, for its cadence. */
   private lastSingularityPullAtFood = 0;
   /**
@@ -2147,6 +2178,7 @@ export class SnakeGameLogic {
       throw new Error('Invalid replay trace bounds');
     }
     this.applyingReplay = true;
+    this.seedReplayTurnChain(trace.actions, fromActionIndex);
     try {
       for (
         let index = fromActionIndex;
@@ -2186,9 +2218,7 @@ export class SnakeGameLogic {
   private applyReplayAction(action: SnakeReplayAction): void {
     switch (action.kind) {
       case 'turn': {
-        const result = this.setDirection(action.direction, 'standard');
-        if (result !== 'accepted')
-          throw new Error('Replay contains an illegal turn');
+        this.applyReplayTurn(action.direction);
         return;
       }
       case 'pause':
@@ -2298,6 +2328,84 @@ export class SnakeGameLogic {
     }
   }
 
+  /**
+   * Re-apply one recorded turn exactly as the live tick that recorded it did.
+   *
+   * Live play never validates a turn at CONSUMPTION - `tick()` assigns the
+   * buffered direction unconditionally. Admission happened earlier, at the
+   * press, against `turnAdmissionReference()`. The trace carries neither the
+   * press tick nor that reference, so re-running the press-time validator
+   * against the post-tick heading asks a question live play never asked; with
+   * Wall Rush rewriting the heading mid-tick it also gets a different answer,
+   * and the run's every later checkpoint inherits the rejection.
+   *
+   * Replay therefore checks admission against exactly the references live play
+   * could have used for a turn consumed on this tick, and then hands the
+   * direction to the same consumption path:
+   *
+   *  - buffer empty at the press: the reference was the live heading, and the
+   *    press can only have landed after the previous movement boundary (an
+   *    empty buffer is consumed by the very next tick);
+   *  - buffer occupied at the press: the reference was the last queued turn,
+   *    which - one consumption per tick, FIFO, no reordering - is precisely
+   *    the turn the previous tick consumed (`lastConsumedTurn`).
+   *
+   * Genuinely impossible turns still reject: a direction admitted by NEITHER
+   * reference is one no press could have produced, and two turns inside one
+   * tick contradict one-consumption-per-tick.
+   */
+  private applyReplayTurn(direction: Direction): void {
+    if (
+      !this.state.isPlaying ||
+      this.state.isGameOver ||
+      this.state.isPaused ||
+      this.state.pendingChoice !== null ||
+      this.genomeV2OfferPending() ||
+      this.state.pendingPortalChoice !== null ||
+      this.state.pendingSurgeChoice
+    ) {
+      throw new Error('Replay turns a board that cannot move');
+    }
+    if (this.directionQueue.length > 0 || this.preTurnIntent) {
+      throw new Error('Replay contains two turns for one tick');
+    }
+    const references: Direction[] = [this.state.direction];
+    if (this.lastConsumedTurn) references.push(this.lastConsumedTurn);
+    if (
+      !references.some(
+        (reference) => turnAdmission(reference, direction) === 'accepted'
+      )
+    ) {
+      throw new Error('Replay contains an illegal turn');
+    }
+    // Same consumption semantics as live play: the next tick shifts it off the
+    // queue and assigns it. No second admission decision is taken anywhere.
+    this.directionQueue.push({ direction, source: 'standard' });
+  }
+
+  /**
+   * Re-derive `lastConsumedTurn` for the first replayed tick from the trace
+   * prefix the canonical checkpoint already absorbed. A turn buffered across a
+   * checkpoint boundary is chained to a turn the restore path did not replay,
+   * and `restoreCheckpoint` clears the buffer, so without this the boundary
+   * would reintroduce exactly the rejection this method exists to prevent.
+   */
+  private seedReplayTurnChain(
+    actions: readonly SnakeReplayAction[],
+    fromActionIndex: number
+  ): void {
+    this.lastConsumedTurn = null;
+    const previousTick = this.replayTicks - 1;
+    for (let index = fromActionIndex - 1; index >= 0; index -= 1) {
+      const action = actions[index];
+      if (!action || action.tick < previousTick) return;
+      if (action.tick === previousTick && action.kind === 'turn') {
+        this.lastConsumedTurn = action.direction;
+        return;
+      }
+    }
+  }
+
   private recordReplayAction(action: SnakeReplayAction): void {
     if (!this.applyingReplay) this.replayActions.push(checkpointClone(action));
   }
@@ -2356,13 +2464,10 @@ export class SnakeGameLogic {
     source: DirectionInputSource,
     timing?: DirectionInputTiming
   ): SetDirectionResult {
-    const reference =
-      this.preTurnIntent?.direction ??
-      this.directionQueue[this.directionQueue.length - 1]?.direction ??
-      this.state.direction;
+    const reference = this.turnAdmissionReference();
 
-    if (dir === reference) return 'duplicate';
-    if (dir === OPPOSITES[reference]) return 'reversal';
+    const admission = turnAdmission(reference, dir);
+    if (admission !== 'accepted') return admission;
     const capacity =
       source === 'flick'
         ? GAME_CONFIG.controls.flickQueueDepth
@@ -2392,6 +2497,19 @@ export class SnakeGameLogic {
     }
     this.rememberAcceptedTurn(reference, input);
     return 'accepted';
+  }
+
+  /**
+   * The direction a press arriving right now is admitted against: the reserved
+   * pre-turn intention, else the last buffered turn, else the live heading.
+   * Sole caller of the queue for this purpose, so replay can mirror it exactly.
+   */
+  private turnAdmissionReference(): Direction {
+    return (
+      this.preTurnIntent?.direction ??
+      this.directionQueue[this.directionQueue.length - 1]?.direction ??
+      this.state.direction
+    );
   }
 
   private isInsidePreTurnGrace(timing?: DirectionInputTiming): boolean {
@@ -2528,6 +2646,9 @@ export class SnakeGameLogic {
     this.directionQueue = [];
     this.preTurnIntent = null;
     this.recentFlickTurns = [];
+    // Nothing can still be chained to a discarded buffer: the next press is
+    // admitted against the live heading only.
+    this.lastConsumedTurn = null;
   }
 
   /**
@@ -2713,6 +2834,11 @@ export class SnakeGameLogic {
 
     // Consume exactly one buffered input per tick
     const queued = this.directionQueue.shift();
+    // Whether or not a turn executed, this boundary defines the reference a
+    // press buffered behind it was admitted against (see `lastConsumedTurn`).
+    // A tick that consumed nothing left the buffer empty, so the next press
+    // could only have been validated against the live heading.
+    this.lastConsumedTurn = queued ? queued.direction : null;
     if (queued) {
       this.state.direction = queued.direction;
       this.recordReplayAction({
