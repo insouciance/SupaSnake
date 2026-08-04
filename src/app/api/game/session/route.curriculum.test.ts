@@ -97,7 +97,15 @@ describe('settlement: resolving a learning event', () => {
     expect(source).toMatch(
       /validation\.genome && validation\.genome\.v === GENOME_RULES_V2/
     );
-    expect(source).not.toMatch(/\.journal\b/);
+    // The journal compacts above 256 entries, so a scan for "did event X
+    // happen" answers false for exactly the long runs an engaged learner
+    // produces. The resolution is a reducer-written state field instead.
+    const promotion = source.slice(
+      source.indexOf('const stampedTrialGeneId'),
+      source.indexOf('await resolveLearningEvent(')
+    );
+    expect(promotion.length).toBeGreaterThan(0);
+    expect(promotion).not.toContain('.journal');
   });
 
   it('promotes only from a validated, non-Free-Play run', () => {
