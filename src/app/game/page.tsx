@@ -10,6 +10,7 @@ import {
   Position,
   GameOverData,
   type CollisionDiagnostic,
+  type ExtractionKind,
   type DirectionInputTiming,
   type DirectionInputSource,
   type SetDirectionResult,
@@ -703,6 +704,10 @@ export default function GamePage() {
   const [lastRunFree, setLastRunFree] = useState(false);
   const [collisionDiagnostic, setCollisionDiagnostic] =
     useState<CollisionDiagnostic | null>(null);
+  // Which kind of extraction the engine reached. Presentation only: both
+  // kinds pay through the identical fold.
+  const [extractionKind, setExtractionKind] =
+    useState<ExtractionKind | null>(null);
   // What the free run WOULD have earned (server recompute x multipliers)
   const [hypotheticalDna, setHypotheticalDna] = useState<number | null>(null);
   // Weekly Anomaly board (Design v2 §7.2): this week's modifier + top 10 +
@@ -2555,6 +2560,7 @@ export default function GamePage() {
         setContinuitySafetyHold(null);
       }
       setCollisionDiagnostic(data.collisionDiagnostic ?? null);
+      setExtractionKind(data.extractionKind ?? null);
       // Freeze the cumulative play clock at the terminal simulation boundary.
       // Awaiting an in-flight checkpoint or settlement request must not turn
       // network time into run time. Resumes backdate this ref only by the last
@@ -3375,6 +3381,7 @@ export default function GamePage() {
     freeRunRef.current = mode === 'free';
     setLastRunFree(mode === 'free');
     setCollisionDiagnostic(null);
+    setExtractionKind(null);
     setHypotheticalDna(null);
     setMasteryResult(null);
     setLastGenomeCard(null);
@@ -4479,6 +4486,7 @@ export default function GamePage() {
       setTerminalRecoveryState('idle');
       setSetupReopened(false);
       setCollisionDiagnostic(null);
+      setExtractionKind(null);
       applyFreePlaySettlement(terminalFreePlayResult);
       endGame(
         terminalFreePlayResult.score,
@@ -6594,6 +6602,22 @@ export default function GamePage() {
                       {endReason === 'extracted'
                         ? 'Extracted — free play, no rewards'
                         : 'Crashed — free play, no rewards'}
+                    </p>
+                  </div>
+                ) : endReason === 'extracted' &&
+                  extractionKind === 'saturation' ? (
+                  <div className="space-y-1">
+                    <h2
+                      className="heading-display text-4xl text-rarity-uncommon text-glow"
+                      data-testid="gameover-saturated"
+                    >
+                      Board Filled
+                    </h2>
+                    {/* The hardest thing anyone can do here, and it reads as
+                        one. Triumph, not elegy: they did not run out of room,
+                        they used all of it. */}
+                    <p className="text-rarity-uncommon/90 font-body text-sm tracking-wide uppercase">
+                      You filled the board — every cell yours, banked in full
                     </p>
                   </div>
                 ) : endReason === 'extracted' ? (

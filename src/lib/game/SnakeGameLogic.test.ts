@@ -1401,6 +1401,9 @@ describe('SnakeGameLogic', () => {
         mutations: [],
         deathCause: 'extracted', // Identity v1 section 9.5
         collisionDiagnostic: null,
+        // Walking into the door is the portal kind. The other kind is a
+        // board that filled; both settle through the identical fold.
+        extractionKind: 'portal',
         phoenixTriggeredAtFood: null,
         genome: null, // legacy runs carry no genome payload
       });
@@ -1408,6 +1411,98 @@ describe('SnakeGameLogic', () => {
         score: expected.score,
         dnaCollected: expected.rawDna,
         foodEaten: 7,
+      });
+    });
+
+    /**
+     * BOARD FILL as a terminal outcome, on a board small enough to reason
+     * about by hand. `boardFill.certification.test.ts` proves the same rule
+     * over a real 400-cell run; this pins the RULE, cheaply, next to the
+     * other extraction cases.
+     */
+    describe('Saturation: a filled board is an extraction, not a crash', () => {
+      /** A 2x2 board with the body on three of its four cells. */
+      function nearlyFull(): SnakeGameLogic {
+        const engine = new SnakeGameLogic({
+          gridSize: 2,
+          ruleset: RULESETS.PRIMAL,
+          rng: () => 0.5,
+        });
+        engine.startDriven({
+          snake: [
+            { x: 0, y: 0, z: 0 },
+            { x: 1, y: 0, z: 0 },
+            { x: 1, y: 0, z: 1 },
+          ],
+          direction: 'LEFT',
+          foods: [{ x: 0, y: 0, z: 1 }],
+        });
+        return engine;
+      }
+
+      it('banks the run when the last free cell closes', () => {
+        const engine = nearlyFull();
+        let terminal: GameOverData | null = null;
+        engine.on('gameOver', (data) => {
+          terminal = data as GameOverData;
+        });
+
+        // Eating the last free cell fills the board: 4 of 4 cells are body.
+        engine.setDirection('DOWN');
+        engine.tick();
+        expect(engine.getState().foodEaten).toBe(1);
+        expect(new Set(engine.getState().snake.map((s) => `${s.x}:${s.z}`)).size)
+          .toBe(4);
+        expect(engine.getState().isGameOver).toBe(false);
+
+        // There is now no legal move in any direction. The run completes.
+        engine.tick();
+        expect(terminal).toMatchObject({
+          extracted: true,
+          endReason: 'extracted',
+          deathCause: 'extracted',
+          extractionKind: 'saturation',
+          collisionDiagnostic: null,
+        });
+        expect(engine.getState().extracted).toBe(true);
+      });
+
+      it('pays exactly what the run already held, and never touches score', () => {
+        const engine = nearlyFull();
+        engine.setDirection('DOWN');
+        engine.tick();
+        const beforeScore = engine.getState().score;
+        const beforeDna = engine.getState().dnaCollected;
+        const foods = engine.getState().foodEaten;
+
+        engine.tick();
+
+        // R2: score is a pure fold over dynasty and food count. Ending the
+        // run this way adds nothing to it and nothing to the raw ledger -
+        // the outcome multiplier is the server's, exactly as for a portal.
+        const terminal = engine.getTerminalResult()!;
+        expect(terminal.score).toBe(beforeScore);
+        expect(terminal.score).toBe(computeRunTotals('PRIMAL', foods).score);
+        expect(terminal.dnaCollected).toBe(beforeDna);
+      });
+
+      it('does not fire while a cell the head could still reach is open', () => {
+        // Three of four cells claimed, one free: an ordinary board, and an
+        // ordinary death if the player steers into their own body.
+        const engine = nearlyFull();
+        let terminal: GameOverData | null = null;
+        engine.on('gameOver', (data) => {
+          terminal = data as GameOverData;
+        });
+        engine.setDirection('UP');
+        engine.tick();
+
+        expect(terminal).toMatchObject({
+          extracted: false,
+          endReason: 'died',
+          extractionKind: null,
+        });
+        expect(['self', 'wall']).toContain(engine.getDeathCause());
       });
     });
 

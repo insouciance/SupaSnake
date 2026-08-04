@@ -258,6 +258,18 @@ export interface Position {
 /** How a run ended: crashed into something, or left through the exit portal. */
 export type EndReason = 'died' | 'extracted';
 
+/**
+ * The two ways a run can end extracted.
+ *
+ * `portal` is the decision the whole game is built around: a door appeared
+ * and the player chose to take it. `saturation` is the board itself running
+ * out - every cell claimed, no move left in any direction, and nothing more
+ * the player could have done. That is the hardest achievable outcome in
+ * SupaSnake, and it settles as what it is: a completed run, banked through
+ * the identical fold, not a crash.
+ */
+export type ExtractionKind = 'portal' | 'saturation';
+
 export interface GameState {
   snake: Position[];
   /** Primary food cell (= foods[0]) - kept for renderer/store compatibility. */
@@ -453,6 +465,16 @@ export interface GameOverData {
    * wall/self enum without changing its public database contract.
    */
   collisionDiagnostic: CollisionDiagnostic | null;
+  /**
+   * WHICH KIND of extraction this was, or null on a death.
+   *
+   * Same device as `collisionDiagnostic` above, for the same reason: it
+   * refines the persisted `extracted` enum value so Results can tell the two
+   * apart, without growing `game_sessions.death_cause` - a CHECK-constrained
+   * column (migration 022) whose four values every historical row depends on.
+   * Never a payout claim: both kinds settle through the identical fold.
+   */
+  extractionKind: ExtractionKind | null;
   /** Food count at the Phoenix trigger (honest-client analytics + payout). */
   phoenixTriggeredAtFood: number | null;
   /**
@@ -3145,6 +3167,28 @@ export class SnakeGameLogic {
       this.checkSelfCollisionForDeath(newHead);
 
     if (wallHit || terrainHit || selfHit) {
+      // BOARD FILLED: the run is complete, not crashed.
+      //
+      // Checked before every pardon, deliberately. At zero free cells there
+      // is no move left in any direction, so Iron Scales, Thick Hide and the
+      // one revive would each buy a tick of standing still and then the
+      // identical ending - spending a save on a board that cannot be
+      // survived, and leaving the player alive with nothing to do. The board
+      // is full; there is nothing left to be pardoned from.
+      //
+      // Deliberately direction-blind for the same reason: at saturation the
+      // wall and the body are the same answer, and which one the head
+      // happened to face is not a fact about how the run was played.
+      //
+      // It settles through the ORDINARY extraction fold - the same
+      // `settleGenomeV2(record, 'bank')` a portal BANK reaches - so nothing
+      // here creates value, and score is untouched (score has never read
+      // anything but dynasty and food count).
+      if (this.boardIsSaturated()) {
+        this.finalizeRun('extracted', false, 'saturation');
+        return;
+      }
+
       const legacyTerrain = terrainHit
         ? this.state.terrain.find(
             (block) =>
@@ -5698,6 +5742,36 @@ export class SnakeGameLogic {
   }
 
   /**
+   * IS THE BOARD FULL? - the one authority, asked by the engine's terminal
+   * branch and re-asked by the server replaying the same tick.
+   *
+   * A cell is free when no body segment and no SOLID block holds it, which
+   * is exactly the set `chooseFoodCell` draws from: zero free cells is the
+   * state in which it returns null, the wave places nothing, and the head
+   * has no legal move in any direction. Forming terrain is deliberately NOT
+   * counted as occupying - the head can still cross it, so a board with a
+   * forming Scar on it is not full yet.
+   *
+   * This is NOT "the head is walled in". CYBER's arena can seal a snake into
+   * a pocket with a hundred free cells left elsewhere on the board; that is a
+   * death the player was cornered into, and it stays one.
+   */
+  private boardIsSaturated(): boolean {
+    const claimed = new Set<string>();
+    for (const segment of this.state.snake) {
+      claimed.add(cellKey(segment.x, segment.z));
+    }
+    for (const block of this.state.terrain) {
+      if (block.solid) claimed.add(cellKey(block.x, block.z));
+    }
+    for (const fact of this.state.genomeV2?.permanentTerrain ?? []) {
+      if (!genomeV2TerrainSolidAt(fact, this.replayTicks)) continue;
+      for (const cell of fact.cells) claimed.add(cellKey(cell.x, cell.z));
+    }
+    return claimed.size >= this.gridSize * this.gridSize;
+  }
+
+  /**
    * Genome terrain in this cell, forming or solid - the OCCUPANCY question.
    *
    * Deliberately blind to the forming phase, because every caller is asking
@@ -6711,7 +6785,8 @@ export class SnakeGameLogic {
    */
   private finalizeRun(
     reason: EndReason,
-    retainDeathPresentation = false
+    retainDeathPresentation = false,
+    extractionKind: ExtractionKind = 'portal'
   ): void {
     if (this.genomeV2Runtime) {
       // No live target contract survives the terminal boundary. This closes
@@ -6735,7 +6810,11 @@ export class SnakeGameLogic {
       this.state.exitTicksRemaining = 0;
       this.deathCause = 'extracted';
       this.pendingCollisionDiagnostic = null;
-      this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'enter' });
+      // A saturated board is not a portal the player walked into, so the
+      // stream does not claim one. The bank is real and is recorded.
+      if (extractionKind === 'portal') {
+        this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'enter' });
+      }
       this.recordRunEvent({ t: this.runTimeDs(), e: 'b' });
       this.recordRunEvent(
         { t: this.runTimeDs(), e: 'x', c: 'extracted' },
@@ -6766,6 +6845,7 @@ export class SnakeGameLogic {
       collisionDiagnostic: this.pendingCollisionDiagnostic
         ? checkpointClone(this.pendingCollisionDiagnostic)
         : null,
+      extractionKind: reason === 'extracted' ? extractionKind : null,
       phoenixTriggeredAtFood: this.state.phoenixTriggeredAtFood,
       genome: this.genomeActive()
         ? {

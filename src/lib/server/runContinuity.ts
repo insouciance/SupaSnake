@@ -1860,6 +1860,13 @@ export interface TerminalRunIntent {
     phoenix_triggered_at_food: number | null;
     genome: GameOverData['genome'] | GenomeV2RunRecord;
     death_cause: GameOverData['deathCause'];
+    /**
+     * Which kind of extraction, or null on a death. Derived from the replay
+     * like everything else here - never claimed by the client - and carried
+     * so the staged terminal record says what actually happened. The
+     * persisted `death_cause` enum is untouched: both kinds are 'extracted'.
+     */
+    extraction_kind: GameOverData['extractionKind'];
     run_events: ReturnType<SnakeGameLogic['getRunEvents']>;
   };
   digest: string;
@@ -1964,6 +1971,11 @@ function deriveTerminalIntent(
     phoenix_triggered_at_food: result.phoenixTriggeredAtFood,
     genome: result.genomeV2 ?? result.genome,
     death_cause: result.deathCause,
+    // ONE SOURCE OF TRUTH. The server does not decide saturation separately;
+    // it re-runs the engine's own tick over the accepted journal and reads
+    // the terminal the engine reached. A board that filled on the client
+    // fills identically here, on the same tick, with the same outcome.
+    extraction_kind: result.extractionKind,
     run_events: engine.getRunEvents(),
   };
   if (Buffer.byteLength(JSON.stringify(facts), 'utf8') > RUN_TERMINAL_FACTS_MAX_BYTES) {
