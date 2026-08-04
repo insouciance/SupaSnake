@@ -26,11 +26,27 @@ import {
 // A browser, played by the test
 // ---------------------------------------------------------------------------
 
+/**
+ * The P-256 private scalar, left-padded to its full 32 bytes.
+ *
+ * `createECDH().getPrivateKey()` returns the scalar as a MINIMAL big-endian
+ * buffer — leading zero bytes are stripped. Roughly one key in 256 is therefore
+ * 31 bytes (one in 65536 is 30), which is a real key but not a well-formed
+ * one: RFC 8292 and `readVapidConfig` both require the fixed 32-byte encoding.
+ * A test fixture built from the raw buffer fails about once every 256 CI runs,
+ * for no reason connected to the code under test.
+ */
+function p256PrivateScalar(ecdh: ReturnType<typeof createECDH>): Buffer {
+  const raw = ecdh.getPrivateKey();
+  if (raw.length === 32) return raw;
+  return Buffer.concat([Buffer.alloc(32 - raw.length), raw]);
+}
+
 function makeSubscriber() {
   const ecdh = createECDH('prime256v1');
   ecdh.generateKeys();
   return {
-    privateKey: ecdh.getPrivateKey(),
+    privateKey: p256PrivateScalar(ecdh),
     publicKey: ecdh.getPublicKey(),
     authSecret: randomBytes(16),
   };
@@ -166,7 +182,7 @@ describe('VAPID', () => {
     const ecdh = createECDH('prime256v1');
     ecdh.generateKeys();
     process.env.VAPID_PUBLIC_KEY = b64urlEncode(ecdh.getPublicKey());
-    process.env.VAPID_PRIVATE_KEY = b64urlEncode(ecdh.getPrivateKey());
+    process.env.VAPID_PRIVATE_KEY = b64urlEncode(p256PrivateScalar(ecdh));
     process.env.VAPID_SUBJECT = 'mailto:ops@supasnake.com';
   }
 
@@ -204,6 +220,31 @@ describe('VAPID', () => {
       Buffer.concat([Buffer.from([0x03]), randomBytes(64)])
     );
     expect(() => readVapidConfig()).toThrow(/uncompressed P-256/);
+  });
+
+  it('accepts a scalar whose leading byte is zero, once padded to 32 bytes', () => {
+    // The ~1-in-256 CI failure, built deterministically instead of waited for.
+    // A scalar below 2^248 is a perfectly valid P-256 key, and `getPrivateKey()`
+    // hands it back in 31 bytes. Signing needs the fixed-width encoding, so the
+    // raw buffer must be rejected and the padded one accepted.
+    const ecdh = createECDH('prime256v1');
+    ecdh.setPrivateKey(Buffer.concat([Buffer.from([0x7f]), randomBytes(30)]));
+    expect(ecdh.getPrivateKey()).toHaveLength(31);
+
+    process.env.VAPID_PUBLIC_KEY = b64urlEncode(ecdh.getPublicKey());
+    process.env.VAPID_SUBJECT = 'mailto:ops@supasnake.com';
+
+    process.env.VAPID_PRIVATE_KEY = b64urlEncode(ecdh.getPrivateKey());
+    expect(() => readVapidConfig()).toThrow(/32-byte scalar/);
+
+    process.env.VAPID_PRIVATE_KEY = b64urlEncode(p256PrivateScalar(ecdh));
+    expect(b64urlDecode(readVapidConfig().privateKey)).toHaveLength(32);
+    // Padding must preserve the scalar, not merely its length: the header only
+    // verifies if the key that signed it is still the same key.
+    expect(b64urlDecode(readVapidConfig().privateKey).subarray(1)).toEqual(
+      ecdh.getPrivateKey()
+    );
+    expect(buildVapidAuthorization('https://example.com/p/1')).toMatch(/^vapid t=\S+, k=\S+$/);
   });
 
   it('builds a JWS whose audience is the endpoint ORIGIN, never the full path', () => {
