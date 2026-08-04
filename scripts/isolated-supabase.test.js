@@ -45,10 +45,34 @@ const START_SCRIPT = readFileSync(
   'utf8'
 );
 
+const CLI_SCRIPT = readFileSync(
+  join(process.cwd(), 'scripts/supabase-cli.sh'),
+  'utf8'
+);
+
 const CONFIG = readFileSync(join(process.cwd(), 'supabase/config.toml'), 'utf8');
 
 /** Every workflow that brings up a local stack. */
 const STACK_WORKFLOWS = ['e2e.yml', 'deploy-production.yml'];
+
+/** Every shell script that drives the Supabase CLI. */
+const CLI_SCRIPTS = [
+  'isolated-supabase.sh',
+  'run-local-sql-contracts.sh',
+  'verify-linked-migration-plan.sh',
+];
+
+/** Everywhere a `npx supabase` invocation could hide. */
+const SOURCES = Object.fromEntries(
+  [
+    'README.md',
+    'docs/ENVIRONMENT_SETUP.md',
+    '.github/workflows/e2e.yml',
+    '.github/workflows/deploy-production.yml',
+    ...CLI_SCRIPTS.map((name) => `scripts/${name}`),
+    'scripts/supabase-cli.sh',
+  ].map((file) => [file, readFileSync(join(process.cwd(), file), 'utf8')])
+);
 
 describe('isolated Supabase startup', () => {
   it('never starts the stack with a bare `supabase start`', () => {
@@ -120,5 +144,57 @@ describe('isolated Supabase startup', () => {
   it('retries only a host-port bind conflict, never a real failure', () => {
     expect(START_SCRIPT).toMatch(/failed to bind host port\|address already in use/);
     expect(START_SCRIPT).toContain('unrelated to host-port binding; not retrying');
+  });
+});
+
+/**
+ * One pinned CLI version, everywhere.
+ *
+ * 2.65.5 cannot parse this repository's config.toml (`local_smtp`) or apply
+ * migration 061. CI was already pinned and local machines were not, so the two
+ * could disagree without anything reporting it. These assertions keep the
+ * workflows, the shell resolver and the documentation on the same number.
+ */
+describe('Supabase CLI pin', () => {
+  const PIN = (CLI_SCRIPT.match(/^SUPABASE_CLI_VERSION='([^']+)'$/m) ?? [])[1];
+
+  it('states the version exactly once, in scripts/supabase-cli.sh', () => {
+    expect(PIN).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it('pins every supabase/setup-cli step to it', () => {
+    const steps = [];
+    for (const name of STACK_WORKFLOWS) {
+      const source = executable(name);
+      for (const match of source.matchAll(
+        /uses:\s*supabase\/setup-cli@[^\n]*\n\s*with:\s*\n\s*version:\s*(\S+)/g
+      )) {
+        steps.push(match[1]);
+      }
+    }
+    // Two in e2e.yml, two in deploy-production.yml.
+    expect(steps).toHaveLength(4);
+    for (const version of steps) expect(version).toBe(PIN);
+  });
+
+  it('leaves no unpinned `npx supabase` anywhere', () => {
+    for (const [file, source] of Object.entries(SOURCES)) {
+      const unpinned = source.match(/npx\s+(?:--yes\s+)?supabase(?!@)/g) ?? [];
+      expect(`${file}: ${unpinned.join(', ')}`).toBe(`${file}: `);
+    }
+  });
+
+  it('documents the same pin for humans', () => {
+    expect(SOURCES['README.md']).toContain(`npx supabase@${PIN}`);
+    expect(SOURCES['docs/ENVIRONMENT_SETUP.md']).toContain(`npx supabase@${PIN}`);
+  });
+
+  it('routes every script through the pinned resolver', () => {
+    for (const name of CLI_SCRIPTS) {
+      const source = readFileSync(join(process.cwd(), 'scripts', name), 'utf8');
+      expect(source).toContain('supabase-cli.sh');
+      // `supabase_cli …`, never a bare `supabase …` that could be any build.
+      expect(source).not.toMatch(/^\s*supabase\s+(start|stop|status|db|migration)\b/m);
+    }
   });
 });

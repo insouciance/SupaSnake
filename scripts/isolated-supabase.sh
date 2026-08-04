@@ -48,6 +48,9 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 config_file="$repo_root/supabase/config.toml"
 
+# shellcheck source=scripts/supabase-cli.sh
+. "$repo_root/scripts/supabase-cli.sh"
+
 # Excluded because no test drives them and every one costs pull and boot time.
 excluded_services='realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit'
 
@@ -128,7 +131,7 @@ start_stack() {
 
   for attempt in $(seq 1 "$attempts"); do
     set +e
-    supabase start --exclude "$excluded_services" 2>&1 | tee "$log"
+    supabase_cli start --exclude "$excluded_services" 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
     set -e
 
@@ -150,7 +153,7 @@ start_stack() {
     fi
 
     echo "isolated-supabase: host port still held (attempt $attempt/$attempts); clearing and retrying"
-    supabase stop --no-backup >/dev/null 2>&1 || true
+    supabase_cli stop --no-backup >/dev/null 2>&1 || true
     remove_project_containers
     # Long enough to outlast the 60s TIME_WAIT that can hold a source port.
     sleep "$((attempt * 15))"

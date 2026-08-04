@@ -50,7 +50,10 @@ Requirements:
 
 - Node.js 22
 - npm
-- Supabase CLI 2.109.1 when running the isolated database/E2E stack
+- Supabase CLI 2.109.1 when running the isolated database/E2E stack. No global
+  install is required: `bash scripts/isolated-supabase.sh start` uses an
+  installed 2.109.1 if present and otherwise falls back to
+  `npx supabase@2.109.1`. Older CLIs cannot parse `supabase/config.toml`.
 
 ```sh
 npm ci

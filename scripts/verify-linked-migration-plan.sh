@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# shellcheck source=scripts/supabase-cli.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/supabase-cli.sh"
+
 : "${SUPABASE_DB_PASSWORD:?SUPABASE_DB_PASSWORD is required}"
 : "${EXPECTED_MIGRATIONS:?EXPECTED_MIGRATIONS is required}"
 
@@ -14,7 +17,7 @@ if [ "$expected" = 'none' ]; then expected=''; fi
 
 preview_file=$(mktemp)
 trap 'rm -f "$preview_file"' EXIT
-supabase db push --linked --include-all --dry-run \
+supabase_cli db push --linked --include-all --dry-run \
   --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee "$preview_file"
 actual=$(grep -oE '[0-9]{3,}_[A-Za-z0-9._-]+\.sql' "$preview_file" \
   | sort -u | paste -sd, - || true)
