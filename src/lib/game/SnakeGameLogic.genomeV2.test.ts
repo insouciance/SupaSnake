@@ -904,8 +904,8 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
 
     const checkpointAt = Date.now();
     const checkpoint = original.exportCheckpoint(checkpointAt);
-    expect(SNAKE_RULES_VERSION).toBe('snake-rules-2026-07-31.2');
-    expect(checkpoint.rulesVersion).toBe('snake-rules-2026-07-31.2');
+    expect(SNAKE_RULES_VERSION).toBe('snake-rules-2026-08-05.1');
+    expect(checkpoint.rulesVersion).toBe('snake-rules-2026-08-05.1');
     expect(checkpoint.privateState.genomeV2Runtime?.targetProgress).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ circuitLegsCompleted: 1 }),
@@ -1008,6 +1008,183 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
     // ...and then ordinary play resumes into the food the door bought.
     game.tick();
     expect(game.getState().foodEaten).toBe(1);
+  });
+
+  /**
+   * THE OWNER'S DEATH, RECONSTRUCTED - and then survived.
+   *
+   * The exit landed two cells from the wall with the heading pointed at it.
+   * PRIMAL, because COSMIC is a torus and has no wall to die against.
+   *
+   *   N    direction consumed; the head would enter the entry, so the engine
+   *        substitutes the exit. The head is now elsewhere, heading unchanged.
+   *   N+1  head -> exit + D. One cell from the wall.
+   *   N+2  head -> exit + 2D. Out of bounds. Dead.
+   *
+   * Two ticks - 350 ms on PRIMAL - to notice the head vanished, re-fixate,
+   * read unfamiliar geometry, choose, and press. And because exactly one
+   * buffered input is consumed per tick, a corrective press lands BEHIND
+   * whatever the player had queued for the entry: with k queued it cannot
+   * execute before N+1+k, so with two queued the first tick they can
+   * influence is N+3 - one tick after they are already dead.
+   *
+   * D2 empties the queue, so the correction is first in line. G holds one
+   * movement boundary, so there is a whole tick to enter it. Both halves are
+   * asserted below, on the exact geometry that killed the run.
+   */
+  const OWNER_ENTRY = { x: 6, z: 5 };
+  const OWNER_EXIT = { x: 18, z: 5 };
+  const OWNER_DEATH_AT = Date.UTC(2026, 7, 5, 9, 0, 0);
+
+  /**
+   * A real engine-spawned gate, moved to the geometry that killed the run.
+   *
+   * The route itself is pure BFS from the head to the food, so the engine
+   * always draws entry = one step ahead and exit = adjacent to the food -
+   * which puts the exit next to a target rather than next to a wall. The
+   * checkpoint is therefore rewritten the way `recodePhaseGateAway` does it,
+   * leaving the reducer and its runtime snapshot consistent with each other.
+   *
+   * The snake heads UP one cell short of the entry's column, so the FIRST
+   * queued turn is the one that carries the head onto the entry - which is
+   * what leaves the rest of the buffer intact at the moment of traversal,
+   * exactly as it is for a player steering deliberately onto a marker.
+   */
+  function ownerDeathBoard(): SnakeGameLogic {
+    const source = new SnakeGameLogic({
+      gridSize: 20,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'owner-death-reconstruction',
+      genome: configForState(reducerWithGene('PRIMAL', 'phase_gate', 4)),
+    });
+    source.startDriven({
+      snake: [
+        { x: 5, y: 0, z: 5 },
+        { x: 5, y: 0, z: 6 },
+        { x: 5, y: 0, z: 7 },
+      ],
+      direction: 'UP',
+      foods: [{ x: 10, y: 0, z: 5 }],
+    });
+    const checkpoint = source.exportCheckpoint(OWNER_DEATH_AT);
+    const gate = Object.values(checkpoint.state.genomeV2!.targets).find(
+      (target) => target.kind === 'phase_gate'
+    )!;
+    expect(gate.optionalRouteCells?.[0]).toEqual(OWNER_ENTRY);
+    gate.optionalRouteCells = [OWNER_ENTRY, OWNER_EXIT];
+
+    const game = new SnakeGameLogic();
+    game.restoreCheckpoint(checkpoint, OWNER_DEATH_AT);
+    return game;
+  }
+
+  it('survives the owner death: the exit two cells from a wall, heading at it', () => {
+    const game = ownerDeathBoard();
+
+    // The two ticks the player used to have. The wall is at x = 20.
+    expect(OWNER_EXIT.x + 2).toBe(20);
+
+    expect(game.setDirection('RIGHT')).toBe('accepted');
+    game.tick();
+
+    // N: through the door, heading preserved, pointed at the wall.
+    expect(game.getState().snake[0]).toMatchObject(OWNER_EXIT);
+    expect(game.getState().direction).toBe('RIGHT');
+    expect(game.getState().isGameOver).toBe(false);
+
+    // N+1 is the beat (G): the board holds still while the player finds the
+    // head. This is the tick that used to be spent on `exit + D`.
+    const correction = game.setDirection('UP');
+    expect(correction).toBe('accepted');
+    game.tick();
+    expect(game.getState().snake[0]).toMatchObject(OWNER_EXIT);
+
+    // N+2: the correction executes. Under the old rules this was the tick
+    // the head went out of bounds.
+    game.tick();
+    expect(game.getState().snake[0]).toMatchObject({ x: 18, z: 4 });
+    expect(game.getState().isGameOver).toBe(false);
+
+    // ...and the player is back in control of a live board: they steer off
+    // the wall column and keep playing.
+    expect(game.setDirection('LEFT')).toBe('accepted');
+    for (let index = 0; index < 6; index += 1) game.tick();
+    expect(game.getState().isGameOver).toBe(false);
+    expect(game.getState().snake[0]).toMatchObject({ x: 12, z: 4 });
+  });
+
+  it('drops the turns the player composed for the entry, so the fix is first in line', () => {
+    const game = ownerDeathBoard();
+
+    // A player steering deliberately onto a marker has one or two turns
+    // already queued. RIGHT carries the head onto the entry; DOWN and RIGHT
+    // are the pair composed for what they expected to find there.
+    expect(game.setDirection('RIGHT')).toBe('accepted');
+    expect(game.setDirection('DOWN')).toBe('accepted');
+    expect(game.setDirection('RIGHT')).toBe('accepted');
+
+    game.tick();
+    expect(game.getState().snake[0]).toMatchObject(OWNER_EXIT);
+
+    // D2: the stale pair is gone. Were it still queued, DOWN would execute
+    // next and the corrective UP could not run until two ticks later - which
+    // is the arithmetic that made this death unavoidable rather than hard.
+    expect(game.setDirection('UP')).toBe('accepted');
+    game.tick(); // the beat
+    game.tick(); // the first movement tick after arrival
+
+    // UP ran, not DOWN. The player's correction was at the FRONT.
+    expect(game.getState().snake[0]).toMatchObject({ x: 18, z: 4 });
+    expect(game.getState().direction).toBe('UP');
+    expect(game.getState().isGameOver).toBe(false);
+  });
+
+  it('keeps the beat bounded: one movement boundary, once, and walls stay lethal', () => {
+    const game = ownerDeathBoard();
+    expect(game.setDirection('RIGHT')).toBe('accepted');
+    game.tick();
+    expect(game.getState().arrivalBeatTicksRemaining).toBe(1);
+
+    // Exactly one. It is spent by the next tick and is not re-armed, so it
+    // cannot be banked or stacked across a run.
+    game.tick();
+    expect(game.getState().arrivalBeatTicksRemaining).toBe(0);
+
+    // NOT invincibility. The player who does nothing with the beat still
+    // drives into the wall on the tick they always would have.
+    game.tick();
+    expect(game.getState().snake[0]).toMatchObject({ x: 19, z: 5 });
+    expect(game.getState().isGameOver).toBe(false);
+    game.tick();
+    expect(game.getState().isGameOver).toBe(true);
+    expect(game.getDeathCause()).toBe('wall');
+  });
+
+  it('replays a gate traversal, its beat and its Scars to the identical board', () => {
+    const game = ownerDeathBoard();
+    expect(game.setDirection('RIGHT')).toBe('accepted');
+    game.tick();
+    expect(game.setDirection('UP')).toBe('accepted');
+    for (let index = 0; index < 10; index += 1) game.tick();
+
+    const live = game.getState({ includeGenomeV2: true });
+    const trace = game.getReplayTrace();
+    expect(live.genomeV2?.permanentTerrain).toHaveLength(1);
+
+    // The server holds no opening checkpoint here, so replay the whole run
+    // from a fresh engine on the same config: the beat, the cleared buffer
+    // and the Scar window are all engine-modelled, so they reproduce.
+    const replayed = ownerDeathBoard();
+    replayed.applyReplayTrace(trace, 0);
+    const after = replayed.getState({ includeGenomeV2: true });
+
+    expect(after.snake).toEqual(live.snake);
+    expect(after.direction).toBe(live.direction);
+    expect(after.arrivalBeatTicksRemaining).toBe(live.arrivalBeatTicksRemaining);
+    expect(after.genomeV2?.permanentTerrain).toEqual(
+      live.genomeV2?.permanentTerrain
+    );
+    expect(replayed.getSimulationTick()).toBe(game.getSimulationTick());
   });
 
   it('redirects one charged Wall Rush impact and makes the next impact lethal', () => {
