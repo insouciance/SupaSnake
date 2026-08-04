@@ -372,6 +372,17 @@ export interface GameState {
   phantomTicksRemaining: number;
   /** Post-revive self/body-wall phase; length and terrain remain intact. */
   revivePhaseTicksRemaining: number;
+  /**
+   * Side Door arrival beat: movement boundaries the snake holds after coming
+   * out of a gate.
+   *
+   * NOT INVINCIBILITY, AND NOT A HOLD. Nothing is pardoned, no clock is
+   * slowed, and no budget is spent - the board's own clocks keep running and
+   * the walls stay exactly as lethal. It is one move the snake does not take,
+   * so a player who has just been relocated across the board can re-acquire
+   * their head and enter a turn that lands at the FRONT of an emptied queue.
+   */
+  arrivalBeatTicksRemaining: number;
   /** True while a held Phoenix can still absorb one death. */
   phoenixAvailable: boolean;
   /** Food count at the Phoenix trigger, null if never triggered. */
@@ -1548,6 +1559,7 @@ export class SnakeGameLogic {
       pocketRiftCharged: false,
       phantomTicksRemaining: 0,
       revivePhaseTicksRemaining: 0,
+      arrivalBeatTicksRemaining: 0,
       phoenixAvailable: false,
       phoenixTriggeredAtFood: null,
       ironScalesAvailable: this.hasTrait('iron_scales'),
@@ -2852,13 +2864,32 @@ export class SnakeGameLogic {
       this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
     }
 
+    // THE SIDE DOOR ARRIVAL BEAT (G). One movement boundary the snake holds
+    // after a gate relocated it, and the last thing decided before input is
+    // consumed - so the beat cannot eat the press it exists to wait for.
+    //
+    // The line this draws is exact: EVERYTHING BEFORE THE HEAD MOVES RUNS,
+    // AND THE HEAD DOES NOT MOVE. The tick is counted, the queue is promoted,
+    // terrain keeps forming and target windows keep expiring, because those
+    // are the board's clocks and a tick of real time did pass. Nothing after
+    // the move runs, because those are all consequences OF the move: the
+    // eat-gap counter, the near-wall episode, the constellation window, the
+    // Coilkeeper observation. The snake stood still; it did not act.
+    //
+    // Engine-modelled and therefore in the replay: the server ticks the same
+    // beat from the same journal and reaches the same board.
+    const arrivalBeat = this.state.arrivalBeatTicksRemaining > 0;
+    if (arrivalBeat) this.state.arrivalBeatTicksRemaining -= 1;
+
     // Consume exactly one buffered input per tick
-    const queued = this.directionQueue.shift();
+    const queued = arrivalBeat ? undefined : this.directionQueue.shift();
     // Whether or not a turn executed, this boundary defines the reference a
     // press buffered behind it was admitted against (see `lastConsumedTurn`).
     // A tick that consumed nothing left the buffer empty, so the next press
     // could only have been validated against the live heading.
-    this.lastConsumedTurn = queued ? queued.direction : null;
+    if (!arrivalBeat) {
+      this.lastConsumedTurn = queued ? queued.direction : null;
+    }
     if (queued) {
       this.state.direction = queued.direction;
       this.recordReplayAction({
@@ -2882,6 +2913,13 @@ export class SnakeGameLogic {
     if (this.genomeV2Runtime) {
       const expired = this.genomeV2Runtime.expireGoldWindows(this.replayTicks);
       if (expired.length > 0) this.syncGenomeV2State();
+    }
+
+    // The beat ends here: the board's clocks have run and the snake stays
+    // where the door left it. A wall one cell ahead is still a wall.
+    if (arrivalBeat) {
+      this.emit('tick');
+      return;
     }
 
     const head = this.state.snake[0];
@@ -2998,6 +3036,11 @@ export class SnakeGameLogic {
         // discarded turn was never written, and `applyReplayTurn` holds at
         // most one queued turn which this tick has already consumed.
         this.clearDirectionalIntent();
+        // ...and give them a beat to use the empty queue with (G). Armed
+        // here, spent by the NEXT tick, so this tick still resolves the
+        // arrival - collisions at the exit cell are not deferred.
+        this.state.arrivalBeatTicksRemaining =
+          GENOME_V2_CONFIG.phaseGate.arrivalBeatTicks;
       }
     }
 

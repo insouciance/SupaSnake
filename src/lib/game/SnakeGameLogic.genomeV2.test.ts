@@ -980,6 +980,16 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
       source: 'phase_gate_scar',
       cells: target?.optionalRouteCells,
     });
+
+    // G: the tick after arrival is the beat. The snake holds where the door
+    // left it - one move, once, so the player can find their own head.
+    expect(game.getState().arrivalBeatTicksRemaining).toBe(1);
+    game.tick();
+    expect(game.getState().snake[0]).toMatchObject({ x: 9, z: 5 });
+    expect(game.getState().arrivalBeatTicksRemaining).toBe(0);
+    expect(game.getState().foodEaten).toBe(0);
+
+    // ...and then ordinary play resumes into the food the door bought.
     game.tick();
     expect(game.getState().foodEaten).toBe(1);
   });

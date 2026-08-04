@@ -129,6 +129,13 @@ export const GENOME_V2_CONFIG = {
   phaseGate: {
     cadence: 5,
     multiplierBps: 30_000,
+    /**
+     * Movement boundaries held on arrival at the exit. Exactly one, exactly
+     * once per traversal: not a resource, not stackable, not claimable as a
+     * tactical hold. One tick is 160-175 ms, which is the difference between
+     * a two-tick reaction budget and a three-tick one.
+     */
+    arrivalBeatTicks: 1,
   },
   mirrorWager: {
     divertedYieldBps: 4_000,
