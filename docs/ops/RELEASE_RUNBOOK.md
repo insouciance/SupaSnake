@@ -157,12 +157,18 @@ The release has three deliberately different database gates:
   write denial, and the seven service-only definers — conditionally on the
   table existing, because 067 is deploy-order-agnostic by design and the probe
   also runs on releases that precede it. What is asserted is that IF the table
-  exists it has exactly that shape. It deliberately does not assert
-  `anon`/`authenticated` EXECUTE denial on those seven functions, nor `anon`
-  SELECT denial on the table: 067 revokes only `PUBLIC` from its functions and
-  only the write verbs from its table, so a platform default privilege may
-  legitimately leave those grants standing, and failing a release on something
-  a migration never established would strand a mutated schema. The immediately
+  exists it has exactly that shape, including the complete browser-role
+  boundary: `authenticated` holds exactly SELECT, `anon` holds nothing, and
+  neither role nor `PUBLIC` can execute any of the seven RPCs. That boundary is
+  asserted as **effective privilege** rather than as ACL contents. The
+  migration's own contract tests assert the ACL, because a CLI-applied local
+  database is applied by `postgres`, is born without the browser-role grants
+  that `supabase_admin`'s default ACL would add, and therefore cannot reproduce
+  the hazard. The hosted probe is in the opposite position: the effect is what
+  is observable and what matters, and `has_*_privilege` resolves defaults,
+  PUBLIC grants, explicit grants and role inheritance together. It is a
+  regression gate on the boundary, not proof that a particular REVOKE was
+  written. The immediately
   preceding empty linked migration-plan proof remains the authority for the
   062/063/064/065/066/067 ledger. Pure Genome projector behavior is exercised
   by the service-only capability and local stateful contract; the hosted probe

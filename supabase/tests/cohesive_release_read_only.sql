@@ -448,13 +448,24 @@ settlement_bounds_contract AS (
 -- the invariant that survives either order: IF the table exists, it has exactly
 -- the shape 067 establishes.
 --
--- Deliberately NOT asserted: anon/authenticated EXECUTE on the seven functions,
--- and anon SELECT on the table. Migration 067 revokes only PUBLIC from its
--- functions and only the write verbs from its table, so a platform default
--- privilege legitimately leaves those grants standing. Asserting them would
--- fail a release on something this migration never established, after the
--- schema has already been mutated. The write-verb denial below is the boundary
--- 067 does establish, and it is asserted for both browser roles.
+-- The browser-role boundary is asserted as EFFECTIVE PRIVILEGE, not as ACL
+-- contents. 067 revokes from `anon` and `authenticated` by name rather than
+-- only from PUBLIC, precisely so the boundary does not depend on which grantor
+-- applied the file: the `public` schema carries one default ACL per grantor,
+-- and `supabase_admin`'s hands the browser roles explicit grants that a PUBLIC
+-- revoke would not touch. That makes the migration's own contract tests assert
+-- the ACL, because a CLI-applied local database is born clean and cannot
+-- reproduce the hazard.
+--
+-- This probe is in the opposite position: it interrogates hosted production,
+-- where the effect is exactly what is observable and exactly what matters.
+-- `has_*_privilege` resolves defaults, PUBLIC grants, explicit grants and role
+-- inheritance together and answers the only question a release needs answered
+-- -- can a browser role reach this object. An ACL-contents check here would be
+-- narrower and more brittle: it would have to encode grantor-specific entry
+-- formats, and a NULL acl (owner defaults) is itself a passing state. So the
+-- privilege form is deliberate, and it is a regression gate rather than proof
+-- that a particular REVOKE statement was written.
 gene_eligibility_relation AS (
   SELECT
     pg_catalog.to_regclass('public.player_gene_eligibility') AS relation_oid
@@ -520,19 +531,28 @@ gene_eligibility_contract AS (
             ('gene_eligibility_learning_event_version_check')
         ) AS required(constraint_name)
       )
+      -- `authenticated` holds exactly SELECT; `anon` holds nothing at all. A
+      -- Supabase anonymous sign-in is the `authenticated` role carrying
+      -- is_anonymous, not the `anon` role, so denying `anon` outright costs no
+      -- player a read.
       AND pg_catalog.has_table_privilege(
         'authenticated', gene_eligibility_relation.relation_oid, 'SELECT'
       )
       AND NOT EXISTS (
         SELECT 1
-        FROM (VALUES ('anon'::TEXT), ('authenticated'::TEXT)) AS roles(name)
-        CROSS JOIN (
+        FROM (
           VALUES
-            ('INSERT'::TEXT), ('UPDATE'::TEXT), ('DELETE'::TEXT),
-            ('TRUNCATE'::TEXT), ('TRIGGER'::TEXT), ('REFERENCES'::TEXT)
-        ) AS privileges(name)
+            ('anon'::TEXT, 'SELECT'::TEXT),
+            ('anon', 'INSERT'), ('anon', 'UPDATE'), ('anon', 'DELETE'),
+            ('anon', 'TRUNCATE'), ('anon', 'TRIGGER'), ('anon', 'REFERENCES'),
+            ('authenticated', 'INSERT'), ('authenticated', 'UPDATE'),
+            ('authenticated', 'DELETE'), ('authenticated', 'TRUNCATE'),
+            ('authenticated', 'TRIGGER'), ('authenticated', 'REFERENCES')
+        ) AS denied(role_name, privilege_name)
         WHERE pg_catalog.has_table_privilege(
-          roles.name, gene_eligibility_relation.relation_oid, privileges.name
+          denied.role_name,
+          gene_eligibility_relation.relation_oid,
+          denied.privilege_name
         )
       )
       AND (
@@ -546,6 +566,15 @@ gene_eligibility_contract AS (
               IS NOT DISTINCT FROM ARRAY['search_path=public']::TEXT[]
           AND pg_catalog.has_function_privilege(
             'service_role', procedure_row.oid, 'EXECUTE'
+          )
+          AND NOT pg_catalog.has_function_privilege(
+            'anon', procedure_row.oid, 'EXECUTE'
+          )
+          AND NOT pg_catalog.has_function_privilege(
+            'authenticated', procedure_row.oid, 'EXECUTE'
+          )
+          AND NOT pg_catalog.has_function_privilege(
+            procedure_row.oid, 'EXECUTE'
           )
         ), FALSE)
         FROM (
