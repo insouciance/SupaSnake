@@ -454,6 +454,40 @@ export interface GenomeV2AnchorState {
   pinnedGeneId: GenomeV2ActiveGeneId | null;
 }
 
+/**
+ * The curriculum trial this run was STAMPED with (WP-C; PEO §4.4, server
+ * contract §5).
+ *
+ * IT IS RUN-START AUTHORITY, LIKE `genePool`. It arrives from the immutable
+ * start stamp and never from a client event or a request field, which is
+ * precisely why `assertGenomeV2OfferMatchesRoll` still holds: the server
+ * reproduces the roll from the same frozen state the client rolled from.
+ *
+ * THE GUARANTEE IS COUNTED IN COLLECTED OFFERS, NEVER IN RUNS (§4.4). The
+ * account's spent appearances arrive as `offersRemainingAtStart`; this run's
+ * own appearances accumulate in `offersConsumed`, written by the pure reducer
+ * when an offer that CONTAINED the trial opens — which happens only when the
+ * player deliberately collects the relic. An Ascetic run, Patient's stretched
+ * cadence, an ignored or expired relic, Free Play, and a run that produces no
+ * relic all consume nothing, because none of them opens such an offer.
+ */
+export interface GenomeV2TrialState {
+  /** The selected trial Gene. Always a member of this run's `genePool`. */
+  geneId: GenomeV2ActiveGeneId;
+  /**
+   * Guaranteed appearances still owed to the account when this run started,
+   * `1..GENOME_V2_TRIAL_OFFER_GUARANTEE`. A trial with none left is not
+   * stamped at all: it is an ordinary member of the vocabulary.
+   */
+  offersRemainingAtStart: number;
+  /**
+   * Collected offers in THIS run whose candidates contained the trial.
+   * Monotone, bounded by the guarantee, and the only number settlement needs
+   * to consume appearances against the account.
+   */
+  offersConsumed: number;
+}
+
 export type GenomeV2TargetLifecycle =
   | 'active'
   | 'armed'
@@ -728,6 +762,16 @@ export interface GenomeV2State {
    * Omitted while zero, for the same reason as the field above.
    */
   timeDilationExtraGrowth?: number;
+  /**
+   * The stamped curriculum trial and its consumed appearances (WP-C).
+   *
+   * OMITTED WHENEVER THERE IS NO LIVE GUARANTEE — curriculum off, no trial
+   * selected, the three appearances already spent, or a trial the composed
+   * vocabulary does not contain. A run without it serializes exactly the bytes
+   * it serialized before this field existed, so flag-off is byte-identical
+   * rather than merely equivalent.
+   */
+  trial?: GenomeV2TrialState;
 }
 
 interface GenomeV2EventBase {
@@ -1163,6 +1207,11 @@ export function createGenomeV2State(
     offerTiltStrain?: StrainId | null;
     suppressedStrains?: readonly StrainId[];
     strainThresholdDelta?: Readonly<Partial<Record<StrainId, number>>>;
+    /**
+     * The account's selected trial and the appearances still guaranteed to it
+     * (WP-C). Server stamp only; there is no request field it can arrive on.
+     */
+    trial?: { geneId: GenomeV2ActiveGeneId; offersRemaining: number } | null;
   } = {}
 ): GenomeV2State {
   const runSeed = options.runSeed ?? 'genome-v2-test-seed';
@@ -1209,6 +1258,9 @@ export function createGenomeV2State(
       Math.abs(delta ?? 0) > GENOME_V2_MAX_STRAIN_THRESHOLD_SHIFT
     ) throw new Error('Genome v2 threshold shift is malformed.');
   }
+  // Resolved once, here, so live play and replay stamp the identical trial —
+  // and so a trial the composed vocabulary does not contain simply is not one.
+  const trial = genomeV2TrialStamp(genePool, options.trial ?? null);
   const state: GenomeV2State = {
     v: GENOME_RULES_V2,
     dynasty,
@@ -1293,6 +1345,9 @@ export function createGenomeV2State(
       displayGrossRaw: 0,
     },
     journal: [],
+    // Absent, not null, when there is no live guarantee: the serialized run is
+    // then byte-identical to a pre-curriculum one.
+    ...(trial ? { trial } : {}),
   };
   captureGenomeV2DiscoveryHistory(state);
   return state;
@@ -1391,6 +1446,15 @@ function cloneState(state: GenomeV2State): GenomeV2State {
     ledger: { ...state.ledger },
     startingStrainPoints: { ...state.startingStrainPoints },
     journal: [...state.journal],
+    // Both curriculum fields are written by the reducer AFTER this clone, so
+    // both must be copies. Sharing the array with `current` would let a guard
+    // that throws later in the same reduction leave a resolution behind on the
+    // state the caller kept — "the input state is never mutated" has to be
+    // true of the fields added last, too.
+    ...(state.learningEventsResolved
+      ? { learningEventsResolved: [...state.learningEventsResolved] }
+      : {}),
+    ...(state.trial ? { trial: { ...state.trial } } : {}),
   };
 }
 
@@ -1876,6 +1940,112 @@ export function genomeV2LearningEventsResolved(
   state: Pick<GenomeV2State, 'learningEventsResolved'>
 ): readonly GenomeV2ActiveGeneId[] {
   return state.learningEventsResolved ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// The trial guarantee (WP-C — PEO §4.4, server contract §5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Collected offers a selected trial is guaranteed to appear in before it
+ * becomes an ordinary candidate (PEO §4.4, **[H] set 2026-08-04**).
+ *
+ * Mirrored by migration 067's `gene_eligibility_trial_offers_check` and by
+ * `record_trial_offer`'s own bound, so the engine and the database cannot
+ * disagree about when a guarantee is spent.
+ */
+export const GENOME_V2_TRIAL_OFFER_GUARANTEE = 3;
+
+/**
+ * Genes whose learning event cannot fire until portal CONTINUE exists
+ * (learning-event catalog §5). Both read "portal CONTINUE" in their own rule
+ * text and CONTINUE activates at one validated bank, so in a run without it
+ * the trial is SUPPRESSED — it neither takes a candidate position nor spends
+ * an appearance, which is the difference between "not taught yet" and "taught
+ * and failed".
+ */
+export const GENOME_V2_TRIAL_CONTINUE_DEPENDENT: readonly GenomeV2ActiveGeneId[] =
+  ['loan_shark', 'mirror_wager'];
+
+/**
+ * Can this run still teach that Gene at all?
+ *
+ * Only the conditions the frozen run state can answer live here. The rest of
+ * catalog §5 is already structural and needs no second expression:
+ *
+ *   - Dynasty legality (`heartwood`, `zenith_protocol`,
+ *     `constellation_crown`, `time_dilation` on CYBER) — the composed
+ *     vocabulary is a subset of the Dynasty roster, so an illegal trial is
+ *     never in `genePool` and never reaches a roll;
+ *   - an outside revive suppressing `phoenix` — the shipped `legal` filter
+ *     already removes it;
+ *   - Free Play — the route composes Free Play from the complete roster and
+ *     stamps no trial at all;
+ *   - a run that collects no relic — it opens no offer, so nothing is spent.
+ */
+export function genomeV2TrialTeachable(
+  state: Pick<GenomeV2State, 'ftue'>,
+  geneId: GenomeV2ActiveGeneId
+): boolean {
+  if (
+    GENOME_V2_TRIAL_CONTINUE_DEPENDENT.includes(geneId) &&
+    !state.ftue.continueUnlocked
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Freeze the account's trial into a run, or decide it has none.
+ *
+ * ONE FUNCTION, THREE CALLERS, SO THEY CANNOT DRIFT: run start stamps with it,
+ * the client engine rebuilds with it, and settlement validation re-derives the
+ * expected stamp with it. It answers `null` — meaning "this run carries no
+ * guarantee, the Gene is simply part of the vocabulary" — when the trial is
+ * absent, spent, or not in this run's own pool.
+ *
+ * A structurally malformed trial throws, exactly as a malformed pool does:
+ * it can only come from the server's own stamp, so it is a bug rather than a
+ * player-supplied surprise.
+ */
+export function genomeV2TrialStamp(
+  genePool: readonly GenomeV2ActiveGeneId[],
+  trial: { geneId: GenomeV2ActiveGeneId; offersRemaining: number } | null
+): GenomeV2TrialState | null {
+  if (!trial) return null;
+  if (
+    !isGenomeV2ActiveGeneId(trial.geneId) ||
+    !Number.isSafeInteger(trial.offersRemaining) ||
+    trial.offersRemaining < 0 ||
+    trial.offersRemaining > GENOME_V2_TRIAL_OFFER_GUARANTEE
+  ) {
+    throw new Error('Genome v2 run-start trial is malformed.');
+  }
+  if (trial.offersRemaining === 0 || !genePool.includes(trial.geneId)) {
+    return null;
+  }
+  return {
+    geneId: trial.geneId,
+    offersRemainingAtStart: trial.offersRemaining,
+    offersConsumed: 0,
+  };
+}
+
+/** Guaranteed appearances this run has not spent yet. */
+export function genomeV2TrialOffersRemaining(
+  state: Pick<GenomeV2State, 'trial'>
+): number {
+  const trial = state.trial;
+  if (!trial) return 0;
+  return Math.max(0, trial.offersRemainingAtStart - trial.offersConsumed);
+}
+
+/** Collected offers of this run that contained the trial. */
+export function genomeV2TrialOffersConsumed(
+  state: Pick<GenomeV2State, 'trial'>
+): number {
+  return state.trial?.offersConsumed ?? 0;
 }
 
 function ensureActivePool(state: GenomeV2State, geneId: unknown): asserts geneId is GenomeV2ActiveGeneId {
@@ -2713,6 +2883,26 @@ export function reduceGenomeV2Event(
       // lesson. Pinning is the intent; arrival is the proof.
       if (event.pinnedGeneId) {
         recordGenomeV2LearningEvent(state, 'loom_anchor');
+      }
+      // The trial guarantee is spent HERE, by a COLLECTED offer that contained
+      // it, and never by a run (§4.4). An offer only opens on the player's own
+      // relic collection, so an ignored or expired relic reaches this line
+      // never. An appearance the ordinary draw produced counts too — the rule
+      // is "appeared in three collected offers", not "was forced three times".
+      //
+      // A run that cannot teach the trial spends nothing even if the ordinary
+      // draw shows it, because suppression means the guarantee is not
+      // decremented (catalog §5) — the difference between "not taught yet" and
+      // "shown three times and never explained".
+      if (
+        state.trial &&
+        event.candidates.includes(state.trial.geneId) &&
+        genomeV2TrialTeachable(state, state.trial.geneId)
+      ) {
+        state.trial.offersConsumed = Math.min(
+          GENOME_V2_TRIAL_OFFER_GUARANTEE,
+          state.trial.offersConsumed + 1
+        );
       }
       break;
     case 'offer_declined':
@@ -4197,9 +4387,38 @@ function drawGenomeV2Candidate(
 }
 
 /**
+ * The trial's guaranteed candidate for THIS offer, or null.
+ *
+ * Pure and state-only, so client and server reach the same answer from the
+ * same frozen state — the parity guard depends on nothing else.
+ *
+ * Null means "no guaranteed position this offer", for one of four reasons,
+ * none of which spends an appearance: no trial is stamped, the guarantee is
+ * spent, the Gene is not currently legal (already held, retired, or
+ * `phoenix` under an outside revive), or this run cannot teach it at all.
+ */
+function genomeV2TrialCandidate(
+  state: GenomeV2State,
+  legal: readonly GenomeV2ActiveGeneId[]
+): GenomeV2ActiveGeneId | null {
+  const trial = state.trial;
+  if (!trial) return null;
+  if (genomeV2TrialOffersRemaining(state) <= 0) return null;
+  if (!legal.includes(trial.geneId)) return null;
+  if (!genomeV2TrialTeachable(state, trial.geneId)) return null;
+  return trial.geneId;
+}
+
+/**
  * Deterministic build-aware THREAD/FORK offer. Surprise is bounded to the
  * second slot and never bypasses pool legality, seen/retired exclusion, or
  * the different-category rule when a different viable category exists.
+ *
+ * A stamped curriculum trial takes the first slot exactly as
+ * `state.anchor.pinnedGeneId` does, and for the same reason it is safe: the
+ * second slot still draws ordinarily from everything else legal, so one
+ * ordinary candidate always survives beside it and DECLINE is untouched.
+ * Guidance narrows the choice by one; it never forces a build.
  */
 export function rollGenomeV2Offer(
   state: GenomeV2State,
@@ -4225,9 +4444,20 @@ export function rollGenomeV2Offer(
   );
   if (legal.length < 2) return null;
   const rng = offerStream(`genome-v2:${state.runSeed}`, offerIndex);
+  // Drawn FIRST and unconditionally, before either override is considered, so
+  // the stream position is identical whether or not a candidate is forced.
+  // That is what makes the trial part of the deterministic roll rather than an
+  // overlay on top of it, and why a flag-off run rolls byte-identical offers.
   const rolledFirst = drawGenomeV2Candidate(legal, state, rng);
   const pinned = state.anchor.pinnedGeneId;
-  const first = pinned && legal.includes(pinned) ? pinned : rolledFirst;
+  // THE PLAYER'S OWN PIN OUTRANKS THE CURRICULUM. Loom Anchor is a mechanic
+  // the player spent a charge on; guidance may not overwrite it, and pinning
+  // both would leave the offer with no ordinary candidate at all. A suppressed
+  // trial costs nothing: it appears in no offer, so it spends no appearance.
+  const trial = genomeV2TrialCandidate(state, legal);
+  const first = pinned && legal.includes(pinned)
+    ? pinned
+    : trial ?? rolledFirst;
   const remaining = legal.filter((geneId) => geneId !== first);
   const differentCategory = remaining.filter(
     (geneId) =>
