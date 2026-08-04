@@ -9,6 +9,7 @@ import {
   type RunImpact,
   type RunImpactEnvelope,
 } from '@/shared/progression/runImpact';
+import { formatAmount } from '@/shared/format/amount';
 
 type Dynasty = RunImpactEnvelope['dynasty'];
 
@@ -131,7 +132,7 @@ export function buildRunImpactEnvelope(
         pillar: 'mastery',
         kind: 'mastery_xp',
         significance: 'routine',
-        headline: `+${input.mastery.xpGained.toLocaleString('en-US')} ${input.dynasty} Mastery XP`,
+        headline: `+${formatAmount(input.mastery.xpGained)} ${input.dynasty} Mastery XP`,
         before: input.mastery.xpBefore,
         after: input.mastery.xp,
         delta: input.mastery.xpGained,
@@ -276,7 +277,7 @@ export function buildRunImpactEnvelope(
       // contribution is actually visible.
       significance: 'milestone',
       headline: 'Entered your clan five',
-      detail: delta > 0 ? `Clan Depth increased by ${delta.toLocaleString('en-US')}` : undefined,
+      detail: delta > 0 ? `Clan Depth increased by ${formatAmount(delta)}` : undefined,
       delta,
       destination: 'clan',
       artifactRef: input.sessionId,

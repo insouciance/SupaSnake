@@ -24,6 +24,7 @@ import type {
 import { useRecognitionSeen } from '@/components/ui/useRecognitionSeen';
 import { progressionArtifactHref } from '@/shared/progression/destinations';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
+import { formatAmount } from '@/shared/format/amount';
 
 export type CareerPulseData = CareerPulseContract;
 
@@ -236,7 +237,7 @@ function Pursuit({
             />
           </div>
           <div className="mt-2 flex items-center justify-between gap-3 font-mono text-xs text-beige/60">
-            <span>{active.current.toLocaleString()} / {active.target.toLocaleString()}</span>
+            <span>{formatAmount(active.current)} / {formatAmount(active.target)}</span>
             <Link href={DESTINATION_HREF[active.destination]} className="inline-flex items-center gap-1 text-cosmic hover:text-bone-white">
               Open <IconArrowRight size={12} />
             </Link>
@@ -264,10 +265,10 @@ function ClanPulse({ pulse }: { pulse: CareerPulseData }) {
           <p className="font-body text-sm text-bone-white">
             {battle.ownTopFive.length < 5 || battle.fifthBest === null
               ? `${5 - battle.ownTopFive.length} open contribution slot${5 - battle.ownTopFive.length === 1 ? '' : 's'}`
-              : `Beat ${battle.fifthBest.toLocaleString()} Yield to improve your five`}
+              : `Beat ${formatAmount(battle.fifthBest)} Yield to improve your five`}
           </p>
           <p className="font-mono text-xs text-beige/60">
-            Clan {battle.clanTotal.toLocaleString()} · Rival {battle.opponentTotal === null ? 'pending' : battle.opponentTotal.toLocaleString()}
+            Clan {formatAmount(battle.clanTotal)} · Rival {battle.opponentTotal === null ? 'pending' : formatAmount(battle.opponentTotal)}
           </p>
         </div>
       )}

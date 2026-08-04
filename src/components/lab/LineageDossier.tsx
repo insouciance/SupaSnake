@@ -13,6 +13,7 @@ import type {
   LineageSpecimen,
 } from '@/shared/progression/career';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
+import { formatAmount } from '@/shared/format/amount';
 
 export type LineageDossierData = LineageDossierContract;
 
@@ -49,11 +50,11 @@ function RunFacts({ runs }: { runs: LineageSpecimen['runs'] }) {
       </div>
       <div>
         <dt className="text-beige/50">Best Score</dt>
-        <dd className="font-mono text-bone-white">{runs.bestScore.toLocaleString()}</dd>
+        <dd className="font-mono text-bone-white">{formatAmount(runs.bestScore)}</dd>
       </div>
       <div>
         <dt className="text-beige/50">Best Yield</dt>
-        <dd className="font-mono text-bone-white">{runs.bestYield.toLocaleString()}</dd>
+        <dd className="font-mono text-bone-white">{formatAmount(runs.bestYield)}</dd>
       </div>
       <div>
         <dt className="text-beige/50">Highest commitment</dt>
@@ -62,7 +63,7 @@ function RunFacts({ runs }: { runs: LineageSpecimen['runs'] }) {
       {runs.clanDepthDelivered > 0 && (
         <div className="col-span-2">
           <dt className="text-beige/50">Clan Depth delivered</dt>
-          <dd className="font-mono text-cosmic">{runs.clanDepthDelivered.toLocaleString()}</dd>
+          <dd className="font-mono text-cosmic">{formatAmount(runs.clanDepthDelivered)}</dd>
         </div>
       )}
     </dl>

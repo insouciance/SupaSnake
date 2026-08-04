@@ -8,6 +8,7 @@ import {
   type GenomeCardModel,
 } from '@/lib/share/genomeCardImage';
 import { STRAINS } from '@/shared/game/strains';
+import { formatAmount } from '@/shared/format/amount';
 import { trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents, EventCategories } from '@/lib/analytics/events';
 import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
@@ -96,7 +97,7 @@ export function GenomeCard({ model }: { model: GenomeCardModel }) {
         {rows.map((row, index) => (
           <li key={row.label} className={`flex items-center justify-between text-xs font-body ${index === rows.length - 1 ? 'text-venom-orange font-bold text-base' : 'text-beige/70'}`} style={{ animationDelay: `${index * 90}ms` }}>
             <span>{row.label}{row.factor !== null ? ` ×${row.factor.toFixed(2)}` : ''}</span>
-            <span>{row.value.toLocaleString()} DNA</span>
+            <span>{formatAmount(row.value)} DNA</span>
           </li>
         ))}
       </ol>

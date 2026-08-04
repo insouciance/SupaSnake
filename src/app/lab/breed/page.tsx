@@ -41,6 +41,7 @@ import type {
   BreedingHistoryEntry,
   BreedingHistoryResponse,
 } from '@/app/api/breeding/utils';
+import { formatAmount } from '@/shared/format/amount';
 
 // =============================================================================
 // HELPERS
@@ -483,7 +484,7 @@ export default function BreedPage() {
               data-testid="breed-dna-balance"
             >
               <IconDna size={16} className="text-cyber" aria-label="DNA" aria-hidden={false} role="img" />
-              {dnaBalance.toLocaleString('en-US')}
+              {formatAmount(dnaBalance)}
             </div>
           </div>
 
@@ -541,7 +542,7 @@ export default function BreedPage() {
               >
                 {draft || validation.cost !== null ? (
                   <>
-                    {(draft?.preview.dna_cost ?? validation.cost ?? 0).toLocaleString('en-US')}
+                    {formatAmount(draft?.preview.dna_cost ?? validation.cost ?? 0)}
                     <IconDna size={14} className="text-cyber" aria-label="DNA" aria-hidden={false} role="img" />
                   </>
                 ) : (

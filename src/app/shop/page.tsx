@@ -32,6 +32,7 @@ import { PremiumSection } from '@/components/engagement/PremiumSection';
 import { GAME_CONFIG } from '@/shared/config/game';
 import Link from 'next/link';
 import { IconCart, IconDna } from '@/components/ui/icons';
+import { formatAmount } from '@/shared/format/amount';
 
 export default function ShopPage() {
   const { isAnonymous } = useAuth();
@@ -69,7 +70,7 @@ export default function ShopPage() {
           {/* DNA Balance */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-arcade border border-scale-blue-light/60 bg-void/70">
             <IconDna size={18} className="text-venom-orange" />
-            <span className="text-bone-white font-display">{dnaBalance.toLocaleString()}</span>
+            <span className="text-bone-white font-display">{formatAmount(dnaBalance)}</span>
           </div>
           <Link
             href="/"

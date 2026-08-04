@@ -65,6 +65,7 @@ import {
   serpentWeekIndex,
   serpentWeekKeyToDate,
 } from '@/shared/game/serpent';
+import { formatAmount } from '@/shared/format/amount';
 
 /** One auto-composed post, ready for a person to press publish on. */
 export interface SettlementPost {
@@ -277,7 +278,7 @@ export function composeWorldSettlementPost(
   } else {
     for (const clan of world.clans) {
       lines.push(
-        `${clan.name.toUpperCase()} — Depth ${clan.depth.toLocaleString('en-US')} · ${
+        `${clan.name.toUpperCase()} — Depth ${formatAmount(clan.depth)} · ${
           clan.contributingMembers
         } ${clan.contributingMembers === 1 ? 'member hunted' : 'members hunted'}`
       );

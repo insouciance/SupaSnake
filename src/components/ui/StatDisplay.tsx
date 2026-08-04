@@ -1,8 +1,13 @@
 'use client';
 
+import { formatAmount } from '@/shared/format/amount';
+
 /**
  * StatDisplay - Numeric stat with label
  * Monospace numbers for technical/cockpit aesthetic; arcade section labels.
+ *
+ * A numeric `value` is an AMOUNT and renders as a whole number. Pass a
+ * pre-formatted string for factors, percentages, rates, and durations.
  */
 
 interface StatDisplayProps {
@@ -58,7 +63,7 @@ export function StatDisplay({
         }`}
       >
         {prefix}
-        {typeof value === 'number' ? value.toLocaleString() : value}
+        {typeof value === 'number' ? formatAmount(value) : value}
         {suffix && <span className="text-beige/60 ml-1">{suffix}</span>}
       </div>
     </div>

@@ -43,6 +43,7 @@ import {
   signalDayKey,
   signalDaySeed,
 } from '@/shared/game/signal';
+import { formatAmount } from '@/shared/format/amount';
 
 // ---------------------------------------------------------------------------
 // The Signal calendar — BORROWED, NEVER REDEFINED
@@ -331,7 +332,7 @@ export function challengeHeadline(challenge: Challenge): string {
   if (challenge.target === null) {
     return `Play ${where}`;
   }
-  const target = challenge.target.toLocaleString('en-US');
+  const target = formatAmount(challenge.target);
   return challenge.by
     ? `Beat ${challenge.by}'s ${target} on ${where}`
     : `Beat ${target} on ${where}`;

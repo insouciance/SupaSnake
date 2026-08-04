@@ -10,6 +10,7 @@ import {
   type EnergyStatus,
 } from '@/shared/game/energyEnvelope';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { formatAmount } from '@/shared/format/amount';
 
 interface EnergyCommitmentSelectorProps {
   energy: EnergyStatus | null;
@@ -209,14 +210,14 @@ export function EnergyCommitmentSelector({
             <span className="sm:hidden">
               {value > 0
                 ? (clanBattle.fifthBestToBeat ?? 0) > 0
-                  ? `Counts · beat ${(clanBattle.fifthBestToBeat ?? 0).toLocaleString()}`
+                  ? `Counts · beat ${formatAmount(clanBattle.fifthBestToBeat ?? 0)}`
                   : 'Counts toward your five'
                 : 'Commit 1+ to enter'}
             </span>
             <span className="hidden sm:inline">
               {value > 0
                 ? (clanBattle.fifthBestToBeat ?? 0) > 0
-                  ? `This run counts. Beat ${(clanBattle.fifthBestToBeat ?? 0).toLocaleString()} Yield to improve your five.`
+                  ? `This run counts. Beat ${formatAmount(clanBattle.fifthBestToBeat ?? 0)} Yield to improve your five.`
                   : 'This run counts. Your strongest five runs contribute.'
                 : 'Lean runs do not count. Commit at least 1 Energy to enter this attempt.'}
             </span>

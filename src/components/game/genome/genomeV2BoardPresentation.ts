@@ -9,6 +9,7 @@ import {
   type GenomeV2State,
   type GenomeV2TargetLifecycle,
 } from '@/shared/game/genomeV2';
+import { formatNonNegativeAmount } from '@/shared/format/amount';
 
 export type GenomeV2BoardTerrainSource =
   | 'coilkeeper_seal'
@@ -316,9 +317,9 @@ export function projectGenomeV2Board(
   };
 }
 
+/** Yield is an AMOUNT: the rail reads whole units, never a fractional tail. */
 function scaledYield(value: number): string {
-  const units = Math.max(0, value) / GENOME_V2_YIELD_SCALE;
-  return Number.isInteger(units) ? `${units}Y` : `${units.toFixed(1)}Y`;
+  return `${formatNonNegativeAmount(value / GENOME_V2_YIELD_SCALE)}Y`;
 }
 
 /** Highest-value live facts for the fixed, non-interactive status rail. */

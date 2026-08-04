@@ -15,6 +15,7 @@ import { RARITY_STYLE } from '@/components/lab/VariantCard';
 import { IconCheck, IconDna, IconX } from '@/components/ui/icons';
 import { LabDynastyRune } from '@/components/lab/LabDynastyRune';
 import { SnakeArt } from '@/components/lab/SnakeArt';
+import { formatAmount as formatNumber } from '@/shared/format/amount';
 
 export interface UnlockConfirmModalProps {
   variant: SnakeVariant;
@@ -25,13 +26,6 @@ export interface UnlockConfirmModalProps {
   onConfirm: () => void;
   isUnlocking: boolean;
   error: string | null;
-}
-
-/**
- * Format number with commas for display
- */
-function formatNumber(num: number): string {
-  return num.toLocaleString('en-US');
 }
 
 /**

@@ -58,6 +58,7 @@ import {
   signalDayStart,
   SIGNAL_EPOCH_UTC,
 } from './signal';
+import { formatAmount } from '@/shared/format/amount';
 
 // The one calendar, borrowed rather than owned. Re-exported so callers reach
 // the Signal's derivation through this module without a second import path,
@@ -413,12 +414,12 @@ export function readAscensionMonth(
 
 /** `12480` -> `'12,480 points'`. Singular is a real case. */
 export function ascensionPoints(points: number): string {
-  return `${points.toLocaleString('en-US')} ${points === 1 ? 'point' : 'points'}`;
+  return `${formatAmount(points)} ${points === 1 ? 'point' : 'points'}`;
 }
 
 /** `3` -> `'3 Signals'`. Singular is a real case at the start of a month. */
 export function signalCount(count: number): string {
-  return `${count.toLocaleString('en-US')} ${count === 1 ? 'Signal' : 'Signals'}`;
+  return `${formatAmount(count)} ${count === 1 ? 'Signal' : 'Signals'}`;
 }
 
 /**

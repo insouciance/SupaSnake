@@ -16,10 +16,7 @@
 
 import { StrainChip } from '@/components/traits/StrainChip';
 import type { WorkbenchRankedSnake } from '@/shared/game/workbench';
-
-function num(value: number): string {
-  return Math.max(0, Math.round(value)).toLocaleString('en-US');
-}
+import { formatNonNegativeAmount as num } from '@/shared/format/amount';
 
 const BASIS_COPY: Record<WorkbenchRankedSnake['basis'], string> = {
   floor: 'at the plan’s own floor',
