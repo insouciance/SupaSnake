@@ -11,6 +11,7 @@ const CHECKS = {
   favoriteRowsValid: true,
   favoriteTriggerValid: true,
   foundingBridgeSafe: true,
+  geneEligibilityContractValid: true,
   genomeAscendanceFunctionsValid: true,
   genomeCatalogValid: true,
   genomeCodexVersionsValid: true,
@@ -100,7 +101,7 @@ esac
       {
         cohesive_release_probe: {
           status,
-          probe: 'cohesive_release_read_only_v4',
+          probe: 'cohesive_release_read_only_v5',
           checks,
         },
       },

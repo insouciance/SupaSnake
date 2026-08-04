@@ -111,6 +111,10 @@ describe('production environment validation', () => {
       "\"$actual\" = '066_settlement_payload_bounds.sql'"
     );
     expect(workflow).toContain('rollout=settlement-payload-bounds');
+    expect(workflow).toContain(
+      "\"$actual\" = '067_player_gene_eligibility.sql'"
+    );
+    expect(workflow).toContain('rollout=player-gene-eligibility');
     // Classifying a plan without also gating the push would pass
     // classification, never mutate, then fail the post-push empty-plan proof.
     // Both the apply and the validate step must name every reviewed rollout.
@@ -123,6 +127,9 @@ describe('production environment validation', () => {
     ).toBe(2);
     expect(
       rolloutApplyBlock.match(/rollout == 'genome-v2-initial'/g)?.length
+    ).toBe(2);
+    expect(
+      rolloutApplyBlock.match(/rollout == 'player-gene-eligibility'/g)?.length
     ).toBe(2);
 
     const snapshotAt = workflow.indexOf('name: Snapshot exact outgoing cron state');
@@ -290,7 +297,7 @@ describe('production environment validation', () => {
     expect(linkedHarness).not.toContain('read_only: true');
     expect(linkedHarness).toContain("--write-out '%{http_code}'");
     expect(linkedHarness).toContain('returned HTTP $http_status');
-    expect(linkedHarness).toContain('cohesive_release_read_only_v4');
+    expect(linkedHarness).toContain('cohesive_release_read_only_v5');
     expect(linkedHarness).toContain('and length == 1');
     expect(linkedHarness).toContain(
       'supabase/tests/cohesive_release_read_only.sql'
