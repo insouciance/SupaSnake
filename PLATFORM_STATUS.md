@@ -1,6 +1,6 @@
 # SupaSnake platform status
 
-**Updated:** 2026-08-03
+**Updated:** 2026-08-04
 
 **Environment:** operator production, Stripe sandbox
 
@@ -20,18 +20,23 @@
 | Clan battle | Automatic positive-Energy eligibility; three days; best five per member |
 | Career | Durable run ingress; atomic progression; bounded recognition; server-backed attention and memory |
 | Tactical Genome | v2 enabled; player-pulled relics, six loci, 13 shared Genes, three signatures, eight Splices, 2/3/4 neutral Strain ladder |
-| Player-feature baseline | `8bb3ef9561c959b1b0683f3436ac68f8159e89d7` |
-| Current deployment | `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`supasnake-i9d5do4ix-josef-bells-projects.vercel.app`) |
+| Run continuity | Nonblocking save status in the cockpit; only a proven exclusive-lease conflict interrupts play |
+| Player-feature baseline | `4fb62712a5ecf57015aedab98cf732bfa11c69ad` |
+| Current deployment | `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`supasnake-m3mpjs2ij-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`8bb3ef9`); dual-version and schema-compatible, but restores the blocking reconnect surface and session-unbound settlement |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release passed protected-PR and post-main Build, Lint, Test, and
-all four isolated-Supabase E2E flag shapes; full type checking, lint, 468 Jest
-suites / 6,151 tests, production build, deterministic cockpit/Genome fixtures,
-local migrations 001–065 from zero, ordinary and two-session SQL integration,
-the production runtime dependency audit, staged and canonical health, linked
-read-only schema proof, exact cron ownership, and focused public-production
-smoke. Detailed evidence is maintained in
+The current release merged as PR 59 (continuity, terminal authority and Tactical
+Loom) and PR 60 (dependency-audit lockfile fix); both passed all ten
+protected-PR checks, including all four isolated-Supabase E2E flag shapes and
+the 14m25s production E2E leg. It also passed full type checking, lint, 469
+Jest suites / 6,192 tests, production build, the three deterministic cockpit
+verifications, local migrations 001–065 from zero, ordinary and two-session SQL
+integration, the production runtime dependency audit, staged and canonical
+health, linked read-only schema proof, exact cron ownership, and focused
+public-production smoke. Production workflow `30853735919` deployed it with no
+migration. Detailed evidence is maintained in
 `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -71,6 +76,9 @@ smoke. Detailed evidence is maintained in
   rune, independent family color, and written badge; dual-Strain Genes show both.
   The neutral first view stays compact, while `UNFOLD DETAILS` reveals the direct
   2/3/4 reaction route and Splice consequences without ranking either choice.
+  The Loom sits on a transparent, non-clipping backdrop inside a pixel-invariant
+  outer shell; it enters by alpha alone, so unfolding or resizing never shifts
+  the frame the player is reading.
 - The one free Genome Workbench is responsive and direct-manipulation-first;
   `/codex` is a compatibility route into the same instrument and the Research
   Record remains subordinate rather than becoming a duplicate rules surface.
@@ -81,6 +89,21 @@ smoke. Detailed evidence is maintained in
 - Interrupted earning runs renew their live continuity receipt and lease when
   resumed; the recovery watchdog no longer lets a stale receipt repeatedly
   interrupt otherwise healthy resumed play.
+- A lagging checkpoint is reported, not enforced: the cockpit shows
+  `Save catching up · play continues` or `Latest position pending verification ·
+  play continues` and there is no blocking `Try Connection` surface. Only a
+  proven exclusive-lease conflict interrupts an active run.
+- Engine faults are contained to secured-checkpoint recovery and are never
+  presented as a death the player did not cause. The COSMIC five-star wave
+  preflight routes against physical blockers only and falls back
+  deterministically.
+- Terminal settlement is strictly session-bound. A successful HTTP response
+  alone never opens Results, canonical Free Play receipts are reconstructed on
+  the server, and a result still being finalized shows an honest `Finalizing…`
+  state rather than an invented outcome.
+- Results and Lab action rows are part of their surfaces rather than a dark
+  floating tray: transparent, in document order, and on a 320×568 phone the
+  Results dock lands inside the first viewport with nothing pinned.
 - Pause is a tactical hold, not a menu. Accepted movement resumes; Abandon Run
   is a secondary confirmed action.
 - Desktop and mobile accept a turn inside a 25%-tick grace window (capped at

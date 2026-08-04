@@ -1,12 +1,12 @@
 # SupaSnake QA Checklist
 
-_Last updated: 2026-08-03_
+_Last updated: 2026-08-04_
 
 This is the current player-facing QA path for the deployed Redesign Wave,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle release, control responsiveness, Career Spine,
-cohesive UX/run continuity, and the live player-pulled Tactical Genome v2
-release.
+cohesive UX/run continuity, the live player-pulled Tactical Genome v2 release,
+and the run-continuity, terminal-authority and Tactical Loom hotfix.
 Work from top to bottom when doing a broad playtest; use the focused matrices
 near the end when verifying a fix.
 
@@ -26,8 +26,9 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `8bb3ef9561c959b1b0683f3436ac68f8159e89d7` — player-pulled Tactical Genome v2 and playtest UX/continuity hotfix |
-| Current deployment | `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`supasnake-i9d5do4ix-josef-bells-projects.vercel.app`), READY/production |
+| Production behavior commit | `4fb62712a5ecf57015aedab98cf732bfa11c69ad` — run continuity, terminal authority, Tactical Loom presentation, and the dependency-audit lockfile fix |
+| Current deployment | `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`supasnake-m3mpjs2ij-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`8bb3ef9`); dual-version and schema-compatible, but reinstates the blocking reconnect surface |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–065 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
@@ -35,16 +36,17 @@ Design references:
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `8bb3ef9561c959b1b0683f3436ac68f8159e89d7` |
+| Canonical source | `main`; canonical health reports exact SHA `4fb62712a5ecf57015aedab98cf732bfa11c69ad` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle system, control responsiveness, Career Spine, and
 player-pulled Tactical Genome v2 are live through migration 065. The 22-flag
 public contract, exact release SHA, linked schema proof, Genome service
-capability, canonical alias, and cron owner passed together. Use a flag-off
-forward deployment of the dual-version code rather than the retired pre-v2
-application as rollback.
+capability, canonical alias, and cron owner passed together. The current
+run-continuity, terminal-authority and Tactical Loom release is
+application-only and adds no migration. Use a flag-off forward deployment of the
+dual-version code rather than the retired pre-v2 application as rollback.
 
 ### Genome v2 release checks
 
@@ -71,6 +73,76 @@ application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Run continuity, terminal authority, and Tactical Loom production evidence
+
+- PR 59 merged the continuity, terminal-authority and Loom hotfix as `bfb4850`;
+  PR 60 merged the dependency-audit lockfile fix as exact main SHA
+  `4fb62712a5ecf57015aedab98cf732bfa11c69ad`. Neither carries a migration, so
+  the hosted schema stays 001–065.
+- PR 59 passed all ten protected checks: build 2m17s, lint 1m9s, test 9m12s,
+  isolated SQL contracts 1m49s, GitGuardian, the aggregate `e2e` gate, and the
+  four E2E flag shapes — production 14m25s, rollback 8m14s, legacy-workbench
+  3m57s, genome-without-workbench 4m1s. PR 60 passed the same ten checks with a
+  12m52s production E2E leg.
+- The local release gate passed 469 Jest suites / 6,192 tests, TypeScript,
+  ESLint, the production build, and all three deterministic cockpit
+  verifications (`verify:cockpit-prototype`, `verify:cockpit-webgl`,
+  `verify:cockpit-decisions`).
+- The first deploy dispatch, run `30849425691` on `bfb4850`, stopped cleanly
+  before any mutation at the blocking `npm audit --audit-level=high --omit=dev`
+  gate. Two high advisories — GHSA-rgw5-rvv9-x895 (brace-expansion) and
+  GHSA-7p8r-x3mc-p8w7 (fast-uri) — had been published to the registry that same
+  day against an unchanged lockfile. PR 60 resolved them with a lockfile-only
+  bump: nested brace-expansion to 5.0.9 and fast-uri to 3.1.5. The three
+  moderate postcss advisories remain below the gate and still need a breaking
+  upgrade. `npm audit` runs only in `deploy-production.yml`, never in the push
+  workflows, so a same-day advisory surfaces at dispatch rather than on `main`.
+- Production workflow `30853735919` then succeeded in Stripe test mode in
+  17m19s, completing 2026-08-03 21:31:04Z, and deployed and verified
+  `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw`
+  (`supasnake-m3mpjs2ij-josef-bells-projects.vercel.app`) as READY/production.
+  The outgoing deployment was `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` on `8bb3ef9`.
+- Canonical `/api/health` and `/api/release-contract` report healthy application
+  and database, exact release SHA `4fb62712a5ecf57015aedab98cf732bfa11c69ad`,
+  project ref `gmpwyzqafoyowndbvlma`, 22/22 flags, public-surface hash
+  `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, Genome
+  schema/catalog/Ascendance 2/2/2, rules version 2, eight Splices, and neutral
+  Strain thresholds 2/3/4.
+- Canonical alias, production cron owner, and every cron host resolve to the new
+  deployment. Cron remains enabled and its normalized definition hash is
+  unchanged at
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
+- Shipped behavior: the blocking `Try Connection` surface is gone. A lagging
+  checkpoint reads as `Save catching up · play continues` or `Latest position
+  pending verification · play continues`, and only a proven exclusive-lease
+  conflict blocks. The COSMIC five-star wave preflight routes against physical
+  blockers only with a deterministic fallback, and engine faults are contained
+  to secured-checkpoint recovery instead of producing a fabricated death. The
+  checkpoint/movement hot path clones the Genome only on revision change and no
+  longer runs duplicate checkpoint owners. Terminal settlement is session-bound:
+  HTTP success alone never opens Results, canonical Free Play receipts are
+  server-reconstructed, and pending results show an honest `Finalizing…` state.
+  The Loom uses a transparent non-clipping backdrop inside a pixel-invariant
+  outer shell with an alpha-only entrance, and the integrated transparent
+  Results/Lab action rows put the mobile Results dock in the first viewport by
+  document order — no pinning and no dark tray, with the dock bottom moving from
+  1362.5px to 532px at 320×568.
+
+### Run continuity and terminal authority — post-production manual rechecks
+
+- [ ] Interrupt an active earning run's network, confirm the cockpit shows a
+      nonblocking save status, play continues, and no reconnect dialog appears.
+- [ ] Open the same run in a second session and confirm the exclusive-lease
+      conflict is the only thing that stops the first one.
+- [ ] Complete a COSMIC run through a five-star wave and confirm no death is
+      attributed to the player without a real collision.
+- [ ] Force a slow settlement and confirm Results stays `Finalizing…` until the
+      server settles the session, and that a Free Play receipt matches the
+      server-reconstructed values.
+- [ ] On a 320×568 phone, confirm the Results dock is reachable in the first
+      viewport without a pinned tray, and that opening `UNFOLD DETAILS` in the
+      Loom does not shift the surrounding frame.
 
 ### Player-pulled Tactical Genome production evidence
 

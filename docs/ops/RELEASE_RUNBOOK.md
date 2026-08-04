@@ -1,12 +1,13 @@
 # Production Release Runbook
 
-Current production baseline: player-pulled Tactical Genome v2 runtime
-`8bb3ef9561c959b1b0683f3436ac68f8159e89d7`, independently verified on
-3 August 2026 by successful production workflow `30814673700` as deployment
-`dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ`
-(`supasnake-i9d5do4ix-josef-bells-projects.vercel.app`). Hosted migrations are
-aligned through 065 with no pending plan. Canonical health reports the exact
-release SHA, healthy database, 22/22 public surfaces, public hash
+Current production baseline: run-continuity, terminal-authority and Tactical
+Loom runtime `4fb62712a5ecf57015aedab98cf732bfa11c69ad`, independently verified
+on 3 August 2026 by successful production workflow `30853735919` (17m19s,
+completed 21:31:04 UTC) as deployment `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw`
+(`supasnake-m3mpjs2ij-josef-bells-projects.vercel.app`). This release carried no
+migration; hosted migrations remain aligned through 065 with no pending plan.
+Canonical health reports the exact release SHA, healthy database, project ref
+`gmpwyzqafoyowndbvlma`, 22/22 public surfaces, public hash
 `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, and
 Genome schema/catalog/Ascendance 2/2/2 with eight Splices, rules version 2, and
 neutral 2/3/4 Strain thresholds. Canonical alias, cron owner, and every cron host
@@ -17,11 +18,17 @@ Stripe remains in sandbox/test mode.
 
 The live interaction-v2 contract uses optional physical Gene relics on a
 deterministic 6 ± 2-food cadence; already-issued or omitted interaction stamps
-retain automatic-offer v1 compatibility. The retired pre-Genome deployment
-`dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` is not a safe rollback target for issued v2
-sessions because it cannot resume or settle that immutable contract. Use the
-dual-version, flag-off forward procedure below. Keep this volatile paragraph
-current in each release-record change; do not copy its IDs into workflow code.
+retain automatic-offer v1 compatibility. The now-previous deployment
+`dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`8bb3ef9`) is dual-version and shares hosted
+schema 001–065, so it is the only artifact-level rollback candidate for this
+application-only release — and it restores the blocking reconnect surface,
+session-unbound terminal settlement, and the pre-fix five-star wave preflight,
+so prefer a forward fix. The retired pre-Genome deployment
+`dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` is still not a safe rollback target for
+issued v2 sessions because it cannot resume or settle that immutable contract.
+Use the dual-version, flag-off forward procedure below. Keep this volatile
+paragraph current in each release-record change; do not copy its IDs into
+workflow code.
 
 ## Release law
 
