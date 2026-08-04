@@ -138,3 +138,56 @@ describe('settlement: resolving a learning event', () => {
     expect(settlementBody).not.toContain('grantStarterEligibility(');
   });
 });
+
+describe('run start: stamping the trial guarantee (WP-C)', () => {
+  it('freezes the appearances the account had left, and only with a trial', () => {
+    // Frozen WITH the vocabulary: an appearance spent by another run in
+    // flight, or a trial switched mid-run, changes the next run and not this
+    // one — the same rule the pool itself follows.
+    expect(source).toMatch(
+      /\.\.\.\(eligibility\.trialGeneId &&\s*\n?\s*eligibility\.trialOffersRemaining > 0\s*\n?\s*\? \{ trialOffersRemaining: eligibility\.trialOffersRemaining \}\s*\n?\s*: \{\}\)/
+    );
+    // Still exactly one eligibility read in the whole route, and still at start.
+    expect(source.match(/readGeneEligibility\(/g)).toHaveLength(1);
+  });
+
+  it('hands settlement the stamped trial, never a fresh read', () => {
+    expect(source).toMatch(
+      /trial: genomeV2StampedTrial\(\s*\n?\s*runContext\.genome\.eligibilityInputs\s*\n?\s*\)/
+    );
+  });
+});
+
+describe('settlement: consuming guaranteed appearances (WP-C)', () => {
+  it('counts them from the validated record and never from the journal', () => {
+    expect(source).toMatch(
+      /const trialAppearances = settledV2Record\s*\n?\s*\? genomeV2TrialOffersConsumed\(settledV2Record\)\s*\n?\s*: 0/
+    );
+    const consumption = source.slice(
+      source.indexOf('const trialAppearances'),
+      source.indexOf('await recordTrialOffer(')
+    );
+    expect(consumption.length).toBeGreaterThan(0);
+    expect(consumption).not.toContain('.journal');
+  });
+
+  it('consumes nothing on a Free Play or unvalidated run', () => {
+    const consumption = source.slice(
+      source.indexOf('const trialAppearances'),
+      source.indexOf('await recordTrialOffer(')
+    );
+    expect(consumption).toMatch(/validation\.valid &&\s*\n?\s*!isFreeSession &&/);
+    expect(consumption).toMatch(/trialAppearances > 0/);
+  });
+
+  it('records the appearances before promoting, and never blocks settlement', () => {
+    const settlement = source.indexOf('await settleDurableRunProgression(');
+    const record = source.indexOf('await recordTrialOffer(');
+    const resolve = source.indexOf('await resolveLearningEvent(');
+    expect(settlement).toBeGreaterThan(0);
+    expect(record).toBeGreaterThan(settlement);
+    expect(resolve).toBeGreaterThan(record);
+    // Nothing reads its result, so nothing can branch on it.
+    expect(source).not.toMatch(/const \w+ = await recordTrialOffer\(/);
+  });
+});

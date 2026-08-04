@@ -86,8 +86,10 @@ import {
 import {
   grantStarterEligibility,
   readGeneEligibility,
+  recordTrialOffer,
   resolveLearningEvent,
 } from '@/lib/server/geneEligibility';
+import { genomeV2StampedTrial } from '@/lib/game/genomeCapability';
 import { verifyOfferTrace } from '@/lib/server/offerVerifier';
 import { LADDER_ENABLED } from '@/lib/features/ladder';
 import { GENOME_V2_ENABLED } from '@/lib/features/genomeV2';
@@ -144,6 +146,7 @@ import {
   GENOME_V2_LEARNING_EVENT_VERSION,
   GENOME_RULES_V2,
   genomeV2LearningEventsResolved,
+  genomeV2TrialOffersConsumed,
   isGenomeV2InteractionVersion,
 } from '@/shared/game/genomeV2';
 import {
@@ -1274,6 +1277,14 @@ export async function POST(request: NextRequest) {
               trialGeneId: eligibility.trialGeneId,
               bankedRuns,
               masteryLevel,
+              // The guarantee is stamped WITH the vocabulary and frozen with
+              // it (WP-C). An appearance consumed by another run in flight, or
+              // a trial switched mid-run, changes the NEXT run and never this
+              // one — the same rule the pool itself follows.
+              ...(eligibility.trialGeneId &&
+              eligibility.trialOffersRemaining > 0
+                ? { trialOffersRemaining: eligibility.trialOffersRemaining }
+                : {}),
             };
             genePool = genomeV2PlayableVocabulary(startDynasty, facts);
             eligibilityStamp = facts;
@@ -2490,6 +2501,12 @@ export async function POST(request: NextRequest) {
                 conditionStrainThresholdDelta(sessionCondition),
               // Only the continuity replay may author a v2 terminal record.
               authoritativeTerminal: terminalIntentAccepted,
+              // The trial the run was STAMPED with (WP-C). The validator
+              // re-derives the expected stamp from it, so a record cannot
+              // invent a trial or enlarge a guarantee to spend.
+              trial: genomeV2StampedTrial(
+                runContext.genome.eligibilityInputs
+              ),
               ...(runContext.growthProfileId
                 ? { growthProfileId: runContext.growthProfileId }
                 : {}),
@@ -3476,6 +3493,39 @@ export async function POST(request: NextRequest) {
         validation.genome && validation.genome.v === GENOME_RULES_V2
           ? validation.genome
           : null;
+      // ---------------------------------------------------------------
+      // Guaranteed trial appearances consumed (WP-C, server contract §2.1)
+      // ---------------------------------------------------------------
+      // COUNTED IN COLLECTED OFFERS, DERIVED FROM THE VALIDATED RECORD. The
+      // count is written by the pure reducer when an offer containing the
+      // trial OPENED, which happens only on the player's own relic
+      // collection — so Ascetic runs, Patient's stretched cadence, ignored and
+      // expired relics, Free Play and runs that produce no relic all consume
+      // nothing, without a single special case here.
+      //
+      // Recorded BEFORE the promotion below, in the order the run experienced
+      // them, and harmless in either order: `record_trial_offer` only touches
+      // a row still in the trial state, so a Gene promoted by this same
+      // settlement is untouched. A failure never blocks settlement — the run
+      // is paid, and the player keeps an appearance they had already spent.
+      const trialAppearances = settledV2Record
+        ? genomeV2TrialOffersConsumed(settledV2Record)
+        : 0;
+      if (
+        stampedTrialGeneId &&
+        validation.valid &&
+        !isFreeSession &&
+        trialAppearances > 0
+      ) {
+        for (let spent = 0; spent < trialAppearances; spent += 1) {
+          await recordTrialOffer(
+            supabase,
+            player.id,
+            stampedTrialGeneId,
+            sessionId
+          );
+        }
+      }
       if (
         stampedTrialGeneId &&
         validation.valid &&
