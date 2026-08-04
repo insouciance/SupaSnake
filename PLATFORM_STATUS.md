@@ -21,21 +21,22 @@
 | Career | Durable run ingress; atomic progression; bounded recognition; server-backed attention and memory |
 | Tactical Genome | v2 enabled; player-pulled relics, six loci, 13 shared Genes, three signatures, eight Splices, 2/3/4 neutral Strain ladder |
 | Run continuity | Nonblocking save status in the cockpit; only a proven exclusive-lease conflict interrupts play |
-| Player-feature baseline | `4fb62712a5ecf57015aedab98cf732bfa11c69ad` |
-| Current deployment | `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`supasnake-m3mpjs2ij-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`8bb3ef9`); dual-version and schema-compatible, but restores the blocking reconnect surface and session-unbound settlement |
+| Player-feature baseline | `2fe33cabb5dd9488e53d5f75a2e38f41a4da77ea` |
+| Current deployment | `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`supasnake-yoyq183cf-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`4fb6271`); dual-version and schema-compatible, but restores the fatal Gilded Fork rejection for Gene-only golden food |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release merged as PR 59 (continuity, terminal authority and Tactical
-Loom) and PR 60 (dependency-audit lockfile fix); both passed all ten
-protected-PR checks, including all four isolated-Supabase E2E flag shapes and
-the 14m25s production E2E leg. It also passed full type checking, lint, 469
-Jest suites / 6,192 tests, production build, the three deterministic cockpit
+The current release merged as PR 62, the Gilded Fork engine fix, on top of PR 59
+(continuity, terminal authority and Tactical Loom) and PR 60 (dependency-audit
+lockfile fix). Each passed all ten protected-PR checks, including all four
+isolated-Supabase E2E flag shapes and a 14m8s production E2E leg. The current
+release also passed full type checking, lint, `verify:constitution`, 469 Jest
+suites / 6,194 tests, production build, the three deterministic cockpit
 verifications, local migrations 001–065 from zero, ordinary and two-session SQL
 integration, the production runtime dependency audit, staged and canonical
 health, linked read-only schema proof, exact cron ownership, and focused
-public-production smoke. Production workflow `30853735919` deployed it with no
+public-production smoke. Production workflow `30887227521` deployed it with no
 migration. Detailed evidence is maintained in
 `docs/ops/QA_CHECKLIST.md`.
 
@@ -86,6 +87,10 @@ migration. Detailed evidence is maintained in
   same authoritative mechanics used by validation and receive readable in-board
   feedback. Post-choice guidance is pointer-transparent and keeps the board held
   until deliberate movement.
+- Eating Gold Trail's golden food without the Gilded Fork Splice is ordinary
+  play. Engine and reducer share one availability predicate, so a fork choice is
+  only committed where the Splice actually draws a second cell; the fatal
+  `Gilded Fork rejected its board choice` fault can no longer end a live run.
 - Interrupted earning runs renew their live continuity receipt and lease when
   resumed; the recovery watchdog no longer lets a stale receipt repeatedly
   interrupt otherwise healthy resumed play.
