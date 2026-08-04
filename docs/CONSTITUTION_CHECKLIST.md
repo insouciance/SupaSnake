@@ -1,7 +1,7 @@
 # Constitution Compliance Checklist
 
 Run on **every PR**. Copy into the PR description and check each line. A `[ ]` left
-unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.13) §4.
+unchecked blocks merge. Source of truth: `docs/PRODUCT_CONSTITUTION.md` (v1.14) §4.
 Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer reads.
 
 ## The 15 Rules
