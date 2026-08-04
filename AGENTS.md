@@ -269,6 +269,27 @@ production identifiers into feature code or new planning documents.
 7. Keep commits focused and logically ordered. Do not mix formatting churn or
    unrelated cleanup into feature commits.
 
+### System-shaped work
+
+Work is **system-shaped** when it builds or reshapes persistence, settlement,
+session/state lifecycle, validation, sync, caching, or workflow/release machinery.
+Product and UI work is not.
+
+For system-shaped work, before writing the implementation:
+
+1. Read `docs/ENGINEERING_DOCTRINE.md` and name, in the first progress update and
+   then in the PR description, the failure-mode catalog entries this change can
+   plausibly reproduce, and how the design avoids each one.
+2. Write the prior-art brief the doctrine's §3 requires — two or three verified
+   references, the failure modes they design against, the mapping onto our
+   principles, and what we reject — in the WP's design document, or in the PR
+   description when it has none. Update the existing brief rather than adding a
+   second one when the system already has one.
+
+Neither step is a research detour: the brief is about one page, and a package that
+cannot produce one is not scoped yet. The doctrine's absolute — no ceiling may ever
+invalidate a legitimate run — binds every bound this work introduces or moves.
+
 ## Validation minimum
 
 Infer the relevant tests from the affected code and acceptance criteria; the

@@ -101,6 +101,11 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
   *(055 itself is applied and therefore immutable — this is for its successors.)*
 - [ ] New player-visible surfaces behind a `NEXT_PUBLIC_*` flag with the rollback
   path tested deliberately (project rule — never let CI infer it).
+- [ ] **Engineering doctrine (system-shaped work).** Persistence, settlement,
+  session/state lifecycle, validation, sync, caching, or workflow/release
+  machinery: the description names the `docs/ENGINEERING_DOCTRINE.md` failure
+  modes this change touches and links its prior-art brief, new or updated.
+  *"n/a — not system-shaped"* is the answer for product and UI work.
 
 ## Decision log
 

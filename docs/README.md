@@ -10,6 +10,7 @@ documents remain useful context but do not override the files listed here.
 | **What may be built at all — design law** | [Product Constitution](PRODUCT_CONSTITUTION.md) (v1.14) |
 | What to build next, and how | [Implementation Handoff](IMPLEMENTATION_HANDOFF.md) |
 | The gate every PR passes | [Constitution Checklist](CONSTITUTION_CHECKLIST.md) |
+| How infrastructure systems are designed and reviewed | [Engineering Doctrine](ENGINEERING_DOCTRINE.md) |
 | The verified state of the game as built | [Ground Truth](GROUND_TRUTH.md) |
 | Amendments awaiting the owner | [Proposed Amendments](CONSTITUTION_AMENDMENTS_PROPOSED.md) |
 | Strategic assessment behind the Constitution | [Product, Gameplay & Metagame Audit](game/SUPASNAKE_PRODUCT_GAMEPLAY_METAGAME_AUDIT.md) |
@@ -18,7 +19,10 @@ The Constitution decides *what* may exist: its 15 Inviolable Rules and §12.2 ca
 bind every change, and a change that cannot be reconciled with them needs an
 amendment, not an exception. Work is decomposed into numbered work packages in the
 Implementation Handoff; `AGENTS.md` carries the branch, worktree, and migration
-protocol that executes them.
+protocol that executes them. `ENGINEERING_DOCTRINE.md` binds system-shaped work —
+persistence, settlement, session/state lifecycle, validation, sync, caching, and
+release machinery — with seven system principles, a failure-mode catalog drawn from
+shipped incidents, and the prior-art brief required before such work begins.
 
 `GROUND_TRUTH.md` is generated from code and migrations, with a citation for every
 claim, as of the `pre-constitution` tag. Where a design document and the code
