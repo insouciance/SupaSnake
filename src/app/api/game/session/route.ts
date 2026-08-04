@@ -1310,15 +1310,28 @@ export async function POST(request: NextRequest) {
             genePool = genomeV2PlayableVocabulary(startDynasty, facts);
             eligibilityStamp = facts;
             // The Dynasty starter seven is a constant of the Dynasty, so the
-            // composer already unioned it in — this write only makes the
-            // account's per-Gene state truthful for the Workbench. It is
-            // deliberately not awaited for correctness: a failure changes no
-            // pool, no payout and no run.
-            await grantStarterEligibility(
-              supabase,
-              player.id,
-              GENOME_V2_STARTER_POOLS[startDynasty]
-            );
+            // composer already unioned it in above — this write only makes the
+            // account's per-Gene state truthful for the Workbench, and its
+            // failure changes no pool, no payout and no run.
+            //
+            // Which is why it is CONDITIONAL. The RPC is DO-NOTHING-on-conflict
+            // and would be correct on every start, but a write that inserts
+            // nothing is still a round trip on the hot path, and a run start
+            // does not need one to tell the database what it already knows.
+            // First run on a Dynasty writes; every run after it does not.
+            const held = new Set(facts.eligibleGeneIds);
+            if (facts.trialGeneId) held.add(facts.trialGeneId);
+            if (
+              GENOME_V2_STARTER_POOLS[startDynasty].some(
+                (geneId) => !held.has(geneId)
+              )
+            ) {
+              await grantStarterEligibility(
+                supabase,
+                player.id,
+                GENOME_V2_STARTER_POOLS[startDynasty]
+              );
+            }
           }
           const externalSecondLife = snakeTraits.includes('iron_scales')
             ? 'iron_scales' as const

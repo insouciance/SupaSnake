@@ -63,9 +63,14 @@ describe('run start: composing the vocabulary', () => {
     expect(source.match(/\.\.\.eligibilityBlock,/g)).toHaveLength(2);
   });
 
-  it('seeds the starter rows for the Dynasty actually being played', () => {
+  it('seeds the starter rows for the Dynasty actually being played, once', () => {
     expect(source).toMatch(
       /await grantStarterEligibility\(\s*\n?\s*supabase,\s*\n?\s*player\.id,\s*\n?\s*GENOME_V2_STARTER_POOLS\[startDynasty\]\s*\n?\s*\)/
+    );
+    // The RPC is DO-NOTHING-on-conflict, so an unconditional call would be
+    // correct — and a round trip on the hot path that inserts nothing.
+    expect(source).toMatch(
+      /GENOME_V2_STARTER_POOLS\[startDynasty\]\.some\(\s*\n?\s*\(geneId\) => !held\.has\(geneId\)\s*\n?\s*\)/
     );
   });
 
