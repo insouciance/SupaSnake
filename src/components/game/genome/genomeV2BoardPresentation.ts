@@ -10,6 +10,7 @@ import {
   type GenomeV2TargetLifecycle,
 } from '@/shared/game/genomeV2';
 import { GENOME_V2_GENES } from '@/shared/game/genes';
+import type { Direction } from '@/lib/game/SnakeGameLogic';
 import { genomeV2PresentationFormat } from './genomeV2PresentationAdapter';
 
 export type GenomeV2BoardTerrainSource =
@@ -39,6 +40,16 @@ export interface GenomeV2BoardGate {
   targetId: string;
   entry: GenomeV2Cell;
   exit: GenomeV2Cell;
+  /**
+   * The heading the head would come out of this door with, if it crossed the
+   * entry on the heading it has right now.
+   *
+   * The door preserves heading exactly - that is the whole rule - so this is
+   * simply the live direction, drawn where the consequence of it lands.
+   * Turning before the entry turns the chevron with you, which is what makes
+   * it a route the player can plan rather than a leap of faith.
+   */
+  arrivalHeading: Direction;
 }
 
 export interface GenomeV2BoardTerrainCell extends GenomeV2Cell {
@@ -160,7 +171,9 @@ function liveTargetCell(
 export function projectGenomeV2Board(
   state: GenomeV2State | null,
   foods: readonly GenomeV2Cell[],
-  simulationTick: number
+  simulationTick: number,
+  /** Live heading, so a gate can draw the heading it will hand back. */
+  direction: Direction = 'RIGHT'
 ): GenomeV2BoardProjection {
   if (!state) {
     return { targets: [], gates: [], permanentTerrain: [], occupiedCells: [] };
@@ -306,6 +319,7 @@ export function projectGenomeV2Board(
         targetId: target.targetId,
         entry: { ...target.optionalRouteCells[0] },
         exit: { ...target.optionalRouteCells[1] },
+        arrivalHeading: direction,
       });
     }
   }

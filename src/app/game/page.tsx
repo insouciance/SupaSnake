@@ -307,7 +307,7 @@ function collisionDiagnosticLabel(
     return `Recorded impact: own body · cell ${coordinate}`;
   }
   const source = diagnostic.terrainSource === 'phase_gate_scar'
-    ? 'Phase Gate Scar'
+    ? 'Side Door Scar'
     : diagnostic.terrainSource === 'coilkeeper_seal'
       ? 'Coilkeeper Seal'
       : diagnostic.terrainSource === 'cyber'
@@ -1888,9 +1888,16 @@ export default function GamePage() {
     () => projectGenomeV2Board(
       genomeRulesVersion === 2 ? genomeV2State : null,
       litFoods,
-      genomeV2SimulationTick
+      genomeV2SimulationTick,
+      direction
     ),
-    [genomeRulesVersion, genomeV2SimulationTick, genomeV2State, litFoods]
+    [
+      direction,
+      genomeRulesVersion,
+      genomeV2SimulationTick,
+      genomeV2State,
+      litFoods,
+    ]
   );
   const genomeV2RuntimeSignals = useMemo(
     () => buildGenomeV2RuntimeSignals(

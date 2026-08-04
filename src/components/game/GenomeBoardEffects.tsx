@@ -72,6 +72,14 @@ const TERRAIN_HEIGHT = 0.74;
 const TERRAIN_FOOTPRINT = 0.94;
 const RUNE_HEIGHT = 0.045;
 
+// Tether: additive, depth-write off, and bounded by MAX_GENOME_ACTIVE_GATES,
+// so the whole affordance costs at most eight short dashed runs on a board
+// that already instances 400 terrain cells and a gilded wake.
+const GATE_TETHER_OPACITY = 0.45;
+const GATE_TETHER_WIDTH = 0.055;
+const GATE_TETHER_DASH_DUTY = 0.55;
+const GATE_TETHER_MAX_DASHES = 12;
+
 export const GENOME_TARGET_COLORS: Record<GenomeV2BoardTarget['kind'], string> = {
   crown_future: '#f0abfc',
   gold_trail: '#f5c542',
@@ -362,12 +370,121 @@ function GenomeTargetMarker({ target }: { target: GenomeV2BoardTarget }) {
   );
 }
 
+/**
+ * The two ends of one door, drawn as one object.
+ *
+ * A dashed tether, because a dashed line reads as a ROUTE and a solid one
+ * reads as a wall. It is the pairing that was missing: both markers were
+ * always on screen and the camera always fit the whole board, but nothing
+ * said which cyan ring this violet ring came out at - and with a Crown wave
+ * live, "guess" is not an affordance.
+ */
+function PhaseGateTether({
+  entry,
+  exit,
+}: {
+  entry: { x: number; z: number };
+  exit: { x: number; z: number };
+}) {
+  const fromX = entry.x + 0.5;
+  const fromZ = entry.z + 0.5;
+  const dx = exit.x - entry.x;
+  const dz = exit.z - entry.z;
+  const span = Math.hypot(dx, dz);
+  if (span < 0.001) return null;
+  const angle = Math.atan2(-dz, dx);
+  const dashes = Math.min(
+    GATE_TETHER_MAX_DASHES,
+    Math.max(3, Math.round(span * 1.2))
+  );
+  const dashLength = (span / dashes) * GATE_TETHER_DASH_DUTY;
+  return (
+    <group
+      position={[fromX, FLOOR_CLEARANCE + 0.09, fromZ]}
+      rotation-y={angle}
+      userData={{ genomeGateTether: true }}
+    >
+      {Array.from({ length: dashes }, (_, index) => (
+        <mesh
+          key={index}
+          geometry={unitBoxGeometry}
+          position={[(span * (index + 0.5)) / dashes, 0, 0]}
+          scale={[dashLength, 0.02, GATE_TETHER_WIDTH]}
+        >
+          <meshBasicMaterial
+            color="#a5b4fc"
+            transparent
+            opacity={GATE_TETHER_OPACITY}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** Radians of Y rotation that point +X at each heading. */
+const GATE_HEADING_ANGLE: Record<string, number> = {
+  RIGHT: 0,
+  LEFT: Math.PI,
+  UP: Math.PI / 2,
+  DOWN: -Math.PI / 2,
+};
+
+/**
+ * The single highest-value pixel in the door: which way you will be FACING
+ * when you arrive. The door preserves heading exactly, so this chevron turns
+ * with the player before they commit - "if I go in like this, I come out
+ * pointing at that wall" is a thing they can now read off the board.
+ */
+function PhaseGateArrivalChevron({ heading }: { heading: string }) {
+  const angle = GATE_HEADING_ANGLE[heading] ?? 0;
+  return (
+    <group rotation-y={angle} userData={{ genomeGateChevron: heading }}>
+      <mesh
+        geometry={unitBoxGeometry}
+        position={[0.30, 0, -0.11]}
+        rotation-y={-Math.PI / 4}
+        scale={[0.26, 0.035, 0.055]}
+      >
+        <meshBasicMaterial
+          color="#67e8f9"
+          transparent
+          opacity={0.92}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+      <mesh
+        geometry={unitBoxGeometry}
+        position={[0.30, 0, 0.11]}
+        rotation-y={Math.PI / 4}
+        scale={[0.26, 0.035, 0.055]}
+      >
+        <meshBasicMaterial
+          color="#67e8f9"
+          transparent
+          opacity={0.92}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+    </group>
+  );
+}
+
 function PhaseGateMarker({
   cell,
   role,
+  arrivalHeading,
 }: {
   cell: { x: number; z: number };
   role: 'entry' | 'exit';
+  arrivalHeading?: string;
 }) {
   const colorValue = role === 'entry' ? '#c084fc' : '#67e8f9';
   return (
@@ -375,6 +492,9 @@ function PhaseGateMarker({
       position={[cell.x + 0.5, FLOOR_CLEARANCE + 0.46, cell.z + 0.5]}
       userData={{ genomeGate: role }}
     >
+      {role === 'exit' && arrivalHeading ? (
+        <PhaseGateArrivalChevron heading={arrivalHeading} />
+      ) : null}
       <mesh geometry={gateRingGeometry}>
         <meshBasicMaterial
           color={colorValue}
@@ -458,8 +578,13 @@ export function GenomeBoardEffects({
           ))}
           {genomeV2.gates.slice(0, MAX_GENOME_ACTIVE_GATES).map((gate) => (
             <group key={gate.targetId}>
+              <PhaseGateTether entry={gate.entry} exit={gate.exit} />
               <PhaseGateMarker cell={gate.entry} role="entry" />
-              <PhaseGateMarker cell={gate.exit} role="exit" />
+              <PhaseGateMarker
+                cell={gate.exit}
+                role="exit"
+                arrivalHeading={gate.arrivalHeading}
+              />
             </group>
           ))}
         </>
