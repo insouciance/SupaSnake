@@ -2,7 +2,7 @@
 
 **For:** the implementing agents (Opus 5 max, GPT 5.6 max) running in parallel on
 feature branches. **Prepared:** 25 July 2026 from Constitution v1.3; maintained
-under the current `docs/PRODUCT_CONSTITUTION.md` (v1.13) and
+under the current `docs/PRODUCT_CONSTITUTION.md` (v1.14) and
 `docs/GROUND_TRUTH.md` (code-verified baseline @ `main` fd22c0c era).
 **Owner:** available for escalations; batch them.
 
@@ -66,7 +66,7 @@ stale; when code and GT disagree, the code is the truth and the WP spec is the g
 ## 4. Kickoff briefing — paste this at the top of each agent session
 
 > You are implementing SupaSnake work packages. Authority:
-> `docs/PRODUCT_CONSTITUTION.md` v1.13 (design law — its §4 Rules and §12.2 caps
+> `docs/PRODUCT_CONSTITUTION.md` v1.14 (design law — its §4 Rules and §12.2 caps
 > are inviolable). Process: `docs/IMPLEMENTATION_HANDOFF.md` (your WP, the branch
 > and migration protocol, the decision/escalation rules). Baseline facts:
 > `docs/GROUND_TRUTH.md` (pre-implementation; code outranks it once WPs land).
@@ -242,8 +242,8 @@ whole wave:
 
 **WP-2.08 surface supersession (owner ruling, 3 August 2026):** the execution
 order above remains historical fact, but its paired Codex/Workbench package shape
-does not remain current scope. Constitution v1.13 and
-`docs/game/TACTICAL_GENOME_V2.md` §3.1 require one free player-facing Genome
+does not remain current scope. Constitution v1.14 and
+`docs/game/TACTICAL_GENOME_V2.md` §3.2 require one free player-facing Genome
 Workbench. `/codex` is a compatibility adapter into that same instrument;
 personal discovery and history form a subordinate Research Record, never a
 parallel Archive/Codex primary choice or duplicate rules surface. Any remaining
@@ -254,6 +254,134 @@ Highest-priority defect in the wave: the validation bug is a **live DNA-loss
 path**, not only lost progression — plus a downward write of three player
 scalars and a 404 that makes the reward outbox delete a run's payout. See
 §WP-2.05 of the wave document.
+
+## 6c. Player Evolution & Onboarding — WP-A … WP-F (owner-approved 2026-08-03)
+
+This is the first approved product release after the Genome v2 update. The binding
+scope is `docs/game/PLAYER_EVOLUTION_ONBOARDING.md`; Constitution v1.14 and
+`docs/game/TACTICAL_GENOME_V2.md` 2.5 carry its protected boundaries. Three
+companion documents carry the settled evidence and must be read before the package
+they govern: `PLAYER_EVOLUTION_STARTER_POOL_SIMULATION.md` (the starter lists and
+pool-health numbers), `PLAYER_EVOLUTION_LEARNING_EVENTS.md` (the per-Gene event
+catalog and its two gaps), and `PLAYER_EVOLUTION_SERVER_CONTRACT.md` (state, RPCs,
+RLS, stamping, migration, rollout).
+
+**WP-A is complete.** Its deliverables are those three documents, the decision table
+at `PLAYER_EVOLUTION_ONBOARDING.md` §13, and the simulation harness at
+`src/shared/simulation/starterPool.ts`. **No implementation package may open until
+the owner ratifies §13 line by line** — a veto on any row returns that row to `[H]`
+and blocks the packages named in its last column.
+
+**Execution order — B before C, then D/E/F.** B and C both touch
+`src/app/api/game/session/route.ts` and `src/shared/game/genomeV2.ts`, which are hot
+files: they are never in flight at the same time. D and E consume B's contracts, so B
+states its final table, RPC, and stamp shapes in its PR description immediately on
+opening (contract-first parallelism, §2).
+
+**WP-B · A · Server curriculum core** (PEO §4.1–4.2, §8; server contract §1–4, §6–7).
+Create `player_gene_eligibility` with the `player_ladders` RLS precedent
+(SELECT-only to the owning player, no write policy, service-role RPCs) and the six
+RPCs in server contract §2. Replace `genomeV2ActivePool(startDynasty)` at
+`session/route.ts:1163` with `genomeV2PlayableVocabulary(dynasty, facts)` in
+`src/shared/game/genes.ts`, enforcing `result ⊆ genomeV2ActivePool(dynasty)`. Extend
+`RunStartGenomeV2Context` and the manifest genome block with the eligibility contract
+version, learning-event version, and the *inputs* used, following the
+`genomeV2FtueFromPresentation` re-derive-and-compare pattern; bump
+`RUN_CONTEXT_VERSION` and teach `strictV2GenePool` to parse the new block strictly.
+Add the bounded monotone `learningEventsResolved` field to the run state, written by
+the reducer, and resolve eligibility at settlement from the validated record — never
+by scanning the compacting journal. Delete the `apexesUnlocked` signature offer
+filter (`genomeV2.ts:3933-3934`) and its paired `ensureActivePool` throw
+(`:1639-1643`), leaving `tierCap` untouched. Write the backfill: graduate accounts at
+≥10 banked runs or Mastery ≥3, credit the rest from `player_codex` (a `splice` row
+credits both parents), seed the Dynasty starter seven, and never re-onboard an
+account with `total_games_played > 0`. Close the flag-off and absent-infrastructure
+paths to the legacy full Dynasty pool, using the `isMissingLadderInfra` degradation
+pattern and **not** `server/genome.ts`'s deliberate refusal to degrade.
+Owned: `supabase/migrations/0NN_player_gene_eligibility.sql`, `src/lib/server/genome*`,
+`src/shared/game/genes.ts`, `src/lib/server/runContext.ts`,
+`src/lib/game/genomeCapability.ts`. Hot: `session/route.ts`, `genomeV2.ts`.
+Migration: **yes** — number claimed at merge time, never at branch time.
+*Acceptance: a new account receives exactly its seven; the client cannot add a locked
+Gene; an in-flight run's stamped pool is unchanged by an unlock; the stamp
+re-derives and a forged one is rejected; settlement promotes at most one Gene per
+run from the validated record; a long run whose event compacted away still resolves;
+veterans keep every historically used Gene; flag-off and a missing table both compose
+the full Dynasty pool; `verify:constitution` green.*
+
+**WP-C · A · Offer and trial mechanics** (PEO §4.4–4.5; server contract §5).
+Extend `rollGenomeV2Offer` to honour a stamped trial candidate exactly as
+`state.anchor.pinnedGeneId` is honoured: trial in slot one when legal, slot two drawn
+ordinarily so an ordinary alternative always survives, DECLINE untouched. Implement
+the guarantee as *three collected offers containing the trial*, not three runs, and
+suppress rather than decrement when the trial's action is unteachable (catalog §5).
+Add the pool-health guards that make PEO boundary 13 mechanical: no composed
+vocabulary smaller than seven, and ≥9 by the six-bank Splice gate. Extend the
+simulation harness with the trial mechanism and re-run it.
+Owned: `src/shared/game/genomeV2.ts` (offer roll), `src/lib/game/genomeV2Runtime.ts`,
+`src/shared/simulation/`. Hot: `genomeV2.ts` — **after WP-B merges**.
+Migration: no.
+*Acceptance: `assertGenomeV2OfferMatchesRoll` passes server-side with a trial active;
+every trial offer preserves one ordinary candidate and DECLINE; an unteachable trial
+consumes no guarantee; Ascetic, Patient, Free Play, expired and uncollected relics
+consume none; `npm run simulate:starter-pools` green with the trial modelled.*
+
+**WP-D · B · Reveal and guidance surfaces** (PEO §5; Career Spine).
+Insert the curriculum entry into the Results fold at
+`src/lib/game/resultsNextAction.ts` above `visit-lab`, per the §13 row-11 priority,
+with the clan reveal winning a same-settlement collision. Emit the unlock as a
+`runImpact` `significance: 'milestone'` so it reaches the Victory Lap beat and
+`progression_moments` on the existing rails. Persist seen/dismissed state server-side
+as a `player_attention_items` row with `attention_kind = 'action'` and
+`destination = 'codex'` — a `'recognition'` row cannot be dismissed, because
+`recognition_never_action_terminal` forbids the terminal states a **Not now** needs.
+Mount the authored-but-never-mounted `OverlayHint`, extend `InfoPopover` beyond its
+two chip hosts, add Workbench annotation and trial selection, and refresh and mount
+the orphaned extraction prose in `src/shared/game/lexicon.ts` (its numbers are v1 and
+stale for v2). In-run instruction goes **only** in the existing `eventCallout` /
+`rateCallout` cockpit slots: nothing new renders between first input and run end.
+Add the first-BANK recognition beat, which needs `bankedRunsBefore` on
+`BuildRunImpactInput`.
+Owned: `src/lib/game/resultsNextAction.ts`, `src/lib/server/runImpact.ts`,
+`src/components/engagement/`, `src/components/lab/`, `src/shared/game/lexicon.ts`.
+Migration: only if the attention shape needs one — coordinate with WP-B.
+*Acceptance: at most one new-system recommendation per Results; Replay and Setup
+never wait; **Not now** persists server-side and never in browser storage; reduced
+motion, focus order, screen-reader announcement and phone-height containment hold;
+`verify:cockpit-decisions` green.*
+
+**WP-E · B+A · Clan handoff** (PEO §6; Constitution §9.2 as amended).
+Make the eight-bank clan reveal the single recommended Results action routing to
+`/clan`, not to Compete — the Compete nav item points at `/leaderboard`. Add the
+first-contribution explanation and the exact clan-total delta on the first eligible
+settlement. Update the superseded §12.2 argument in `ClanFoundingPrompt.tsx:23-30` to
+record the ruling rather than deleting it, and correct its claim of two mounts.
+Fold in two adjacent defects: add the missing `is_anonymous` guard to every clan
+found/join path, using the `checkout/route.ts:70-78` pattern, and fix
+`AccountUpgrade.tsx:118-124` to call `linkIdentity` rather than `signInWithOAuth`,
+which today orphans the anonymous account it claims to save.
+Owned: `src/app/api/clan/`, `src/components/clan/`, `src/components/auth/AccountUpgrade.tsx`.
+Migration: yes, if the anonymous guard belongs in `found_clan`.
+*Acceptance: no auto-enrolment; a clan of one is offered; **Not now** costs nothing;
+an anonymous account cannot found or own a clan; an OAuth upgrade preserves the
+anonymous player's progress; the first eligible contribution states entry or
+replacement and the exact delta.*
+
+**WP-F · B · Telemetry and rollout** (PEO §9; TGv2 §11; server contract §8).
+Add the consent-gated instrumentation named in TGv2 §11 — eligibility prefix and
+contract version, trial invitation, Show me/Not now, selection and switch, guarantee
+consumption, learning-event resolution, graduation — with the QA/dev cohort filtered
+out of every conclusion. Add `NEXT_PUBLIC_PLAYER_EVOLUTION_V1` to
+`config/production-public-surface.json`, taking the manifest from 22 flags to 23; no
+separate `production-env-validation.cjs` edit is needed because its required list
+splices the manifest's flags. Add the four-shape e2e flag matrix (curriculum on/off ×
+Genome v2 on/off) with no leg inferred from an omitted flag, and write the
+rollout/rollback record.
+Owned: `config/production-public-surface.json`, `e2e/`, `docs/ops/`.
+Migration: no.
+*Acceptance: no metric collected without consent; no veteran counted in the
+new-account cohort; the manifest hash change is reviewed; all four e2e legs pass;
+rollback to the legacy full pool is demonstrated, not asserted.*
 
 ## 7. Phases 2–5
 
