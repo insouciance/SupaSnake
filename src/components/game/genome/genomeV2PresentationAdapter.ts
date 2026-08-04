@@ -237,7 +237,7 @@ const GENE_TRIGGER_PRESENTATION: Readonly<
 > = {
   gold_trail: { label: 'Every fifth eligible target', cadence: 5, unit: 'target' },
   compound_interest: { label: 'Each deliberate Loom DECLINE', cadence: 1, unit: 'offer' },
-  loan_shark: { label: 'Portal PASS starts a six-food contract', cadence: 6, unit: 'food' },
+  loan_shark: { label: 'RIDE ON starts a six-food deal', cadence: 6, unit: 'food' },
   live_wire: { label: 'Every third eligible target', cadence: 3, unit: 'target' },
   circuit_run: { label: 'Every fourth eligible target', cadence: 4, unit: 'target' },
   time_dilation: { label: 'Always active · body cost every fourth food', cadence: 4, unit: 'food' },
@@ -247,7 +247,7 @@ const GENE_TRIGGER_PRESENTATION: Readonly<
   phase_gate: { label: 'Every fifth food can charge a Gate', cadence: 5, unit: 'food' },
   mirror_wager: { label: 'Opt in on an explicit portal CONTINUE', cadence: 1, unit: 'portal' },
   phoenix: { label: 'First fatal collision while ready' },
-  loom_anchor: { label: 'Pin on DECLINE · recharge on portal PASS' },
+  loom_anchor: { label: 'Save on SKIP · recharge on RIDE ON' },
   heartwood: { label: 'Deliberate PRIMAL territory geometry' },
   zenith_protocol: { label: 'Player-triggered CYBER overclock' },
   constellation_crown: { label: 'Perfect COSMIC constellation clear' },

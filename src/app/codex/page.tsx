@@ -29,12 +29,57 @@ import {
   isGeneId,
   isGenomeV2ActiveGeneId,
 } from '@/shared/game/genes';
+import { lexiconSection } from '@/shared/game/lexicon';
 
 function catalogGeneName(id: string, rulesVersion?: 1 | 2): string {
   if (rulesVersion === 2 && isGenomeV2ActiveGeneId(id)) {
     return GENOME_V2_GENES[id].name;
   }
   return isGeneId(id) ? GENES[id].name : id;
+}
+
+/**
+ * The house rules, in the words the game uses.
+ *
+ * `MECHANICS` was authored, unit-tested and never rendered: the one glossary
+ * the product owned was dead code, so BANK / RIDE ON / TRADE UP — the three
+ * words every run turns on — were defined nowhere a player could reach. This
+ * renders it, above the sign-in wall and before any run, because rules are the
+ * same for a visitor and for a player at 200 banked runs.
+ */
+function HouseRules() {
+  const entries = lexiconSection('mechanic');
+  return (
+    <section className="panel-elevated mb-8 p-5" data-testid="codex-mechanics" aria-labelledby="codex-mechanics-title">
+      <div className="mb-4">
+        <h2 id="codex-mechanics-title" className="heading-display text-2xl text-bone-white">
+          How this works
+        </h2>
+        <p className="mt-1 font-body text-sm text-beige/65">
+          Every word the game uses at a portal, defined once. No account needed.
+        </p>
+      </div>
+      <dl className="grid gap-3 sm:grid-cols-2">
+        {entries.map((entry) => (
+          <div
+            key={entry.id}
+            className="rounded-arcade border border-scale-blue-light/25 bg-void-deep/40 p-4"
+            data-testid={`codex-mechanic-${entry.id}`}
+          >
+            <dt className="font-display text-lg text-venom-orange">{entry.name}</dt>
+            <dd className="mt-1 font-body text-sm leading-relaxed text-bone-white">
+              {entry.effect}
+            </dd>
+            {entry.cost ? (
+              <dd className="mt-2 font-body text-sm leading-relaxed text-beige/60">
+                {entry.cost}
+              </dd>
+            ) : null}
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
 }
 
 function ResearchShell({ studyRef = null }: { studyRef?: string | null }) {
@@ -143,6 +188,8 @@ function ResearchShell({ studyRef = null }: { studyRef?: string | null }) {
             </Link>
           </div>
         </header>
+
+        <HouseRules />
 
         <WorkbenchView studyRef={studyRef} />
 

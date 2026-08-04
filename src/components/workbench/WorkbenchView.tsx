@@ -670,9 +670,9 @@ export function ResearchTable({
 
       <section className={styles.stateVerbs} aria-label="Run-state experiments">
         <button type="button" onClick={() => commit({ kind: 'decline' })}>DECLINE OFFER</button>
-        <button type="button" onClick={() => commit({ kind: 'continue' })}>PASS PORTAL</button>
+        <button type="button" onClick={() => commit({ kind: 'continue' })}>RIDE ON</button>
         {activeGene(reading, 'mirror_wager') ? (
-          <button type="button" onClick={() => commit({ kind: 'continue', activateMirror: true })}>PASS + STAKE</button>
+          <button type="button" onClick={() => commit({ kind: 'continue', activateMirror: true })}>RIDE ON + BET</button>
         ) : null}
         {reading.projection.liabilities.phoenixAvailable ? (
           <button type="button" onClick={() => commit({ kind: 'phoenix' })}>TRIGGER PHOENIX</button>

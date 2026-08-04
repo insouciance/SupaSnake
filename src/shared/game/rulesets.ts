@@ -87,6 +87,18 @@ export interface ExtractionConfig {
 
 export interface DynastyRuleset {
   id: DynastyName;
+  /**
+   * What a player is shown. Deliberately a SEPARATE field from `id`.
+   *
+   * The id is load-bearing in Postgres — `CHECK (dynasty IN
+   * ('PRIMAL','CYBER','COSMIC'))` appears in five shipped migrations — and in
+   * every replay contract and `SIGNATURE_GENES` key. Rendering the id as the
+   * label made a Dynasty the one string in this product that could not be
+   * rewritten without a data migration. It initialises to the id, so this
+   * change renders byte-identically; it exists so the next rename is a copy
+   * edit rather than a migration.
+   */
+  displayName: string;
   /** ms per tick as a pure function of foods eaten (0-based). PRIMAL: constant. */
   speedForFood(foodEaten: number): number;
   /** DNA value of the n-th food (1-based). Integer. */
@@ -340,6 +352,7 @@ export const PRIMAL_SPEED_MS = 175;
  */
 const PRIMAL: DynastyRuleset = {
   id: 'PRIMAL',
+  displayName: 'PRIMAL',
   speedForFood: () => PRIMAL_SPEED_MS,
   foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * (1 + 0.02 * (n - 1))),
   scoreMultiplier: (n) => primalScoreShape(n),
@@ -357,6 +370,7 @@ const PRIMAL: DynastyRuleset = {
  */
 const CYBER: DynastyRuleset = {
   id: 'CYBER',
+  displayName: 'CYBER',
   speedForFood: (foodEaten) =>
     Math.max(
       CYBER_TICK_FLOOR_MS,
@@ -566,6 +580,7 @@ function cosmicYieldMultiplier(n: number): number {
  */
 const COSMIC: DynastyRuleset = {
   id: 'COSMIC',
+  displayName: 'COSMIC',
   speedForFood: () => COSMIC_SPEED_MS,
   foodDnaValue: (n) => Math.round(FOOD_BASE_DNA * cosmicYieldMultiplier(n)),
   // Yield and Score are DIFFERENT AXES and stay on different shapes: this

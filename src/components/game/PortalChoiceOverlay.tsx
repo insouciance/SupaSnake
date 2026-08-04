@@ -121,7 +121,7 @@ export function PortalChoiceOverlay({
   const mutation = mutationTerms ?? legacyMutationTerms;
   const physicalReason = snakeLength < STRAIN_PHYSICS.infuseMinLength
     ? `Needs length ${STRAIN_PHYSICS.infuseMinLength}`
-    : `${rulesVersion === 2 ? 'Mutation' : 'Infuse'} limit reached`;
+    : 'Trade-up limit reached';
   const mutationUnlock = mutateState ?? {
     unlocked: canInfuse,
     reason: canInfuse ? undefined : physicalReason,
@@ -158,8 +158,8 @@ export function PortalChoiceOverlay({
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      // Once MUTATE opens the Loom, the parent portal shortcuts must become
-      // inert. Otherwise the Loom's "1" preview key could BANK the run under
+      // Once TRADE UP opens the Drop, the parent portal shortcuts must become
+      // inert. Otherwise the Drop's "1" preview key could BANK the run under
       // the nested decision surface.
       if (lockedRef.current || inspectingMutation) return;
       const key = event.key.toLowerCase();
@@ -174,8 +174,11 @@ export function PortalChoiceOverlay({
     return () => window.removeEventListener('keydown', keydown, true);
   }, [activateMirror, bank, continueState.unlocked, inspectMutation, inspectingMutation, mutationUnlock.unlocked, onPass]);
 
-  const continueLabel = rulesVersion === 2 ? 'CONTINUE' : 'PASS';
-  const mutateLabel = rulesVersion === 2 ? 'MUTATE' : 'INFUSE';
+  // One word at every rules version. The panel used to say CONTINUE on v2 and
+  // PASS on v1 while the pre-run hint said PASS to both — the same button with
+  // two names is the thing this deletes, not a rollout branch worth keeping.
+  const continueLabel = 'RIDE ON';
+  const mutateLabel = 'TRADE UP';
   const option = 'min-h-11 rounded-[12px] border p-3 text-left transition-colors sm:p-4';
 
   if (inspectingMutation && mutationLoom) {
