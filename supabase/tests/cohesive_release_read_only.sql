@@ -438,6 +438,132 @@ settlement_bounds_contract AS (
         ON procedure_row.oid = pg_catalog.to_regprocedure(required.signature)
     ) AS settlement_bounds_aligned
 ),
+-- Migration 067 adds the Player Evolution curriculum table. It is deliberately
+-- deploy-order-agnostic: the reader composes the complete legal roster when the
+-- table is absent, and the flag ships off, so an application ahead of the
+-- migration and a migration ahead of the application are both correct. The
+-- probe runs on every release, including releases that precede 067, so
+-- presence cannot be required here -- the empty linked migration-plan proof
+-- immediately above remains the authority for the ledger. What is asserted is
+-- the invariant that survives either order: IF the table exists, it has exactly
+-- the shape 067 establishes.
+--
+-- Deliberately NOT asserted: anon/authenticated EXECUTE on the seven functions,
+-- and anon SELECT on the table. Migration 067 revokes only PUBLIC from its
+-- functions and only the write verbs from its table, so a platform default
+-- privilege legitimately leaves those grants standing. Asserting them would
+-- fail a release on something this migration never established, after the
+-- schema has already been mutated. The write-verb denial below is the boundary
+-- 067 does establish, and it is asserted for both browser roles.
+gene_eligibility_relation AS (
+  SELECT
+    pg_catalog.to_regclass('public.player_gene_eligibility') AS relation_oid
+),
+gene_eligibility_contract AS (
+  SELECT CASE
+    WHEN gene_eligibility_relation.relation_oid IS NULL THEN TRUE
+    ELSE
+      EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_constraint AS constraint_row
+        WHERE constraint_row.conrelid = gene_eligibility_relation.relation_oid
+          AND constraint_row.contype = 'p'
+          AND ARRAY(
+            SELECT attribute_row.attname::TEXT
+            FROM pg_catalog.unnest(constraint_row.conkey) WITH ORDINALITY
+              AS key_row(attnum, ordinal)
+            JOIN pg_catalog.pg_attribute AS attribute_row
+              ON attribute_row.attrelid = constraint_row.conrelid
+             AND attribute_row.attnum = key_row.attnum
+            ORDER BY key_row.ordinal
+          ) = ARRAY['player_id', 'rules_version', 'gene_id']::TEXT[]
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_class AS relation_row
+        WHERE relation_row.oid = gene_eligibility_relation.relation_oid
+          AND relation_row.relrowsecurity
+      )
+      -- One own-row read policy and no write policy at all: with RLS on, a
+      -- direct client write is refused by the database, not by a convention.
+      AND (
+        SELECT pg_catalog.count(*) = 1
+        FROM pg_catalog.pg_policy AS policy_row
+        WHERE policy_row.polrelid = gene_eligibility_relation.relation_oid
+          AND policy_row.polname = 'player_gene_eligibility_select_own'
+          AND policy_row.polcmd = 'r'
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_policy AS policy_row
+        WHERE policy_row.polrelid = gene_eligibility_relation.relation_oid
+          AND policy_row.polcmd <> 'r'
+      )
+      AND (
+        SELECT COALESCE(pg_catalog.bool_and(
+          EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_constraint AS constraint_row
+            WHERE constraint_row.conrelid =
+                  gene_eligibility_relation.relation_oid
+              AND constraint_row.contype = 'c'
+              AND constraint_row.convalidated
+              AND constraint_row.conname = required.constraint_name
+          )
+        ), FALSE)
+        FROM (
+          VALUES
+            ('gene_eligibility_state_check'::TEXT),
+            ('gene_eligibility_source_check'),
+            ('gene_eligibility_trial_offers_check'),
+            ('gene_eligibility_eligible_shape'),
+            ('gene_eligibility_learning_event_version_check')
+        ) AS required(constraint_name)
+      )
+      AND pg_catalog.has_table_privilege(
+        'authenticated', gene_eligibility_relation.relation_oid, 'SELECT'
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM (VALUES ('anon'::TEXT), ('authenticated'::TEXT)) AS roles(name)
+        CROSS JOIN (
+          VALUES
+            ('INSERT'::TEXT), ('UPDATE'::TEXT), ('DELETE'::TEXT),
+            ('TRUNCATE'::TEXT), ('TRIGGER'::TEXT), ('REFERENCES'::TEXT)
+        ) AS privileges(name)
+        WHERE pg_catalog.has_table_privilege(
+          roles.name, gene_eligibility_relation.relation_oid, privileges.name
+        )
+      )
+      AND (
+        SELECT COALESCE(pg_catalog.bool_and(
+          procedure_row.oid IS NOT NULL
+          AND procedure_row.prosecdef
+          -- IS NOT DISTINCT FROM, not `=`: a function whose search_path was
+          -- reset has a NULL proconfig, and bool_and silently skips a NULL
+          -- rather than failing on it.
+          AND procedure_row.proconfig
+              IS NOT DISTINCT FROM ARRAY['search_path=public']::TEXT[]
+          AND pg_catalog.has_function_privilege(
+            'service_role', procedure_row.oid, 'EXECUTE'
+          )
+        ), FALSE)
+        FROM (
+          VALUES
+            ('public.genome_eligibility_active_gene_ids(smallint,text[])'::TEXT),
+            ('public.grant_starter_eligibility(uuid,smallint,text[])'),
+            ('public.select_gene_trial(uuid,smallint,text)'),
+            ('public.record_trial_offer(uuid,smallint,text,uuid)'),
+            ('public.resolve_learning_event(uuid,smallint,text,uuid,smallint)'),
+            ('public.graduate_full_roster(uuid,smallint,text[])'),
+            ('public.read_gene_eligibility(uuid,smallint)')
+        ) AS required(signature)
+        LEFT JOIN pg_catalog.pg_proc AS procedure_row
+          ON procedure_row.oid = pg_catalog.to_regprocedure(required.signature)
+      )
+  END AS gene_eligibility_contract_valid
+  FROM gene_eligibility_relation
+),
 cohesive_contract AS (
   SELECT
     execution_contract.read_only_execution,
@@ -454,7 +580,8 @@ cohesive_contract AS (
     genome_table_privilege_contract.genome_table_privileges_valid,
     genome_codex_version_contract.genome_codex_versions_valid,
     genome_definer_contract.genome_definers_hardened,
-    settlement_bounds_contract.settlement_bounds_aligned
+    settlement_bounds_contract.settlement_bounds_aligned,
+    gene_eligibility_contract.gene_eligibility_contract_valid
   FROM execution_contract
   CROSS JOIN founding_bridge_contract
   CROSS JOIN function_contract
@@ -467,6 +594,7 @@ cohesive_contract AS (
   CROSS JOIN genome_codex_version_contract
   CROSS JOIN genome_definer_contract
   CROSS JOIN settlement_bounds_contract
+  CROSS JOIN gene_eligibility_contract
 )
 SELECT pg_catalog.jsonb_build_object(
   'status', CASE
@@ -486,10 +614,11 @@ SELECT pg_catalog.jsonb_build_object(
       AND cohesive_contract.genome_codex_versions_valid
       AND cohesive_contract.genome_definers_hardened
       AND cohesive_contract.settlement_bounds_aligned
+      AND cohesive_contract.gene_eligibility_contract_valid
     THEN 'ready'
     ELSE 'invalid'
   END,
-  'probe', 'cohesive_release_read_only_v4',
+  'probe', 'cohesive_release_read_only_v5',
   'checks', pg_catalog.jsonb_build_object(
     'readOnlyExecution',
       cohesive_contract.read_only_execution,
@@ -520,7 +649,9 @@ SELECT pg_catalog.jsonb_build_object(
     'genomeDefinersHardened',
       cohesive_contract.genome_definers_hardened,
     'settlementBoundsAligned',
-      cohesive_contract.settlement_bounds_aligned
+      cohesive_contract.settlement_bounds_aligned,
+    'geneEligibilityContractValid',
+      cohesive_contract.gene_eligibility_contract_valid
   )
 ) AS cohesive_release_probe
 FROM cohesive_contract;

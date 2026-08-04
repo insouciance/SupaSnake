@@ -151,10 +151,21 @@ The release has three deliberately different database gates:
   aligned 262144 settlement payload bounds. That last check exists because
   migration 066 patches the practice-run bound through a `DO` block that
   returns quietly when it cannot find the old literal, so a successful push is
-  not by itself proof that the stranding bound is gone. The immediately
+  not by itself proof that the stranding bound is gone. It additionally proves
+  the migration 067 curriculum contract — identity key, RLS with a single
+  own-row read policy and no write policy, every named CHECK, the browser-role
+  write denial, and the seven service-only definers — conditionally on the
+  table existing, because 067 is deploy-order-agnostic by design and the probe
+  also runs on releases that precede it. What is asserted is that IF the table
+  exists it has exactly that shape. It deliberately does not assert
+  `anon`/`authenticated` EXECUTE denial on those seven functions, nor `anon`
+  SELECT denial on the table: 067 revokes only `PUBLIC` from its functions and
+  only the write verbs from its table, so a platform default privilege may
+  legitimately leave those grants standing, and failing a release on something
+  a migration never established would strand a mutated schema. The immediately
   preceding empty linked migration-plan proof remains the authority for the
-  062/063/064/065/066 ledger. Pure Genome projector behavior is exercised by
-  the service-only capability and local stateful contract; the hosted probe
+  062/063/064/065/066/067 ledger. Pure Genome projector behavior is exercised
+  by the service-only capability and local stateful contract; the hosted probe
   remains structural and never invokes an application function.
 
 Never run `062_competitive_clans.sql`, `063_run_continuity.sql`,
@@ -257,9 +268,15 @@ The workflow performs:
    must prove the exact manifest/project/SHA. Canonical and cron are re-proved.
 7. Immediate current-main, exact-SHA CI, and pending-plan revalidation; the
    reviewed rollout push and linked lint. The recognized rollouts are the exact
-   062–065 initial/resume suffix and the exact single-file
-   `066_settlement_payload_bounds.sql` plan; each is named explicitly by the
+   062–065 initial/resume suffix, the exact single-file
+   `066_settlement_payload_bounds.sql` plan, and the exact single-file
+   `067_player_gene_eligibility.sql` plan; each is named explicitly by the
    apply and validate steps, and any other plan stops at classification.
+   Contracts are written for plans this workflow can actually observe. It
+   dry-runs only after `supabase link` against the production project ref, and
+   refuses any other ref before linking, so a combined plan that exists solely
+   in a fresh replay of the whole migration set is not a rollout contract and
+   is deliberately absent from the allowlist.
 8. Empty post-push dry-run and hosted read-only migration-ledger/structural probe.
 9. A second proof that canonical alias and cron remain exactly outgoing after
    all schema work.
