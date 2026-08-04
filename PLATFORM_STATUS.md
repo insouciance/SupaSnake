@@ -21,23 +21,24 @@
 | Career | Durable run ingress; atomic progression; bounded recognition; server-backed attention and memory |
 | Tactical Genome | v2 enabled; player-pulled relics, six loci, 13 shared Genes, three signatures, eight Splices, 2/3/4 neutral Strain ladder |
 | Run continuity | Nonblocking save status in the cockpit; only a proven exclusive-lease conflict interrupts play |
-| Player-feature baseline | `2fe33cabb5dd9488e53d5f75a2e38f41a4da77ea` |
-| Current deployment | `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`supasnake-yoyq183cf-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`4fb6271`); dual-version and schema-compatible, but restores the fatal Gilded Fork rejection for Gene-only golden food |
+| Player-feature baseline | `381491e23b60c004a843266169fd7a30d4436378` |
+| Current deployment | `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`supasnake-pk5b7d8bv-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`2fe33ca`); dual-version and schema-compatible, but restores the stranded-settlement trap |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release merged as PR 62, the Gilded Fork engine fix, on top of PR 59
-(continuity, terminal authority and Tactical Loom) and PR 60 (dependency-audit
-lockfile fix). Each passed all ten protected-PR checks, including all four
-isolated-Supabase E2E flag shapes and a 14m8s production E2E leg. The current
-release also passed full type checking, lint, `verify:constitution`, 469 Jest
-suites / 6,194 tests, production build, the three deterministic cockpit
-verifications, local migrations 001–065 from zero, ordinary and two-session SQL
-integration, the production runtime dependency audit, staged and canonical
-health, linked read-only schema proof, exact cron ownership, and focused
-public-production smoke. Production workflow `30887227521` deployed it with no
-migration. Detailed evidence is maintained in
+The current release is a four-PR train deployed together: PR 65
+(stranded-settlement recovery), PR 66 (integer amount display), PR 64 (Player
+Evolution & Onboarding Package A contracts and tooling) and PR 67 (merge-queue
+CI triggers). Each passed all ten protected-PR checks in sequence, including all
+four isolated-Supabase E2E flag shapes, and each merge's four post-main push
+workflows passed on its exact main SHA. The train also passed full type
+checking, lint, `verify:constitution`, the production build, the deterministic
+cockpit verifications, local migrations 001–065 from zero, ordinary and
+two-session SQL integration, the production runtime dependency audit, staged and
+canonical health, linked read-only schema proof, exact cron ownership, and
+focused public-production smoke. Production workflow `30907807862` deployed it
+with no migration. Detailed evidence is maintained in
 `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -106,6 +107,16 @@ migration. Detailed evidence is maintained in
   alone never opens Results, canonical Free Play receipts are reconstructed on
   the server, and a result still being finalized shows an honest `Finalizing…`
   state rather than an invented outcome.
+- A settlement that failed to land can no longer trap an account. The server
+  absorbs a stranded terminal run when the next one starts, the client retries
+  from server state on a 2s→30s backoff that re-arms itself, and `Start a new
+  run` is always available as an escape. This closed a production incident in
+  which two accounts sat hard-blocked behind the `Result secured` modal.
+- Every amount the player is shown — Score, DNA, Yield, Depth, Mastery XP,
+  costs, pools, thresholds — reads as a whole number through one shared
+  formatter. Factors, percentages, durations, and prices keep their decimals,
+  and stored values keep full precision; the four-decimal scaled-Yield readout
+  that started this is gone.
 - Results and Lab action rows are part of their surfaces rather than a dark
   floating tray: transparent, in document order, and on a 320×568 phone the
   Results dock lands inside the first viewport with nothing pinned.
@@ -143,6 +154,12 @@ migration. Detailed evidence is maintained in
 - Stripe, Sentry, PostHog, Discord, and Analyst integrations with documented
   degraded modes
 - Jest, Playwright, GitHub Actions, Vercel, and isolated Supabase CI
+- Merge cadence, as of 2026-08-04: pull requests auto-merge on green
+  (`gh pr merge --squash --auto`) and strict up-to-date is off, because
+  GitHub's merge queue proved to be organization-only for this account. The
+  stated safety nets are the four post-main push workflows on every new `main`
+  SHA and the deploy workflow's exact-head gate, which refuses to promote
+  anything other than the precise commit it validated.
 
 Production feature defaults:
 

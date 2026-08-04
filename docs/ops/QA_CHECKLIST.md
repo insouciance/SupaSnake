@@ -27,9 +27,9 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `2fe33cabb5dd9488e53d5f75a2e38f41a4da77ea` — Gilded Fork engine fix on top of run continuity, terminal authority, Tactical Loom presentation, and the dependency-audit lockfile fix |
-| Current deployment | `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`supasnake-yoyq183cf-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`4fb6271`); dual-version and schema-compatible, but reinstates the fatal Gilded Fork rejection |
+| Production behavior commit | `381491e23b60c004a843266169fd7a30d4436378` — stranded-settlement recovery, integer amount display, Player Evolution Package A contracts, and merge-queue CI triggers |
+| Current deployment | `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`supasnake-pk5b7d8bv-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`2fe33ca`); dual-version and schema-compatible, but reinstates the stranded-settlement trap |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–065 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
@@ -37,7 +37,7 @@ Design references:
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `2fe33cabb5dd9488e53d5f75a2e38f41a4da77ea` |
+| Canonical source | `main`; canonical health reports exact SHA `381491e23b60c004a843266169fd7a30d4436378` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
@@ -45,8 +45,9 @@ Commitment/Clan Energy Battle system, control responsiveness, Career Spine, and
 player-pulled Tactical Genome v2 are live through migration 065. The 22-flag
 public contract, exact release SHA, linked schema proof, Genome service
 capability, canonical alias, and cron owner passed together. The
-run-continuity, terminal-authority and Tactical Loom release and the current
-Gilded Fork engine fix are application-only and add no migration. Use a flag-off
+run-continuity, terminal-authority and Tactical Loom release, the Gilded Fork
+engine fix, and the current four-PR settlement-recovery/integer-display train
+are application-only and add no migration. Use a flag-off
 forward deployment of the dual-version code rather than the retired pre-v2
 application as rollback.
 
@@ -75,6 +76,65 @@ application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Settlement-recovery and integer-display train production evidence
+
+- Four PRs merged in sequence and deployed together as exact main SHA
+  `381491e23b60c004a843266169fd7a30d4436378`: PR 65 stranded-settlement recovery
+  (`6575810`), PR 66 integer amount display (`b8e913e`), PR 64 Player Evolution
+  & Onboarding Package A (`eafde54`), PR 67 merge-queue CI triggers
+  (`381491e`). No migration and no `SNAKE_RULES_VERSION` bump.
+- Each PR passed all ten protected checks on its final head, and each merge's
+  four post-main push workflows passed on its exact main SHA before the next
+  PR merged.
+- PR 65 closed a live production incident: two accounts were hard-blocked
+  behind the `Result secured` modal by a settlement that never landed. The
+  server now absorbs a stranded terminal run when the next run starts, through
+  an internal header and an audited end branch; the client runs a
+  `terminalRecoveryLoop` with 2s→30s backoff that re-arms from server state;
+  and `Start a new run` is always available as an escape.
+- PR 66 routed roughly a hundred display sites through the shared
+  `formatAmount` helpers. The root cause was the four-decimal scaled-Yield
+  formatter. Display-only: stored and computed values keep full precision, and
+  factors, percentages, durations, and prices keep their decimals. A follow-up
+  commit on the same PR fixed four clan sites that guarded a nullable best-five
+  Depth against `undefined` when the API genuinely emits `null`; the first head
+  failed `tsc` and `next build` on exactly that, and was fixed before merge
+  rather than merged red.
+- PR 64 is docs and tooling only — Constitution v1.14 / Overturn #36, the
+  ratified seven-Gene starter pools, and the simulation harness. Its single
+  `package.json` change is the `simulate:starter-pools` script; no dependency
+  moved and `package-lock.json` was untouched.
+- Two E2E legs failed mid-train — PR 65's post-main `e2e (legacy-workbench)`
+  and PR 66's `e2e (rollback)` — both within about a minute, both with
+  `failed to bind host port for 0.0.0.0:54322 … address already in use` while
+  starting the local Supabase container. Two concurrent runs contended for the
+  same port on one runner host; no test executed. They were re-run serially and
+  both passed. Record this as CI infrastructure contention, not a test failure,
+  and expect it to recur while concurrent runs share a host.
+- Production workflow `30907807862` succeeded in Stripe test mode between
+  12:08:50 and 12:27:26 UTC on 2026-08-04 and deployed and verified
+  `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM`
+  (`supasnake-pk5b7d8bv-josef-bells-projects.vercel.app`) as READY/production.
+  The outgoing deployment was `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` on `2fe33ca`.
+- Canonical `/api/health` and `/api/release-contract` report healthy application
+  and database, the exact release SHA, project ref `gmpwyzqafoyowndbvlma`,
+  22/22 flags, public-surface hash
+  `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, Genome
+  schema/catalog/Ascendance 2/2/2, rules version 2, eight Splices, and neutral
+  Strain thresholds 2/3/4. Migrations remain 001–065 aligned with no pending
+  plan.
+- Canonical alias, production cron owner, and every cron host resolve to the new
+  deployment. Cron remains enabled and its normalized definition hash is
+  unchanged at
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
+- Runtime proof beyond the health contract: the served production chunk
+  `page-97aa4abd6d16ecfc.js` contains the `Start a new run` marker, so the
+  recovery escape is present in the shipped bundle and not only in the branch.
+- Process change recorded with this release: pull requests now auto-merge on
+  green and strict up-to-date is off, because GitHub's merge queue proved
+  organization-only for this account. The post-main push workflows and the
+  deploy workflow's exact-head gate are the stated safety nets.
 
 ### Gilded Fork engine-fix production evidence
 
