@@ -78,13 +78,20 @@ import {
 import {
   parseRunStartContext,
   serializeRunStartContext,
-  RUN_CONTEXT_VERSION,
+  RUN_CONTEXT_LEGACY_VERSION,
   type RunStartContext,
+  type RunStartEligibilityInputs,
   type RunStartGenomeContext,
 } from '@/lib/server/runContext';
+import {
+  grantStarterEligibility,
+  readGeneEligibility,
+  resolveLearningEvent,
+} from '@/lib/server/geneEligibility';
 import { verifyOfferTrace } from '@/lib/server/offerVerifier';
 import { LADDER_ENABLED } from '@/lib/features/ladder';
 import { GENOME_V2_ENABLED } from '@/lib/features/genomeV2';
+import { playerEvolutionEnabled } from '@/lib/features/playerEvolution';
 import {
   ACTIVE_GROWTH_PROFILE,
   type GrowthProfileId,
@@ -122,14 +129,21 @@ import {
   type WorldCondition,
 } from '@/shared/game/worldCondition';
 import type { StrainId } from '@/shared/game/strains';
-import { genomeV2ActivePool } from '@/shared/game/genes';
+import {
+  GENOME_V2_ELIGIBILITY_CONTRACT_VERSION,
+  GENOME_V2_STARTER_POOLS,
+  genomeV2ActivePool,
+  genomeV2PlayableVocabulary,
+} from '@/shared/game/genes';
 import { projectGenomeForSettlement } from '@/shared/game/settlementGenome';
 import {
   deriveGenomeV2Ftue,
   deriveGenomeV2FtuePresentation,
   GENOME_V2_INTERACTION_AUTO_OFFER,
   GENOME_V2_INTERACTION_PHYSICAL_RELIC,
+  GENOME_V2_LEARNING_EVENT_VERSION,
   GENOME_RULES_V2,
+  genomeV2LearningEventsResolved,
   isGenomeV2InteractionVersion,
 } from '@/shared/game/genomeV2';
 import {
@@ -1269,10 +1283,54 @@ export async function POST(request: NextRequest) {
           const lineageBias = ftue.spawnPointsUnlocked
             ? lineageOfferBias(runLineage)
             : null;
-          const genePool = genomeV2ActivePool(startDynasty);
+          // ---------------------------------------------------------------
+          // The run's Gene vocabulary (WP-B, server contract §3)
+          // ---------------------------------------------------------------
+          // THREE WAYS TO GET THE COMPLETE DYNASTY ROSTER, AND THEY ARE ALL
+          // THE SAME CODE PATH: the curriculum flag is off, the satellite
+          // table is not applied here yet, or Free Play — a showroom is not a
+          // curriculum (PEO §4.4), so it draws from the whole roster and
+          // grants no eligibility. In every one of them `eligibility` stays
+          // unavailable, `eligibilityStamp` stays null, and the composed pool
+          // is `genomeV2ActivePool(startDynasty)` exactly as it is today.
+          const curriculumLive =
+            playerEvolutionEnabled() && !isFreePlay;
+          const eligibility = curriculumLive
+            ? await readGeneEligibility(supabase, player.id)
+            : null;
+          let eligibilityStamp: RunStartEligibilityInputs | null = null;
+          let genePool = genomeV2ActivePool(startDynasty);
+          if (eligibility?.available) {
+            const facts: RunStartEligibilityInputs = {
+              eligibleGeneIds: [...eligibility.eligibleGeneIds],
+              trialGeneId: eligibility.trialGeneId,
+              bankedRuns,
+              masteryLevel,
+            };
+            genePool = genomeV2PlayableVocabulary(startDynasty, facts);
+            eligibilityStamp = facts;
+            // The Dynasty starter seven is a constant of the Dynasty, so the
+            // composer already unioned it in — this write only makes the
+            // account's per-Gene state truthful for the Workbench. It is
+            // deliberately not awaited for correctness: a failure changes no
+            // pool, no payout and no run.
+            await grantStarterEligibility(
+              supabase,
+              player.id,
+              GENOME_V2_STARTER_POOLS[startDynasty]
+            );
+          }
           const externalSecondLife = snakeTraits.includes('iron_scales')
             ? 'iron_scales' as const
             : null;
+          const eligibilityBlock = eligibilityStamp
+            ? {
+                eligibilityContractVersion:
+                  GENOME_V2_ELIGIBILITY_CONTRACT_VERSION,
+                learningEventVersion: GENOME_V2_LEARNING_EVENT_VERSION,
+                eligibilityInputs: eligibilityStamp,
+              }
+            : {};
           genomeBlock = {
             rulesVersion: GENOME_RULES_V2,
             interactionVersion: negotiatedGenomeInteractionVersion,
@@ -1280,6 +1338,7 @@ export async function POST(request: NextRequest) {
             heirloom,
             v2GenePool: genePool,
             ftuePresentation,
+            ...eligibilityBlock,
           };
           startGenomeContext = {
             rulesVersion: GENOME_RULES_V2,
@@ -1287,6 +1346,9 @@ export async function POST(request: NextRequest) {
             genePool,
             heirloom,
             lineage: lineageBias,
+            // UNTOUCHED BY THE CURRICULUM. Apex *tier activation* keeps its
+            // ramp: ruling 1 deleted the Signature's offer lock, not the
+            // economics of the ladder it sits on.
             tierCap: ftue.apexesUnlocked
               ? 3
               : ftue.expressionsUnlocked
@@ -1297,6 +1359,7 @@ export async function POST(request: NextRequest) {
             prevRunDied,
             ftuePresentation,
             externalSecondLife,
+            ...eligibilityBlock,
           };
         } else {
           const ftue = deriveFtue(bankedRuns, masteryLevel, ownedVariants);
@@ -1393,7 +1456,10 @@ export async function POST(request: NextRequest) {
       }
 
       startRunContext = {
-        v: RUN_CONTEXT_VERSION,
+        // Placeholder only: `serializeRunStartContext` derives the stored
+        // version from whether the genome block carries a curriculum stamp,
+        // so a flag-off run writes the pre-WP-B bytes exactly.
+        v: RUN_CONTEXT_LEGACY_VERSION,
         snake: {
           id: snake.id,
           generation: snakeGeneration,
@@ -3403,6 +3469,52 @@ export async function POST(request: NextRequest) {
         );
       }
       await refreshLinkedRolesForPlayer(supabase, player.id);
+
+      // ---------------------------------------------------------------
+      // Curriculum learning-event resolution (WP-B, server contract §4)
+      // ---------------------------------------------------------------
+      // READ FROM THE VALIDATED RECORD, NEVER FROM THE JOURNAL. The journal
+      // compacts above 256 entries, so a scan here would answer "no" for
+      // exactly the long runs an engaged learner produces;
+      // `learningEventsResolved` is written by the pure reducer and survives
+      // compaction. THE TRIAL COMES FROM THE START STAMP, not from a fresh
+      // read: an unlock granted mid-run must not change the run that earned
+      // it, and vocabulary is never recomputed at settlement.
+      //
+      // At most one Gene completes per run (PEO §4.4) — there is at most one
+      // trial, so that bound is structural rather than enforced. Success and
+      // failure both resolve; only Free Play and an unvalidated run do not.
+      // A failure here is not a settlement failure: the run is already paid,
+      // the Gene stays a trial, and the next run that resolves the same event
+      // promotes it.
+      const stampedTrialGeneId =
+        runContext?.genome?.rulesVersion === GENOME_RULES_V2
+          ? runContext.genome.eligibilityInputs?.trialGeneId ?? null
+          : null;
+      const settledV2Record =
+        validation.genome && validation.genome.v === GENOME_RULES_V2
+          ? validation.genome
+          : null;
+      if (
+        stampedTrialGeneId &&
+        validation.valid &&
+        !isFreeSession &&
+        settledV2Record &&
+        genomeV2LearningEventsResolved(settledV2Record).includes(
+          stampedTrialGeneId
+        )
+      ) {
+        await resolveLearningEvent(
+          supabase,
+          player.id,
+          stampedTrialGeneId,
+          sessionId,
+          runContext?.genome?.rulesVersion === GENOME_RULES_V2
+            ? runContext.genome.learningEventVersion ??
+                GENOME_V2_LEARNING_EVENT_VERSION
+            : GENOME_V2_LEARNING_EVENT_VERSION
+        );
+      }
 
       // ---------------------------------------------------------------
       // The Daily Take (Constitution §7.2, WP-1.04)

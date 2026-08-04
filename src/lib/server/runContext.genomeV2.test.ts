@@ -9,7 +9,7 @@ import {
 } from '@/shared/game/genomeV2';
 import {
   parseRunStartContext,
-  RUN_CONTEXT_VERSION,
+  RUN_CONTEXT_LEGACY_VERSION,
   serializeRunStartContext,
   type RunStartContext,
 } from './runContext';
@@ -17,7 +17,7 @@ import {
 function v2Context(): RunStartContext {
   const ftuePresentation = deriveGenomeV2FtuePresentation(7, 2);
   return {
-    v: RUN_CONTEXT_VERSION,
+    v: RUN_CONTEXT_LEGACY_VERSION,
     snake: {
       id: 'snake-v2',
       generation: 11,
@@ -64,7 +64,7 @@ describe('run_context: Genome v2 and Ascendance authority', () => {
 
   it('keeps an unstamped historical context on Genome v1', () => {
     const raw = {
-      v: RUN_CONTEXT_VERSION,
+      v: RUN_CONTEXT_LEGACY_VERSION,
       snake: { id: 'legacy', generation: 20, traits: [] },
       mutationPool: ['gold_trail'],
       freePlay: false,
