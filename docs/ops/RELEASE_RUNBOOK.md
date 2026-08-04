@@ -146,10 +146,14 @@ The release has three deliberately different database gates:
   signatures and service-role grants without invoking those functions, absence
   of duplicate favorites, exact trigger/function binding, validated continuity
   constraints, required indexes, exact Genome catalog ids, versioned Codex
-  identities, hardened Genome definers, and the complete API-role table
-  privilege boundary (including TRUNCATE/TRIGGER/REFERENCES denial). The
-  immediately preceding empty linked migration-plan proof remains the authority
-  for the 062/063/064/065 ledger. Pure Genome projector behavior is exercised by
+  identities, hardened Genome definers, the complete API-role table
+  privilege boundary (including TRUNCATE/TRIGGER/REFERENCES denial), and the
+  aligned 262144 settlement payload bounds. That last check exists because
+  migration 066 patches the practice-run bound through a `DO` block that
+  returns quietly when it cannot find the old literal, so a successful push is
+  not by itself proof that the stranding bound is gone. The immediately
+  preceding empty linked migration-plan proof remains the authority for the
+  062/063/064/065/066 ledger. Pure Genome projector behavior is exercised by
   the service-only capability and local stateful contract; the hosted probe
   remains structural and never invokes an application function.
 
@@ -251,8 +255,11 @@ The workflow performs:
 6. Ordinary Preview deployment with service role disabled and target
    verification (`preview`, never `production`). Its anonymous release contract
    must prove the exact manifest/project/SHA. Canonical and cron are re-proved.
-7. Immediate current-main, exact-SHA CI, and pending-plan revalidation; exact
-   reviewed 062–065 initial/resume suffix push and linked lint.
+7. Immediate current-main, exact-SHA CI, and pending-plan revalidation; the
+   reviewed rollout push and linked lint. The recognized rollouts are the exact
+   062–065 initial/resume suffix and the exact single-file
+   `066_settlement_payload_bounds.sql` plan; each is named explicitly by the
+   apply and validate steps, and any other plan stops at classification.
 8. Empty post-push dry-run and hosted read-only migration-ledger/structural probe.
 9. A second proof that canonical alias and cron remain exactly outgoing after
    all schema work.
@@ -282,7 +289,7 @@ The workflow performs:
 | Outgoing Production exposes Genome v2 without the exact rules-v2 2/3/4 profile | Stop before Preview or mutation. The outgoing writer is incompatible with a non-atomic threshold correction; introduce a frozen profile/rules v3 or first establish a reviewed no-write transition. |
 | During the first cutover, either Genome v2 zero-session preflight is nonzero or malformed | Stop before mutation/cutover. Do not deploy 2/3/4 as rules v2; introduce rules v3 or a frozen threshold profile. |
 | Preview smoke fails before a standard migration | Stop. No hosted mutation occurred. |
-| 062–065 push/lint/read-only probe fails | Do not create a Production deployment. Preserve forward-only state, confirm canonical and cron still exact outgoing, then forward-fix or use only the recognized ordered suffix. |
+| A reviewed rollout push, lint, or read-only probe fails | Do not create a Production deployment. Preserve forward-only state, confirm canonical and cron still exact outgoing, then forward-fix or use only the recognized ordered suffix. |
 | Post-bridge outgoing or Preview smoke fails | Do not create a Production deployment. Schema is additive; production and cron remain outgoing. Forward-fix. |
 | Production command fails or returns ambiguously while alias + cron still appear outgoing | Unresolved, not a safe pre-cutover stop. Freeze releases and inspect release-SHA Production candidates until no in-flight deployment can cut over; never retry from one immediate snapshot. |
 | Production command returns ambiguously but live health reports the new SHA and cron exactly follows that canonical deployment | Treat as a post-cutover production incident. Freeze releases and inspect logs; do not promote outgoing. |

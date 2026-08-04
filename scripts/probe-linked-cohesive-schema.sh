@@ -86,7 +86,7 @@ if ! jq -e '
   and (.[0].cohesive_release_probe.status == "ready")
   and (
     .[0].cohesive_release_probe.probe
-      == "cohesive_release_read_only_v3"
+      == "cohesive_release_read_only_v4"
   )
   and (.[0].cohesive_release_probe.checks | type == "object")
   and (
@@ -105,7 +105,8 @@ if ! jq -e '
         "readOnlyExecution",
         "requiredFunctionsPresent",
         "requiredFunctionsServiceOnly",
-        "requiredIndexesPresent"
+        "requiredIndexesPresent",
+        "settlementBoundsAligned"
       ]
   )
   and (.[0].cohesive_release_probe.checks | all(.[]; . == true))

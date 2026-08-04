@@ -20,6 +20,7 @@ const CHECKS = {
   requiredFunctionsPresent: true,
   requiredFunctionsServiceOnly: true,
   requiredIndexesPresent: true,
+  settlementBoundsAligned: true,
 };
 
 describe('linked cohesive schema probe harness', () => {
@@ -99,7 +100,7 @@ esac
       {
         cohesive_release_probe: {
           status,
-          probe: 'cohesive_release_read_only_v3',
+          probe: 'cohesive_release_read_only_v4',
           checks,
         },
       },

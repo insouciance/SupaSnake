@@ -107,6 +107,23 @@ describe('production environment validation', () => {
     expect(workflow).toContain(`\"$actual\" = '${migrationSet}'`);
     expect(workflow).toContain('rollout=genome-v2-initial');
     expect(workflow).toContain('rollout=genome-v2-resume');
+    expect(workflow).toContain(
+      "\"$actual\" = '066_settlement_payload_bounds.sql'"
+    );
+    expect(workflow).toContain('rollout=settlement-payload-bounds');
+    // Classifying a plan without also gating the push would pass
+    // classification, never mutate, then fail the post-push empty-plan proof.
+    // Both the apply and the validate step must name every reviewed rollout.
+    const rolloutApplyBlock = workflow.slice(
+      workflow.indexOf('name: Apply the reviewed migration rollout'),
+      workflow.indexOf('name: Prove the linked migration plan is empty')
+    );
+    expect(
+      rolloutApplyBlock.match(/rollout == 'settlement-payload-bounds'/g)?.length
+    ).toBe(2);
+    expect(
+      rolloutApplyBlock.match(/rollout == 'genome-v2-initial'/g)?.length
+    ).toBe(2);
 
     const snapshotAt = workflow.indexOf('name: Snapshot exact outgoing cron state');
     const previewAt = workflow.indexOf('name: Build isolated Preview artifact');
@@ -116,7 +133,7 @@ describe('production environment validation', () => {
     const firstGenomePreflightAt = workflow.indexOf(
       'name: Prove no Genome v2 session exists before first cutover'
     );
-    const bridgeAt = workflow.indexOf('name: Apply reviewed Genome v2 bridge migrations');
+    const bridgeAt = workflow.indexOf('name: Apply the reviewed migration rollout');
     const linkedProbeAt = workflow.indexOf(
       'name: Probe linked cohesive schema read-only'
     );
@@ -273,7 +290,7 @@ describe('production environment validation', () => {
     expect(linkedHarness).not.toContain('read_only: true');
     expect(linkedHarness).toContain("--write-out '%{http_code}'");
     expect(linkedHarness).toContain('returned HTTP $http_status');
-    expect(linkedHarness).toContain('cohesive_release_read_only_v3');
+    expect(linkedHarness).toContain('cohesive_release_read_only_v4');
     expect(linkedHarness).toContain('and length == 1');
     expect(linkedHarness).toContain(
       'supabase/tests/cohesive_release_read_only.sql'
