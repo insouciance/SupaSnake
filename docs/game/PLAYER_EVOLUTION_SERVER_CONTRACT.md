@@ -8,7 +8,7 @@ migration file, runtime change, or flag exists on this branch. WP-B and WP-C bui
 from here and restate the final shapes in their PR descriptions before implementing
 (contract-first parallelism, `AGENTS.md`).
 
-**Verified against** `origin/main` `4fb6271`. Every code and migration citation below
+**Verified against** `origin/main` `2fe33ca`. Every code and migration citation below
 was read, not inferred.
 
 ---
@@ -140,7 +140,7 @@ The guarantee is consumed by **collected offers that contained the trial**, not 
 runs (§4.4). The natural idempotency key is therefore
 `(player_id, rules_version, gene_id, session_id, offer_index)`, and `offer_index` is
 already the authoritative offer cursor (`GenomeV2OfferState.offerIndex`,
-`genomeV2.ts:383`). WP-B may either store the consumed keys in a small side table or
+`genomeV2.ts:384`). WP-B may either store the consumed keys in a small side table or
 derive the count at settlement from the validated record — the second is preferred
 because it needs no extra write path and cannot drift from the run.
 
@@ -215,13 +215,13 @@ settlement.** A later eligibility change applies only to a later run (TGv2 §10)
 
 ### 4.1 Why not a journal scan
 
-The run journal compacts above 256 entries (`genomeV2.ts:1582-1594`) and resolved
-targets above 96 (`:1596-1617`); the compacted entries survive only as a fold
+The run journal compacts above 256 entries (`genomeV2.ts:1606-1618`) and resolved
+targets above 96 (`:1620-1641`); the compacted entries survive only as a fold
 digest. A settlement-time scan for "did event X happen" therefore returns false for
 long runs in which the event happened early. Several durable facts are also
-non-monotone within a run (`wallRushCharges` restored at `:2589`, `overclock`
-cleared, `anchor.pinnedGeneId` cleared at `:2513-2515`, `ledger.mirrorStake` zeroed
-at `:3201`).
+non-monotone within a run (`wallRushCharges` restored at `:2613`, `overclock`
+cleared, `anchor.pinnedGeneId` cleared at `:2525-2527`, `ledger.mirrorStake` zeroed
+at `:3218`).
 
 ### 4.2 The required shape
 
@@ -253,7 +253,7 @@ and the two Genes that have no event today are in
 
 The trial occupies one candidate position without breaking offer determinism. The
 precedent already exists in the same function: `state.anchor.pinnedGeneId`
-(`genomeV2.ts:3940-3941`) forces a specific gene into slot one when it is legal, and
+(`genomeV2.ts:3957-3958`) forces a specific gene into slot one when it is legal, and
 the second slot still draws normally with the different-category rule applied.
 
 WP-C extends `rollGenomeV2Offer` to read a **stamped** trial candidate from run
@@ -267,14 +267,14 @@ state, applied exactly like the anchor pin:
 - when the trial's action is unteachable in this run (§5 of the catalog), it is
   suppressed and the guarantee is **not** decremented.
 
-`assertGenomeV2OfferMatchesRoll` (`genomeV2.ts:3970-3984`) must keep passing
+`assertGenomeV2OfferMatchesRoll` (`genomeV2.ts:3987-4001`) must keep passing
 server-side: since the trial comes from the immutable start stamp and not from a
 request field, the server reproduces the same roll from the same state, and the
 parity guard is unaffected.
 
 **Signature lock deletion.** The `(state.ftue.apexesUnlocked || geneId !== signature)`
-disjunct at `genomeV2.ts:3933-3934` is deleted in WP-B (owner ruling 1). The
-`ensureActivePool` guard at `:1639-1643`, which throws when a signature is acquired
+disjunct at `genomeV2.ts:3950-3951` is deleted in WP-B (owner ruling 1). The
+`ensureActivePool` guard at `:1663-1667`, which throws when a signature is acquired
 before Apex, is deleted with it — they are the same rule expressed twice. `tierCap`
 in `startGenomeContext` (`route.ts:1181-1185`) is **not** touched: Apex *tier
 activation* keeps its ramp.

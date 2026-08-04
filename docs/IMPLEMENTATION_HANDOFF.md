@@ -291,8 +291,8 @@ version, learning-event version, and the *inputs* used, following the
 Add the bounded monotone `learningEventsResolved` field to the run state, written by
 the reducer, and resolve eligibility at settlement from the validated record — never
 by scanning the compacting journal. Delete the `apexesUnlocked` signature offer
-filter (`genomeV2.ts:3933-3934`) and its paired `ensureActivePool` throw
-(`:1639-1643`), leaving `tierCap` untouched. Write the backfill: graduate accounts at
+filter (`genomeV2.ts:3950-3951`) and its paired `ensureActivePool` throw
+(`:1663-1667`), leaving `tierCap` untouched. Write the backfill: graduate accounts at
 ≥10 banked runs or Mastery ≥3, credit the rest from `player_codex` (a `splice` row
 credits both parents), seed the Dynasty starter seven, and never re-onboard an
 account with `total_games_played > 0`. Close the flag-off and absent-infrastructure

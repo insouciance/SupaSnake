@@ -328,17 +328,17 @@ Splice remains gated by the existing six-bank capability.
 Two hard arithmetic constraints, both read out of the shipped engine:
 
 1. **Seven is the floor.** `rollGenomeV2Offer`
-   (`src/shared/game/genomeV2.ts:3930-3937`) refuses to serve an offer once
+   (`src/shared/game/genomeV2.ts:3947-3954`) refuses to serve an offer once
    fewer than two unseen legal pool entries remain, and every acquisition *and
    every Recode* permanently consumes one entry because `seen` is built from all
    instances including `replaced` and `ash`. An eligible pool of *n* therefore
    supports at most *n − 1* acquisitions. Six Genes reach five loci; seven reach
    six. A starved run is not cosmetic: `GenomeV2Runtime.openCadenceOffer`
-   (`src/lib/game/genomeV2Runtime.ts:751-755`) responds to a null roll by parking
+   (`src/lib/game/genomeV2Runtime.ts:750-755`) responds to a null roll by parking
    `nextCadenceOfferAtFood` at `Number.MAX_SAFE_INTEGER`, so relics stop for the
    rest of the run and portals open with no MUTATE.
 2. **Nine before Splices.** A Splice fuses two instances into one occupant and
-   frees a locus (`genomeV2.ts:1711-1716`), so a splicing run consumes more than
+   frees a locus (`genomeV2.ts:1735-1740`), so a splicing run consumes more than
    six Genes — the complete roster averages 7.9–8.3 acquisitions at the six-bank
    cohort. The curriculum must therefore make **at least nine Genes eligible by
    six validated banks** (**[H] set 2026-08-04**), i.e. the starter seven plus
@@ -678,13 +678,13 @@ traceability, not for re-decision.
 
 | # | Decision | Value set | Rationale | Evidence | Blocks |
 |---|---|---|---|---|---|
-| 1 | Dynasty Signature in the run-one pool | Yes; delete the `apexesUnlocked` offer filter | *Owner ruling 1.* Dynasty identity is not advanced content. Apex *tier activation* keeps its ramp, so this is identity, not power | `genomeV2.ts:3933-3934`; simulation shows a 7-pool still starves with the lock on (`starved = 1.000`) | B |
+| 1 | Dynasty Signature in the run-one pool | Yes; delete the `apexesUnlocked` offer filter | *Owner ruling 1.* Dynasty identity is not advanced content. Apex *tier activation* keeps its ramp, so this is identity, not power | `genomeV2.ts:3950-3951`; simulation shows a 7-pool still starves with the lock on (`starved = 1.000`) | B |
 | 2 | Clan reveal placement | The single recommended Results action, routing to `/clan` | *Owner ruling 2.* Reuses the existing fold and the existing `ClanFoundingPrompt` flow; adds no Results layer | `resultsNextAction.ts:93-141`; `ClanFoundingPrompt.tsx:23-30`; `app/clan/page.tsx:457` | E |
 | 3 | §12.2 "floor 12" scope | Binds the Dynasty-legal ROSTER, not the per-account eligible subset | *Owner ruling 3.* Without this the curriculum is unconstitutional by construction | Constitution §12.2 as amended in v1.14 | B |
 | 4 | **Starter-pool size** | **7**, not 6 | An *n*-Gene pool supports at most *n − 1* acquisitions; six can never fill six loci, and a starved run permanently stops spawning relics | Every 6-pool: `starvedBeforeFullGenome = 1.000` in all five cohorts. Every 7-pool: `0.000`, `filledAllLoci = 1.000` | B, C |
 | 5 | **The three starter lists** | CYBER/PRIMAL/COSMIC as tabled in §4.3 | Identical category, Splice, and Strain shape across all three; both verb-dependent Genes excluded; both late-legibility Genes excluded; Signature Strain reaches Minor in two | `scoreStarterPool(...).passes === true` for all three; 6 of 7 categories; 2 reachable Splices | B, C, D |
-| 6 | **Curriculum depth by six banks** | ≥9 offer-eligible Genes | A Splice frees a locus, so a splicing run consumes >6 Genes; the complete roster averages 7.9–8.3 acquisitions at that cohort | `genomeV2.ts:1711-1716`; roster `meanAcquisitions` 7.86 / 7.88 / 8.33 | B, C |
-| 7 | **Trial-guarantee semantics** | Consumed by *collected offers containing the trial*, not by runs; expires after 3 or on resolution | A run-counted guarantee is silently spent by Ascetic, Patient, Free Play, uncollected relics, and relic-less runs — all player choices that teach nothing | Relic cadence per Constitution v1.13 overturn #34; `genomeV2Runtime.ts:749-770` | C |
+| 6 | **Curriculum depth by six banks** | ≥9 offer-eligible Genes | A Splice frees a locus, so a splicing run consumes >6 Genes; the complete roster averages 7.9–8.3 acquisitions at that cohort | `genomeV2.ts:1735-1740`; roster `meanAcquisitions` 7.86 / 7.88 / 8.33 | B, C |
+| 7 | **Trial-guarantee semantics** | Consumed by *collected offers containing the trial*, not by runs; expires after 3 or on resolution | A run-counted guarantee is silently spent by Ascetic, Patient, Free Play, uncollected relics, and relic-less runs — all player choices that teach nothing | Relic cadence per Constitution v1.13 overturn #34; `genomeV2Runtime.ts:750-770` | C |
 | 8 | **Free Play pool** | Complete Dynasty roster; consumes no guarantee, grants no eligibility | A showroom is not a curriculum; matches the v1 precedent | v1 Free Play behavior | B |
 | 9 | **Graduation threshold** | ≥10 banked runs **or** Mastery ≥3 | Reuses the existing Apex thresholds rather than inventing a new progression number | `GENOME_V2_CONFIG.ftue.apexAtBankedRuns = 10`, `apexAtMastery = 3` | B |
 | 10 | **Backfill credit source** | `player_codex` rows as the floor; `game_sessions.genome` scan where feasible | Codex rows are the durable, already-indexed record of authoritative use; the session scan is a best-effort improvement, never a requirement | `031_codex.sql:12-21` (`discovery_type IN ('gene','splice','expression','apex')`); `PLAYER_EVOLUTION_SERVER_CONTRACT.md` §6 | B |
@@ -693,6 +693,6 @@ traceability, not for re-decision.
 | 13 | **Copy idiom** | "Not now" everywhere; "Show me" retained | "Not now" is the shipped idiom; introducing "Later" would fork the vocabulary | Existing product copy | D |
 | 14 | **Attention row shape** | `attention_kind = 'action'` with `destination = 'codex'` | A `'recognition'` row cannot be dismissed — `recognition_never_action_terminal` forbids the terminal states a **Not now** needs. `'codex'` is honest: the Workbench lives there | `061_career_spine.sql:294-296, 310-312` | B, D |
 | 15 | **Eligibility state home** | New satellite table `player_gene_eligibility`, not a `players` column | `players_update_own` has `USING` with no `WITH CHECK` and no column-level revoke, so every non-ownership column is client-writable | `001_initial_schema.sql:145-146`; precedent `057_player_ladders.sql:134-158` | B |
-| 16 | **Resolution detector** | A bounded monotone field on the run state, written by the reducer — never a settlement-time journal scan | The journal compacts to the last 256 events and resolved targets to 96, so a long run can lose the event that proves the lesson | `genomeV2.ts:1582-1617` | B, C |
+| 16 | **Resolution detector** | A bounded monotone field on the run state, written by the reducer — never a settlement-time journal scan | The journal compacts to the last 256 events and resolved targets to 96, so a long run can lose the event that proves the lesson | `genomeV2.ts:1606-1641` | B, C |
 | 17 | **Rollout flag** | `NEXT_PUBLIC_PLAYER_EVOLUTION_V1`, added to `config/production-public-surface.json` | Adding it to the manifest is sufficient — `production-env-validation.cjs` derives its flag list from that manifest, so no separate edit is needed | `scripts/production-env-validation.cjs:55`; `production-public-surface.cjs` | F |
 | 18 | **Full-vocabulary horizon** | 18–25 validated banks | Harmonizes the §3 stage table with §4.4; the old "10–25" row was a drafting inconsistency | This document, §3 and §4.4 | B, F |

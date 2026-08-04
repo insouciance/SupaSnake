@@ -40,7 +40,7 @@ Five cohorts stand in for the run states §4.3 requires:
 | `bank0-signature-locked` | 0 | Today's shipped filter, which withholds the Signature until Apex |
 
 **Modelling the Signature ruling.** Owner ruling 1 deletes the `apexesUnlocked`
-disjunct from the offer filter (`genomeV2.ts:3933-3934`). The harness reproduces
+disjunct from the offer filter (`genomeV2.ts:3950-3951`). The harness reproduces
 the post-deletion filter exactly by setting `ftue.apexesUnlocked = true`, which
 makes that disjunct unconditionally true — the same thing deleting it does. Offer
 weighting never reads `apexesUnlocked`, so the substitution is exact for everything
@@ -48,7 +48,7 @@ measured here. The pre-ruling behaviour is measured separately in the last cohor
 
 **The gate metric.** `starvedBeforeFullGenome` is the share of traversals where the
 offer stream died while a locus was still empty. That is not cosmetic:
-`GenomeV2Runtime.openCadenceOffer` (`src/lib/game/genomeV2Runtime.ts:751-755`)
+`GenomeV2Runtime.openCadenceOffer` (`src/lib/game/genomeV2Runtime.ts:750-755`)
 answers a null roll by setting `nextCadenceOfferAtFood = Number.MAX_SAFE_INTEGER`.
 Relics stop spawning for the rest of the run, permanently, and portals open with
 `genomeOffer: null` so MUTATE has nothing to show. A starved run is a run whose
@@ -59,8 +59,8 @@ Genome content silently ends.
 ## 2. Headline: six Genes cannot work
 
 `rollGenomeV2Offer` returns null once fewer than two unseen legal pool entries
-remain (`genomeV2.ts:3937`), and `seen` is built from **all** instances including
-`replaced` and `ash` (`:3927-3929`), so every acquisition *and every Recode*
+remain (`genomeV2.ts:3954`), and `seen` is built from **all** instances including
+`replaced` and `ash` (`:3944-3946`), so every acquisition *and every Recode*
 permanently consumes one entry. An eligible pool of *n* therefore supports at most
 *n − 1* acquisitions.
 
@@ -154,7 +154,7 @@ observed inside a typical early run.
 ## 4. Splices consume pool depth: the nine-by-six-banks rule
 
 A Splice fuses two instances into one occupant and sets the vacated slot's occupant
-to `null` (`genomeV2.ts:1711-1716`). A splicing run therefore keeps asking for more
+to `null` (`genomeV2.ts:1735-1740`). A splicing run therefore keeps asking for more
 Genes than it has loci. The complete roster shows this directly:
 
 | Cohort | CYBER (13) | PRIMAL (14) | COSMIC (14) |
@@ -239,7 +239,7 @@ Reading it honestly: at `bank0` two of the three 7-pools show a small positive
 splice-pairing figure (+0.045, +0.065). That is a *structural* measurement of how
 often an offer contains a gene that would pair with one already held — and at bank 0
 it cannot pay, because `splicesEnabled` is false, `spliceCompletionForCandidate`
-returns null (`genomeV2.ts:3991`), and the `immediateSpliceWeight` never applies.
+returns null (`genomeV2.ts:4008`), and the `immediateSpliceWeight` never applies.
 
 In the only cohort where the advantage could be live, `bank6-splices`, **every
 prefix is worse than the complete roster** on both metrics, by 0.14–0.21 and
