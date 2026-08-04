@@ -13,12 +13,14 @@ import {
   GENOME_V2_ELIGIBILITY_CONTRACT_VERSION,
   GENOME_V2_GENE_STRAINS,
   GENOME_V2_GRADUATION,
+  GENOME_V2_SPLICE_GATE,
   GENOME_V2_STARTER_POOLS,
   GENOME_V2_STARTER_POOL_SIZE,
   genomeV2ActivePool,
   genomeV2DynastyForVocabulary,
   genomeV2Graduated,
   genomeV2PlayableVocabulary,
+  genomeV2VocabularyStarves,
   type GenomeV2ActiveGeneId,
   type GenomeV2Dynasty,
   type GenomeV2EligibilityFacts,
@@ -252,5 +254,109 @@ describe('genomeV2DynastyForVocabulary', () => {
 describe('the eligibility contract version', () => {
   it('ships at 1', () => {
     expect(GENOME_V2_ELIGIBILITY_CONTRACT_VERSION).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PEO boundary 13, as arithmetic (WP-C)
+// ---------------------------------------------------------------------------
+
+describe('genomeV2VocabularyStarves', () => {
+  it('reuses the shipped Splice gate rather than inventing a threshold', () => {
+    expect(GENOME_V2_SPLICE_GATE.bankedRuns).toBe(
+      GENOME_V2_CONFIG.ftue.splicesAtBankedRuns
+    );
+    // Nine is the starter seven plus two resolved trials (PEO §4.5).
+    expect(GENOME_V2_SPLICE_GATE.minimumVocabulary).toBe(
+      GENOME_V2_STARTER_POOL_SIZE + 2
+    );
+  });
+
+  it('keeps seven as the floor at every stage of the curriculum', () => {
+    for (const bankedRuns of [0, 1, 5, 6, 9]) {
+      expect(genomeV2VocabularyStarves(6, bankedRuns)).toBe(true);
+      expect(genomeV2VocabularyStarves(0, bankedRuns)).toBe(true);
+    }
+    expect(genomeV2VocabularyStarves(7, 0)).toBe(false);
+  });
+
+  it('raises the floor to nine exactly where Splices turn on', () => {
+    // A Splice fuses two instances into one occupant and FREES a locus, so a
+    // splicing run consumes more entries than it has loci. Seven is enough for
+    // six acquisitions and not enough for a rebuild after a fusion.
+    for (const size of [7, 8]) {
+      expect(genomeV2VocabularyStarves(size, 5)).toBe(false);
+      expect(genomeV2VocabularyStarves(size, 6)).toBe(true);
+    }
+    expect(genomeV2VocabularyStarves(9, 6)).toBe(false);
+    expect(genomeV2VocabularyStarves(9, 99)).toBe(false);
+  });
+
+  it('hands the complete roster to an account the curriculum left short', () => {
+    // The guard's answer is the reviewed legacy behaviour, never a topped-up
+    // guess: choosing which Genes to add would be a curriculum decision the
+    // composer has no authority to make.
+    for (const dynasty of DYNASTIES) {
+      const catalog = genomeV2ActivePool(dynasty);
+      const starterOnly = genomeV2PlayableVocabulary(
+        dynasty,
+        facts({ bankedRuns: 6 })
+      );
+      expect(starterOnly).toEqual(catalog);
+
+      // One resolved trial is still short of nine at the Splice gate.
+      const oneResolved = genomeV2PlayableVocabulary(
+        dynasty,
+        facts({ bankedRuns: 6, eligibleGeneIds: ['coilkeeper'] })
+      );
+      expect(oneResolved).toEqual(catalog);
+
+      // Two resolved trials satisfy §4.5, and the account keeps its curriculum.
+      const twoResolved = genomeV2PlayableVocabulary(
+        dynasty,
+        facts({
+          bankedRuns: 6,
+          eligibleGeneIds: ['coilkeeper', 'loom_anchor'],
+        })
+      );
+      expect(twoResolved).toHaveLength(9);
+      expect(twoResolved).not.toEqual(catalog);
+    }
+  });
+
+  it('leaves every pre-Splice cohort on its curriculum', () => {
+    for (const dynasty of DYNASTIES) {
+      for (const bankedRuns of [0, 1, 2, 5]) {
+        expect(
+          genomeV2PlayableVocabulary(dynasty, facts({ bankedRuns }))
+        ).toEqual([...GENOME_V2_STARTER_POOLS[dynasty]].sort(
+          (left, right) =>
+            genomeV2ActivePool(dynasty).indexOf(left) -
+            genomeV2ActivePool(dynasty).indexOf(right)
+        ));
+      }
+    }
+  });
+
+  it('never composes a vocabulary that can starve a splicing run', () => {
+    // The property, stated over every prefix the curriculum can produce.
+    for (const dynasty of DYNASTIES) {
+      const roster = genomeV2ActivePool(dynasty);
+      const remainder = roster.filter(
+        (geneId) => !GENOME_V2_STARTER_POOLS[dynasty].includes(geneId)
+      );
+      for (let unlocked = 0; unlocked <= remainder.length; unlocked += 1) {
+        for (const bankedRuns of [0, 5, 6, 9]) {
+          const pool = genomeV2PlayableVocabulary(
+            dynasty,
+            facts({
+              bankedRuns,
+              eligibleGeneIds: remainder.slice(0, unlocked),
+            })
+          );
+          expect(genomeV2VocabularyStarves(pool.length, bankedRuns)).toBe(false);
+        }
+      }
+    }
   });
 });

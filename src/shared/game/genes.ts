@@ -703,6 +703,26 @@ export const GENOME_V2_STARTER_POOLS: Readonly<
 export const GENOME_V2_STARTER_POOL_SIZE = 7;
 
 /**
+ * The second pool-health floor: **nine eligible Genes by six validated banks**
+ * (PEO §4.5, **[H] set 2026-08-04**; WP-C).
+ *
+ * WHY NINE AND WHY SIX. A Splice fuses two instances into one occupant and
+ * frees a locus, so a splicing run consumes MORE than the six loci it fills —
+ * the complete roster averages 7.9-8.3 acquisitions at the six-bank cohort.
+ * Six validated banks is where `GENOME_V2_CONFIG.ftue.splicesAtBankedRuns`
+ * turns Splices on, so it is the exact moment a seven-Gene vocabulary stops
+ * being sufficient. The starter seven plus two resolved trials is nine.
+ *
+ * The number is duplicated here rather than imported for the same reason
+ * `GENOME_V2_GRADUATION` is — `genomeV2.ts` imports this module, not the other
+ * way round — and `genomeV2.starterPool.test.ts` holds the two in lockstep.
+ */
+export const GENOME_V2_SPLICE_GATE = {
+  bankedRuns: 6,
+  minimumVocabulary: 9,
+} as const;
+
+/**
  * Graduation to the complete legal roster (PEO §8, decision 9).
  *
  * Deliberately the existing Apex thresholds
@@ -788,7 +808,41 @@ export function genomeV2PlayableVocabulary(
   ]);
   if (facts.trialGeneId) eligible.add(facts.trialGeneId);
   const composed = catalog.filter((geneId) => eligible.has(geneId));
-  return composed.length < GENOME_V2_STARTER_POOL_SIZE ? catalog : composed;
+  return genomeV2VocabularyStarves(composed.length, facts.bankedRuns)
+    ? catalog
+    : composed;
+}
+
+/**
+ * PEO boundary 13 as arithmetic instead of as care (WP-C).
+ *
+ * "The curriculum never starves a run" is a hard gate, so it is answered by a
+ * function every composition passes through rather than by a reviewer
+ * noticing. Two floors, both read out of the shipped engine:
+ *
+ *   - **seven**, always: `rollGenomeV2Offer` stops serving once fewer than two
+ *     unseen legal entries remain and every acquisition consumes one, so an
+ *     n-Gene vocabulary supports at most n-1 acquisitions and six can never
+ *     fill six loci;
+ *   - **nine, once Splices are live**: a Splice fuses two instances into one
+ *     occupant and frees a locus, so a splicing run needs more entries than it
+ *     has loci. Below nine, a player who Splices at six banks is left with an
+ *     empty locus and a dead offer stream — the exact state boundary 13 names.
+ *
+ * The answer to a violated floor is the complete legal Dynasty roster, never a
+ * topped-up guess: an invented curriculum order would be a product decision
+ * this function has no authority to make, and the roster is the reviewed
+ * behaviour the whole feature falls back to elsewhere.
+ */
+export function genomeV2VocabularyStarves(
+  size: number,
+  bankedRuns: number
+): boolean {
+  if (size < GENOME_V2_STARTER_POOL_SIZE) return true;
+  return (
+    bankedRuns >= GENOME_V2_SPLICE_GATE.bankedRuns &&
+    size < GENOME_V2_SPLICE_GATE.minimumVocabulary
+  );
 }
 
 /**
