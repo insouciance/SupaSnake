@@ -36,7 +36,7 @@ with the Constitution, the Constitution wins and the contract is the stale docum
 | End-to-end journey, Home/information architecture, run continuity UX, and attention hierarchy | [Cohesive Player Journey](game/COHESIVE_PLAYER_JOURNEY.md) |
 | Progress recognition, career memory, and social proof | [Career Spine](game/CAREER_SPINE.md) |
 | FTUE, onboarding, and interruption details | [Player Flow & Interruption Policy](game/PLAYER_FLOW_INTERRUPTION_POLICY.md) |
-| Player evolution, staged Genome vocabulary, guided unlocks, and clan handoff | [Player Evolution & Onboarding](game/PLAYER_EVOLUTION_ONBOARDING.md); its evidence is [Starter-pool simulation](game/PLAYER_EVOLUTION_STARTER_POOL_SIMULATION.md) and its server boundary is [Curriculum server contract](game/PLAYER_EVOLUTION_SERVER_CONTRACT.md) |
+| Player evolution, staged Genome vocabulary, guided unlocks, and clan handoff | [Player Evolution & Onboarding](game/PLAYER_EVOLUTION_ONBOARDING.md); its evidence is [Starter-pool simulation](game/PLAYER_EVOLUTION_STARTER_POOL_SIMULATION.md), its per-Gene teaching events are [Learning events](game/PLAYER_EVOLUTION_LEARNING_EVENTS.md), and its server boundary is [Curriculum server contract](game/PLAYER_EVOLUTION_SERVER_CONTRACT.md) |
 | Genome/buildcraft and the one free Workbench | [Tactical Genome v2](game/TACTICAL_GENOME_V2.md); `/codex` is a compatibility route into that same instrument, its Research Record is subordinate, and [Buildcraft: The Genome](game/BUILDCRAFT_GENOME_DESIGN.md) is the historical foundation |
 | Active game screen and camera | [Run Cockpit & Arena](game/HUD_COCKPIT_REDESIGN.md) |
 | Energy Commitment and Clan Energy Battles | [Energy Commitment & Clan Battles](game/ENERGY_COMMITMENT_AND_CLAN_BATTLES.md) |
@@ -53,7 +53,9 @@ and implementation details; they do not override that journey contract.
   3 August 2026, rulings extended 4 August 2026; the first post-Genome-v2 progression
   release. It owns the day-to-day learning journey, staged Gene offer eligibility,
   guided reveals, clan handoff, research plan, compatibility contract, and CLI
-  implementation packages. It does not authorize hosted migration or rollout.
+  implementation packages. Its owner decision table is §13 — 18 values set on
+  4 August 2026, awaiting line-by-line ratification. It does not authorize hosted
+  migration or rollout.
 
 **Superseded:** `game/MONETIZATION_DESIGN.md` — replaced by Constitution §10, with
 the ruling recorded in its §15 Overturn Record. It is kept as the historical v1.0
