@@ -99,10 +99,10 @@ describe('Genome v2 presentation adapter', () => {
 
     expect(model).not.toBeNull();
     expect(model?.rulesVersion).toBe(2);
-    expect(model?.currentGenome[0]).toMatchObject({ label: 'Gold Trail', kind: 'gene' });
-    expect(model?.candidates[0].name).toBe('Compound Interest');
+    expect(model?.currentGenome[0]).toMatchObject({ label: 'Golden Hour', kind: 'gene' });
+    expect(model?.candidates[0].name).toBe('Stash');
     expect(model?.candidates.map((candidate) => candidate.action)).toEqual(['THREAD', 'THREAD']);
-    // THREAD immediately fuses the held Gold Trail with Compound Interest:
+    // THREAD immediately fuses the held Golden Hour with Stash:
     // the retained parent locus becomes Dragon Hoard and the incoming locus
     // reopens. The consequence view must show the actual post-choice Genome,
     // not a transient gene that never survives the atomic choice.
@@ -111,7 +111,7 @@ describe('Genome v2 presentation adapter', () => {
       kind: 'splice',
     });
     expect(model?.candidates[0].consequence.genomeAfter[1]).toMatchObject({
-      label: 'Open locus',
+      label: 'Empty slot',
       kind: 'empty',
     });
     expect(model?.candidates[0].consequence.splices).toEqual(expect.arrayContaining([
@@ -119,7 +119,7 @@ describe('Genome v2 presentation adapter', () => {
         name: 'Dragon Hoard',
         stage: 'immediate',
         projectionState: 'forms-now',
-        partnerLabel: 'Gold Trail',
+        partnerLabel: 'Golden Hour',
         partnerState: 'held',
         activation: 'available',
       }),
@@ -135,8 +135,8 @@ describe('Genome v2 presentation adapter', () => {
       expect.objectContaining({ id: 'permanent-terrain', before: '0 formations' }),
     ]));
     expect(model?.candidates[0].consequence.outcomes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'bank', before: '0 Yield' }),
-      expect.objectContaining({ id: 'crash', before: '0 Yield' }),
+      expect.objectContaining({ id: 'bank', before: '0 Payout' }),
+      expect.objectContaining({ id: 'crash', before: '0 Payout' }),
     ]));
   });
 
@@ -183,7 +183,7 @@ describe('Genome v2 presentation adapter', () => {
     );
 
     expect(aurum?.thresholds.map((tier) => tier.points)).toEqual([3, 4, 5]);
-    expect(aurum?.thresholds[0]).toMatchObject({ name: 'Mint', state: 'active' });
+    expect(aurum?.thresholds[0]).toMatchObject({ name: 'Cut', state: 'active' });
   });
 
   it('shows a Dampened family as Minor-active and locks higher reactions', () => {
@@ -212,16 +212,16 @@ describe('Genome v2 presentation adapter', () => {
     );
 
     expect(aurum?.thresholds).toEqual([
-      expect.objectContaining({ points: 2, name: 'Mint', state: 'active' }),
+      expect.objectContaining({ points: 2, name: 'Cut', state: 'active' }),
       expect.objectContaining({
         points: 3,
-        name: 'Dividend',
+        name: 'Payday',
         state: 'locked',
         lockedReason: expect.stringContaining('Dampened'),
       }),
       expect.objectContaining({
         points: 4,
-        name: 'Treasury',
+        name: 'Vault',
         state: 'locked',
         lockedReason: expect.stringContaining('Dampened'),
       }),
@@ -276,17 +276,17 @@ describe('Genome v2 presentation adapter', () => {
 
     expect(phoenix?.consequence.splices).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        name: 'Styx Contract',
+        name: 'Death Deal',
         projectionState: 'forms-now',
-        partnerLabel: 'Mirror Wager',
+        partnerLabel: 'Split Bet',
         partnerState: 'held',
       }),
       expect.objectContaining({
-        name: 'Ashen Stake',
+        name: 'Last Call',
         projectionState: 'closed',
-        partnerLabel: 'Loan Shark',
+        partnerLabel: 'Double or Nothing',
         partnerState: 'needed',
-        recipeLabel: expect.stringContaining('Loan Shark is still needed'),
+        recipeLabel: expect.stringContaining('Double or Nothing is still needed'),
       }),
     ]));
   });
@@ -328,9 +328,9 @@ describe('Genome v2 presentation adapter', () => {
       salvageNext: '×0.74',
     });
     expect(portal.outcomeProjection).toEqual({
-      bank: '0 Yield',
-      crash: '0 Yield',
-      label: 'Genome Yield · before run-stamped Ascendance and Energy',
+      bank: '0 Payout',
+      crash: '0 Payout',
+      label: 'Power payout · before run-stamped Legacy and Energy',
     });
     expect(portal.mirrorChoice).toBeNull();
     expect(portal.mutationTerms).toMatchObject({ mode: 'mutate', growthCost: 3, actionOrdinal: 1 });

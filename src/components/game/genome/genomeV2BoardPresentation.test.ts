@@ -106,7 +106,7 @@ describe('Genome v2 board projection', () => {
     });
   });
 
-  it('projects Gilded Fork as two explicit edible branches with one shared target identity', () => {
+  it('projects The Bag as two explicit edible branches with one shared target identity', () => {
     const state = stateWithTargets([
       target('fork', {
         kind: 'gold_trail',
@@ -132,7 +132,7 @@ describe('Genome v2 board projection', () => {
         cell: { x: 4, z: 5 },
         edible: true,
         collidable: true,
-        rewardLabel: 'SAFE · ×1 YIELD',
+        rewardLabel: 'SAFE · ×1 PAYOUT',
       }),
       expect.objectContaining({
         targetId: 'fork',
@@ -140,7 +140,7 @@ describe('Genome v2 board projection', () => {
         cell: { x: 10, z: 11 },
         edible: true,
         collidable: true,
-        rewardLabel: 'GREED · ×4 YIELD · +2 BODY',
+        rewardLabel: 'GREED · ×4 PAYOUT · +2 BODY',
       }),
     ]);
   });
@@ -181,7 +181,7 @@ describe('Genome v2 board projection', () => {
       .toMatchObject({ source: 'phase_gate_scar', terrainId: 'scar:1' });
   });
 
-  it('removes a used Phase Gate from the live gate inventory once its cells become solid', () => {
+  it('removes a used Side Door from the live gate inventory once its cells become solid', () => {
     const route = [{ x: 5, z: 5 }, { x: 9, z: 9 }] as const;
     const state = stateWithTargets([
       target('gate', { kind: 'phase_gate', optionalRouteCells: route }),
@@ -216,10 +216,10 @@ describe('Genome v2 board projection', () => {
 
     expect(signals).toHaveLength(3);
     expect(signals.map((signal) => signal.id)).toEqual(['target', 'mirror', 'loan']);
-    // Yield is an AMOUNT: the rail rounds to whole units and never shows a
-    // fractional tail, however the scaled ledger stores it (25_000 → 3Y).
-    expect(signals[1].label).toContain('STAKE 3Y');
-    expect(signals[2].label).toContain('ESCROW 4Y');
+    // Payout is an AMOUNT: the rail rounds to whole units and never shows a
+    // fractional tail, however the scaled ledger stores it (25_000 → 3P).
+    expect(signals[1].label).toContain('BET 3P');
+    expect(signals[2].label).toContain('ON THE TABLE 4P');
     expect(signals.some((signal) => /\d\.\d/.test(signal.label))).toBe(false);
     expect(signals[2].label).toContain('4 LEFT');
   });

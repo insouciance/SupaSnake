@@ -144,7 +144,7 @@ test.describe('Genome capability UI', () => {
     await freePlayStart.click();
     await expect(page.getByTestId('strain-meter')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('strain-meter-AURUM')).toHaveAccessibleName(
-      /Aurum 2 of 4, tier 1/i
+      /Gold 2 of 4, tier 1/i
     );
 
     const viewports = [

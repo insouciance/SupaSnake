@@ -116,12 +116,12 @@ export function PortalChoiceOverlay({
     growthCost: STRAIN_PHYSICS.infuseGrowth,
     actionOrdinal: infusesUsed + 1,
     actionLimit: STRAIN_PHYSICS.infuseMaxPerRun,
-    detail: `Gene offer · BANK +${STRAIN_ECONOMICS.infuseBankDelta}`,
+    detail: `Power offer · BANK +${STRAIN_ECONOMICS.infuseBankDelta}`,
   };
   const mutation = mutationTerms ?? legacyMutationTerms;
   const physicalReason = snakeLength < STRAIN_PHYSICS.infuseMinLength
     ? `Needs length ${STRAIN_PHYSICS.infuseMinLength}`
-    : `${rulesVersion === 2 ? 'Mutation' : 'Infuse'} limit reached`;
+    : 'Trade-up limit reached';
   const mutationUnlock = mutateState ?? {
     unlocked: canInfuse,
     reason: canInfuse ? undefined : physicalReason,
@@ -158,8 +158,8 @@ export function PortalChoiceOverlay({
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      // Once MUTATE opens the Loom, the parent portal shortcuts must become
-      // inert. Otherwise the Loom's "1" preview key could BANK the run under
+      // Once TRADE UP opens the Drop, the parent portal shortcuts must become
+      // inert. Otherwise the Drop's "1" preview key could BANK the run under
       // the nested decision surface.
       if (lockedRef.current || inspectingMutation) return;
       const key = event.key.toLowerCase();
@@ -174,8 +174,11 @@ export function PortalChoiceOverlay({
     return () => window.removeEventListener('keydown', keydown, true);
   }, [activateMirror, bank, continueState.unlocked, inspectMutation, inspectingMutation, mutationUnlock.unlocked, onPass]);
 
-  const continueLabel = rulesVersion === 2 ? 'CONTINUE' : 'PASS';
-  const mutateLabel = rulesVersion === 2 ? 'MUTATE' : 'INFUSE';
+  // One word at every rules version. The panel used to say CONTINUE on v2 and
+  // PASS on v1 while the pre-run hint said PASS to both — the same button with
+  // two names is the thing this deletes, not a rollout branch worth keeping.
+  const continueLabel = 'RIDE ON';
+  const mutateLabel = 'TRADE UP';
   const option = 'min-h-11 rounded-[12px] border p-3 text-left transition-colors sm:p-4';
 
   if (inspectingMutation && mutationLoom) {
@@ -207,10 +210,10 @@ export function PortalChoiceOverlay({
         <header className="shrink-0 border-b border-scale-blue-light/20 pb-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="font-body text-sm font-bold uppercase tracking-[0.18em] text-[#7df9ff]">Simulation held · Extraction</p>
+              <p className="font-body text-sm font-bold uppercase tracking-[0.18em] text-[#7df9ff]">Paused for your choice</p>
               <h2 id="portal-choice-title" className="heading-display text-xl text-[#7df9ff] text-glow sm:text-2xl">Portal Decision</h2>
             </div>
-            <p className="text-right font-body text-sm text-beige/50">{doorsPassed} continued · {mutation.actionOrdinal - 1}/{mutation.actionLimit} Genome actions</p>
+            <p className="text-right font-body text-sm text-beige/50">{doorsPassed} ridden · {mutation.actionOrdinal - 1}/{mutation.actionLimit} trades</p>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-scale-blue-light/25 bg-void-deep/40 p-2" data-testid="portal-current-stake">
             <div>
@@ -241,7 +244,7 @@ export function PortalChoiceOverlay({
             >
               <span className="font-display text-sm text-rarity-uncommon">1 · BANK</span>
               <p className="mt-1 font-body text-sm text-beige">Secure {bankOutcomeLabel ?? `${formatAmount(bankDna)} DNA`} and end this run.</p>
-              <p className="mt-2 font-mono text-sm text-beige/55" data-testid="portal-bank-carry">Carry {carry.bankCurrent}{doorsPassed > 0 ? ` · ${doorsPassed} continued` : ''}</p>
+              <p className="mt-2 font-mono text-sm text-beige/55" data-testid="portal-bank-carry">Streak {carry.bankCurrent}{doorsPassed > 0 ? ` · ${doorsPassed} ridden` : ''}</p>
             </button>
 
             <button
@@ -271,10 +274,10 @@ export function PortalChoiceOverlay({
             >
               <span className="font-display text-sm text-cosmic">3 · {mutateLabel}</span>
               <p className="mt-1 font-body text-sm text-beige">
-                +{mutation.growthCost} permanent growth · {mutation.mode === 'recode' ? 'Recode one locus' : mutation.detail}
+                +{mutation.growthCost} permanent growth · {mutation.mode === 'recode' ? 'Swap one slot' : mutation.detail}
               </p>
               <p className="mt-2 font-mono text-sm text-beige/55">
-                Action {mutation.actionOrdinal}/{mutation.actionLimit}{mutation.mode === 'recode' ? ` · ${mutation.detail}` : ''}
+                Trade {mutation.actionOrdinal}/{mutation.actionLimit}{mutation.mode === 'recode' ? ` · ${mutation.detail}` : ''}
               </p>
               {rulesVersion === 2 && mutationLoom ? (
                 <div className="mt-2 space-y-1 border-t border-cosmic/20 pt-2" data-testid="portal-mutate-preview">
@@ -283,7 +286,7 @@ export function PortalChoiceOverlay({
                       {candidate.action} · {candidate.name} · {candidate.category}
                     </p>
                   ))}
-                  <p className="font-body text-sm text-beige/45">Inspect both paths before committing.</p>
+                  <p className="font-body text-sm text-beige/45">Look at both before you commit.</p>
                 </div>
               ) : null}
               {!mutationUnlock.unlocked ? <p className="mt-2 font-body text-sm leading-snug text-venom-orange" data-testid="portal-mutate-lock">Locked · {mutationUnlock.reason}{mutationUnlock.progress ? ` · ${mutationUnlock.progress}` : ''}</p> : null}
@@ -294,7 +297,7 @@ export function PortalChoiceOverlay({
             <section className="mt-3 rounded-[10px] border border-cosmic/30 bg-cosmic/5 p-3" data-testid="portal-mirror-wager">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-display text-sm uppercase tracking-[0.1em] text-cosmic">Mirror Wager · next leg</p>
+                  <p className="font-display text-sm uppercase tracking-[0.1em] text-cosmic">Split Bet · next stretch</p>
                   <p className="mt-1 font-body text-sm leading-snug text-beige/60">{mirrorChoice.detail}</p>
                 </div>
                 <button
@@ -317,7 +320,7 @@ export function PortalChoiceOverlay({
           ) : null}
 
           <p className="mt-3 rounded-[10px] border border-scale-blue-light/20 bg-void-deep/35 px-3 py-2 font-body text-sm leading-snug text-beige/60">
-            BANK secures this run. {continueLabel} raises future Carry and lowers crash recovery. {mutateLabel} keeps the run alive while converting permanent body growth and spatial pressure into build power.
+            BANK ends the run and pays out. {continueLabel} keeps playing — the payout grows, but crashing keeps less. {mutateLabel} buys a power with body length.
           </p>
         </div>
       </div>
@@ -336,8 +339,8 @@ export function StrainSurgeOverlay({ strains, onChoose }: StrainSurgeOverlayProp
   return (
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="surge-choice-title" tabIndex={-1} className="absolute inset-0 z-30 flex items-end justify-center bg-gradient-to-t from-void-deep/40 to-transparent sm:items-center" data-testid="surge-choice-overlay">
       <div className="panel-elevated w-full max-w-md rounded-b-none p-5 [--glow:#a855f7] animate-pop-in sm:rounded-[18px]">
-        <h2 id="surge-choice-title" className="heading-display text-center text-2xl text-cosmic">Strain Surge</h2>
-        <p className="mb-4 text-center text-sm font-body text-beige/70">Gene cap reached — add one point to a held strain.</p>
+        <h2 id="surge-choice-title" className="heading-display text-center text-2xl text-cosmic">Path Surge</h2>
+        <p className="mb-4 text-center text-sm font-body text-beige/70">No slots left — add one point to a Path you already hold.</p>
         <div className="flex flex-wrap justify-center gap-3">
           {strains.map((strain) => (
             <button key={strain} type="button" onClick={() => onChoose(strain)} data-testid={`surge-${strain}`} className="min-h-[44px] rounded-arcade border border-scale-blue-light/50 bg-void/60 px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]">

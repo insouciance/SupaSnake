@@ -39,7 +39,7 @@ export function StrainMeterHUD({
     <div
       className="grid grid-cols-5 gap-1 rounded-arcade border border-scale-blue-light/40 bg-void/80 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-md"
       data-testid="strain-meter"
-      aria-label="Genome strain meter"
+      aria-label="Path meter"
     >
       {STRAIN_IDS.map((strain) => {
         const def = STRAINS[strain];
@@ -57,7 +57,7 @@ export function StrainMeterHUD({
           <div
             key={strain}
             data-testid={`strain-meter-${strain}`}
-            title={`${def.identity} — ${isSuppressed ? 'suppressed above Minor' : strainTierLabel(strain, tier)}`}
+            title={`${def.identity} — ${isSuppressed ? 'capped above Level I' : strainTierLabel(strain, tier)}`}
             className={`min-w-0 rounded-arcade border px-1.5 py-1 ${
               isSuppressed ? 'border-dashed opacity-70' : ''
             }`}
@@ -74,7 +74,7 @@ export function StrainMeterHUD({
             </div>
             <div
               className="mt-1 flex gap-px sm:gap-0.5"
-              aria-label={`${points} of ${apexTarget} strain points`}
+              aria-label={`${points} of ${apexTarget} Path points`}
             >
               {Array.from({ length: apexTarget }, (_, index) => index + 1).map((pip) => (
                 <span

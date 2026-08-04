@@ -223,34 +223,34 @@ export interface GenomeV2OutcomePresentation {
 }
 
 const CATEGORY_LABELS: Record<GenomeV2GeneCategory, string> = {
-  yield: 'Yield & compounding',
-  banking: 'Banking wager',
-  execution: 'Execution & route mastery',
-  body: 'Body & spatial pressure',
-  terrain: 'Movement & terrain',
-  survival: 'Survival & insurance',
-  genome: 'Genome control',
+  yield: 'Pay more',
+  banking: 'Betting',
+  execution: 'Routes',
+  body: 'Body',
+  terrain: 'Terrain',
+  survival: 'Staying alive',
+  genome: 'Power slots',
 };
 
 const GENE_TRIGGER_PRESENTATION: Readonly<
   Record<GenomeV2ActiveGeneId, TacticalLoomTrigger>
 > = {
-  gold_trail: { label: 'Every fifth eligible target', cadence: 5, unit: 'target' },
-  compound_interest: { label: 'Each deliberate Loom DECLINE', cadence: 1, unit: 'offer' },
-  loan_shark: { label: 'Portal PASS starts a six-food contract', cadence: 6, unit: 'food' },
-  live_wire: { label: 'Every third eligible target', cadence: 3, unit: 'target' },
-  circuit_run: { label: 'Every fourth eligible target', cadence: 4, unit: 'target' },
-  time_dilation: { label: 'Always active · body cost every fourth food', cadence: 4, unit: 'food' },
+  gold_trail: { label: 'Every 5th food', cadence: 5, unit: 'target' },
+  compound_interest: { label: 'Each power you skip', cadence: 1, unit: 'offer' },
+  loan_shark: { label: 'RIDE ON starts a six-food deal', cadence: 6, unit: 'food' },
+  live_wire: { label: 'Every 3rd food', cadence: 3, unit: 'target' },
+  circuit_run: { label: 'Every 4th food', cadence: 4, unit: 'target' },
+  time_dilation: { label: 'Always on · body cost every 4th food', cadence: 4, unit: 'food' },
   overgrowth: { label: 'Every food', cadence: 1, unit: 'food' },
-  coilkeeper: { label: 'Charge eight foods, then seal territory', cadence: 8, unit: 'food' },
-  wall_rush: { label: 'Charged deliberate wall impact' },
-  phase_gate: { label: 'Every fifth food can charge a Gate', cadence: 5, unit: 'food' },
-  mirror_wager: { label: 'Opt in on an explicit portal CONTINUE', cadence: 1, unit: 'portal' },
-  phoenix: { label: 'First fatal collision while ready' },
-  loom_anchor: { label: 'Pin on DECLINE · recharge on portal PASS' },
-  heartwood: { label: 'Deliberate PRIMAL territory geometry' },
-  zenith_protocol: { label: 'Player-triggered CYBER overclock' },
-  constellation_crown: { label: 'Perfect COSMIC constellation clear' },
+  coilkeeper: { label: 'After 8 foods, seal ground', cadence: 8, unit: 'food' },
+  wall_rush: { label: 'Hit a wall on purpose' },
+  phase_gate: { label: 'Every 5th food can open a door', cadence: 5, unit: 'food' },
+  mirror_wager: { label: 'Opt in when you RIDE ON', cadence: 1, unit: 'portal' },
+  phoenix: { label: 'The first time you die' },
+  loom_anchor: { label: 'Save on SKIP · recharge on RIDE ON' },
+  heartwood: { label: 'Loop your body around open ground' },
+  zenith_protocol: { label: 'You switch on the burst' },
+  constellation_crown: { label: 'Clear a whole wave of stars' },
 };
 
 export function genomeV2CategoryLabel(category: GenomeV2GeneCategory): string {
@@ -265,13 +265,20 @@ function formatBps(value: number): string {
 }
 
 /**
- * Yield is an AMOUNT, so it reads as a whole number. The scaled ledger keeps its
- * four-decimal precision; only this readout rounds.
+ * The ONE formatter for a payout figure. Three shipped before this: this one
+ * appended " Yield", the Workbench appended a second " Yield" to its output
+ * (players read "42 Yield Yield"), and the HUD rail kept a private copy that
+ * rendered "42Y". Same quantity, three answers.
+ *
+ * Payout is an AMOUNT, so it reads as a whole number. The scaled ledger keeps
+ * its four-decimal precision; only this readout rounds. `short` is the rail's
+ * compact form and is an option on this function rather than a second one.
  */
-function formatScaledYield(value: number): string {
+function formatScaledYield(value: number, options?: { short?: boolean }): string {
   const sign = value < 0 ? '−' : '';
   const safe = Number.isSafeInteger(value) ? Math.abs(value) : 0;
-  return `${sign}${formatAmount(safe / GENOME_V2_YIELD_SCALE)} Yield`;
+  const amount = formatAmount(safe / GENOME_V2_YIELD_SCALE);
+  return options?.short ? `${sign}${amount}P` : `${sign}${amount} Payout`;
 }
 
 function uniqueStrains(values: readonly StrainId[]): StrainId[] {
@@ -281,21 +288,21 @@ function uniqueStrains(values: readonly StrainId[]): StrainId[] {
 function slotPresentation(state: GenomeV2State, slot: GenomeV2Slot): TacticalLoomGenomeSlot {
   const occupant = slot.occupant;
   if (!occupant) {
-    return { index: slot.index, kind: 'empty', label: 'Open locus', strains: [] };
+    return { index: slot.index, kind: 'empty', label: 'Empty slot', strains: [] };
   }
   if (occupant.kind === 'ash') {
     return {
       index: slot.index,
       kind: 'ash',
-      label: 'Ash',
+      label: 'Burned out',
       strains: [],
-      detail: 'Permanent spent Phoenix locus; Recode cannot remove it.',
+      detail: "Burned out — this one's gone. A swap cannot clear it.",
     };
   }
   if (occupant.kind === 'gene') {
     const instance = state.instances[occupant.instanceId];
     if (!instance) {
-      return { index: slot.index, kind: 'gene', label: 'Unresolved locus', strains: [] };
+      return { index: slot.index, kind: 'gene', label: 'Unresolved slot', strains: [] };
     }
     const definition = GENOME_V2_GENES[instance.geneId];
     return {
@@ -335,13 +342,13 @@ function projectedGenomePresentation(
   return slots.map((slot) => {
     const occupant = slot.occupant;
     if (!occupant) {
-      return { index: slot.index, kind: 'empty', label: 'Open locus', strains: [] };
+      return { index: slot.index, kind: 'empty', label: 'Empty slot', strains: [] };
     }
     if (occupant.kind === 'ash') {
       return {
         index: slot.index,
         kind: 'ash',
-        label: 'Ash',
+        label: 'Burned out',
         strains: [],
         detail: 'Permanent spent Phoenix locus; Recode cannot remove it.',
       };
@@ -537,19 +544,19 @@ function liabilityFacts(
   return [
     {
       id: 'carry',
-      label: 'Carry',
+      label: 'Streak',
       before: `${formatBps(before.bankMultiplierBps)} BANK / ${formatBps(before.salvageMultiplierBps)} crash`,
       after: `${formatBps(liabilities.bankMultiplierBps)} BANK / ${formatBps(liabilities.salvageMultiplierBps)} crash`,
     },
-    { id: 'bonds', label: 'Bonds', before: String(before.bonds), after: String(liabilities.bonds) },
+    { id: 'bonds', label: 'Stash', before: String(before.bonds), after: String(liabilities.bonds) },
     {
       id: 'escrow',
-      label: 'Escrow',
+      label: 'On the table',
       before: formatScaledYield(before.loanEscrow),
       after: formatScaledYield(liabilities.loanEscrow),
       detail: liabilities.loanFoodsRemaining > 0 ? `${liabilities.loanFoodsRemaining} contract foods remain.` : 'No active contract.',
     },
-    { id: 'stake', label: 'Stake', before: formatScaledYield(before.mirrorStake), after: formatScaledYield(liabilities.mirrorStake) },
+    { id: 'stake', label: 'Bet', before: formatScaledYield(before.mirrorStake), after: formatScaledYield(liabilities.mirrorStake) },
     {
       id: 'second-life',
       label: 'Second life',
@@ -565,14 +572,14 @@ function targetFacts(state: GenomeV2State): TacticalLoomFact[] {
   return [
     {
       id: 'active-targets',
-      label: 'Active target contracts',
+      label: 'Deals running now',
       before: String(active.length),
       after: String(active.length),
       detail: active.length > 0 ? active.map((target) => target.kind).join(' · ') : 'No transformed target is active.',
     },
     {
       id: 'target-queue',
-      label: 'Next queued transform',
+      label: 'Next special food',
       before: next?.kind ?? 'Ordinary',
       after: next?.kind ?? 'Ordinary',
       detail: `${state.targetQueue.length} queued exclusive transformation${state.targetQueue.length === 1 ? '' : 's'}.`,
@@ -600,14 +607,14 @@ function projectedTargetFacts(
   return [
     {
       id: 'target-rule',
-      label: 'Future target rule',
+      label: 'What it changes later',
       before: 'Current Genome only',
       after: reward,
       detail: route,
     },
     {
       id: 'target-queue',
-      label: 'Queued transforms now',
+      label: 'Special foods queued',
       before: String(projected.currentlyQueued),
       after: String(projected.currentlyQueued + projected.addedImmediately),
       detail: 'Taking a gene never changes an already spawned target retroactively.',
@@ -634,7 +641,7 @@ function bodyFacts(
   }
   facts.push({
     id: 'permanent-terrain',
-    label: 'Permanent Genome terrain',
+    label: 'Permanent walls you made',
     before: `${state.permanentTerrain.length} formations`,
     after: `${state.permanentTerrain.length} formations`,
   });
@@ -680,7 +687,7 @@ function projectedTerrainFacts(
   const existing = `${projected.currentPermanentFacts} facts · ${projected.currentPermanentCells} cells`;
   return [{
     id: 'terrain-rule',
-    label: 'Permanent terrain',
+    label: 'Permanent walls',
     before: existing,
     after: projected.createsPermanentTerrain
       ? projected.cellsPerUse !== null
@@ -699,14 +706,14 @@ function outcomeFacts(state: GenomeV2State): TacticalLoomFact[] {
   return [
     {
       id: 'bank',
-      label: 'BANK Genome Yield',
+      label: 'BANK payout',
       before: formatScaledYield(bank.genomeYield),
       after: formatScaledYield(bank.genomeYield),
       tone: 'positive',
     },
     {
       id: 'crash',
-      label: 'Crash Genome Yield',
+      label: 'Crash payout',
       before: formatScaledYield(crash.genomeYield),
       after: formatScaledYield(crash.genomeYield),
       tone: 'danger',
@@ -723,7 +730,7 @@ function projectedOutcomeFacts(
   return [
     {
       id: 'bank',
-      label: 'BANK Genome Yield now',
+      label: 'BANK payout now',
       before: formatScaledYield(projected.bankNow.genomeYield),
       after: formatScaledYield(projected.bankNow.genomeYield),
       detail: 'Acquisition has no retroactive Yield effect.',
@@ -731,7 +738,7 @@ function projectedOutcomeFacts(
     },
     {
       id: 'crash',
-      label: 'Crash Genome Yield now',
+      label: 'Crash payout now',
       before: formatScaledYield(projected.crashNow.genomeYield),
       after: formatScaledYield(projected.crashNow.genomeYield),
       detail: 'Future execution changes the outcome; this choice does not rewrite earned Yield.',
@@ -748,7 +755,7 @@ export function buildGenomeV2OutcomePresentation(
   return {
     bank: formatScaledYield(bank.genomeYield),
     crash: formatScaledYield(crash.genomeYield),
-    label: 'Genome Yield · before run-stamped Ascendance and Energy',
+    label: 'Power payout · before run-stamped Legacy and Energy',
   };
 }
 
@@ -824,7 +831,7 @@ function replacementConsequence(
       rule: 'This Recode breaks the active Splice and stops its future rule.',
       cost: GENOME_V2_SPLICES[replacement.breaksSplice].strategicCost,
       recipeKnown: true,
-      recipeLabel: 'Broken by the outgoing locus',
+      recipeLabel: 'Broken by the slot going out',
       activation: 'available',
     });
   }
@@ -861,9 +868,9 @@ function replacementConsequence(
     ),
     splices: immediateSplices,
     ledgers: [
-      { id: 'bonds', label: 'Bonds retained', before: String(retained.bonds), after: String(retained.bonds) },
-      { id: 'escrow', label: 'Escrow retained', before: formatScaledYield(retained.loanEscrow), after: formatScaledYield(retained.loanEscrow) },
-      { id: 'stake', label: 'Stake retained', before: formatScaledYield(retained.mirrorStake), after: formatScaledYield(retained.mirrorStake) },
+      { id: 'bonds', label: 'Stash kept', before: String(retained.bonds), after: String(retained.bonds) },
+      { id: 'escrow', label: 'On the table, kept', before: formatScaledYield(retained.loanEscrow), after: formatScaledYield(retained.loanEscrow) },
+      { id: 'stake', label: 'Bet kept', before: formatScaledYield(retained.mirrorStake), after: formatScaledYield(retained.mirrorStake) },
     ],
     targets: projectedTargetFacts(state, candidate),
     body: [
@@ -962,7 +969,7 @@ function declineOptionConsequence(
   const bondDelta = option.bondAfter - projection.liabilities.bonds;
   const consequence: TacticalLoomConsequence = {
     category: option.pinGeneId ? 'Genome control' : 'Opportunity cost',
-    trigger: { label: 'Resolves when DECLINE is confirmed', cadence: 1, unit: 'offer' },
+    trigger: { label: 'Resolves when you confirm SKIP', cadence: 1, unit: 'offer' },
     effect: option.pinGeneId
       ? `Spend one charged Anchor to preserve ${GENOME_V2_GENES[option.pinGeneId].name} for its next legal offer.`
       : bondDelta > 0
@@ -977,19 +984,19 @@ function declineOptionConsequence(
     ledgers: [
       {
         id: 'bonds',
-        label: 'Bonds',
+        label: 'Stash',
         before: String(projection.liabilities.bonds),
         after: String(option.bondAfter),
       },
       {
         id: 'anchor',
-        label: 'Anchor charges',
+        label: 'Saves left',
         before: String(decline?.anchorChargesBefore ?? option.anchorChargesAfter),
         after: String(option.anchorChargesAfter),
       },
       {
         id: 'loom-bond',
-        label: 'Loom Bond',
+        label: 'Paid to Wait',
         before: 'None',
         after: option.loomBondAfter
           ? `${GENOME_V2_GENES[option.loomBondAfter.pinnedGeneId].name} · ${option.loomBondAfter.matured ? 'matured' : 'bound'}`
@@ -998,7 +1005,7 @@ function declineOptionConsequence(
     ],
     targets: [{
       id: 'target-queue',
-      label: 'Queued target transforms',
+      label: 'Special foods queued',
       before: String(state.targetQueue.length),
       after: String(option.targetQueueAfter),
     }],
@@ -1006,7 +1013,7 @@ function declineOptionConsequence(
       ...bodyFacts(state, input.spatial, null),
       {
         id: 'genome-growth',
-        label: 'Genome-added growth',
+        label: 'Growth from powers',
         before: String((state as GenomeV2State & { bodyGrowthAdded?: number }).bodyGrowthAdded ?? 0),
         after: String(option.bodyGrowthAddedAfter),
       },
@@ -1014,14 +1021,14 @@ function declineOptionConsequence(
     outcomes: [
       {
         id: 'bank',
-        label: 'BANK Genome Yield',
+        label: 'BANK payout',
         before: formatScaledYield(settleGenomeV2(state, 'bank').genomeYield),
         after: formatScaledYield(option.bankAfter.genomeYield),
         tone: 'positive',
       },
       {
         id: 'crash',
-        label: 'Crash Genome Yield',
+        label: 'Crash payout',
         before: formatScaledYield(settleGenomeV2(state, 'crash').genomeYield),
         after: formatScaledYield(option.crashAfter.genomeYield),
         tone: 'danger',
@@ -1048,8 +1055,8 @@ function declineConsequence(
     return {
       category: 'Portal return',
       salienceChip: 'No commitment',
-      trigger: { label: 'Return before committing a mutation' },
-      effect: 'Return to BANK / CONTINUE / MUTATE without consuming this portal or its Genome offer.',
+      trigger: { label: 'Go back before trading anything' },
+      effect: 'Return to BANK / RIDE ON / TRADE UP without spending this portal or its offer.',
       cost: 'No build choice is committed.',
       genomeAfter: genomePresentation(state),
       strains: [],
@@ -1074,11 +1081,11 @@ function declineConsequence(
   return {
     category: 'Opportunity cost',
     salienceChip: after.bonds > state.bonds ? `BANK Bond ${state.bonds} → ${after.bonds}` : 'Genome unchanged',
-    trigger: { label: 'Resolves when DECLINE is confirmed', cadence: 1, unit: 'offer' },
+    trigger: { label: 'Resolves when you confirm SKIP', cadence: 1, unit: 'offer' },
     effect: after.bonds > state.bonds
       ? 'Spend this offer, keep the current Genome, and mint one prospective BANK Bond.'
-      : 'Spend this offer and keep the current Genome unchanged.',
-    cost: 'Neither offered gene can return in this offer.',
+      : 'Spend this offer and keep your powers unchanged.',
+    cost: 'Neither power on offer can come back in this drop.',
     genomeAfter: genomePresentation(after),
     strains: [],
     splices: [],
@@ -1114,7 +1121,7 @@ export function buildGenomeV2TacticalLoomModel(
     replacementChoices: candidate.requiresReplacement
       ? candidate.replacementOptions.map((replacement) => ({
           slotIndex: replacement.slot,
-          label: currentGenome[replacement.slot]?.label ?? `Locus ${replacement.slot + 1}`,
+          label: currentGenome[replacement.slot]?.label ?? `Slot ${replacement.slot + 1}`,
           kind: currentGenome[replacement.slot]?.kind ?? 'gene',
           strains: currentGenome[replacement.slot]?.strains ?? [],
           growthCost: replacement.growthCost,
@@ -1128,8 +1135,8 @@ export function buildGenomeV2TacticalLoomModel(
           disabledReason: replacement.allowed
             ? undefined
             : replacement.blockedReason === 'ash_is_permanent'
-              ? 'Ash is permanent'
-              : 'This locus cannot be replaced',
+              ? 'Burned out — this one is gone'
+              : 'This slot cannot be replaced',
         }))
       : undefined,
   }));
@@ -1146,10 +1153,10 @@ export function buildGenomeV2TacticalLoomModel(
           id: option.id,
           label: option.label,
           detail: option.pinGeneId
-            ? `Anchor ${projection.decline?.anchorChargesBefore ?? 0} → ${option.anchorChargesAfter} · preserve ${GENOME_V2_GENES[option.pinGeneId].name}`
+            ? `Saves ${projection.decline?.anchorChargesBefore ?? 0} → ${option.anchorChargesAfter} · keep ${GENOME_V2_GENES[option.pinGeneId].name}`
             : option.bondAfter > projection.liabilities.bonds
-              ? `Bonds ${projection.liabilities.bonds} → ${option.bondAfter}`
-              : 'No pin · no replacement',
+              ? `Stash ${projection.liabilities.bonds} → ${option.bondAfter}`
+              : 'Nothing saved · nothing replaced',
           ...(candidateIndex === 0 || candidateIndex === 1
             ? { pinCandidateIndex: candidateIndex as 0 | 1 }
             : {}),
@@ -1162,14 +1169,14 @@ export function buildGenomeV2TacticalLoomModel(
       ?? input.state.portal?.genomeOffer?.offerId
       ?? `projection:${input.state.eventIndex}:${candidates.join(':')}`,
     rulesVersion: 2,
-    title: input.state.portal ? 'Mutation Loom' : 'Tactical Loom',
-    sourceLabel: input.sourceLabel ?? (input.state.portal ? 'Portal Genome offer' : 'Cadence Genome offer'),
+    title: 'The Drop',
+    sourceLabel: input.sourceLabel ?? (input.state.portal ? 'Portal power offer' : 'Mid-run power offer'),
     dynasty: input.state.dynasty,
     currentGenome,
     candidates: [firstCandidate, secondCandidate],
     decline: {
       action: 'DECLINE',
-      name: input.declineBehavior === 'return-to-portal' ? 'Back to Portal' : 'Keep this Genome',
+      name: input.declineBehavior === 'return-to-portal' ? 'Back to Portal' : 'Keep your powers',
       consequence: declineConsequence(input.state, projection, input),
       options: declineOptions && declineOptions.length > 1 ? declineOptions : undefined,
     },
@@ -1205,9 +1212,9 @@ export function buildGenomeV2PortalPresentation(
     mutateState: !input.activation.portalGenome.unlocked
       ? input.activation.portalGenome
       : !withinLimit
-        ? { unlocked: false, reason: 'Portal Genome action limit reached' }
+        ? { unlocked: false, reason: 'Trade-up limit reached' }
         : !hasOffer
-          ? { unlocked: false, reason: 'No immutable Genome offer is attached to this portal' }
+          ? { unlocked: false, reason: 'This portal has no power to trade for' }
           : { unlocked: true },
     carryProjection: {
       bankCurrent: formatBps(genomeV2CarryBankBps(input.state.carryPasses)),
@@ -1219,7 +1226,7 @@ export function buildGenomeV2PortalPresentation(
     mirrorChoice: genomeV2HasGene(input.state, 'mirror_wager')
       ? {
           available: true,
-          detail: 'Divert 40% of the next leg into visible Stake; BANK doubles it and crash forfeits it. Ordinary salvage stays unchanged.',
+          detail: 'Set aside 40% of the next stretch as a bet. BANK doubles it, a crash takes it. What you keep otherwise is untouched.',
         }
       : null,
     mutationTerms: {
@@ -1228,8 +1235,8 @@ export function buildGenomeV2PortalPresentation(
       actionOrdinal,
       actionLimit,
       detail: full
-        ? 'Choose the incoming gene, then the outgoing locus. Liabilities and permanent consequences remain.'
-        : 'Choose one of the two immutable portal genes.',
+        ? 'Choose the power coming in, then the slot going out. What you already owe stays owed.'
+        : 'Choose one of the two powers this portal offers.',
     },
     mutationLoom,
   };

@@ -81,7 +81,7 @@ function thresholdStateLabel(
 function projectionLabel(splice: TacticalLoomSplicePath): string {
   if (splice.projectionState === 'breaks' || splice.id.endsWith(':break')) return 'BREAKS';
   if (splice.projectionState === 'closed') return 'CLOSED';
-  if (splice.projectionState === 'recode') return 'RECODE';
+  if (splice.projectionState === 'recode') return 'SWAP';
   if (splice.projectionState === 'unavailable' || splice.activation === 'locked') return 'LOCKED';
   if (splice.projectionState === 'forms-now' || splice.stage === 'immediate') return 'FORMS';
   return 'FUTURE';
@@ -258,7 +258,7 @@ function InlineStrains({ strains }: { strains: readonly StrainId[] }) {
   return (
     <span
       className={styles.inlineStrains}
-      aria-label={`Strains ${strains.map((id) => STRAINS[id].name).join(', ')}`}
+      aria-label={`Paths ${strains.map((id) => STRAINS[id].name).join(', ')}`}
     >
       {strains.map((id) => (
         <em key={id} style={{ '--strain': STRAINS[id].color } as LoomStyle}>
@@ -318,7 +318,7 @@ export function TacticalLoomLite({
       </header>
 
       <h3 className={styles.focusedGeneName} data-testid="loom-focused-gene-name">
-        {geneName ?? 'Keep current Genome'}
+        {geneName ?? 'Keep your powers'}
       </h3>
 
       <div className={styles.coreStage}>
@@ -328,9 +328,9 @@ export function TacticalLoomLite({
         <div className={styles.geneCore} data-testid="loom-gene-core">
           <i className={styles.coreOrbit} aria-hidden="true" />
           <span className={styles.geneRune} aria-hidden="true"><GeneGlyph id={geneId ?? 'loom-decline'} /></span>
-          <strong aria-hidden="true">{geneName ?? 'DECLINE'}</strong>
+          <strong aria-hidden="true">{geneName ?? 'SKIP'}</strong>
           {coreStrains.length > 0 ? (
-            <span className={styles.coreStrains} aria-label={`Strains ${coreStrains.map((id) => STRAINS[id].name).join(', ')}`}>
+            <span className={styles.coreStrains} aria-label={`Paths ${coreStrains.map((id) => STRAINS[id].name).join(', ')}`}>
               {coreStrains.map((id) => (
                 <i key={id} style={{ '--strain': STRAINS[id].color } as LoomStyle}>
                   <span aria-hidden="true"><StrainGlyph id={id} /></span>
@@ -367,7 +367,7 @@ export function TacticalLoomLite({
       <SpliceBranches splices={consequence.splices} />
 
       {loci.length > 0 ? (
-        <ol className={styles.locusCharms} aria-label="Changed Genome loci" data-testid="loom-lite-loci">
+        <ol className={styles.locusCharms} aria-label="Changed power slots" data-testid="loom-lite-loci">
           {loci.map(({ before, after }) => (
             <li key={before.index}>
               <span>L{before.index + 1}</span>

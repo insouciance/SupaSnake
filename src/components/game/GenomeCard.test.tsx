@@ -4,7 +4,7 @@ import type { GenomeCardModel } from '@/lib/share/genomeCardImage';
 
 const model: GenomeCardModel = {
   snakeName: 'Helix', dynasty: 'PRIMAL', generation: 2, score: 900, foods: 65, extracted: true,
-  genes: [{ id: 'gold_trail', name: 'Gold Trail', strains: ['AURUM'] }],
+  genes: [{ id: 'gold_trail', name: 'Golden Hour', strains: ['AURUM'] }],
   splices: [{ id: 'splice_dragon_hoard', name: 'Dragon Hoard' }],
   milestones: [{ strain: 'AURUM', tier: 'Expression', name: 'Gilded Wake' }],
   allIn: true,
@@ -15,7 +15,7 @@ describe('GenomeCard', () => {
   it('renders the build, cascade, clutch stamp, and export affordance', () => {
     render(<GenomeCard model={model} />);
     expect(screen.getByTestId('genome-card')).toHaveTextContent('Helix');
-    expect(screen.getByTestId('genome-card-genes')).toHaveTextContent('Gold Trail');
+    expect(screen.getByTestId('genome-card-genes')).toHaveTextContent('Golden Hour');
     expect(screen.getByTestId('genome-card')).toHaveTextContent('Dragon Hoard');
     expect(screen.getByTestId('genome-cascade')).toHaveTextContent('850 DNA');
     expect(screen.getByTestId('genome-all-in')).toHaveTextContent('ALL IN');

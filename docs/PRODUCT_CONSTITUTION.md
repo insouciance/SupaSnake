@@ -1227,8 +1227,8 @@ elaboration on being noticed.
   rival forms, its run history remains real and settlement records participation rather
   than fabricating a win.
 - **Founding flow (amended v1.14):** at Serpent unlock (8 banks), the single
-  recommended Results action becomes the clan reveal — *"Your Yield can now
-  strengthen a Clan"* — and routes to `/clan`. No second prompt is added to Results;
+  recommended Results action becomes the clan reveal — *"Your runs can now power a
+  Clan"* — and routes to `/clan`. No second prompt is added to Results;
   the Results ceremony budget is unchanged. On arrival the player is told that
   positive-Energy normal runs contribute automatically, that their best five count,
   and that BANK secures the result; then offered real directory choices, founding

@@ -113,7 +113,7 @@ export function buildGenomeV2CommitPresentation(
     moments.push({
       id: 'second-life:lost',
       label: 'Second life removed',
-      detail: 'The outgoing fused locus owned the active second life.',
+      detail: 'The Combo going out owned the active second life.',
       tone: 'warning',
     });
   }

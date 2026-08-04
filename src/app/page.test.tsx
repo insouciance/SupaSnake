@@ -352,7 +352,7 @@ describe('Home page', () => {
       );
       expect(screen.getByTestId('home-lineage-rune')).toHaveAttribute(
         'title',
-        'Feral Genome lineage'
+        'Coils Genome lineage'
       );
       expect(await screen.findByTestId('home-clan-identity')).toHaveTextContent(
         'Apex Coil'

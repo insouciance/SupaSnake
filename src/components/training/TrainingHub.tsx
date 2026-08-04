@@ -13,6 +13,7 @@ import {
   type TrainingProfile,
   type TrainingPreset,
 } from '@/shared/game/training';
+import { dynastyDisplayName } from '@/shared/game/rulesets';
 import { PathComposer } from './PathComposer';
 
 interface TrainingHubProps {
@@ -323,7 +324,7 @@ export function TrainingHub({
                           className="min-h-11 min-w-0 flex-1 text-left font-body text-bone-white"
                         >
                           <strong className="block truncate">{preset.name}</strong>
-                          <span className="text-xs text-beige/50">{preset.dynasty} · {preset.tickMs}ms · {preset.path.length} cells</span>
+                          <span className="text-xs text-beige/50">{dynastyDisplayName(preset.dynasty)} · {preset.tickMs}ms · {preset.path.length} cells</span>
                         </button>
                         <button
                           type="button"

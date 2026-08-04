@@ -44,10 +44,24 @@ import {
   ASCENDANCE_START_GENERATION,
   ASCENDANCE_V2_GENERATION_FACTOR,
 } from '@/shared/game/ascendance';
-import { GENES, isGeneId, type GeneId } from '@/shared/game/genes';
-import { SPLICES, SPLICE_IDS, isSpliceId, spliceStrains, type SpliceId } from '@/shared/game/splices';
 import {
-  BANK,
+  GENES,
+  GENOME_V2_GENES,
+  isGeneId,
+  isGenomeV2ActiveGeneId,
+  type GeneId,
+  type GenomeV2ActiveGeneId,
+} from '@/shared/game/genes';
+import { SPLICES, isSpliceId, spliceStrains, type SpliceId } from '@/shared/game/splices';
+import {
+  GENOME_V2_CONFIG,
+  GENOME_V2_SPLICES,
+  GENOME_V2_SPLICE_IDS,
+  GENOME_V2_STRAIN_LADDERS,
+  genomeV2CarryBankBps,
+  type GenomeV2SpliceId,
+} from '@/shared/game/genomeV2';
+import {
   COSMIC_SPEED_MS,
   RULESETS,
   rulesetExplainer,
@@ -59,7 +73,6 @@ import {
   STRAIN_IDS,
   STRAIN_PHYSICS,
   STRAIN_THRESHOLDS,
-  STRAIN_TIER_NAMES,
   isStrainId,
   type StrainId,
   type StrainTier,
@@ -147,13 +160,40 @@ function delta(value: number): string {
   return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}`;
 }
 
+/**
+ * A basis-point multiplier as a readable factor: 12_500 -> "×1.25".
+ *
+ * BANK is the one figure this module used to retype. It stated a flat ×1.25,
+ * which stopped being true the day Carry started compounding: v2 BANK is
+ * `1.25^(passes+1)` through pass five and then `+0.40` a pass
+ * (`genomeV2CarryBankBps`). The sentence now interpolates that function at two
+ * points, so a Carry retune moves the copy with it.
+ */
+function multiplier(bps: number): string {
+  return `×${(bps / 10_000).toFixed(2).replace(/\.?0+$/, '')}`;
+}
+
 // =============================================================================
 // STRAIN TIERS — the 15 pairs. Numbers exist today only in the JSDoc of
 // STRAIN_ECONOMICS / STRAIN_PHYSICS; this is where they become sentences.
 // =============================================================================
 
 /** The tier-0 label. Promoted here from `StrainMeterHUD`'s private copy. */
-export const STRAIN_TIER_DORMANT = 'Dormant';
+export const STRAIN_TIER_DORMANT = 'Asleep';
+
+/** Tier numerals for the `{Path} {Roman} — {Rung}` display form. */
+const ROMAN = { 1: 'I', 2: 'II', 3: 'III' } as const;
+
+/**
+ * The rung a Path reaches at a tier, read from the live v2 ladder.
+ *
+ * The v1 `STRAIN_TIER_NAMES` table is no longer a display source: it named
+ * fifteen rungs the v2 ladder had already replaced, so the meter and the
+ * Workbench were calling the same rung two different things.
+ */
+function rungName(strain: StrainId, tier: 1 | 2 | 3): string {
+  return GENOME_V2_STRAIN_LADDERS[strain][tier - 1].name;
+}
 
 /** The activation tiers that carry an effect. Tier 0 is `STRAIN_TIER_DORMANT`. */
 export const ACTIVE_STRAIN_TIERS: readonly Extract<StrainTier, 1 | 2 | 3>[] = [
@@ -165,17 +205,15 @@ export function strainTierId(strain: StrainId, tier: 1 | 2 | 3): string {
   return `${strain}:${tier}`;
 }
 
-const TIER_KEY = { 1: 'minor', 2: 'expression', 3: 'apex' } as const;
-
 /**
  * The player-facing name of a strain at a tier — the single authority for
  * this string. `StrainMeterHUD` reads it here rather than keeping its own
  * copy of the same four branches.
  */
 export function strainTierLabel(strain: StrainId, tier: number): string {
-  if (tier >= 3) return STRAIN_TIER_NAMES[strain].apex;
-  if (tier >= 2) return STRAIN_TIER_NAMES[strain].expression;
-  if (tier >= 1) return STRAIN_TIER_NAMES[strain].minor;
+  if (tier >= 3) return rungName(strain, 3);
+  if (tier >= 2) return rungName(strain, 2);
+  if (tier >= 1) return rungName(strain, 1);
   return STRAIN_TIER_DORMANT;
 }
 
@@ -262,6 +300,7 @@ export type MechanicId =
   | 'extraction_bank'
   | 'extraction_pass'
   | 'extraction_infuse'
+  | 'power_pod'
   | 'charges'
   | 'strain_minor'
   | 'strain_expression'
@@ -276,18 +315,23 @@ const ENERGY = GAME_CONFIG.economy.energy;
 const MECHANICS: Record<MechanicId, Omit<LexiconEntry, 'kind' | 'id'>> = {
   extraction_bank: {
     name: 'BANK',
-    effect: `Leave through the exit portal. Everything the run earned is secured at ×${BANK.extractMultiplier} and nothing can take it back.`,
-    cost: 'The run ends there. No further foods, no further genes, no deeper Score.',
+    effect: `Leave now and keep it all. Every portal you rode makes this bigger: ${multiplier(genomeV2CarryBankBps(0))} at the first portal, ${multiplier(genomeV2CarryBankBps(3))} once you have ridden three.`,
+    cost: 'The run ends there. No more food, no more powers.',
   },
   extraction_pass: {
-    name: 'PASS',
-    effect: 'Wave the portal away and keep playing. Score and DNA keep climbing, and another portal is already on its way.',
-    cost: `Nothing is secured. Crash before the next portal and the run salvages ×${BANK.deathMultiplier} instead of ×${BANK.extractMultiplier}.`,
+    name: 'RIDE ON',
+    effect: 'Keep going. Bigger payout, bigger fall.',
+    cost: 'Nothing is safe yet. Crash and you keep less each time.',
   },
   extraction_infuse: {
-    name: 'INFUSE',
-    effect: `Spend the portal on power instead of safety: absorb a gene offer — or, at the gene cap, a Strain Surge — and your body grows ${STRAIN_PHYSICS.infuseGrowth} segments to carry it. Each infuse also shifts the run's outcome by bank ${delta(STRAIN_ECONOMICS.infuseBankDelta)}.`,
-    cost: `Salvage ${delta(STRAIN_ECONOMICS.infuseSalvageDelta)} per infuse, the next portal comes +${STRAIN_PHYSICS.infusePortalIntervalPenalty} foods later, and the run allows at most ${STRAIN_PHYSICS.infuseMaxPerRun}. Offered from length ${STRAIN_PHYSICS.infuseMinLength} and from ${FTUE.infuseAt} banked runs.`,
+    name: 'TRADE UP',
+    effect: 'Trade body length for a new power.',
+    cost: `Your snake grows to carry it. Max ${GENOME_V2_CONFIG.portalGenome.maxActions} per run.`,
+  },
+  power_pod: {
+    name: 'Power Pod',
+    effect: 'Drive into it to choose a power.',
+    cost: 'It fades if you leave it. Nothing is lost, but nothing is offered either.',
   },
   charges: {
     name: 'Energy Commitment',
@@ -295,19 +339,19 @@ const MECHANICS: Record<MechanicId, Omit<LexiconEntry, 'kind' | 'id'>> = {
     cost: `Every committed unit is consumed when the run starts and is never refunded for a crash or abandonment. A zero-Energy run still Scores, ranks and counts at ${share(ENERGY.leanHarvestFactor)} harvest. Energy cannot be bought or gifted.`,
   },
   strain_minor: {
-    name: 'Minor passive',
-    effect: `Reach ${STRAIN_THRESHOLDS.minor} points in one strain — genes, heirloom traits and lineage all count — and its minor passive turns on for the rest of the run.`,
+    name: 'Level I',
+    effect: `Reach ${STRAIN_THRESHOLDS.minor} points in one Path — powers, heirloom traits and bloodline all count — and its first rung turns on for the rest of the run.`,
     cost: '',
   },
   strain_expression: {
-    name: 'Expression',
-    effect: `Reach ${STRAIN_THRESHOLDS.expression} points AND pick ${STRAIN_THRESHOLDS.expressionMinGenes} genes of that strain in this run.`,
-    cost: `Points beyond a gate never overflow past it: without those ${STRAIN_THRESHOLDS.expressionMinGenes} picks you stay on the minor passive however many points you carry. Unlocks at ${FTUE.expressionsAt} banked runs.`,
+    name: 'Level II',
+    effect: `Reach ${STRAIN_THRESHOLDS.expression} points AND pick ${STRAIN_THRESHOLDS.expressionMinGenes} powers of that Path in this run.`,
+    cost: `Points beyond a gate never overflow past it: without those ${STRAIN_THRESHOLDS.expressionMinGenes} picks you stay on Level I however many points you carry. Unlocks at ${FTUE.expressionsAt} banked runs.`,
   },
   strain_apex: {
-    name: 'Apex',
-    effect: `Reach ${STRAIN_THRESHOLDS.apex} points AND pick ${STRAIN_THRESHOLDS.apexMinGenes} genes of that strain in this run.`,
-    cost: `Every Apex carries a permanent cost that persists through revives. Unlocks at ${FTUE.apexesAt} banked runs, or earlier on a mastered dynasty.`,
+    name: 'Level III',
+    effect: `Reach ${STRAIN_THRESHOLDS.apex} points AND pick ${STRAIN_THRESHOLDS.apexMinGenes} powers of that Path in this run.`,
+    cost: `Every Level III carries a permanent cost that persists through revives. Unlocks at ${FTUE.apexesAt} banked runs, or earlier on a mastered dynasty.`,
   },
   trait_slots: {
     name: 'Trait slots',
@@ -315,14 +359,14 @@ const MECHANICS: Record<MechanicId, Omit<LexiconEntry, 'kind' | 'id'>> = {
     cost: `Rarity buys slot potential and cosmetics — never stats — and the cap of ${MAX_TRAIT_SLOTS} never rises. Traits are drafted at breeding, so the way to change one is to breed again.`,
   },
   lineage_strength: {
-    name: 'Lineage strength',
-    effect: `Every lineage tilts your gene offers toward its strain, strength 0 included. Strength 1 adds a starting strain point; strength 2 additionally guarantees that strain in your first offer.`,
-    cost: `The starting point does nothing until ${FTUE.spawnPointsAt} banked runs, and spawn sources are capped at ${STRAIN_THRESHOLDS.maxSpawnPoints} points per strain — you can never spawn closer than one pick from an Expression.`,
+    name: 'Bloodline strength',
+    effect: `Every bloodline tilts your power offers toward its Path, strength 0 included. Strength 1 adds a starting Path point; strength 2 additionally guarantees that Path in your first offer.`,
+    cost: `The starting point does nothing until ${FTUE.spawnPointsAt} banked runs, and spawn sources are capped at ${STRAIN_THRESHOLDS.maxSpawnPoints} points per strain — you can never spawn closer than one pick from Level II.`,
   },
   ascendance: {
-    name: 'Ascendance',
-    effect: `From Gen ${ASCENDANCE_START_GENERATION}, every new generation compounds that snake's permanent Yield by ×${ASCENDANCE_V2_GENERATION_FACTOR}. The proportional gain never shrinks and there is no designed Yield ceiling.`,
-    cost: `Each generation past Gen ${GEN3_SLOT_UNLOCK} multiplies the breeding price by ×${ASCENDANCE_COST_STEEPENING}. Score reads none of Ascendance — it rewards long-term ownership without rewriting the competitive gameplay result.`,
+    name: 'Legacy',
+    effect: `From Gen ${ASCENDANCE_START_GENERATION}, every new generation compounds that snake's permanent Payout by ×${ASCENDANCE_V2_GENERATION_FACTOR}. The proportional gain never shrinks and there is no designed Payout ceiling.`,
+    cost: `Each generation past Gen ${GEN3_SLOT_UNLOCK} multiplies the breeding price by ×${ASCENDANCE_COST_STEEPENING}. Score reads none of it — Legacy rewards long-term ownership without rewriting the competitive gameplay result.`,
   },
 };
 
@@ -400,7 +444,27 @@ function traitEntry(id: TraitId): LexiconEntry {
   };
 }
 
-function geneEntry(id: GeneId): LexiconEntry {
+/**
+ * A Power entry, resolved against the catalog the player can actually reach.
+ *
+ * Thirteen ids appear in both catalogs with different prose, and the v2 pool
+ * is the one a live run draws from, so a reused id answers with its v2
+ * meaning. The v1 rows stay reachable by id for already-started v1 sessions,
+ * which is the only place they still describe anything true.
+ */
+function geneEntry(id: GeneId | GenomeV2ActiveGeneId): LexiconEntry {
+  if (isGenomeV2ActiveGeneId(id)) {
+    const def = GENOME_V2_GENES[id];
+    return {
+      kind: 'gene',
+      id,
+      name: def.name,
+      effect: def.effect,
+      cost: def.cost,
+      taxonomy: def.kind,
+      strains: def.strains,
+    };
+  }
   const def = GENES[id];
   return {
     kind: 'gene',
@@ -413,15 +477,42 @@ function geneEntry(id: GeneId): LexiconEntry {
   };
 }
 
-function spliceEntry(id: SpliceId): LexiconEntry {
-  const def = SPLICES[id];
+/** The Paths a v2 Combo inherits, taken from the two Powers that make it. */
+function genomeV2SpliceStrains(id: GenomeV2SpliceId): StrainId[] {
+  return Array.from(
+    new Set(
+      GENOME_V2_SPLICES[id].parents.flatMap(
+        (parent) => GENOME_V2_GENES[parent].strains
+      )
+    )
+  );
+}
+
+/**
+ * A Combo entry. The v2 recipes are the only ones a v2 run can form; the
+ * seven v1 recipes whose parents left the pool are no longer published, which
+ * is what stopped the Codex advertising combos nobody could make.
+ */
+function spliceEntry(id: SpliceId | GenomeV2SpliceId): LexiconEntry {
+  if ((GENOME_V2_SPLICE_IDS as readonly string[]).includes(id)) {
+    const def = GENOME_V2_SPLICES[id as GenomeV2SpliceId];
+    return {
+      kind: 'splice',
+      id,
+      name: def.name,
+      effect: def.rule,
+      cost: def.strategicCost,
+      strains: genomeV2SpliceStrains(id as GenomeV2SpliceId),
+    };
+  }
+  const def = SPLICES[id as SpliceId];
   return {
     kind: 'splice',
     id,
     name: def.name,
     effect: def.effect,
     cost: def.cost,
-    strains: spliceStrains(id),
+    strains: spliceStrains(id as SpliceId),
   };
 }
 
@@ -443,7 +534,7 @@ function strainTierEntry(strain: StrainId, tier: 1 | 2 | 3): LexiconEntry {
   return {
     kind: 'strainTier',
     id: strainTierId(strain, tier),
-    name: `${STRAINS[strain].name} ${STRAIN_TIER_NAMES[strain][TIER_KEY[tier]]}`,
+    name: `${STRAINS[strain].name} ${ROMAN[tier]} — ${rungName(strain, tier)}`,
     effect: copy.effect,
     cost: copy.cost,
     strains: [strain],
@@ -468,7 +559,7 @@ function dynastyEntry(id: DynastyName): LexiconEntry {
   return {
     kind: 'dynasty',
     id,
-    name: RULESETS[id].id,
+    name: RULESETS[id].displayName,
     effect: rulesetExplainer[id],
     cost: DYNASTY_COSTS[id],
   };
@@ -486,6 +577,7 @@ export const MECHANIC_IDS: readonly MechanicId[] = [
   'extraction_bank',
   'extraction_pass',
   'extraction_infuse',
+  'power_pod',
   'charges',
   'strain_minor',
   'strain_expression',
@@ -526,9 +618,11 @@ export function describe(kind: LexiconCategory, id: string): LexiconEntry | null
     case 'trait':
       return isTraitId(id) ? traitEntry(id) : null;
     case 'gene':
-      return isGeneId(id) ? geneEntry(id) : null;
+      return isGenomeV2ActiveGeneId(id) || isGeneId(id) ? geneEntry(id) : null;
     case 'splice':
-      return isSpliceId(id) ? spliceEntry(id) : null;
+      return (GENOME_V2_SPLICE_IDS as readonly string[]).includes(id) || isSpliceId(id)
+        ? spliceEntry(id as SpliceId | GenomeV2SpliceId)
+        : null;
     case 'strain':
       return isStrainId(id) ? strainEntry(id) : null;
     case 'strainTier': {
@@ -552,9 +646,9 @@ export function lexiconSection(kind: LexiconCategory): LexiconEntry[] {
     case 'trait':
       return TRAIT_POOL.map(traitEntry);
     case 'gene':
-      return (Object.keys(GENES) as GeneId[]).map(geneEntry);
+      return (Object.keys(GENOME_V2_GENES) as GenomeV2ActiveGeneId[]).map(geneEntry);
     case 'splice':
-      return SPLICE_IDS.map(spliceEntry);
+      return GENOME_V2_SPLICE_IDS.map(spliceEntry);
     case 'strain':
       return STRAIN_IDS.map(strainEntry);
     case 'strainTier':

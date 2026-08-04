@@ -442,7 +442,7 @@ export function VariantDetailModal({
                   style={{ color: theme.glow }}
                   data-testid="variant-yield-multiplier"
                 >
-                  Yield ×{formatAscendanceYieldMultiplier(owned.generation)}
+                  Payout ×{formatAscendanceYieldMultiplier(owned.generation)}
                 </span>
               </div>
             </div>
@@ -567,7 +567,7 @@ export function VariantDetailModal({
             {/* Genome lineage: collection-to-run bridge (§7/§8). */}
             {lineage && (
               <div className="mb-4" data-testid="variant-lineage-section">
-                <span className="label-arcade block mb-2">Lineage</span>
+                <span className="label-arcade block mb-2">Bloodline</span>
                 {/*
                   These chips stay display-only: each one is the label of a
                   select button, and a popover trigger inside it would be a
@@ -645,7 +645,7 @@ export function VariantDetailModal({
 
             <details className="group overflow-hidden rounded-[18px] border border-scale-blue-light/30 bg-void-deep/55">
               <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-display text-xs uppercase tracking-[0.08em] text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyber [&::-webkit-details-marker]:hidden">
-                <span>Lineage, history &amp; rules</span>
+                <span>Bloodline, history &amp; rules</span>
                 <IconArrowRight size={15} className="text-beige/55 transition-transform group-open:rotate-90" />
               </summary>
               <div className="space-y-3 border-t border-scale-blue-light/20 px-3 pb-3 pt-3">

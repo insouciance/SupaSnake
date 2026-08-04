@@ -19,8 +19,8 @@ export function genomeResearchCopy(
   return {
     intro:
       !genomeV2Enabled && workbenchV1Enabled
-        ? 'Sign in to plan a Genome against your collection and current conditions.'
-        : 'Genome research instruments are not active in this version.',
+        ? 'Sign in to plan your Powers against your collection and current conditions.'
+        : 'Power research instruments are not active in this version.',
     signedOutRecord:
       'Sign in to connect discoveries, world-first history, and Genome Weaver progress to your account.',
   };

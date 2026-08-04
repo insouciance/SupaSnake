@@ -18,6 +18,7 @@
 
 import { describe as describeEntry, strainTierId } from './lexicon';
 import { BANK } from './rulesets';
+import { GENOME_V2_CONFIG, genomeV2CarryBankBps } from './genomeV2';
 import { STRAIN_ECONOMICS, STRAIN_PHYSICS, STRAIN_THRESHOLDS } from './strains';
 import { GEN3_SLOT_UNLOCK, MAX_TRAIT_SLOTS, TRAIT_PHYSICS } from './traits';
 import {
@@ -39,22 +40,27 @@ const signed = (multiplier: number) => {
 };
 const signedDelta = (value: number) =>
   `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}`;
+const factor = (bps: number) => `×${(bps / 10_000).toFixed(2).replace(/\.?0+$/, '')}`;
 
 type Half = 'effect' | 'cost';
 type Case = [kind: 'mechanic' | 'strainTier' | 'anomaly', id: string, half: Half, fragment: string];
 
 const CASES: Case[] = [
   // ── The extraction verbs ────────────────────────────────────────────────
-  ['mechanic', 'extraction_bank', 'effect', `×${BANK.extractMultiplier}`],
-  ['mechanic', 'extraction_pass', 'cost', `×${BANK.deathMultiplier}`],
-  ['mechanic', 'extraction_pass', 'cost', `×${BANK.extractMultiplier}`],
-  ['mechanic', 'extraction_infuse', 'effect', `${STRAIN_PHYSICS.infuseGrowth} segments`],
-  ['mechanic', 'extraction_infuse', 'effect', `bank ${signedDelta(STRAIN_ECONOMICS.infuseBankDelta)}`],
-  ['mechanic', 'extraction_infuse', 'cost', `Salvage ${signedDelta(STRAIN_ECONOMICS.infuseSalvageDelta)}`],
-  ['mechanic', 'extraction_infuse', 'cost', `+${STRAIN_PHYSICS.infusePortalIntervalPenalty} foods later`],
-  ['mechanic', 'extraction_infuse', 'cost', `at most ${STRAIN_PHYSICS.infuseMaxPerRun}`],
-  ['mechanic', 'extraction_infuse', 'cost', `length ${STRAIN_PHYSICS.infuseMinLength}`],
-  ['mechanic', 'extraction_infuse', 'cost', `from ${FTUE.infuseAt} banked runs`],
+  //
+  // BANK is re-pointed at `genomeV2CarryBankBps`, and that IS the fix this
+  // guard was built to force. The old case asserted `×${BANK.extractMultiplier}`
+  // — a flat ×1.25 — against a sentence that stated the same flat ×1.25. Both
+  // agreed, the test passed, and the copy was wrong anyway: v2 BANK compounds
+  // `1.25^(passes+1)` through pass five and then adds `+0.40` a pass. A dial
+  // guard can only hold copy honest against the dial the copy actually
+  // depends on, so this now reads the Carry function at two points.
+  ['mechanic', 'extraction_bank', 'effect', factor(genomeV2CarryBankBps(0))],
+  ['mechanic', 'extraction_bank', 'effect', factor(genomeV2CarryBankBps(3))],
+  // RIDE ON's ratified copy states the direction of the trade and quotes no
+  // figure, so it has no dial to hold. The two `BANK.*` cases that used to sit
+  // here described a sentence that no longer exists.
+  ['mechanic', 'extraction_infuse', 'cost', `Max ${GENOME_V2_CONFIG.portalGenome.maxActions} per run`],
 
   // ── Energy Commitment ──────────────────────────────────────────────────
   ['mechanic', 'charges', 'effect', `up to ${ENERGY.capacity} Energy`],
@@ -65,11 +71,11 @@ const CASES: Case[] = [
   // ── The three strain thresholds ─────────────────────────────────────────
   ['mechanic', 'strain_minor', 'effect', `${STRAIN_THRESHOLDS.minor} points`],
   ['mechanic', 'strain_expression', 'effect', `${STRAIN_THRESHOLDS.expression} points`],
-  ['mechanic', 'strain_expression', 'effect', `pick ${STRAIN_THRESHOLDS.expressionMinGenes} genes`],
+  ['mechanic', 'strain_expression', 'effect', `pick ${STRAIN_THRESHOLDS.expressionMinGenes} powers`],
   ['mechanic', 'strain_expression', 'cost', `those ${STRAIN_THRESHOLDS.expressionMinGenes} picks`],
   ['mechanic', 'strain_expression', 'cost', `${FTUE.expressionsAt} banked runs`],
   ['mechanic', 'strain_apex', 'effect', `${STRAIN_THRESHOLDS.apex} points`],
-  ['mechanic', 'strain_apex', 'effect', `pick ${STRAIN_THRESHOLDS.apexMinGenes} genes`],
+  ['mechanic', 'strain_apex', 'effect', `pick ${STRAIN_THRESHOLDS.apexMinGenes} powers`],
   ['mechanic', 'strain_apex', 'cost', `${FTUE.apexesAt} banked runs`],
 
   // ── Slots, lineage, Ascendance ──────────────────────────────────────────

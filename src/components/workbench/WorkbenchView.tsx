@@ -1,12 +1,12 @@
 'use client';
 
 /**
- * THE WORKBENCH — slow Research for the fast Tactical Loom.
+ * THE WORKBENCH — slow Research for the fast Drop.
  *
  * A run asks for intuition. This surface lets the player touch the same six
- * loci without a timer, rewind the transcript, and inspect one reaction
- * through Yield, Risk, or Space. It never solves, ranks, or recommends a
- * Genome. The experiment is folded by `genomeV2Workbench`, which in turn uses
+ * power slots without a timer, rewind the transcript, and inspect one reaction
+ * through Payout, Risk, or Space. It never solves, ranks, or recommends a
+ * build. The experiment is folded by `genomeV2Workbench`, which in turn uses
  * the canonical v2 reducer and settlement functions.
  */
 
@@ -100,7 +100,7 @@ const LENSES: Array<{
   label: string;
   mark: string;
 }> = [
-  { id: 'yield', label: 'Yield', mark: '◇' },
+  { id: 'yield', label: 'Payout', mark: '◇' },
   { id: 'risk', label: 'Risk', mark: '△' },
   { id: 'space', label: 'Space', mark: '○' },
 ];
@@ -168,7 +168,7 @@ function GeneStrainBadges({
     <span
       className={styles.geneStrainBadges}
       data-compact={compact || undefined}
-      aria-label={`Strains ${unique.map((id) => STRAINS[id].name).join(', ')}`}
+      aria-label={`Paths ${unique.map((id) => STRAINS[id].name).join(', ')}`}
     >
       {unique.map((id) => (
         <span
@@ -212,7 +212,7 @@ function LocusStone({
       data-kind={locus.kind}
       data-recode-target={interactive || undefined}
       data-testid={`workbench-locus-${locus.slot}`}
-      aria-label={`Locus ${locus.slot + 1}: ${locus.label}${locus.strains.length > 0 ? `, Strains ${locus.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}${interactive ? ', replace this locus' : ''}`}
+      aria-label={`Slot ${locus.slot + 1}: ${locus.label}${locus.strains.length > 0 ? `, Paths ${locus.strains.map((id) => STRAINS[id].name).join(', ')}` : ''}${interactive ? ', replace this slot' : ''}`}
       disabled={!interactive}
       onClick={() => onSelect(locus.slot)}
     >
@@ -225,7 +225,7 @@ function LocusStone({
         compact
         testIdPrefix={`workbench-locus-${locus.slot}`}
       />
-      {locus.kind === 'splice' ? <small>BRAID</small> : <small>{locus.slot + 1}</small>}
+      {locus.kind === 'splice' ? <small>COMBO</small> : <small>{locus.slot + 1}</small>}
     </button>
   );
 }
@@ -249,7 +249,7 @@ function StrainRail({
     : null;
   return (
     <div className={styles.strainRailGroup}>
-      <div className={styles.strainRail} aria-label="Strain ladder" data-testid="workbench-strains">
+      <div className={styles.strainRail} aria-label="Path ladder" data-testid="workbench-strains">
         {reading.strains.map((strain) => {
           const focused = focusedStrains.includes(strain.id);
           return (
@@ -292,7 +292,7 @@ function StrainRail({
               </span>
               <small>
                 {strain.suppressed
-                  ? 'Dampened · Minor remains available; higher reactions are capped'
+                  ? 'Dampened · Level I still works; higher levels are capped'
                   : strain.tiers.find((tier) => tier.reached && !tier.active)?.lockedReason
                     ?? (strain.nextTier === null
                   ? strain.tiers[2].name
@@ -317,7 +317,7 @@ function StrainRail({
           </span>
         </p>
       ) : (
-        <p className={styles.strainHint}>Tap any 2 / 3 / 4 rune to reveal its exact activation.</p>
+        <p className={styles.strainHint}>Tap any 2 / 3 / 4 to see exactly what it turns on.</p>
       )}
     </div>
   );
@@ -355,9 +355,9 @@ function AuthoritativeRunStudy({
         <div>
           <p>Authoritative run specimen</p>
           <h3>{terminal === 'bank' ? 'BANK secured' : 'Crash resolved'} · {reading.dynasty}</h3>
-          <span>The server-held terminal Genome, opened for inspection without rewriting its history.</span>
+          <span>The powers this run ended with, opened for inspection without rewriting its history.</span>
         </div>
-        <strong>{genomeV2PresentationFormat.scaledYield(settlement.genomeYield)} Yield</strong>
+        <strong>{genomeV2PresentationFormat.scaledYield(settlement.genomeYield)}</strong>
       </header>
 
       <div className={styles.studyBody}>
@@ -369,16 +369,16 @@ function AuthoritativeRunStudy({
           </div>
           <div className={styles.studyCore}>
             <i aria-hidden="true"><GeneGlyph id={focus?.geneId ?? 'genome-research'} /></i>
-            <strong>{reading.activeSplices.length} braid{reading.activeSplices.length === 1 ? '' : 's'}</strong>
-            <small>{reading.seenGenes.length} threads seen</small>
+            <strong>{reading.activeSplices.length} combo{reading.activeSplices.length === 1 ? '' : 's'}</strong>
+            <small>{reading.seenGenes.length} powers seen</small>
           </div>
         </div>
 
         <div className={styles.mathRibbon}>
-          <span><b>BANK</b>{genomeV2PresentationFormat.scaledYield(reading.bank.genomeYield)}</span>
-          <span><b>CRASH</b>{genomeV2PresentationFormat.scaledYield(reading.crash.genomeYield)}</span>
-          <span><b>BODY</b>{reading.growthCommitted === null ? 'COMPACTED' : `+${reading.growthCommitted}`}</span>
-          <span><b>ASH</b>{reading.loci.filter((locus) => locus.kind === 'ash').length}</span>
+          <span><b>BANK</b> {genomeV2PresentationFormat.scaledYield(reading.bank.genomeYield)}</span>
+          <span><b>CRASH</b> {genomeV2PresentationFormat.scaledYield(reading.crash.genomeYield)}</span>
+          <span><b>BODY</b> {reading.growthCommitted === null ? 'COMPACTED' : `+${reading.growthCommitted}`}</span>
+          <span><b>BURNED</b> {reading.loci.filter((locus) => locus.kind === 'ash').length}</span>
         </div>
         <StrainRail reading={reading} focusedStrains={[]} />
 
@@ -401,7 +401,7 @@ function AuthoritativeRunStudy({
             ? reading.lenses[lens].map((fact) => (
                 <ReactionFact key={`${fact.source}:${fact.id}`} fact={fact} />
               ))
-            : <p className={styles.quietReaction}>This Genome left no active rule in this lens.</p>}
+            : <p className={styles.quietReaction}>These powers left no active rule in this lens.</p>}
         </div>
       </div>
     </section>
@@ -477,7 +477,7 @@ export function ResearchTable({
 
       <header className={styles.tableHeader}>
         <div>
-          <p>Genome Research</p>
+          <p>Power Research</p>
           <h3>Touch the reaction. Rewind the thought.</h3>
         </div>
         <div className={styles.historyControls}>
@@ -500,7 +500,7 @@ export function ResearchTable({
         </div>
       </header>
 
-      <section className={styles.genomeStage} aria-label="Six-locus Genome">
+      <section className={styles.genomeStage} aria-label="Six power slots">
         <div className={styles.locusArc} data-testid="workbench-loci">
           {reading.loci.map((locus) => (
             <LocusStone
@@ -518,9 +518,9 @@ export function ResearchTable({
             <GeneGlyph id={focusedGeneId ?? 'genome-research'} />
           </i>
           <strong data-testid="workbench-focused-gene-name">
-            {focusedGene?.name ?? 'Genome complete'}
+            {focusedGene?.name ?? 'All powers seen'}
           </strong>
-          <small>{focusedGene?.category ?? 'No unseen genes remain'}</small>
+          <small>{focusedGene?.category ?? 'No powers left to try'}</small>
           {focusedGene ? (
             <GeneStrainBadges
               strains={focusedGene.strains}
@@ -532,10 +532,10 @@ export function ResearchTable({
       </section>
 
       <div className={styles.mathRibbon} data-testid="workbench-math-ribbon">
-        <span><b>BANK</b>{formatBps(reading.projection.liabilities.bankMultiplierBps)}</span>
-        <span><b>CRASH</b>{formatBps(reading.projection.liabilities.salvageMultiplierBps)}</span>
-        <span><b>BODY</b>{reading.growthCommitted ? `+${reading.growthCommitted}` : 'UNCHANGED'}</span>
-        <span><b>ASH</b>{reading.loci.filter((locus) => locus.kind === 'ash').length}</span>
+        <span><b>BANK</b> {formatBps(reading.projection.liabilities.bankMultiplierBps)}</span>
+        <span><b>CRASH</b> {formatBps(reading.projection.liabilities.salvageMultiplierBps)}</span>
+        <span><b>BODY</b> {reading.growthCommitted ? `+${reading.growthCommitted}` : 'UNCHANGED'}</span>
+        <span><b>BURNED</b> {reading.loci.filter((locus) => locus.kind === 'ash').length}</span>
       </div>
 
       <StrainRail reading={reading} focusedStrains={focusedStrains} />
@@ -543,7 +543,7 @@ export function ResearchTable({
       <section className={styles.palette} aria-label="Gene palette">
         <div className={styles.paletteHeader}>
           <div>
-            <p>Unseen threads · {plan.dynasty}</p>
+            <p>Powers not yet taken · {plan.dynasty}</p>
             <small>Order is the experiment. No choice is ranked.</small>
           </div>
           <div className={styles.lenses} role="tablist" aria-label="Research lens">
@@ -596,6 +596,7 @@ export function ResearchTable({
         <section className={styles.focusReaction} data-testid="workbench-focused-reaction">
           <div className={styles.focusRule}>
             <p><b>Changes</b>{focusedGene.effect}</p>
+            <p><b>In full</b>{focusedGene.detail}</p>
             <p><b>Commits</b>{focusedGene.cost}</p>
           </div>
           <div className={styles.spliceBranches}>
@@ -614,7 +615,7 @@ export function ResearchTable({
                 <span aria-hidden="true" />
                 <span className={styles.spliceLabel}><strong>{path.forms ? 'FORMS ' : 'WITH '}{path.name}</strong><small>{GENOME_V2_GENES[path.partner].name}</small></span>
               </button>
-            )) : <p className={styles.noBranch}>No direct Splice branch.</p>}
+            )) : <p className={styles.noBranch}>No direct Combo.</p>}
             {openSplice ? (
               <div className={styles.spliceDisclosure} data-testid="workbench-splice-disclosure">
                 <p><b>Rule</b>{openSplice.rule}</p>
@@ -631,7 +632,7 @@ export function ResearchTable({
                   onClick={() => commit({ kind: 'thread', geneId: focusedGene.id })}
                   data-testid="workbench-thread"
                 >
-                  THREAD
+                  TAKE
                 </button>
                 <button
                   type="button"
@@ -639,7 +640,7 @@ export function ResearchTable({
                   onClick={() => commit({ kind: 'infuse', geneId: focusedGene.id })}
                   data-testid="workbench-infuse"
                 >
-                  MUTATE {portalGrowth === null ? 'CLOSED' : `+${portalGrowth} BODY`}
+                  TRADE UP {portalGrowth === null ? 'CLOSED' : `+${portalGrowth} BODY`}
                 </button>
               </>
             ) : (
@@ -651,8 +652,8 @@ export function ResearchTable({
                 data-testid="workbench-recode"
               >
                 {pendingRecode === focusedGene.id
-                  ? 'CHOOSE A LOCUS'
-                  : `RECODE ${recodeGrowth === null ? 'CLOSED' : `+${recodeGrowth} BODY`}`}
+                  ? 'CHOOSE A SLOT'
+                  : `SWAP ${recodeGrowth === null ? 'CLOSED' : `+${recodeGrowth} BODY`}`}
               </button>
             )}
           </div>
@@ -660,19 +661,19 @@ export function ResearchTable({
       ) : null}
 
       <section className={styles.reactionField} data-testid={`workbench-reaction-${lens}`}>
-        <header><span>{LENSES.find((entry) => entry.id === lens)?.mark}</span><strong>{lens}</strong><small>active Genome only</small></header>
+        <header><span>{LENSES.find((entry) => entry.id === lens)?.mark}</span><strong>{lens === 'yield' ? 'payout' : lens}</strong><small>powers you hold only</small></header>
         {activeFacts.length > 0 ? (
           <div>{activeFacts.map((fact) => <ReactionFact key={`${fact.source}:${fact.id}`} fact={fact} />)}</div>
         ) : (
-          <p className={styles.quietReaction}>Nothing in the current Genome changes this lens yet.</p>
+          <p className={styles.quietReaction}>Nothing you hold changes this lens yet.</p>
         )}
       </section>
 
       <section className={styles.stateVerbs} aria-label="Run-state experiments">
-        <button type="button" onClick={() => commit({ kind: 'decline' })}>DECLINE OFFER</button>
-        <button type="button" onClick={() => commit({ kind: 'continue' })}>PASS PORTAL</button>
+        <button type="button" onClick={() => commit({ kind: 'decline' })}>SKIP</button>
+        <button type="button" onClick={() => commit({ kind: 'continue' })}>RIDE ON</button>
         {activeGene(reading, 'mirror_wager') ? (
-          <button type="button" onClick={() => commit({ kind: 'continue', activateMirror: true })}>PASS + STAKE</button>
+          <button type="button" onClick={() => commit({ kind: 'continue', activateMirror: true })}>RIDE ON + BET</button>
         ) : null}
         {reading.projection.liabilities.phoenixAvailable ? (
           <button type="button" onClick={() => commit({ kind: 'phoenix' })}>TRIGGER PHOENIX</button>
@@ -680,7 +681,7 @@ export function ResearchTable({
       </section>
 
       {pendingRecode ? (
-        <p className={styles.recodeNotice} role="status">Choose one glowing non-Ash locus. The outgoing rule and any braid are replaced permanently.</p>
+        <p className={styles.recodeNotice} role="status">Choose one glowing slot that is not burned out. The power leaving, and any Combo it made, go for good.</p>
       ) : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
     </div>
@@ -917,7 +918,7 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
       <header className={styles.intro}>
         <div>
           <p>Intuition in the run · Research here</p>
-          <h2>The Genome Workbench</h2>
+          <h2>The Workbench</h2>
           <span>Compose possible histories, not a prescribed final build.</span>
         </div>
         <nav className={styles.snakeMarks} aria-label="Research specimen">
@@ -967,11 +968,11 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
           <ResearchTable plan={plan} onPlan={setPlan} />
         </div>
       ) : (
-        <div className={styles.loading}>The Research Loom could not form a Dynasty specimen.</div>
+        <div className={styles.loading}>The Workbench could not form a Dynasty specimen.</div>
       )}
 
       <p className={styles.honesty}>
-        The Loom resolves legal v2 reactions and exact rule arithmetic. Route execution remains yours; no build is labelled best.
+        The Workbench resolves legal reactions and exact rule arithmetic. Route execution remains yours; no build is labelled best.
       </p>
     </div>
   );

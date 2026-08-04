@@ -276,57 +276,57 @@ export const GENOME_V2_SPLICES: Readonly<
     id: 'splice_dragon_hoard',
     name: 'Dragon Hoard',
     parents: ['gold_trail', 'compound_interest'],
-    rule: 'A completed Gilded target forges its bonus into a Crown Bond that compounds only at BANK.',
-    strategicCost: 'Missing the Gilded window breaks that Bond; DECLINE still gives up the offer.',
+    rule: 'Golden bites pile up treasure that grows at BANK.',
+    strategicCost: 'Miss the golden window and that treasure breaks. Skipping still gives up the offer.',
   },
   splice_gilded_fork: {
     id: 'splice_gilded_fork',
-    name: 'Gilded Fork',
+    name: 'The Bag',
     parents: ['gold_trail', 'overgrowth'],
-    rule: 'Every fifth target offers one exclusive branch: ordinary growth, or ×4 Yield with two extra segments.',
+    rule: 'Every 5th food: play safe, or take the bag and grow.',
     strategicCost: 'Eating either removes the other; the greedy branch permanently raises body pressure.',
   },
   splice_styx_contract: {
     id: 'splice_styx_contract',
-    name: 'Styx Contract',
+    name: 'Death Deal',
     parents: ['mirror_wager', 'phoenix'],
-    rule: 'The visible Stake can fund Phoenix; unused Ash-bound Stake doubles on BANK.',
-    strategicCost: 'Using Phoenix consumes the Stake and permanently Ashes its socket.',
+    rule: 'Your bet can buy back your life — or double.',
+    strategicCost: 'Buying back your life spends the bet and burns out that slot for good.',
   },
   splice_perfect_circuit: {
     id: 'splice_perfect_circuit',
-    name: 'Perfect Circuit',
+    name: 'Round Trip',
     parents: ['live_wire', 'circuit_run'],
-    rule: 'Successful Live routes arm a linked return leg with a larger shared payout.',
-    strategicCost: 'Either failed leg burns the whole circuit.',
+    rule: 'Finish a route and the way back pays even more.',
+    strategicCost: 'Either failed leg burns the whole trip.',
   },
   splice_worldcoil: {
     id: 'splice_worldcoil',
-    name: 'Worldcoil',
+    name: 'Full Circle',
     parents: ['coilkeeper', 'overgrowth'],
-    rule: 'Sealed territory converts Overgrowth pressure into a higher next-target tier.',
-    strategicCost: 'The seal is permanent and Overgrowth keeps adding body.',
+    rule: 'Seal ground while huge and the next food pays ×8.',
+    strategicCost: 'The seal is permanent and Feast keeps adding body.',
   },
   splice_riftline: {
     id: 'splice_riftline',
-    name: 'Riftline',
+    name: 'The Opening',
     parents: ['wall_rush', 'phase_gate'],
-    rule: 'A deliberate redirect can open a one-use riftline to the empowered target.',
-    strategicCost: 'The traversed gate cells become permanent Scars.',
+    rule: 'A wall bounce can open a door to the big food.',
+    strategicCost: 'The cells you pass through become permanent Scars.',
   },
   splice_loom_bond: {
     id: 'splice_loom_bond',
-    name: 'Loom Bond',
+    name: 'Paid to Wait',
     parents: ['compound_interest', 'loom_anchor'],
-    rule: 'Pinning a declined gene preserves it and binds that DECLINE into a Bond.',
-    strategicCost: 'The Anchor stays empty until a later explicit portal CONTINUE.',
+    rule: 'Skipping keeps the power AND pays you for it.',
+    strategicCost: 'Your save stays empty until you ride a portal.',
   },
   splice_ashen_stake: {
     id: 'splice_ashen_stake',
-    name: 'Ashen Stake',
+    name: 'Last Call',
     parents: ['loan_shark', 'phoenix'],
-    rule: 'A completed Loan can fund Phoenix and preserve the run instead of paying its Escrow.',
-    strategicCost: 'The conversion pays no contract Yield and leaves Ash in the Phoenix socket.',
+    rule: 'Cash in your deal to survive a death instead.',
+    strategicCost: 'The trade pays out nothing on the table and burns out the Phoenix slot.',
   },
 };
 
@@ -1012,29 +1012,29 @@ export const GENOME_V2_STRAIN_LADDERS: Readonly<
   Record<StrainId, readonly GenomeV2StrainLadderTier[]>
 > = {
   AURUM: [
-    { points: 2, name: 'Mint', rule: 'Successful active contracts mint visible Yield.' },
-    { points: 3, name: 'Dividend', rule: 'BANK converts execution chains into a premium.' },
-    { points: 4, name: 'Treasury', rule: 'One forfeitable reserve may compound across portals.' },
+    { points: 2, name: 'Cut', rule: "Finish a power's challenge and take your cut. +25%" },
+    { points: 3, name: 'Payday', rule: 'Each clean chain adds +5% at BANK, up to 4.' },
+    { points: 4, name: 'Vault', rule: 'Store 10% of food. BANK pays it back ×1.5.' },
   ],
   VOLT: [
-    { points: 2, name: 'Telemetry', rule: 'Route budgets reveal their exact execution margin.' },
-    { points: 3, name: 'Relay', rule: 'A clean route can arm the next compatible challenge.' },
-    { points: 4, name: 'Overclock', rule: 'The player may activate a rewarded, bounded speed burst.' },
+    { points: 2, name: 'Clock', rule: 'See exactly how many moves you have left.' },
+    { points: 3, name: 'Chain', rule: 'Nail a route and the next one pays +50%.' },
+    { points: 4, name: 'Turbo', rule: 'Switch on speed yourself. Food pays ×1.5.' },
   ],
   FERAL: [
-    { points: 2, name: 'Mass', rule: 'Body pressure visibly raises FERAL execution value.' },
-    { points: 3, name: 'Territory', rule: 'Clean coils can claim strategically useful space.' },
-    { points: 4, name: 'Worldbody', rule: 'Perfect body control converts pressure into a major payout.' },
+    { points: 2, name: 'Bulk', rule: 'The longer you are, the more food pays. +25%' },
+    { points: 3, name: 'Claim', rule: 'Circle ground to claim it. Food pays ×1.5.' },
+    { points: 4, name: 'Titan', rule: 'Perfect body control doubles the payout.' },
   ],
   FLUX: [
-    { points: 2, name: 'Vector', rule: 'Planned terrain interactions preview a legal exit.' },
-    { points: 3, name: 'Riftcraft', rule: 'The player may trade permanent space for route power.' },
-    { points: 4, name: 'Topology', rule: 'Linked spatial actions can reshape one target route.' },
+    { points: 2, name: 'Scout', rule: 'See a safe way out before you commit.' },
+    { points: 3, name: 'Tunnel', rule: 'Give up board space to open a shortcut. +25%' },
+    { points: 4, name: 'Rewrite', rule: 'Chain wall tricks to redraw one route. +50%' },
   ],
   UMBRA: [
-    { points: 2, name: 'Stake', rule: 'At-risk Yield is separated and always visible.' },
-    { points: 3, name: 'Covenant', rule: 'Deferred contracts may protect or amplify one another.' },
-    { points: 4, name: 'Afterlife', rule: 'One explicit second-life economy may be assembled.' },
+    { points: 2, name: 'Bet', rule: 'See exactly how much you could lose.' },
+    { points: 3, name: 'Cover', rule: 'Your bets cover each other. 25% covered.' },
+    { points: 4, name: 'Second Life', rule: 'Build yourself one more life out of your bets.' },
   ],
 };
 
@@ -3800,43 +3800,21 @@ export interface TacticalLoomDeclineOption {
   dynasty: DynastyName;
 }
 
-const GENE_PROJECTED_RULE: Readonly<Record<GenomeV2ActiveGeneId, string>> = {
-  gold_trail: 'Every fifth future target can pay ×3 inside its visible six-second budget.',
-  compound_interest: 'Each deliberate Loom DECLINE adds +8% BANK, up to three Bonds.',
-  loan_shark: 'A portal CONTINUE can begin six zero-now foods whose completed Escrow pays ×2.',
-  live_wire: 'Every third target becomes a topology-scaled ×3 route test; miss pays zero.',
-  circuit_run: 'Every fourth target becomes a linked ×4 route with one normal growth unit.',
-  time_dilation: 'World speed ×0.88; every fourth food adds one extra segment.',
-  overgrowth: 'Every food adds one extra segment and pays ×1.4–×2.5 with board pressure.',
-  coilkeeper: 'Charge eight foods; sealing territory makes the next target ×4–×6.',
-  wall_rush: 'A charged wall redirect arms a six-move target worth ×2.5.',
-  phase_gate: 'Every fifth food may open a ×3 shortcut whose cells become Scars.',
-  mirror_wager: 'At portal CONTINUE, optionally freeze 40% of that leg at current Carry; BANK doubles Stake.',
-  phoenix: 'One rewind and phase; +10 body, then this socket becomes Ash.',
-  loom_anchor: 'Pin one declined option; recharge only through an explicit portal CONTINUE.',
-  heartwood: 'PRIMAL signature: clean territorial actions scale with controlled body mass.',
-  zenith_protocol: 'CYBER signature: player-triggered precision overclock pays for execution.',
-  constellation_crown: 'COSMIC signature: perfect clears build visible Crown Stars.',
-};
+/**
+ * The Drop's GAIN and RISK lines, read from the catalog that owns them.
+ *
+ * These were two hand-maintained tables of prose keyed by gene id, sitting
+ * beside a third in the presentation adapter. Nothing held them in agreement
+ * and they drifted: one Power could describe itself three ways depending on
+ * which surface you were looking at. The rule sentence now has one home.
+ */
+function geneProjectedRule(geneId: GenomeV2ActiveGeneId): string {
+  return GENOME_V2_GENES[geneId].effect;
+}
 
-const GENE_PROJECTED_COST: Readonly<Record<GenomeV2ActiveGeneId, string>> = {
-  gold_trail: 'The premium target has a visible time budget.',
-  compound_interest: 'DECLINE gives up a viable build choice; Bonds do nothing on crash.',
-  loan_shark: 'BANK or crash before all six foods forfeits all visible Escrow.',
-  live_wire: 'Missing the route budget burns the target to zero Yield.',
-  circuit_run: 'A failed linked route pays zero while body growth remains.',
-  time_dilation: 'Extra growth increases spatial pressure; unavailable in CYBER.',
-  overgrowth: 'Double growth consumes board space substantially faster.',
-  coilkeeper: 'Every sealed cell remains solid for the rest of the run.',
-  wall_rush: 'The charge is spent even when the reward route is missed.',
-  phase_gate: 'Using the shortcut leaves two permanent Scars.',
-  mirror_wager: 'Crash forfeits Stake; ordinary crash salvage is never reduced.',
-  phoenix: 'Adds ten segments, occupies Ash after use, and excludes another second life.',
-  loom_anchor: 'The pin is single-use until a later explicit portal CONTINUE.',
-  heartwood: 'Value requires dangerous, dynasty-specific territorial execution.',
-  zenith_protocol: 'Value requires choosing a readable but genuinely harder speed state.',
-  constellation_crown: 'Only fully cleared, unambiguous constellations advance the Crown.',
-};
+function geneProjectedCost(geneId: GenomeV2ActiveGeneId): string {
+  return GENOME_V2_GENES[geneId].cost;
+}
 
 export function genomeV2StrainPoints(state: GenomeV2State): StrainPoints {
   const result: StrainPoints = { ...state.startingStrainPoints };
@@ -4627,8 +4605,8 @@ export function projectGenomeV2(
               ? expectedRecodeGrowth(nextRecode)
               : null,
         },
-        projectedYieldRule: GENE_PROJECTED_RULE[geneId],
-        strategicCost: GENE_PROJECTED_COST[geneId],
+        projectedYieldRule: geneProjectedRule(geneId),
+        strategicCost: geneProjectedCost(geneId),
         availability: {
           legal: !(geneId === 'phoenix' && state.externalSecondLife !== null),
           blockedReason:

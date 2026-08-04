@@ -10,9 +10,9 @@ describe('StrainMeterHUD', () => {
       />
     );
     expect(screen.getByTestId('strain-meter').children).toHaveLength(5);
-    expect(screen.getByTestId('strain-meter-AURUM')).toHaveTextContent('Gilded Wake');
-    expect(screen.getByTestId('strain-meter-AURUM')).toHaveTextContent('Aurum');
-    expect(screen.getByTestId('strain-meter-UMBRA')).toHaveTextContent('Second Sun');
+    expect(screen.getByTestId('strain-meter-AURUM')).toHaveTextContent('Payday');
+    expect(screen.getByTestId('strain-meter-AURUM')).toHaveTextContent('Gold');
+    expect(screen.getByTestId('strain-meter-UMBRA')).toHaveTextContent('Second Life');
   });
 
   it('marks a Gauntlet-suppressed strain as capped', () => {
@@ -26,7 +26,7 @@ describe('StrainMeterHUD', () => {
     expect(screen.getByTestId('strain-meter-FERAL')).toHaveTextContent('CAP');
     expect(screen.getByTestId('strain-meter-FERAL')).toHaveAttribute(
       'title',
-      expect.stringContaining('suppressed above Minor')
+      expect.stringContaining('capped above Level I')
     );
   });
 
@@ -38,7 +38,7 @@ describe('StrainMeterHUD', () => {
         apexTargets={{ AURUM: 3 }}
       />
     );
-    expect(screen.getByLabelText('3 of 3 strain points').children).toHaveLength(3);
+    expect(screen.getByLabelText('3 of 3 Path points').children).toHaveLength(3);
 
     rerender(
       <StrainMeterHUD
@@ -47,6 +47,6 @@ describe('StrainMeterHUD', () => {
         apexTargets={{ AURUM: 5 }}
       />
     );
-    expect(screen.getByLabelText('4 of 5 strain points').children).toHaveLength(5);
+    expect(screen.getByLabelText('4 of 5 Path points').children).toHaveLength(5);
   });
 });

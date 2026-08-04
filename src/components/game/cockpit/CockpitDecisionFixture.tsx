@@ -95,7 +95,7 @@ function loomSlots(
     return {
       index,
       kind: entry?.kind ?? 'empty',
-      label: entry?.label ?? 'Open locus',
+      label: entry?.label ?? 'Empty slot',
       strains: entry?.strains ?? [],
       detail: entry?.detail,
     };
@@ -204,13 +204,13 @@ function hardCaseLoomModel(): TacticalLoomDecisionModel {
   return {
     decisionId: 'fixture-hard-case-offer',
     rulesVersion: 2,
-    title: 'Tactical Loom',
+    title: 'The Drop',
     sourceLabel: 'Dev truth case · dual Strain + two recipes',
     dynasty: 'PRIMAL',
     currentGenome,
     candidates: [
       { action: 'THREAD', geneId: 'phoenix', name: 'Phoenix', category: 'Survival', strains: ['UMBRA', 'FERAL'], consequence: phoenix },
-      { action: 'THREAD', geneId: 'phase_gate', name: 'Phase Gate', category: 'Terrain', strains: ['FLUX'], consequence: phaseGate },
+      { action: 'THREAD', geneId: 'phase_gate', name: 'Side Door', category: 'Terrain', strains: ['FLUX'], consequence: phaseGate },
     ],
     decline: { action: 'DECLINE', name: 'Keep this Genome', consequence: quietConsequence(currentGenome, 'both candidates') },
   };
@@ -227,7 +227,7 @@ function recodeLoomModel(): TacticalLoomDecisionModel {
   ]);
   const recodedGenome = loomSlots([
     { kind: 'splice', label: 'Riftline', strains: ['FLUX', 'VOLT'], detail: 'Wall Rush + Phase Gate' },
-    { kind: 'empty', label: 'Open locus', strains: [] },
+    { kind: 'empty', label: 'Empty slot', strains: [] },
     ...currentGenome.slice(2),
   ]);
   const base = quietConsequence(currentGenome, 'Phase Gate');
@@ -251,12 +251,12 @@ function recodeLoomModel(): TacticalLoomDecisionModel {
       {
         id: 'splice_worldcoil:break', name: 'Worldcoil', stage: 'immediate', projectionState: 'breaks',
         rule: 'This Recode breaks the active Splice and stops its future rule.', cost: 'Worldcoil pressure conversion ends.',
-        recipeKnown: true, recipeLabel: 'Broken by outgoing locus 1', activation: 'available',
+        recipeKnown: true, recipeLabel: 'Broken by the slot going out', activation: 'available',
       },
       {
         id: 'splice_riftline:create', name: 'Riftline', stage: 'immediate', projectionState: 'forms-now',
         rule: 'A deliberate redirect can open a one-use riftline to the empowered target.', cost: 'Traversed Gate cells become permanent Scars.',
-        recipeKnown: true, recipeLabel: 'Wall Rush + Phase Gate', partnerLabel: 'Wall Rush', partnerState: 'held', activation: 'available',
+        recipeKnown: true, recipeLabel: 'Wall Rush + Phase Gate', partnerLabel: 'Wall Bounce', partnerState: 'held', activation: 'available',
       },
     ],
     body: [{ id: 'body-length', label: 'Current body', before: '34 segments', after: '+8 on commit', tone: 'warning' }],
@@ -265,26 +265,26 @@ function recodeLoomModel(): TacticalLoomDecisionModel {
   const candidateBase: TacticalLoomConsequence = {
     ...base,
     category: 'Movement & terrain',
-    salienceChip: 'Choose an outgoing locus',
+    salienceChip: 'Choose the slot going out',
     trigger: { label: 'Every fifth food can charge a Gate', cadence: 5, unit: 'food' },
     effect: 'Phase Gate can connect to a held Wall Rush through the correct Recode.',
-    cost: 'The outgoing locus decides what breaks, what forms, and commits +8 body.',
+    cost: 'The slot going out decides what breaks, what forms, and commits +8 body.',
     splices: [{
       id: 'splice_riftline:recode', name: 'Riftline', stage: 'one-step', projectionState: 'recode',
       rule: 'A deliberate redirect can open a one-use riftline to the empowered target.', cost: 'Exact outcome depends on the outgoing locus.',
-      recipeKnown: true, recipeLabel: 'Choose the outgoing locus', partnerLabel: 'Wall Rush', partnerState: 'held', activation: 'available',
+      recipeKnown: true, recipeLabel: 'Choose the slot going out', partnerLabel: 'Wall Bounce', partnerState: 'held', activation: 'available',
     }],
   };
   return {
     decisionId: 'fixture-recode-case-offer',
     rulesVersion: 2,
-    title: 'Tactical Loom',
+    title: 'The Drop',
     sourceLabel: 'Dev truth case · Recode break/form',
     dynasty: 'PRIMAL',
     currentGenome,
     candidates: [
       {
-        action: 'FORK', geneId: 'phase_gate', name: 'Phase Gate', category: 'Terrain', strains: ['FLUX'], consequence: candidateBase,
+        action: 'FORK', geneId: 'phase_gate', name: 'Side Door', category: 'Terrain', strains: ['FLUX'], consequence: candidateBase,
         replacementChoices: [{ slotIndex: 0, label: 'Worldcoil', kind: 'splice', strains: ['FERAL', 'FLUX'], growthCost: 8, consequence: replacement }],
       },
       { action: 'FORK', geneId: 'phoenix', name: 'Phoenix', category: 'Survival', strains: ['UMBRA', 'FERAL'], consequence: quietConsequence(currentGenome, 'Phoenix'), disabledReason: 'Dev fixture keeps focus on the exact break/form path' },

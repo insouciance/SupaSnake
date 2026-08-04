@@ -23,7 +23,7 @@ describe('HomeIdentityHud', () => {
     );
     expect(screen.getByTestId('home-lineage-rune')).toHaveAttribute(
       'title',
-      'Volt Genome lineage'
+      'Pulse Genome lineage'
     );
     expect(screen.getByTestId('home-clan-identity')).toHaveTextContent('Apex Coil');
     expect(screen.getByTestId('home-clan-identity')).toHaveAttribute('href', '/clan');

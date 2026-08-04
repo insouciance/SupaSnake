@@ -24,7 +24,7 @@ export default async function LineageOpengraphImage({
   const model = decodeLineageCode((await params).code);
   if (!model) {
     return artifactImageResponse({
-      kicker: 'Lineage',
+      kicker: 'Bloodline',
       title: 'Every snake is bred, not bought',
       subtitle: 'Genes come out of runs — nothing you can buy moves a number',
       provenance: 'verified',

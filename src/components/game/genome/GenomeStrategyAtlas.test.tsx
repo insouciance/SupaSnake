@@ -9,7 +9,7 @@ function atlasModel(): GenomeStrategyAtlasModel {
     genes: [
       {
         id: 'live_wire',
-        name: 'Live Wire',
+        name: 'Straight Shot',
         category: 'Execution & route',
         effect: 'Every third target becomes a topology-scaled ×3 route test.',
         cost: 'A miss burns the target to zero Yield.',
@@ -18,7 +18,7 @@ function atlasModel(): GenomeStrategyAtlasModel {
       },
       {
         id: 'compound_interest',
-        name: 'Compound Interest',
+        name: 'Stash',
         category: 'Banking & wagers',
         effect: 'DECLINE mints one prospective BANK Bond.',
         cost: 'Passing spends a real build opportunity.',
@@ -49,23 +49,23 @@ function atlasModel(): GenomeStrategyAtlasModel {
     splices: [
       {
         id: 'perfect_circuit',
-        name: 'Perfect Circuit',
+        name: 'Round Trip',
         rule: 'Successful Live routes arm a linked return leg.',
         cost: 'Either failed leg burns the circuit.',
         strains: ['VOLT', 'FLUX'],
         recipeKnown: true,
         parentIds: ['live_wire', 'circuit_run'],
-        recipeLabel: 'Live Wire + Circuit Run',
+        recipeLabel: 'Straight Shot + Food Chain',
       },
       {
         id: 'unknown',
-        name: 'Worldcoil',
+        name: 'Full Circle',
         rule: 'Sealed territory converts body pressure into a payout.',
         cost: 'The seal remains solid.',
         strains: ['FERAL', 'FLUX'],
         recipeKnown: false,
         parentIds: ['coilkeeper', 'overgrowth'],
-        recipeLabel: 'Recipe: Coilkeeper + Overgrowth',
+        recipeLabel: 'Recipe: Loop Trap + Overgrowth',
       },
     ],
   };
@@ -80,17 +80,17 @@ describe('GenomeStrategyAtlas', () => {
       }
     }
     const archive = screen.getByTestId('atlas-splice-archive');
-    expect(archive).toHaveTextContent('Worldcoil');
+    expect(archive).toHaveTextContent('Full Circle');
     expect(archive).toHaveTextContent('Sealed territory converts body pressure');
-    expect(archive).toHaveTextContent('Recipe: Coilkeeper + Overgrowth');
+    expect(archive).toHaveTextContent('Recipe: Loop Trap + Overgrowth');
   });
 
   it('uses one selected consequence board for category changes instead of duplicate cards', () => {
     render(<GenomeStrategyAtlas model={atlasModel()} />);
     expect(screen.getAllByTestId('atlas-consequence')).toHaveLength(1);
-    expect(screen.getByTestId('atlas-consequence')).toHaveTextContent('Live Wire');
+    expect(screen.getByTestId('atlas-consequence')).toHaveTextContent('Straight Shot');
     fireEvent.click(screen.getByRole('tab', { name: 'Banking & wagers' }));
-    expect(screen.getByTestId('atlas-consequence')).toHaveTextContent('Compound Interest');
+    expect(screen.getByTestId('atlas-consequence')).toHaveTextContent('Stash');
     expect(screen.getByTestId('atlas-consequence')).toHaveTextContent('DECLINE mints');
     expect(screen.queryByText(/best|recommended/i)).toBeNull();
   });
@@ -106,8 +106,8 @@ describe('GenomeStrategyAtlas', () => {
     const phoenix = within(screen.getByTestId('atlas-gene-phoenix'));
     const feral = phoenix.getByTestId('strain-chip-FERAL');
     const umbra = phoenix.getByTestId('strain-chip-UMBRA');
-    expect(feral).toHaveTextContent('Feral');
-    expect(umbra).toHaveTextContent('Umbra');
+    expect(feral).toHaveTextContent('Coils');
+    expect(umbra).toHaveTextContent('Risk');
     expect(feral.querySelector('svg')).toBeInTheDocument();
     expect(umbra.querySelector('svg')).toBeInTheDocument();
     expect(feral.style.color).not.toBe(umbra.style.color);

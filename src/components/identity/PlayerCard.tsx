@@ -30,6 +30,7 @@ import {
   type IdentityProvenance,
   type PlayerIdentity,
 } from '@/lib/identity/types';
+import { dynastyDisplayName } from '@/shared/game/rulesets';
 import type { Rarity } from '@/shared/types/snake-data-model';
 
 export type PlayerCardVariant = 'row' | 'card' | 'full';
@@ -143,7 +144,7 @@ function Avatar({
 
 const PROVENANCE_LABEL: Record<IdentityProvenance, string> = {
   earned: 'Earned',
-  lineage: 'Lineage',
+  lineage: 'Bloodline',
   discovery: 'Discovery',
   clan: 'Clan',
   supporter: 'Supporter · decorative',
@@ -347,7 +348,7 @@ export function PlayerCard({
                 <span
                   key={dynasty}
                   className="px-1.5 py-0.5 rounded-arcade border border-scale-blue-light/40 bg-void/50 text-beige/80"
-                  title={`${dynasty} mastery M${level}`}
+                  title={`${dynastyDisplayName(dynasty)} mastery M${level}`}
                 >
                   {dynastyPipLabel(dynasty)}
                   <span className="text-[#7df9ff] font-bold">{level}</span>

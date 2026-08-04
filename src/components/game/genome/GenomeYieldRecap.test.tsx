@@ -12,10 +12,10 @@ describe('GenomeYieldRecap', () => {
           genomeDelta: 1_640,
           factorLabel: '×2.64',
           activeGenes: [
-            { id: 'live_wire', name: 'Live Wire', strains: ['VOLT'] },
-            { id: 'compound_interest', name: 'Compound Interest', strains: ['AURUM'] },
+            { id: 'live_wire', name: 'Straight Shot', strains: ['VOLT'] },
+            { id: 'compound_interest', name: 'Stash', strains: ['AURUM'] },
           ],
-          activeSplices: [{ id: 'perfect_circuit', name: 'Perfect Circuit' }],
+          activeSplices: [{ id: 'perfect_circuit', name: 'Round Trip' }],
           rows: [
             { id: 'route', label: 'Route contracts', amount: 1_200, detail: '4 of 5 completed', tone: 'gain' },
             { id: 'escrow', label: 'Escrow forfeited', amount: -160, detail: 'BANK before contract 6/6', tone: 'forfeit' },
@@ -37,7 +37,7 @@ describe('GenomeYieldRecap', () => {
     );
     fireEvent.click(screen.getByText('Full Genome receipt'));
     expect(details.open).toBe(true);
-    expect(screen.getByLabelText('Active run Genome')).toHaveTextContent('Live Wire');
+    expect(screen.getByLabelText('Active run Genome')).toHaveTextContent('Straight Shot');
     expect(screen.getByTestId('results-genome-outcome-rule')).toHaveTextContent(
       'BANK converted Bonds'
     );

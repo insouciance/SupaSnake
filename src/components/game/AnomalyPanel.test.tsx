@@ -35,7 +35,7 @@ describe('AnomalyPanel', () => {
     render(<AnomalyPanel board={board()} />);
     expect(screen.getByTestId('anomaly-name')).toHaveTextContent('Gold Rush');
     expect(screen.getByText(/All food ×1\.5 DNA/)).toBeInTheDocument();
-    expect(screen.getByTestId('anomaly-strain-bias')).toHaveTextContent(/Aurum/);
+    expect(screen.getByTestId('anomaly-strain-bias')).toHaveTextContent(/Gold/);
     expect(screen.getByTestId('anomaly-countdown')).toHaveTextContent(/2d 2[0-3]h|3d 0h/);
   });
 

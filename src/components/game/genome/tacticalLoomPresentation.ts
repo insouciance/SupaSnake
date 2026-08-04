@@ -100,6 +100,19 @@ export interface TacticalLoomReplacementChoice {
   disabledReason?: string;
 }
 
+/**
+ * What the player is shown for an action, as opposed to what the action is.
+ *
+ * `TacticalLoomAction` is a contract: `'THREAD'`, `'FORK'` and `'DECLINE'`
+ * are asserted by the presentation tests and travel with the decision. They
+ * are also three words for two ideas — take this power, or don't — and no
+ * player ever needed to know that taking into a full Genome is called FORK.
+ * The enum stays; only this mapping reaches a screen.
+ */
+export function loomActionLabel(action: TacticalLoomAction): string {
+  return action === 'DECLINE' ? 'SKIP' : 'TAKE';
+}
+
 export interface TacticalLoomCandidate {
   action: Exclude<TacticalLoomAction, 'DECLINE'>;
   geneId: string;

@@ -4,9 +4,8 @@ import {
   STRAINS,
   STRAIN_IDS,
   STRAIN_THRESHOLDS,
-  STRAIN_TIER_NAMES,
 } from '@/shared/game/strains';
-import { describe, strainTierId } from '@/shared/game/lexicon';
+import { describe, strainTierId, strainTierLabel } from '@/shared/game/lexicon';
 import type { GenomeStrategyAtlasModel } from './GenomeStrategyAtlas';
 
 interface RecipeKnowledge {
@@ -38,16 +37,15 @@ export function buildLegacyGenomeAtlasModel(
       strains: GENES[id].strains,
     })),
     strains: STRAIN_IDS.map((strain) => {
-      const names = STRAIN_TIER_NAMES[strain];
       return {
         id: strain,
         name: STRAINS[strain].name,
         color: STRAINS[strain].color,
         identity: STRAINS[strain].identity,
         tiers: [
-          { points: STRAIN_THRESHOLDS.minor, key: 'minor' as const, name: names.minor, lexiconTier: 1 as const },
-          { points: STRAIN_THRESHOLDS.expression, key: 'expression' as const, name: names.expression, lexiconTier: 2 as const },
-          { points: STRAIN_THRESHOLDS.apex, key: 'apex' as const, name: names.apex, lexiconTier: 3 as const },
+          { points: STRAIN_THRESHOLDS.minor, key: 'minor' as const, name: strainTierLabel(strain, 1), lexiconTier: 1 as const },
+          { points: STRAIN_THRESHOLDS.expression, key: 'expression' as const, name: strainTierLabel(strain, 2), lexiconTier: 2 as const },
+          { points: STRAIN_THRESHOLDS.apex, key: 'apex' as const, name: strainTierLabel(strain, 3), lexiconTier: 3 as const },
         ].map((tier) => {
           const entry = describe('strainTier', strainTierId(strain, tier.lexiconTier));
           return {

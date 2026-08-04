@@ -9,7 +9,7 @@ function mutationLoomModel(): TacticalLoomDecisionModel {
   const emptyGenome = Array.from({ length: 6 }, (_, index) => ({
     index,
     kind: 'empty' as const,
-    label: 'Open locus',
+    label: 'Empty slot',
     strains: [],
   }));
   const consequence = (name: string) => ({
@@ -28,7 +28,7 @@ function mutationLoomModel(): TacticalLoomDecisionModel {
   return {
     decisionId: 'portal-mutation-offer',
     rulesVersion: 2,
-    title: 'Mutation Loom',
+    title: 'The Drop',
     sourceLabel: 'Portal mutation · +3 growth',
     dynasty: 'PRIMAL',
     currentGenome: emptyGenome,
@@ -36,18 +36,18 @@ function mutationLoomModel(): TacticalLoomDecisionModel {
       {
         action: 'THREAD',
         geneId: 'coilkeeper',
-        name: 'Coilkeeper',
+        name: 'Loop Trap',
         category: 'Spatial mastery',
         strains: ['FERAL'],
-        consequence: consequence('Coilkeeper'),
+        consequence: consequence('Loop Trap'),
       },
       {
         action: 'THREAD',
         geneId: 'wall_rush',
-        name: 'Wall Rush',
+        name: 'Wall Bounce',
         category: 'Movement',
         strains: ['FLUX'],
-        consequence: consequence('Wall Rush'),
+        consequence: consequence('Wall Bounce'),
       },
     ],
     decline: {
@@ -122,7 +122,7 @@ describe('PortalChoiceOverlay', () => {
 
   it('names how many doors are already behind the player', () => {
     render(<PortalChoiceOverlay canInfuse infusesUsed={0} snakeLength={12} bankDna={400} crashDna={180} doorsPassed={3} cadence={CADENCE} onBank={jest.fn()} onPass={jest.fn()} onInfuse={jest.fn()} />);
-    expect(screen.getByTestId('portal-bank-carry')).toHaveTextContent('3 continued');
+    expect(screen.getByTestId('portal-bank-carry')).toHaveTextContent('3 ridden');
   });
 
   it('preserves the input lock and resolves PASS explicitly', () => {
@@ -138,7 +138,7 @@ describe('PortalChoiceOverlay', () => {
 
   it('renders a surge choice at the six-gene cap', () => {
     render(<StrainSurgeOverlay strains={['AURUM', 'UMBRA']} onChoose={jest.fn()} />);
-    expect(screen.getByRole('dialog', { name: 'Strain Surge' })).toHaveAttribute(
+    expect(screen.getByRole('dialog', { name: 'Path Surge' })).toHaveAttribute(
       'aria-modal',
       'true'
     );
@@ -167,9 +167,9 @@ describe('PortalChoiceOverlay', () => {
         onInfuse={jest.fn()}
       />
     );
-    expect(screen.getByTestId('portal-pass')).toHaveTextContent('CONTINUE');
+    expect(screen.getByTestId('portal-pass')).toHaveTextContent('RIDE ON');
     expect(screen.getByTestId('portal-continue-lock')).toHaveTextContent('Complete one validated BANK · 0 / 1');
-    expect(screen.getByTestId('portal-infuse')).toHaveTextContent('MUTATE');
+    expect(screen.getByTestId('portal-infuse')).toHaveTextContent('TRADE UP');
     expect(screen.getByTestId('portal-infuse')).toHaveTextContent('+3 permanent growth');
     expect(screen.getByTestId('portal-mutate-lock')).toHaveTextContent('Bank 4 runs to unlock Genome mutation · 1 / 4');
   });
@@ -193,12 +193,12 @@ describe('PortalChoiceOverlay', () => {
     );
     const mutate = screen.getByTestId('portal-infuse');
     expect(mutate).toHaveTextContent('+10 permanent growth');
-    expect(mutate).toHaveTextContent('Recode one locus');
+    expect(mutate).toHaveTextContent('Swap one slot');
     expect(mutate).toHaveTextContent('Retains ledgers');
     expect(mutate).not.toHaveTextContent(/remove|shorten|−\d+\s*(tail|segment)/i);
   });
 
-  it('keeps Mirror Wager player-controlled at CONTINUE', () => {
+  it('keeps Split Bet player-controlled at CONTINUE', () => {
     const onPass = jest.fn();
     render(
       <PortalChoiceOverlay
@@ -258,12 +258,12 @@ describe('PortalChoiceOverlay', () => {
         onInfuse={onInfuse}
       />
     );
-    expect(screen.getByTestId('portal-mutate-preview')).toHaveTextContent('Coilkeeper · Spatial mastery');
-    expect(screen.getByTestId('portal-mutate-preview')).toHaveTextContent('Wall Rush · Movement');
+    expect(screen.getByTestId('portal-mutate-preview')).toHaveTextContent('Loop Trap · Spatial mastery');
+    expect(screen.getByTestId('portal-mutate-preview')).toHaveTextContent('Wall Bounce · Movement');
 
     act(() => jest.advanceTimersByTime(CHOICE_INPUT_LOCK_MS));
     fireEvent.click(screen.getByTestId('portal-infuse'));
-    expect(screen.getByRole('dialog', { name: 'Mutation Loom' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'The Drop' })).toBeInTheDocument();
     expect(onInfuse).not.toHaveBeenCalled();
     expect(onCommit).not.toHaveBeenCalled();
 

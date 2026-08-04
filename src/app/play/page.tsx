@@ -61,7 +61,7 @@ const STEPS = [
   },
   {
     title: 'Make the deal',
-    body: 'A portal opens. BANK secures what you have at ×1.25, PASS pushes your luck, INFUSE spends body length for build power. This is the whole game in one decision.',
+    body: 'A portal opens. BANK keeps what you have, RIDE ON pushes your luck, TRADE UP spends body length for power. This is the whole game in one decision.',
   },
   {
     title: 'Keep what you built',

@@ -89,7 +89,7 @@ describe('Genome v2 Research table', () => {
     await renderResearch();
     fireEvent.click(screen.getByTestId('workbench-gene-compound_interest'));
     expect(screen.getByTestId('workbench-focused-gene-name')).toHaveTextContent(
-      'Compound Interest'
+      'Stash'
     );
 
     for (const tier of [2, 3, 4]) {
@@ -125,7 +125,7 @@ describe('Genome v2 Research table', () => {
     await renderResearch();
     fireEvent.click(screen.getByTestId('workbench-tier-AURUM-3'));
     expect(screen.getByTestId('workbench-strain-disclosure')).toHaveTextContent(
-      /AURUM 3/i
+      /Gold 3/i
     );
     expect(screen.getByTestId('workbench-strain-disclosure').textContent?.length).toBeGreaterThan(40);
 
@@ -134,7 +134,7 @@ describe('Genome v2 Research table', () => {
     const disclosure = screen.getByTestId('workbench-splice-disclosure');
     expect(disclosure).toHaveTextContent('Rule');
     expect(disclosure).toHaveTextContent('Cost');
-    expect(disclosure).toHaveTextContent(/Every fifth target/i);
+    expect(disclosure).toHaveTextContent(/Every 5th food/i);
   });
 
   it('lets the player discover a reaction without ranking the answer', async () => {
@@ -144,7 +144,7 @@ describe('Genome v2 Research table', () => {
     fireEvent.click(screen.getByTestId('workbench-gene-overgrowth'));
     fireEvent.click(screen.getByTestId('workbench-thread'));
 
-    expect(screen.getAllByText('Gilded Fork').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('The Bag').length).toBeGreaterThan(0);
     const text = screen.getByTestId('workbench-view').textContent ?? '';
     expect(text).not.toMatch(/\bscore\b|recommended|ranking|best build/i);
   });
@@ -397,7 +397,7 @@ describe('Genome v2 Research table', () => {
     const study = await screen.findByTestId('workbench-run-study');
     const aurum = study.querySelector('[data-testid="workbench-strain-AURUM"]');
     expect(aurum).toHaveTextContent(
-      'Dampened · Minor remains available; higher reactions are capped'
+      'Dampened · Level I still works; higher levels are capped'
     );
     expect(aurum).not.toHaveTextContent('Minor stays active');
   });

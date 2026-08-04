@@ -9,11 +9,10 @@ import {
   STRAINS,
   STRAIN_IDS,
   STRAIN_THRESHOLDS,
-  STRAIN_TIER_NAMES,
   type StrainId,
   type StrainPoints,
 } from '@/shared/game/strains';
-import { describe, strainTierId } from '@/shared/game/lexicon';
+import { describe, strainTierId, strainTierLabel } from '@/shared/game/lexicon';
 import type {
   TacticalLoomConsequence,
   TacticalLoomDecisionModel,
@@ -45,7 +44,7 @@ function genomeSlots(held: readonly GenePick[], incoming?: GeneId): TacticalLoom
           strains: GENES[pick.id].strains,
           detail: GENES[pick.id].effect,
         }
-      : { index, kind: 'empty' as const, label: 'Open locus', strains: [] };
+      : { index, kind: 'empty' as const, label: 'Empty slot', strains: [] };
   });
 }
 
@@ -59,11 +58,10 @@ function strainProjection(
   return STRAIN_IDS.filter((strain) => affected.has(strain)).map((strain) => {
     const before = counts[strain] ?? 0;
     const after = before + 1;
-    const names = STRAIN_TIER_NAMES[strain];
     const tiers = [
-      { points: STRAIN_THRESHOLDS.minor, name: names.minor, lexiconTier: 1 as const },
-      { points: STRAIN_THRESHOLDS.expression, name: names.expression, lexiconTier: 2 as const },
-      { points: STRAIN_THRESHOLDS.apex, name: names.apex, lexiconTier: 3 as const },
+      { points: STRAIN_THRESHOLDS.minor, name: strainTierLabel(strain, 1), lexiconTier: 1 as const },
+      { points: STRAIN_THRESHOLDS.expression, name: strainTierLabel(strain, 2), lexiconTier: 2 as const },
+      { points: STRAIN_THRESHOLDS.apex, name: strainTierLabel(strain, 3), lexiconTier: 3 as const },
     ];
     return {
       id: strain,
@@ -105,7 +103,7 @@ function splicePaths(
       name: known ? splice.name : 'Uncatalogued Splice',
       stage: 'immediate',
       projectionState: 'forms-now',
-      rule: known ? splice.effect : 'This choice creates a valid fusion in one active locus.',
+      rule: known ? splice.effect : 'This choice makes a Combo in one active slot.',
       cost: known ? splice.cost : 'Its complete rule is revealed when the fusion is discovered.',
       recipeKnown: known,
       recipeLabel: known
@@ -155,7 +153,7 @@ function candidateConsequence(
   );
   return {
     category: def.economics === 'pure' ? 'Yield & outcome' : def.economics === 'path' ? 'Execution' : 'Genome',
-    trigger: { label: 'Active immediately after THREAD' },
+    trigger: { label: 'Active the moment you take it' },
     salienceChip: formingSplice
       ? `Forms ${formingSplice.name}`
       : unlockedTier
@@ -186,7 +184,7 @@ function declineConsequence(input: LegacyTacticalLoomInput): TacticalLoomConsequ
       : 'Genome unchanged',
     effect: input.pityStrain
       ? `Spend this offer. The next first slot is forced to ${STRAINS[input.pityStrain].name.toUpperCase()}.`
-      : 'Spend this offer and preserve every open Genome locus.',
+      : 'Spend this offer and keep every empty slot.',
     cost: 'Neither offered gene enters this run. The next offer keeps its normal cadence.',
     genomeAfter: genomeSlots(input.held),
     strains: [],
@@ -213,8 +211,8 @@ export function buildLegacyTacticalLoomModel(
   return {
     decisionId: `legacy:${input.source ?? 'gene_food'}:${input.options.join(':')}:${input.held.length}`,
     rulesVersion: 1,
-    title: 'Tactical Loom',
-    sourceLabel: input.source === 'infuse' ? 'Portal infusion' : 'Genome offer',
+    title: 'The Drop',
+    sourceLabel: input.source === 'infuse' ? 'Portal trade-up' : 'Power offer',
     dynasty: 'ACTIVE RUN',
     currentGenome: genomeSlots(input.held),
     candidates: input.options.map((option) => ({
@@ -227,7 +225,7 @@ export function buildLegacyTacticalLoomModel(
     })) as unknown as TacticalLoomDecisionModel['candidates'],
     decline: {
       action: 'DECLINE',
-      name: 'Keep this Genome',
+      name: 'Keep your powers',
       consequence: declineConsequence(input),
     },
   };

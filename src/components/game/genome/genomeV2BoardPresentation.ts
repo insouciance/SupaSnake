@@ -9,7 +9,8 @@ import {
   type GenomeV2State,
   type GenomeV2TargetLifecycle,
 } from '@/shared/game/genomeV2';
-import { formatNonNegativeAmount } from '@/shared/format/amount';
+import { GENOME_V2_GENES } from '@/shared/game/genes';
+import { genomeV2PresentationFormat } from './genomeV2PresentationAdapter';
 
 export type GenomeV2BoardTerrainSource =
   | 'coilkeeper_seal'
@@ -84,17 +85,17 @@ function sameCell(left: GenomeV2Cell, right: GenomeV2Cell): boolean {
 function targetName(kind: GenomeV2ExclusiveTargetKind): string {
   switch (kind) {
     case 'gold_trail':
-      return 'GILDED';
+      return 'GOLDEN HOUR';
     case 'live_wire':
-      return 'LIVE WIRE';
+      return 'STRAIGHT SHOT';
     case 'circuit_run':
-      return 'CIRCUIT';
+      return 'FOOD CHAIN';
     case 'coilkeeper':
-      return 'COILKEEPER';
+      return 'LOOP TRAP';
     case 'wall_rush':
-      return 'WALL RUSH';
+      return 'WALL BOUNCE';
     case 'phase_gate':
-      return 'PHASE GATE';
+      return 'SIDE DOOR';
   }
 }
 
@@ -107,13 +108,13 @@ function targetRewardLabel(
     case 'gold_trail':
       return genomeV2HasSplice(state, 'splice_gilded_fork')
         ? '×4 GREED'
-        : '×3 YIELD';
+        : '×3 PAYOUT';
     case 'live_wire':
-      return '×3 YIELD';
+      return '×3 PAYOUT';
     case 'circuit_run':
       return genomeV2HasSplice(state, 'splice_perfect_circuit')
-        ? '×5 YIELD'
-        : '×4 YIELD';
+        ? '×5 PAYOUT'
+        : '×4 PAYOUT';
     case 'coilkeeper': {
       const tier = [...GENOME_V2_CONFIG.coilkeeper.rewardTiers]
         .reverse()
@@ -124,12 +125,12 @@ function targetRewardLabel(
             (tier?.multiplierBps ?? 0) + sealedAreaCells * 1_000
           )
         : (tier?.multiplierBps ?? 0);
-      return bps > 0 ? `×${bps / GENOME_V2_YIELD_SCALE} YIELD` : 'SEAL PAYOUT';
+      return bps > 0 ? `×${bps / GENOME_V2_YIELD_SCALE} PAYOUT` : 'SEAL PAYOUT';
     }
     case 'wall_rush':
       return genomeV2HasSplice(state, 'splice_riftline')
-        ? '×4 YIELD'
-        : '×2.5 YIELD';
+        ? '×4 PAYOUT'
+        : '×2.5 PAYOUT';
     case 'phase_gate':
       return '×3 VIA GATE';
   }
@@ -214,7 +215,7 @@ export function projectGenomeV2Board(
         totalMoveBudget: null,
         budgetFraction: null,
         budgetExpired: false,
-        rewardLabel: 'FUTURE STAR',
+        rewardLabel: 'NEXT STAR',
         statusLabel: 'GHOST · NOT EDIBLE',
       });
       continue;
@@ -239,7 +240,7 @@ export function projectGenomeV2Board(
       target.forkCell &&
       genomeV2HasSplice(state, 'splice_gilded_fork')
     ) {
-      const statusLabel = 'GILDED FORK · SAFE ×1 OR GREED ×4 / +2 BODY';
+      const statusLabel = 'THE BAG · SAFE ×1 OR GREED ×4 / +2 BODY';
       targets.push(
         {
           targetId: target.targetId,
@@ -254,7 +255,7 @@ export function projectGenomeV2Board(
           totalMoveBudget: null,
           budgetFraction: null,
           budgetExpired: false,
-          rewardLabel: 'SAFE · ×1 YIELD',
+          rewardLabel: 'SAFE · ×1 PAYOUT',
           statusLabel,
         },
         {
@@ -270,7 +271,7 @@ export function projectGenomeV2Board(
           totalMoveBudget: null,
           budgetFraction: null,
           budgetExpired: false,
-          rewardLabel: 'GREED · ×4 YIELD · +2 BODY',
+          rewardLabel: 'GREED · ×4 PAYOUT · +2 BODY',
           statusLabel,
         }
       );
@@ -317,9 +318,15 @@ export function projectGenomeV2Board(
   };
 }
 
-/** Yield is an AMOUNT: the rail reads whole units, never a fractional tail. */
+/**
+ * The rail's compact payout, from the one formatter.
+ *
+ * This used to be a private duplicate that rendered "42Y" while the Loom
+ * rendered "42 Yield" for the same number. The short form is now an option on
+ * `genomeV2PresentationFormat.scaledYield`, not a second implementation.
+ */
 function scaledYield(value: number): string {
-  return `${formatNonNegativeAmount(value / GENOME_V2_YIELD_SCALE)}Y`;
+  return genomeV2PresentationFormat.scaledYield(value, { short: true });
 }
 
 /** Highest-value live facts for the fixed, non-interactive status rail. */
@@ -340,14 +347,14 @@ export function buildGenomeV2RuntimeSignals(
   if (state.mirrorLeg) {
     signals.push({
       id: 'mirror',
-      label: `MIRROR ARMED · STAKE ${scaledYield(state.ledger.mirrorStake)}`,
+      label: `SPLIT BET ARMED · BET ${scaledYield(state.ledger.mirrorStake)}`,
       tone: 'risk',
     });
   }
   if (state.loan) {
     signals.push({
       id: 'loan',
-      label: `LOAN ${state.loan.foodsRemaining} LEFT · ESCROW ${scaledYield(state.loan.escrowYield)}`,
+      label: `DEAL · ${state.loan.foodsRemaining} LEFT · ON THE TABLE ${scaledYield(state.loan.escrowYield)}`,
       tone: 'risk',
     });
   }
@@ -357,7 +364,7 @@ export function buildGenomeV2RuntimeSignals(
       / 100;
     signals.push({
       id: 'bonds',
-      label: `COMPOUND · ${state.bonds}/${GENOME_V2_CONFIG.compoundInterest.maxBonds} BONDS · BANK +${bankBonus}%`,
+      label: `STASH · ${state.bonds}/${GENOME_V2_CONFIG.compoundInterest.maxBonds} · BANK +${bankBonus}%`,
       tone: 'ready',
     });
   }
@@ -367,14 +374,14 @@ export function buildGenomeV2RuntimeSignals(
   if (genomeV2HasGene(state, 'overgrowth') || genomeV2HasSplice(state, 'splice_worldcoil')) {
     signals.push({
       id: 'overgrowth',
-      label: 'OVERGROWTH · +1 BODY / FOOD · ×1.4–2.5',
+      label: 'FEAST · +1 BODY / FOOD · ×1.4–2.5',
       tone: 'pressure',
     });
   }
   if (genomeV2HasGene(state, 'time_dilation')) {
     signals.push({
       id: 'dilation',
-      label: 'TIME DILATION · SPEED ×0.88 · +1 BODY / 4 FOOD',
+      label: 'SLO-MO · SPEED ×0.88 · +1 BODY / 4 FOOD',
       tone: 'pressure',
     });
   }
@@ -382,8 +389,8 @@ export function buildGenomeV2RuntimeSignals(
     signals.push({
       id: 'anchor',
       label: state.anchor.pinnedGeneId
-        ? `ANCHOR PINNED · ${state.anchor.pinnedGeneId.replaceAll('_', ' ').toUpperCase()}`
-        : `LOOM ANCHOR · ${state.anchor.charges} CHARGE${state.anchor.charges === 1 ? '' : 'S'}`,
+        ? `ON ICE · ${GENOME_V2_GENES[state.anchor.pinnedGeneId].name.toUpperCase()}`
+        : `ON ICE · ${state.anchor.charges} SAVE${state.anchor.charges === 1 ? '' : 'S'}`,
       tone: state.anchor.charges > 0 ? 'ready' : 'pressure',
     });
   }
@@ -413,8 +420,8 @@ export function latestGenomeV2BoardFeedback(
           ? target.kind === 'gold_trail' &&
             genomeV2HasSplice(state, 'splice_gilded_fork')
             ? target.forkChoice === 'gilded'
-              ? 'GILDED FORK · GREED SECURED · ×4 / +2 BODY'
-              : 'GILDED FORK · SAFE BRANCH SECURED · ×1'
+              ? 'THE BAG · GREED SECURED · ×4 / +2 BODY'
+              : 'THE BAG · SAFE BRANCH SECURED · ×1'
             : `${targetName(target.kind)} COMPLETE · ${targetRewardLabel(state, target.kind, target.sealedAreaCells)}`
           : `${targetName(target.kind)} · BONUS MISSED`,
         tone: success ? 'success' : 'warning',
@@ -423,14 +430,14 @@ export function latestGenomeV2BoardFeedback(
     if (event.type === 'target_window_expired') {
       return {
         eventId: event.eventId,
-        label: 'GILDED WINDOW CLOSED · TARGET IS ORDINARY',
+        label: 'GOLDEN HOUR OVER · THIS FOOD IS ORDINARY',
         tone: 'warning',
       };
     }
     if (event.type === 'phase_gate_used') {
       return {
         eventId: event.eventId,
-        label: 'PHASE GATE USED · 2 SCARS NOW SOLID',
+        label: 'SIDE DOOR USED · 2 SCARS NOW SOLID',
         tone: 'risk',
       };
     }
@@ -467,7 +474,7 @@ export function latestGenomeV2BoardFeedback(
     if (event.type === 'wall_redirected') {
       return {
         eventId: event.eventId,
-        label: 'WALL RUSH REDIRECT · TARGET BONUS ARMED',
+        label: 'WALL BOUNCE · NEXT FOOD ARMED',
         tone: 'success',
       };
     }
@@ -475,22 +482,22 @@ export function latestGenomeV2BoardFeedback(
       return {
         eventId: event.eventId,
         label: event.outcome === 'perfect'
-          ? 'CONSTELLATION PERFECT · CROWN PAYOUT SECURED'
-          : 'CONSTELLATION BROKEN · CROWN PAYOUT LOST',
+          ? 'WAVE CLEARED · CROWN PAYOUT SECURED'
+          : 'WAVE BROKEN · CROWN PAYOUT LOST',
         tone: event.outcome === 'perfect' ? 'success' : 'warning',
       };
     }
     if (event.type === 'overclock_started') {
       return {
         eventId: event.eventId,
-        label: `${event.source === 'zenith_protocol' ? 'REDLINE' : 'OVERCLOCK'} ARMED · YIELD WINDOW LIVE`,
+        label: `${event.source === 'zenith_protocol' ? 'REDLINE' : 'TURBO'} ARMED · PAYOUT WINDOW LIVE`,
         tone: 'risk',
       };
     }
     if (event.type === 'overclock_ended') {
       return {
         eventId: event.eventId,
-        label: 'OVERCLOCK WINDOW COMPLETE',
+        label: 'BURST WINDOW COMPLETE',
         tone: 'warning',
       };
     }

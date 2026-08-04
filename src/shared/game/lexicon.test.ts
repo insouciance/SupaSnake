@@ -20,10 +20,10 @@ import {
   strainTierLabel,
   type LexiconCategory,
 } from './lexicon';
-import { GENES } from './genes';
+import { GENES, GENOME_V2_GENES } from './genes';
+import { GENOME_V2_SPLICE_IDS, GENOME_V2_STRAIN_LADDERS } from './genomeV2';
 import { MUTATIONS } from './mutations';
-import { SPLICE_IDS } from './splices';
-import { STRAIN_IDS, STRAIN_TIER_NAMES } from './strains';
+import { STRAIN_IDS } from './strains';
 import { TRAIT_POOL } from './traits';
 import { ANOMALIES } from './anomalies';
 
@@ -57,16 +57,26 @@ describe('describe()', () => {
       expect(entry!.name.length).toBeGreaterThan(0);
     }
 
+    // And every Power a live v2 run can draw, which is the catalog the
+    // published section now enumerates.
+    for (const id of Object.keys(GENOME_V2_GENES)) {
+      const entry = describeEntry('gene', id);
+      expect(entry).not.toBeNull();
+      expect(entry!.name.length).toBeGreaterThan(0);
+    }
+
     // The two the spec names explicitly: one genome-era base gene and one
-    // M10 dynasty signature. Both are absent from MUTATIONS.
+    // M10 dynasty signature. Both are absent from MUTATIONS. Both ids are
+    // also in the v2 pool, so they answer with their v2 meaning — the one a
+    // player can act on.
     expect(describeEntry('gene', 'loan_shark')).toMatchObject({
       kind: 'gene',
-      name: 'Loan Shark',
-      strains: ['AURUM'],
+      name: 'Double or Nothing',
+      strains: ['AURUM', 'UMBRA'],
     });
     expect(describeEntry('gene', 'heartwood')).toMatchObject({
       kind: 'gene',
-      name: 'Heartwood',
+      name: 'Roots',
       strains: ['FERAL'],
     });
   });
@@ -100,8 +110,11 @@ describe('describe()', () => {
 describe('lexiconSection()', () => {
   it('covers every catalog completely', () => {
     expect(lexiconSection('trait')).toHaveLength(TRAIT_POOL.length);
-    expect(lexiconSection('gene')).toHaveLength(Object.keys(GENES).length);
-    expect(lexiconSection('splice')).toHaveLength(SPLICE_IDS.length);
+    // Powers and Combos publish the REACHABLE catalog, not the historical
+    // one. Iterating the v1 tables advertised seven Combos whose parents had
+    // left the pool — recipes no v2 run could ever complete.
+    expect(lexiconSection('gene')).toHaveLength(Object.keys(GENOME_V2_GENES).length);
+    expect(lexiconSection('splice')).toHaveLength(GENOME_V2_SPLICE_IDS.length);
     expect(lexiconSection('strain')).toHaveLength(STRAIN_IDS.length);
     expect(lexiconSection('anomaly')).toHaveLength(Object.keys(ANOMALIES).length);
     expect(lexiconSection('dynasty')).toHaveLength(DYNASTY_IDS.length);
@@ -161,21 +174,25 @@ describe('lexiconSection()', () => {
 });
 
 describe('strain tier labels', () => {
-  it('promotes Dormant into the lexicon as the documented tier-0 label', () => {
+  it('names every rung from the one live ladder, and tier 0 from the lexicon', () => {
+    // The v1 `STRAIN_TIER_NAMES` table named fifteen rungs the v2 ladder had
+    // already replaced, so the meter and the Workbench called the same rung
+    // two different things. There is now one source.
     for (const strain of STRAIN_IDS) {
+      const ladder = GENOME_V2_STRAIN_LADDERS[strain];
       expect(strainTierLabel(strain, 0)).toBe(STRAIN_TIER_DORMANT);
-      expect(strainTierLabel(strain, 1)).toBe(STRAIN_TIER_NAMES[strain].minor);
-      expect(strainTierLabel(strain, 2)).toBe(STRAIN_TIER_NAMES[strain].expression);
-      expect(strainTierLabel(strain, 3)).toBe(STRAIN_TIER_NAMES[strain].apex);
+      expect(strainTierLabel(strain, 1)).toBe(ladder[0].name);
+      expect(strainTierLabel(strain, 2)).toBe(ladder[1].name);
+      expect(strainTierLabel(strain, 3)).toBe(ladder[2].name);
       // Out-of-range input clamps rather than throwing — it comes from a HUD.
-      expect(strainTierLabel(strain, 9)).toBe(STRAIN_TIER_NAMES[strain].apex);
+      expect(strainTierLabel(strain, 9)).toBe(ladder[2].name);
       expect(strainTierLabel(strain, -1)).toBe(STRAIN_TIER_DORMANT);
     }
   });
 
-  it('names each tier by its family and its tier name', () => {
+  it('names each tier by its Path, its level and its rung', () => {
     const entry = describeEntry('strainTier', strainTierId('FERAL', 2));
-    expect(entry!.name).toBe('Feral Fortress');
+    expect(entry!.name).toBe('Coils II — Claim');
     expect(entry!.color).toBe(describeEntry('strain', 'FERAL')!.color);
   });
 
@@ -186,7 +203,7 @@ describe('strain tier labels', () => {
     );
     expect(source).toContain('strainTierLabel');
     expect(source).not.toContain('STRAIN_TIER_NAMES');
-    expect(source).not.toMatch(/'Dormant'/);
+    expect(source).not.toMatch(/'Asleep'/);
   });
 });
 

@@ -72,13 +72,38 @@ describe('Genome Research compatibility page', () => {
     expect(source).not.toMatch(/premium_required|isPremium|hasPremium/);
   });
 
+  it('renders the house rules before any sign-in, so the verbs are readable', () => {
+    // The glossary shipped as dead code: authored, unit-tested, and mounted
+    // by nothing. A signed-out visitor could not find out what BANK meant.
+    mockUseAuth.mockReturnValue({ session: null, isAuthenticated: false });
+    render(<CodexPage />);
+
+    const mechanics = screen.getByTestId('codex-mechanics');
+    expect(mechanics).toBeInTheDocument();
+    expect(screen.getByTestId('codex-mechanic-extraction_bank')).toHaveTextContent(
+      'BANK',
+    );
+    expect(screen.getByTestId('codex-mechanic-extraction_pass')).toHaveTextContent(
+      'RIDE ON',
+    );
+    expect(
+      screen.getByTestId('codex-mechanic-extraction_infuse'),
+    ).toHaveTextContent('TRADE UP');
+    // The BANK definition quotes the real compounding Carry, not a flat
+    // multiplier it stopped earning years ago.
+    expect(
+      screen.getByTestId('codex-mechanic-extraction_bank'),
+    ).toHaveTextContent('×1.25');
+    expect(mechanics).not.toHaveTextContent(/\bPASS\b|\bINFUSE\b/);
+  });
+
   it('keeps production, mixed rollback, and full rollback copy truthful', () => {
     expect(genomeResearchCopy(true, true)).toMatchObject({
       intro: expect.stringContaining('Touch a possible Genome'),
       signedOutRecord: expect.stringContaining('Workbench is open to everyone'),
     });
     expect(genomeResearchCopy(false, true)).toMatchObject({
-      intro: expect.stringContaining('Sign in to plan a Genome'),
+      intro: expect.stringContaining('Sign in to plan your Powers'),
       signedOutRecord: expect.not.stringContaining(
         'Workbench is open to everyone',
       ),
@@ -165,7 +190,7 @@ describe('Genome Research compatibility page', () => {
     expect(screen.getByText('Genome Weaver')).toBeInTheDocument();
     expect(
       screen.getByTestId('codex-recipe-splice_dragon_hoard'),
-    ).toHaveTextContent('Gold Trail + Compound Interest');
+    ).toHaveTextContent('Golden Hour + Stash');
   });
 
   it('fails closed synchronously when player B sees player A store state', () => {

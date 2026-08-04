@@ -38,7 +38,7 @@ interface CareerPulseProps {
 
 const PILLAR_LABELS: Record<ProgressionPillar, string> = {
   mastery: 'Mastery',
-  lineage: 'Lineage',
+  lineage: 'Bloodline',
   discovery: 'Discovery',
   clan: 'Clan',
   calendar: 'World',
@@ -112,7 +112,7 @@ function LineageSummary({ pulse }: { pulse: CareerPulseData }) {
     <div className="rounded-arcade border border-scale-blue-light/30 bg-void/45 p-3">
       <div className="flex items-center gap-2 text-[#7df9ff]">
         <IconEgg size={16} />
-        <p className="label-arcade">Lineage</p>
+        <p className="label-arcade">Bloodline</p>
       </div>
       <p className="mt-2 font-display text-lg text-bone-white">
         {pulse.lineage.highestGeneration > 0

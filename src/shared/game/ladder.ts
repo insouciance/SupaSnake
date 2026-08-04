@@ -216,7 +216,7 @@ export const LADDER_RUNGS: readonly LadderRung[] = [
   {
     rung: 5,
     name: 'The Weight of Power',
-    rule: 'INFUSE grows you four more segments.',
+    rule: 'TRADE UP grows you four more segments.',
     // Rule 15 made INFUSE cost growth (8 segments). 12 is half again, and this
     // is the rung that makes INFUSE a decision rather than a habit on a run
     // that is already fighting the board because of rung 1.

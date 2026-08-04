@@ -22,17 +22,17 @@ const CHOICES = [
   {
     key: 'bank',
     label: 'BANK',
-    body: 'Take the run and secure it at ×1.25. Safe, smaller, certain.',
+    body: 'Leave now and keep it all. Safe, smaller, certain.',
   },
   {
     key: 'pass',
-    label: 'PASS',
+    label: 'RIDE ON',
     body: 'Keep going. The board gets harder and the pot gets bigger.',
   },
   {
     key: 'infuse',
-    label: 'INFUSE',
-    body: 'Feed growth into build power. A stronger genome leaves a longer, harder snake.',
+    label: 'TRADE UP',
+    body: 'Trade body length for a new power. A stronger snake is a longer, harder snake.',
   },
 ] as const;
 

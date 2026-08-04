@@ -2463,7 +2463,7 @@ export default function GamePage() {
     gameRef.current.on('infused', () => {
       setPortalChoicePending(false);
       mirrorGenomeState();
-      showToast('Portal infused — body became build power', 'triumph', 2600);
+      showToast('Traded up — body became power', 'triumph', 2600);
       secureRunBoundary();
     });
 
@@ -6849,7 +6849,7 @@ export default function GamePage() {
                     {heirloomNode}
                     {buildSeedNode}
                     <p className="text-beige/50 font-body text-xs">
-                      Exit portal banks +25% — crashing salvages 60%
+                      BANK at a portal pays +25% — crash and you keep 60%
                     </p>
                   </div>
                 ) : noSnakeAvailable ? (

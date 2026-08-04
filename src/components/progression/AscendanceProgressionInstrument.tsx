@@ -63,13 +63,13 @@ export function AscendanceProgressionInstrument({
       className={`rounded-[16px] border border-venom-orange/30 bg-gradient-to-br from-venom-orange/8 via-void-deep/55 to-cosmic/8 ${compact ? 'p-3' : 'p-4'}`}
       data-testid="ascendance-progression"
       data-curve-version={model.curveVersion}
-      aria-label={`Ascendance generation ${model.generation}`}
+      aria-label={`Legacy generation ${model.generation}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-body text-[9px] font-bold uppercase tracking-[0.16em] text-venom-orange">Ascendance</p>
+          <p className="font-body text-[9px] font-bold uppercase tracking-[0.16em] text-venom-orange">Legacy</p>
           <p className={`${compact ? 'text-xl' : 'text-2xl'} font-display text-bone-white`}>
-            Gen {model.generation} · Yield ×{model.currentMultiplier}
+            Gen {model.generation} · Payout ×{model.currentMultiplier}
           </p>
         </div>
         {!v2 ? (
@@ -81,7 +81,7 @@ export function AscendanceProgressionInstrument({
 
       {v2 && model.generation < 4 ? (
         <p className="mt-3 rounded-[10px] border border-cosmic/25 bg-cosmic/5 p-2.5 font-body text-[10px] leading-snug text-beige/65" data-testid="ascendance-begins">
-          Ascendance begins at Gen4. Gen1–3 establish this snake&apos;s traits and lineage before permanent Yield growth starts.
+          Legacy begins at Gen4. Gen1–3 establish this snake&apos;s traits and bloodline before permanent payout growth starts.
         </p>
       ) : null}
 
@@ -104,7 +104,7 @@ export function AscendanceProgressionInstrument({
         </div>
       ) : (
         <p className="mt-3 rounded-[10px] border border-scale-blue-light/20 bg-void-deep/40 p-2.5 font-body text-[10px] leading-snug text-beige/65" data-testid="ascendance-v1-legacy">
-          This run retained its v1 Ascendance stamp. Its frozen multiplier settles unchanged; newly started runs use the current curve.
+          This run retained its v1 Legacy stamp. Its frozen multiplier settles unchanged; newly started runs use the current curve.
         </p>
       )}
 
