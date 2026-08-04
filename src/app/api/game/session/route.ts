@@ -179,6 +179,13 @@ import {
   terminalFactsFromRow,
   type ContinuityRow,
 } from '@/lib/server/runContinuity';
+import { isAuthorizedCron } from '@/lib/server/cronAuth';
+import {
+  absorbStrandedTerminalRun,
+  isInternalAbsorbRequest,
+  resolveInternalAbsorbIdentity,
+  INTERNAL_ABSORB_SESSION_HEADER,
+} from '@/lib/server/strandedTerminalRun';
 
 // Preserve the proven production budget: settlement now contains multiple
 // independent durable stages. The cutover drains the outgoing canonical
@@ -204,97 +211,25 @@ function pendingSettlementJson(sessionId: string) {
 }
 
 /**
- * A run the server already terminalized (`continuity_phase = 'terminal'`,
- * `ended_at IS NULL`) has exactly one driver in the shipped design: a browser
- * re-posting `action: 'end'`. Nothing on the server sweeps it —
- * `expire_stale_game_sessions` skips every continuity row (it requires
- * `start_request_id IS NULL`), `list_pending_game_session_ends` needs a
- * `pending_game_session_ends` envelope this run never staged, and
- * `list_pending_game_progression_sessions` needs `ended_at IS NOT NULL` plus an
- * adopted `atomic_v1` stamp it never earned. So one failed fold strands the row
- * permanently, and because `readActiveRun` keeps returning it, the start guard
- * below refuses every future run on the account.
- *
- * The fix is to fold it here, inside the start the player just asked for, by
- * re-entering this route's own audited settlement branch with this request's
- * own credentials. Nothing is duplicated and nothing is recomputed differently:
- * it is the same code path the client would have driven, and it is idempotent
- * by session, so a concurrent client retry cannot double-pay.
+ * The stranded-terminal absorb now lives in `@/lib/server/strandedTerminalRun`
+ * so the settlement sweep can drive the same fold with no player present
+ * (CE-2). Absorption is still best-effort here: its failure must never turn
+ * into a different failure for the start the player actually asked for — the
+ * guard below re-reads server truth and answers from that.
  */
-const INTERNAL_ABSORB_HEADER = 'x-supasnake-absorb-stranded-run';
-
-function isInternalAbsorbRequest(request: NextRequest): boolean {
-  return request.headers.get(INTERNAL_ABSORB_HEADER) === '1';
-}
-
-async function absorbStrandedTerminalRun(
+async function absorbStrandedTerminalRunForStart(
   request: NextRequest,
   sessionId: string,
   context: { playerId: string }
 ): Promise<void> {
   const authorization = request.headers.get('authorization');
   if (!authorization) return;
-  try {
-    // `new URL(request.url)` rather than `request.nextUrl`: NextURL is not a
-    // URL instance, and passing a non-Request, non-URL input to the Request
-    // constructor is a runtime hazard that would surface only in production.
-    const internal = new NextRequest(new URL(request.url), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization,
-        [INTERNAL_ABSORB_HEADER]: '1',
-      },
-      body: JSON.stringify({ action: 'end', sessionId }),
-    });
-    const response = await POST(internal);
-    // FAIL LOUDLY. The first version of this absorb reported only 5xx, so a
-    // 4xx/503 rejection left no trace at all — a permanently stranded run
-    // looked identical to a healthy refusal, and the incident it was written
-    // to fix stayed invisible through a full deploy. Anything that is not a
-    // settlement (200) or a durable staging (202) is reported with its body.
-    if (response.status !== 200 && response.status !== 202) {
-      const detail = await response
-        .clone()
-        .text()
-        .then((body) => body.slice(0, 1000))
-        .catch(() => '<unreadable>');
-      console.error('Stranded terminal run absorption did not settle:', {
-        playerId: context.playerId,
-        sessionId,
-        status: response.status,
-        body: detail,
-      });
-      Sentry.captureMessage('Stranded terminal run absorption did not settle', {
-        level: 'error',
-        tags: { progression_stage: 'stranded_terminal_absorb' },
-        extra: {
-          playerId: context.playerId,
-          sessionId,
-          status: response.status,
-          body: detail,
-        },
-      });
-    }
-  } catch (error) {
-    // Absorption is best-effort recovery. Its failure must never turn into a
-    // different failure for the start the player actually asked for; the guard
-    // below re-reads server truth and answers from that.
-    console.error('Stranded terminal run absorption failed:', {
-      playerId: context.playerId,
-      sessionId,
-      error,
-    });
-    Sentry.captureException(
-      error instanceof Error
-        ? error
-        : new Error('Stranded terminal run absorption failed'),
-      {
-        tags: { progression_stage: 'stranded_terminal_absorb' },
-        extra: { playerId: context.playerId, sessionId },
-      }
-    );
-  }
+  await absorbStrandedTerminalRun(POST, {
+    requestUrl: request.url,
+    authorization,
+    sessionId,
+    playerId: context.playerId,
+  });
 }
 
 function storedNonNegativeNumber(value: unknown): number | null {
@@ -574,11 +509,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    // CE-2: the settlement sweep drives the stranded-terminal fold with no
+    // player present. It cannot mint a player token, so it authenticates with
+    // the cron secret and names ONE session in a header; the owner is derived
+    // from that row, and only if the row really is a stranded terminal run.
+    // The capability is "settle this stranded run as its owner", never "act as
+    // a player" — the argument is in `strandedTerminalRun.ts`. A header that
+    // resolves to nothing falls through to the ordinary token check, which
+    // rejects the cron secret as the invalid player token it is.
+    const serviceRoleAbsorb =
+      isInternalAbsorbRequest(request.headers) &&
+      isAuthorizedCron(request.headers)
+        ? await resolveInternalAbsorbIdentity(
+            supabase,
+            request.headers.get(INTERNAL_ABSORB_SESSION_HEADER)
+          )
+        : null;
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    let user: { id: string };
+    if (serviceRoleAbsorb) {
+      user = { id: serviceRoleAbsorb.userId };
+    } else {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: authData, error: authError } =
+        await supabase.auth.getUser(token);
+
+      if (authError || !authData?.user) {
+        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      }
+      user = authData.user;
     }
 
     const body = await request.json();
@@ -612,6 +571,15 @@ export async function POST(request: NextRequest) {
       replay,
       genomeInteractionVersion,
     } = body;
+
+    // The service-role identity above was issued for exactly one settlement.
+    // It may not start, resume, checkpoint, abandon, or end anything else.
+    if (
+      serviceRoleAbsorb &&
+      (action !== 'end' || sessionId !== serviceRoleAbsorb.sessionId)
+    ) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     // Rolling-deploy boundary: a tab loaded before continuity support cannot
     // name an idempotent start intent. Never invent one server-side (a lost
@@ -952,9 +920,9 @@ export async function POST(request: NextRequest) {
         // stops being permanent.
         if (
           activeRun?.phase === 'terminal' &&
-          !isInternalAbsorbRequest(request)
+          !isInternalAbsorbRequest(request.headers)
         ) {
-          await absorbStrandedTerminalRun(request, activeRun.sessionId, {
+          await absorbStrandedTerminalRunForStart(request, activeRun.sessionId, {
             playerId: player.id,
           });
           activeRun = await readActiveRun(supabase, player.id);

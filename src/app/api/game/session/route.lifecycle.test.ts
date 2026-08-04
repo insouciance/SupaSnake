@@ -122,6 +122,9 @@ let snakeOwnershipCountError: Row | null = null;
 let loseNextFreeSessionUpdateRace = false;
 let loseNextFreeContinuityRace = false;
 
+/** The cron bearer the settlement sweep authenticates its absorb with (CE-2). */
+const CRON_SECRET = 'cron-secret-for-lifecycle-tests';
+
 function matches(row: Row, calls: Call[]): boolean {
   for (const [op, ...args] of calls) {
     const cell = row[args[0] as string] ?? null;
@@ -138,7 +141,14 @@ function matches(row: Row, calls: Call[]): boolean {
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     auth: {
-      getUser: async () => ({ data: { user: { id: 'auth-1' } }, error: null }),
+      // A real Supabase accepts one signed player token and rejects every
+      // other string — including the cron secret. The fake must do the same,
+      // or the service-role absorb tests below would pass for the wrong
+      // reason: any bearer at all would authenticate as the player.
+      getUser: async (token: string) =>
+        token === 'token'
+          ? { data: { user: { id: 'auth-1' } }, error: null }
+          : { data: { user: null }, error: { message: 'invalid claim' } },
     },
     rpc: async (fn: string, params: unknown) => {
       rpcCalls.push({ fn, params });
@@ -524,6 +534,7 @@ function seedContinuityTerminalRun(options: {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  process.env.CRON_SECRET = CRON_SECRET;
   db.economy_transactions = [];
   db.collected_snakes = [];
   rpcCalls.length = 0;
@@ -1481,5 +1492,141 @@ describe('a start absorbs a stranded terminal run instead of refusing forever', 
     expect(rpcCalls.map((call) => call.fn)).not.toContain(
       'stage_continuity_game_session_end'
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE SWEEP SETTLES IT WITHOUT THE PLAYER (CE-2)
+// ---------------------------------------------------------------------------
+//
+// Absorbing on start still requires the player to come back. The settlement
+// sweep drives the same fold from cron, and the cron cannot mint a player
+// token — so it authenticates with the cron secret and names ONE session in a
+// header. The owner is derived from that row, and only if the row really is a
+// stranded terminal run. What follows pins that boundary in both directions.
+
+describe('the service-role absorb settles a stranded run with no player present', () => {
+  function absorbRequest(
+    headerSessionId: string,
+    body: Record<string, unknown> = { action: 'end', sessionId: 'session-1' },
+    authorization = `Bearer ${CRON_SECRET}`
+  ) {
+    return new NextRequest('http://localhost/api/game/session', {
+      method: 'POST',
+      headers: {
+        authorization,
+        'content-type': 'application/json',
+        'x-supasnake-absorb-stranded-run': '1',
+        'x-supasnake-absorb-session': headerSessionId,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('folds the run through the same audited branch the browser would drive', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+
+    const response = await POST(absorbRequest('session-1'));
+
+    expect([200, 202]).toContain(response.status);
+    expect(session().end_reason).toBe('completed');
+    expect(session().ended_at).not.toBeNull();
+    // Terminalized rows carry no lease: the settlement is authorized by the
+    // server-derived terminal facts, not by a browser's lease token.
+    expect(
+      rpcCalls.find((call) => call.fn === 'stage_continuity_game_session_end')
+        ?.params
+    ).toMatchObject({ p_session_id: 'session-1', p_lease_hash: null });
+  });
+
+  it('pays the same run exactly once however many drivers reach it', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+
+    await POST(absorbRequest('session-1'));
+    const dnaAfterFirst = Number(player().dna);
+    const gamesAfterFirst = Number(player().total_games_played);
+    await POST(absorbRequest('session-1'));
+
+    expect(Number(player().dna)).toBe(dnaAfterFirst);
+    expect(Number(player().total_games_played)).toBe(gamesAfterFirst);
+    expect(
+      db.economy_transactions.filter((row) => row.source_id === 'session-1').length
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it('refuses the cron secret without the absorb marker', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+    const request = new NextRequest('http://localhost/api/game/session', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${CRON_SECRET}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'end', sessionId: 'session-1' }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(401);
+    expect(session().ended_at).toBeNull();
+  });
+
+  it('refuses the absorb marker without the cron secret', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+
+    const response = await POST(
+      absorbRequest('session-1', { action: 'end', sessionId: 'session-1' }, 'Bearer not-the-secret')
+    );
+
+    expect(response.status).toBe(401);
+    expect(session().ended_at).toBeNull();
+  });
+
+  it('refuses to settle any session other than the one it named', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+
+    const response = await POST(
+      absorbRequest('session-1', { action: 'end', sessionId: 'session-2' })
+    );
+
+    expect(response.status).toBe(401);
+    expect(session().ended_at).toBeNull();
+  });
+
+  it.each([
+    ['start', { action: 'start', startRequestId: START_REQUEST_ID, mode: 'earn' }],
+    ['abandon', { action: 'abandon', sessionId: 'session-1' }],
+    ['checkpoint', { action: 'checkpoint', sessionId: 'session-1' }],
+    ['resume', { action: 'resume', sessionId: 'session-1' }],
+  ])('refuses to do anything but settle — %s', async (_label, body) => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+
+    const response = await POST(absorbRequest('session-1', body));
+
+    expect(response.status).toBe(401);
+    expect(session().ended_at).toBeNull();
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_continuity_game_session_end'
+    );
+  });
+
+  it('refuses a session that is not stranded — an active run is not settleable', async () => {
+    seedContinuityTerminalRun({ phase: 'active' });
+
+    const response = await POST(absorbRequest('session-1'));
+
+    expect(response.status).toBe(401);
+    expect(session().ended_at).toBeNull();
+    expect(session().continuity_phase).toBe('active');
+  });
+
+  it('refuses a session that already ended', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+    session().ended_at = new Date().toISOString();
+    session().end_reason = 'completed';
+
+    const response = await POST(absorbRequest('session-1'));
+
+    expect(response.status).toBe(401);
   });
 });
