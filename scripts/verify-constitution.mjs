@@ -617,6 +617,15 @@ const OWNED_TABLE_PATTERNS = [
   // demotion. Widening this list is always allowed; narrowing it is a Rule 6
   // decision.
   /ladder/i,
+  // WP-B. `player_gene_eligibility` holds which Genes an account has EARNED
+  // the right to be offered — monotone by design and never revoked
+  // (Constitution §8.3), which makes it R6 property even though none of the
+  // patterns above happens to match it. Added WITH the table, so the gate
+  // covers migration 066 from its first line: the one DELETE it contains is
+  // guarded to an unresolved trial and carries an inline allow marker a
+  // reviewer can check, and an author who later widens that statement fails
+  // the build instead of shipping a revocation.
+  /gene_eligibility/i,
 ];
 
 /** Catalogues and definitions are content, not player property. */
