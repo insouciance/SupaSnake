@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import { NavBar } from '@/components/ui/NavBar';
 import { IconCrown, IconDna, IconLock, IconTrophy } from '@/components/ui/icons';
 import type { DynastyStats, OverallStats } from '@/app/api/premium/stats/utils';
+import { formatAmount } from '@/shared/format/amount';
 
 interface StatsPayload {
   sampleSize: number;
@@ -141,11 +142,11 @@ export default function StatsPage() {
                 />
                 <StatTile
                   label="Total DNA earned"
-                  value={stats.overall.totalDna.toLocaleString()}
+                  value={formatAmount(stats.overall.totalDna)}
                 />
                 <StatTile
                   label="Total foods"
-                  value={stats.overall.totalFoods.toLocaleString()}
+                  value={formatAmount(stats.overall.totalFoods)}
                 />
                 <StatTile
                   label="Avg run length"
@@ -194,14 +195,14 @@ export default function StatsPage() {
                         </div>
                         <div className="flex justify-between">
                           <dt className="text-beige/70">Avg foods</dt>
-                          <dd className="text-bone-white">{d.avgFoods}</dd>
+                          <dd className="text-bone-white">{formatAmount(d.avgFoods)}</dd>
                         </div>
                         <div className="flex justify-between">
                           <dt className="text-beige/70 flex items-center gap-1">
                             <IconDna size={12} /> DNA
                           </dt>
                           <dd className="text-bone-white">
-                            {d.totalDna.toLocaleString()}
+                            {formatAmount(d.totalDna)}
                           </dd>
                         </div>
                       </dl>

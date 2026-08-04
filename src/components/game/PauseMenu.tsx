@@ -13,6 +13,7 @@ import { isMutationId, type MutationPick } from '@/shared/game/mutations';
 import type { GenePick } from '@/shared/game/genes';
 import { IconDna } from '@/components/ui/icons';
 import { useDialogFocusTrap } from '@/hooks/useDialogFocusTrap';
+import { formatAmount } from '@/shared/format/amount';
 
 interface PauseMenuProps {
   dynasty: DynastyId;
@@ -93,7 +94,7 @@ export function PauseMenu({
         <div className="space-y-3 mb-8 p-4 rounded-arcade border border-scale-blue-light/40 bg-void/60">
           <div className="flex justify-between items-center">
             <span className="label-arcade">Score</span>
-            <span className="font-display text-2xl text-bone-white">{Math.round(score).toLocaleString()}</span>
+            <span className="font-display text-2xl text-bone-white">{formatAmount(score)}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="label-arcade inline-flex items-center gap-1.5">

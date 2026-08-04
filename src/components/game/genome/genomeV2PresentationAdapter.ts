@@ -8,6 +8,7 @@ import {
   GENOME_V2_CONFIG,
   GENOME_V2_SPLICES,
   GENOME_V2_STRAIN_THRESHOLDS,
+  GENOME_V2_YIELD_SCALE,
   genomeV2CarryBankBps,
   genomeV2CarrySalvageBps,
   genomeV2HasGene,
@@ -21,6 +22,7 @@ import {
   type TacticalLoomCandidateDelta as CoreCandidateDelta,
   type TacticalLoomModel as CoreLoomModel,
 } from '@/shared/game/genomeV2';
+import { formatAmount } from '@/shared/format/amount';
 import { STRAINS, type StrainId, type StrainPoints } from '@/shared/game/strains';
 import type {
   TacticalLoomConsequence,
@@ -262,12 +264,14 @@ function formatBps(value: number): string {
   return `×${whole}${fraction ? `.${fraction}` : ''}`;
 }
 
+/**
+ * Yield is an AMOUNT, so it reads as a whole number. The scaled ledger keeps its
+ * four-decimal precision; only this readout rounds.
+ */
 function formatScaledYield(value: number): string {
   const sign = value < 0 ? '−' : '';
   const safe = Number.isSafeInteger(value) ? Math.abs(value) : 0;
-  const whole = Math.floor(safe / 10_000);
-  const fraction = String(safe % 10_000).padStart(4, '0').replace(/0+$/, '');
-  return `${sign}${whole.toLocaleString('en-US')}${fraction ? `.${fraction}` : ''} Yield`;
+  return `${sign}${formatAmount(safe / GENOME_V2_YIELD_SCALE)} Yield`;
 }
 
 function uniqueStrains(values: readonly StrainId[]): StrainId[] {

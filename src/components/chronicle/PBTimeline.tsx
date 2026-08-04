@@ -10,6 +10,7 @@
 import React from 'react';
 import { dynastyThemes } from '@/hooks/useDynastyTheme';
 import type { PbTimelineData } from '@/lib/chronicle/types';
+import { formatAmount } from '@/shared/format/amount';
 
 const CHART_WIDTH = 640;
 const CHART_HEIGHT = 160;
@@ -82,7 +83,7 @@ export function PBTimeline({
             fontSize="10"
             fill="rgba(232,226,208,0.6)"
           >
-            {maxScore.toLocaleString()}
+            {formatAmount(maxScore)}
           </text>
           <text
             x={PADDING.left - 6}
@@ -147,7 +148,7 @@ export function PBTimeline({
                     fill={theme.glow}
                   >
                     <title>
-                      {`${dynasty} — week ${point.weekStart}: ${point.bestScore.toLocaleString()} (${point.runs} runs)`}
+                      {`${dynasty} — week ${point.weekStart}: ${formatAmount(point.bestScore)} (${point.runs} runs)`}
                     </title>
                   </circle>
                 ))}

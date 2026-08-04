@@ -32,6 +32,7 @@ import {
   type ClanDirectoryRow,
   type ClanFullView,
 } from '@/components/clan/useClanFull';
+import { formatAmount } from '@/shared/format/amount';
 
 type MemberTab = 'overview' | 'members' | 'manage' | 'advanced';
 type SoloTab = 'discover' | 'found';
@@ -128,11 +129,11 @@ function ClanHero({ view }: { view: ClanFullView }) {
           </div>
           <div className="rounded-arcade border border-white/15 bg-void/40 p-2.5 text-center">
             <p className="text-[10px] uppercase tracking-wide text-bone-white/55">Best battle</p>
-            <p className="font-display text-lg text-bone-white">{bestBattle.toLocaleString()}</p>
+            <p className="font-display text-lg text-bone-white">{formatAmount(bestBattle)}</p>
           </div>
           <div className="rounded-arcade border border-white/15 bg-void/40 p-2.5 text-center">
             <p className="text-[10px] uppercase tracking-wide text-bone-white/55">Lifetime</p>
-            <p className="font-display text-lg text-bone-white">{lifetimeDepth.toLocaleString()}</p>
+            <p className="font-display text-lg text-bone-white">{formatAmount(lifetimeDepth)}</p>
           </div>
         </div>
       </div>
@@ -171,7 +172,7 @@ function StandingsPreview({ view }: { view: ClanFullView }) {
               >
                 Report
               </a>
-              <span className="shrink-0 font-display text-bone-white">{member.contribution.bestFiveDepth?.toLocaleString()}</span>
+              <span className="shrink-0 font-display text-bone-white">{member.contribution.bestFiveDepth === undefined ? undefined : formatAmount(member.contribution.bestFiveDepth)}</span>
             </li>
           ))}
         </ol>
@@ -268,7 +269,7 @@ function FoundClanPanel({
           </div>
           <div className="rounded-arcade border border-venom-orange/35 bg-venom-orange/10 p-3">
             <p className="label-arcade">Founding cost</p>
-            <p className="mt-1 font-display text-xl text-bone-white">{typeof cost === 'number' ? `${cost.toLocaleString()} DNA` : 'Loading server price…'}</p>
+            <p className="mt-1 font-display text-xl text-bone-white">{typeof cost === 'number' ? `${formatAmount(cost)} DNA` : 'Loading server price…'}</p>
             <p className="mt-1 text-xs font-body text-beige/55">Charged once, atomically with creation. No charge occurs if creation fails.</p>
           </div>
           <button type="submit" disabled={busy || typeof cost !== 'number'} className="btn-go min-h-[44px] w-full px-6">Review founding</button>
@@ -289,10 +290,10 @@ function FoundClanPanel({
           <div className="panel-elevated w-full max-w-sm p-6">
             <p className="label-arcade text-venom-orange">Founding commitment</p>
             <h3 id="found-confirm-title" className="mt-1 heading-display text-2xl text-bone-white">Found {name.trim()}?</h3>
-            <p id="found-confirm-description" className="mt-2 text-sm font-body text-beige/70">Creating this clan spends {cost.toLocaleString()} DNA. You become Leader and can set recruitment, appoint Co-leaders, and recognize Glory Members.</p>
+            <p id="found-confirm-description" className="mt-2 text-sm font-body text-beige/70">Creating this clan spends {formatAmount(cost)} DNA. You become Leader and can set recruitment, appoint Co-leaders, and recognize Glory Members.</p>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <button type="button" disabled={busy} onClick={() => setConfirming(false)} className="btn-neutral min-h-[44px] px-4">Cancel</button>
-              <button type="button" data-testid="confirm-found-clan" disabled={busy} onClick={() => void found()} className="btn-go min-h-[44px] px-4">{busy ? 'Founding…' : `Spend ${cost.toLocaleString()} DNA`}</button>
+              <button type="button" data-testid="confirm-found-clan" disabled={busy} onClick={() => void found()} className="btn-go min-h-[44px] px-4">{busy ? 'Founding…' : `Spend ${formatAmount(cost)} DNA`}</button>
             </div>
           </div>
         </div>

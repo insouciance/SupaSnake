@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
 import { IconBolt, IconDna, IconGear, IconShield } from '@/components/ui/icons';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
+import { formatAmount } from '@/shared/format/amount';
 
 /**
  * The mobile header is a symmetric three-column grid: an empty rail, the
@@ -145,13 +146,13 @@ export function HomeIdentityHud({
         {authenticated ? (
         <div
           className="pointer-events-auto mx-auto mt-2 inline-flex min-h-9 items-center overflow-hidden rounded-full border border-scale-blue-light/40 bg-void-deep/55 px-3 shadow-panel backdrop-blur-sm"
-          aria-label={`Wallet: ${dna === null ? 'DNA loading' : `${dna.toLocaleString('en-US')} DNA`}${energy?.visible ? ` and ${energy.available} of ${energy.capacity} Energy` : ''}`}
+          aria-label={`Wallet: ${dna === null ? 'DNA loading' : `${formatAmount(dna)} DNA`}${energy?.visible ? ` and ${energy.available} of ${energy.capacity} Energy` : ''}`}
           data-testid="home-wallet"
         >
           <span className="inline-flex items-center gap-1.5" title="DNA">
             <IconDna size={14} className="text-rarity-uncommon" />
             <span className="font-mono text-[10px] font-bold text-bone-white">
-              {dna === null ? '—' : dna.toLocaleString('en-US')}
+              {dna === null ? '—' : formatAmount(dna)}
             </span>
           </span>
           {energy?.visible ? (

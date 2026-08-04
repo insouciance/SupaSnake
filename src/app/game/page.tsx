@@ -23,6 +23,7 @@ import {
   outcomeMultipliers,
   rulesetExplainer,
 } from '@/shared/game/rulesets';
+import { formatAmount } from '@/shared/format/amount';
 import {
   MUTATION_PHYSICS,
   isMutationId,
@@ -5858,7 +5859,7 @@ export default function GamePage() {
           <div className="game-hud-telemetry grid grid-cols-3 gap-1.5 font-body">
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <span className="truncate text-[9px] uppercase tracking-wider text-beige/65 sm:text-[10px]">Score</span>
-              <span className="font-mono text-sm font-bold tabular-nums text-bone-white sm:text-base">{Math.round(score).toLocaleString()}</span>
+              <span className="font-mono text-sm font-bold tabular-nums text-bone-white sm:text-base">{formatAmount(score)}</span>
             </div>
             <div className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-arcade border border-scale-blue-light/50 bg-void/80 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_rgba(0,0,0,0.2)] backdrop-blur-md">
               <IconDna size={13} className="shrink-0 text-venom-orange" />
@@ -6560,7 +6561,7 @@ export default function GamePage() {
                     <span className="font-bold text-venom-orange">
                       {settlementSecuredPending && !lastRunFree
                         ? 'Finalizing…'
-                        : Math.round(score).toLocaleString()}
+                        : formatAmount(score)}
                     </span>
                   </p>
                   <p className="text-2xl text-bone-white flex items-center justify-center gap-2">
@@ -6626,7 +6627,7 @@ export default function GamePage() {
                     <div className="space-y-2 pt-1" data-testid="gameover-mastery">
                       <p className="text-lg text-beige flex items-center justify-center gap-1.5">
                         <span className="font-bold text-[#7df9ff]">
-                          +{masteryResult.xpGained.toLocaleString()} Mastery XP
+                          +{formatAmount(masteryResult.xpGained)} Mastery XP
                         </span>
                         <span className="text-beige/70">
                           {masteryResult.dynasty} M{masteryResult.level}

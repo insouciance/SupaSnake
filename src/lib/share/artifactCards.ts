@@ -23,10 +23,10 @@ import {
   buildGeneNames,
   buildStrainReach,
 } from '@/lib/share/buildCode';
+import { formatNonNegativeAmount } from '@/shared/format/amount';
 
-function count(value: number): string {
-  return Math.max(0, Math.floor(value)).toLocaleString('en-US');
-}
+/** Share cards quote AMOUNTS, so they quote whole numbers. */
+const count = formatNonNegativeAmount;
 
 /**
  * Pass an artifact on, exactly as it arrived.

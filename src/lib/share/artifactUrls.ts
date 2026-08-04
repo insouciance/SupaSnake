@@ -39,6 +39,7 @@ import {
   type Challenge,
   type PortalDecision,
 } from '@/shared/game/challenge';
+import { formatNonNegativeAmount } from '@/shared/format/amount';
 
 function withQuery(path: string, params: Array<[string, string]>): string {
   if (params.length === 0) return path;
@@ -298,10 +299,10 @@ export interface SignalGridInput {
 
 export function signalGridLines(input: SignalGridInput): string[] {
   const glyphs = decisionGlyphs(input.decisions);
-  const stats = [`Score ${Math.max(0, Math.floor(input.score)).toLocaleString('en-US')}`];
+  const stats = [`Score ${formatNonNegativeAmount(input.score)}`];
   if (input.personalBest) stats.push('best ↑');
   if (input.yieldDna !== null) {
-    stats.push(`Yield ${Math.max(0, Math.floor(input.yieldDna)).toLocaleString('en-US')}`);
+    stats.push(`Yield ${formatNonNegativeAmount(input.yieldDna)}`);
   }
   return [
     `SUPASNAKE · Signal #${Math.floor(input.day)} · ${input.dynasty.toUpperCase()}`,
@@ -334,10 +335,10 @@ export interface RunShareInput {
 }
 
 export function runShare(input: RunShareInput): SharePayload {
-  const stats = [`Score ${Math.max(0, Math.floor(input.score)).toLocaleString('en-US')}`];
+  const stats = [`Score ${formatNonNegativeAmount(input.score)}`];
   if (input.personalBest) stats.push('best ↑');
   if (input.yieldDna !== null) {
-    stats.push(`Yield ${Math.max(0, Math.floor(input.yieldDna)).toLocaleString('en-US')}`);
+    stats.push(`Yield ${formatNonNegativeAmount(input.yieldDna)}`);
   }
   const glyphs = decisionGlyphs(input.decisions);
   return payload(
@@ -374,7 +375,7 @@ export interface SettlementShareInput {
 }
 
 export function settlementLines(input: SettlementShareInput): string[] {
-  const depth = Math.max(0, Math.floor(input.depth)).toLocaleString('en-US');
+  const depth = formatNonNegativeAmount(input.depth);
   const lines = [
     `SUPASNAKE · World Serpent · week of ${input.weekKey}`,
     `${input.clanName.toUpperCase()} reached Depth ${depth}${
@@ -463,7 +464,7 @@ export function clanShare(input: { name: string; tag: string; lifetimeDepth: num
     `SupaSnake — ${input.name}`,
     [
       `SUPASNAKE · ${input.name.toUpperCase()} [${input.tag}]`,
-      `Lifetime Depth ${Math.max(0, Math.floor(input.lifetimeDepth)).toLocaleString('en-US')}`,
+      `Lifetime Depth ${formatNonNegativeAmount(input.lifetimeDepth)}`,
     ],
     clanArtifactUrl(input.tag)
   );
@@ -475,7 +476,7 @@ export function profileShare(input: { handle: string; bestScore: number | null }
     [
       `SUPASNAKE · ${input.handle}'s chronicle`,
       input.bestScore !== null
-        ? `Best score ${Math.max(0, Math.floor(input.bestScore)).toLocaleString('en-US')}`
+        ? `Best score ${formatNonNegativeAmount(input.bestScore)}`
         : '',
     ],
     profileArtifactUrl(input.handle)

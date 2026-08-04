@@ -46,6 +46,7 @@ import {
   type AscendanceYieldBreakdown,
 } from '@/shared/game/ascendance';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
+import { formatAmount } from '@/shared/format/amount';
 import {
   GenomeYieldRecap,
   type GenomeYieldRecapModel,
@@ -231,8 +232,8 @@ function ImpactProgress({ impact, collected }: {
       </div>
       <p className="font-mono text-[11px] text-beige/60">
         {collected
-          ? `${before.toLocaleString()} → ${after.toLocaleString()}`
-          : `${before.toLocaleString()} · ready to advance`}
+          ? `${formatAmount(before)} → ${formatAmount(after)}`
+          : `${formatAmount(before)} · ready to advance`}
       </p>
     </div>
   );
@@ -317,13 +318,13 @@ function buildClaimBeats(envelope: RunImpactEnvelope): ClaimBeat[] {
     beats.push({
       id: 'dna',
       eyebrow: envelope.outcome === 'crashed' ? 'Salvage capsule' : 'Harvest capsule',
-      headline: `+${credited.toLocaleString()} DNA`,
+      headline: `+${formatAmount(credited)} DNA`,
       detail:
         committedUnits > 0
           ? `${committedUnits} Energy committed · ×${formatCommitmentMultiplier(envelope.receipt.commitmentMultiplierBps)} harvest. Your balance is already secured.`
           : 'The server has already secured this harvest in your balance.',
       collectLabel: envelope.outcome === 'crashed' ? 'Collect salvage' : 'Collect DNA',
-      payoff: `${credited.toLocaleString()} DNA secured in your vault`,
+      payoff: `${formatAmount(credited)} DNA secured in your vault`,
       impacts: [],
       tone: 'border-venom-orange/70 bg-venom-orange/10 text-venom-orange',
       orb: 'border-venom-orange/80 bg-venom-orange/15 text-venom-orange shadow-[0_0_40px_rgba(250,204,21,0.3)]',
@@ -803,7 +804,7 @@ function CrashConsequences({
         <div>
           <p className="label-arcade text-venom-orange">Personal</p>
           <p className="mt-1 font-display text-sm text-bone-white">
-            {salvage.toLocaleString()} DNA salvaged
+            {formatAmount(salvage)} DNA salvaged
           </p>
         </div>
       ) : null}
@@ -819,7 +820,7 @@ function CrashConsequences({
         <div className="border-t border-scale-blue-light/20 pt-2 sm:col-span-2">
           <p className="label-arcade text-cosmic-glow">Your fifth-best threshold</p>
           <p className="mt-1 font-display text-sm text-bone-white">
-            {threshold.toLocaleString()} Clan Depth
+            {formatAmount(threshold)} Clan Depth
           </p>
         </div>
       ) : null}
@@ -865,7 +866,7 @@ export function RunResults({
       }
     : headline(outcome, practice);
   const receipt = impact?.receipt;
-  const settledScore = Math.round(receipt?.score ?? score);
+  const settledScore = receipt?.score ?? score;
   const settledYield = receipt?.yieldDna ?? yieldDna ?? dnaCredited ?? 0;
   const credited = receipt?.dnaCredited ?? dnaCredited;
   const committed = receipt?.energyCommitted ?? energyCommitted;
@@ -952,13 +953,13 @@ export function RunResults({
         <p className="text-2xl text-bone-white" data-testid="results-score">
           Score:{' '}
           <span className="font-bold text-venom-orange">
-            {awaitingCanonicalImpact ? 'Finalizing…' : settledScore.toLocaleString()}
+            {awaitingCanonicalImpact ? 'Finalizing…' : formatAmount(settledScore)}
           </span>
         </p>
         <p className="flex items-center justify-center gap-2 text-2xl text-bone-white" data-testid="results-yield">
           <IconDna size={22} className="text-venom-orange" /> Yield:{' '}
           <span className="font-bold text-venom-orange text-glow-orange">
-            {settlementPending ? 'Finalizing…' : settledYield.toLocaleString()}
+            {settlementPending ? 'Finalizing…' : formatAmount(settledYield)}
           </span>
         </p>
 
@@ -968,7 +969,7 @@ export function RunResults({
           </p>
         ) : !practice && credited !== null ? (
           <p className="text-sm text-beige/70" data-testid="results-energy">
-            {committed > 0 ? `${committed} Energy committed` : multiplier < 10_000 ? 'Lean run' : 'Energy-exempt run'} · {credited.toLocaleString()} DNA credited
+            {committed > 0 ? `${committed} Energy committed` : multiplier < 10_000 ? 'Lean run' : 'Energy-exempt run'} · {formatAmount(credited)} DNA credited
           </p>
         ) : null}
         {practice && <p className="text-sm text-beige/70" data-testid="gameover-hypothetical">Practice pays nothing — this is what the run was worth.</p>}
@@ -978,12 +979,12 @@ export function RunResults({
             <summary className="cursor-pointer text-xs text-beige/65">How Yield was settled</summary>
             <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 text-sm" data-testid={yieldBreakdown ? 'results-yield-breakdown' : undefined}>
               {yieldBreakdown && <>
-                <span className="text-beige/70">Base run Yield</span><span className="text-right font-mono text-bone-white">{yieldBreakdown.baseYield.toLocaleString()}</span>
-                <span className="text-beige/70">Gen {yieldBreakdown.generation} Yield ×{formatYieldMultiplier(yieldBreakdown.multiplier)}</span><span className="text-right font-mono text-venom-orange">+{yieldBreakdown.bonusYield.toLocaleString()}</span>
+                <span className="text-beige/70">Base run Yield</span><span className="text-right font-mono text-bone-white">{formatAmount(yieldBreakdown.baseYield)}</span>
+                <span className="text-beige/70">Gen {yieldBreakdown.generation} Yield ×{formatYieldMultiplier(yieldBreakdown.multiplier)}</span><span className="text-right font-mono text-venom-orange">+{formatAmount(yieldBreakdown.bonusYield)}</span>
               </>}
               {!practice && credited !== null && <>
                 <span className="text-beige/70">Harvest multiplier</span><span className="text-right font-mono text-bone-white">×{(multiplier / 10_000).toFixed(multiplier < 10_000 ? 2 : 1)}</span>
-                <span className="font-bold text-beige">Credited</span><span className="text-right font-mono font-bold text-bone-white">{credited.toLocaleString()} DNA</span>
+                <span className="font-bold text-beige">Credited</span><span className="text-right font-mono font-bold text-bone-white">{formatAmount(credited)} DNA</span>
               </>}
             </div>
           </details>
@@ -1010,19 +1011,19 @@ export function RunResults({
             <p className="label-arcade text-[#7df9ff]">Clan Energy Battle</p>
             <p className="font-body text-sm text-bone-white">
               {clanBattle.enteredTopFive
-                ? `Entered your five${clanDelta !== null && clanDelta > 0 ? ` · +${clanDelta.toLocaleString()} Clan Depth` : ''}.`
+                ? `Entered your five${clanDelta !== null && clanDelta > 0 ? ` · +${formatAmount(clanDelta)} Clan Depth` : ''}.`
                 : 'Valid battle result · outside your five.'}
             </p>
             {clanBattle.replacedSessionId ? <p className="font-body text-xs text-beige/65">Replaced a weaker result.</p> : null}
             {clanBattle.enteredTopFive && clanFifthBest !== null && clanFifthBest > 0 ? (
               <p className="font-body text-xs text-beige/65">
-                Your fifth-best now stands at {clanFifthBest.toLocaleString()} Clan Depth.
+                Your fifth-best now stands at {formatAmount(clanFifthBest)} Clan Depth.
               </p>
             ) : null}
             {!clanBattle.enteredTopFive && scoreNeeded !== null ? (
               <p className="font-body text-xs text-beige/65" data-testid="results-clan-gap">
-                Needed {scoreNeeded.toLocaleString()} · this run delivered {settledYield.toLocaleString()}
-                {shortBy !== null && shortBy > 0 ? ` · ${shortBy.toLocaleString()} short` : ''}.
+                Needed {formatAmount(scoreNeeded)} · this run delivered {formatAmount(settledYield)}
+                {shortBy !== null && shortBy > 0 ? ` · ${formatAmount(shortBy)} short` : ''}.
               </p>
             ) : null}
           </div>

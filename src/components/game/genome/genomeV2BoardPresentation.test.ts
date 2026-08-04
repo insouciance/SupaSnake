@@ -216,7 +216,11 @@ describe('Genome v2 board projection', () => {
 
     expect(signals).toHaveLength(3);
     expect(signals.map((signal) => signal.id)).toEqual(['target', 'mirror', 'loan']);
-    expect(signals[1].label).toContain('STAKE 2.5Y');
+    // Yield is an AMOUNT: the rail rounds to whole units and never shows a
+    // fractional tail, however the scaled ledger stores it (25_000 → 3Y).
+    expect(signals[1].label).toContain('STAKE 3Y');
+    expect(signals[2].label).toContain('ESCROW 4Y');
+    expect(signals.some((signal) => /\d\.\d/.test(signal.label))).toBe(false);
     expect(signals[2].label).toContain('4 LEFT');
   });
 

@@ -1,11 +1,12 @@
 import type { StrainId } from '@/shared/game/strains';
 import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
+import { formatAmount, formatSignedAmount } from '@/shared/format/amount';
 
 export interface GenomeYieldRecapRow {
   id: string;
   label: string;
   amount: number;
-  /** Exact server/core-formatted fixed-point value when integer fallback loses detail. */
+  /** Core-formatted whole-unit Yield readout, unit suffix included. */
   amountLabel?: string;
   detail: string;
   tone: 'gain' | 'forfeit' | 'neutral';
@@ -42,13 +43,13 @@ export function GenomeYieldRecap({ model }: { model: GenomeYieldRecapModel }) {
         <div className="min-w-0">
           <p className="font-body text-xs font-bold uppercase tracking-[0.14em] text-cosmic">Genome Yield</p>
           <p className="mt-0.5 font-display text-base leading-tight text-bone-white sm:text-lg">
-            {model.baseYieldLabel ?? model.baseYield.toLocaleString()} → {model.genomeYieldLabel ?? `${model.genomeYield.toLocaleString()} Yield`}
+            {model.baseYieldLabel ?? formatAmount(model.baseYield)} → {model.genomeYieldLabel ?? `${formatAmount(model.genomeYield)} Yield`}
           </p>
         </div>
         <div className="shrink-0 text-right">
           <p className="font-mono text-base font-bold text-venom-orange sm:text-lg">{model.factorLabel}</p>
           <p className={`font-mono text-xs font-bold ${model.genomeDelta >= 0 ? 'text-rarity-uncommon' : 'text-strike-red'}`}>
-            {model.genomeDeltaLabel ?? `${model.genomeDelta >= 0 ? '+' : ''}${model.genomeDelta.toLocaleString()}`}
+            {model.genomeDeltaLabel ?? formatSignedAmount(model.genomeDelta)}
           </p>
         </div>
       </div>
@@ -99,7 +100,7 @@ export function GenomeYieldRecap({ model }: { model: GenomeYieldRecapModel }) {
                 <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3" data-testid={`results-genome-row-${row.id}`}>
                   <dt className="font-body text-xs text-beige/70">{row.label}</dt>
                   <dd className={`font-mono text-xs font-bold ${row.tone === 'gain' ? 'text-rarity-uncommon' : row.tone === 'forfeit' ? 'text-strike-red' : 'text-bone-white'}`}>
-                    {row.amountLabel ?? `${row.amount > 0 ? '+' : ''}${row.amount.toLocaleString()}`}
+                    {row.amountLabel ?? formatSignedAmount(row.amount)}
                   </dd>
                   <dd className="col-span-2 font-body text-xs leading-snug text-beige/50">{row.detail}</dd>
                 </div>

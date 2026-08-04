@@ -11,6 +11,7 @@ import {
   type ClanFullView,
   type ClanRosterEntry,
 } from './useClanFull';
+import { formatAmount } from '@/shared/format/amount';
 
 interface ClanRosterProps {
   accessToken?: string;
@@ -204,7 +205,7 @@ export function ClanRoster({ accessToken, view, viewerUserId, onChanged }: ClanR
                     <div className="mt-3 grid grid-cols-3 gap-2" data-testid="member-contribution">
                       <div className="rounded-arcade bg-void/45 p-2">
                         <p className="text-[10px] uppercase tracking-wide text-beige/50">Best five</p>
-                        <p className="font-display text-bone-white">{contribution.bestFiveDepth?.toLocaleString()} <span className="text-xs text-beige/55">Depth</span></p>
+                        <p className="font-display text-bone-white">{contribution.bestFiveDepth === undefined ? undefined : formatAmount(contribution.bestFiveDepth)} <span className="text-xs text-beige/55">Depth</span></p>
                       </div>
                       <div className="rounded-arcade bg-void/45 p-2">
                         <p className="text-[10px] uppercase tracking-wide text-beige/50">Results</p>

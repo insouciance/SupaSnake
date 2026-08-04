@@ -30,6 +30,7 @@ import {
   parseSignalDay,
   parseTarget,
 } from '@/shared/game/challenge';
+import { formatAmount } from '@/shared/format/amount';
 
 export interface ChallengeRun {
   seed: string;
@@ -85,7 +86,7 @@ export function challengeRunNote(challenge: ChallengeRun): string {
   if (challenge.target === null) {
     return `Challenge · ${where} · seed ${challenge.seed}`;
   }
-  const target = challenge.target.toLocaleString('en-US');
+  const target = formatAmount(challenge.target);
   return challenge.by
     ? `Challenge · beat ${challenge.by}'s ${target} on ${where}`
     : `Challenge · beat ${target} on ${where}`;
