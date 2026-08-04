@@ -294,20 +294,34 @@ CREATE OR REPLACE FUNCTION record_trial_offer(
 DECLARE
   v_seen SMALLINT;
 BEGIN
-  IF p_player_id IS NULL THEN
+  IF p_player_id IS NULL OR p_session_id IS NULL THEN
     RAISE EXCEPTION 'GENE_ELIGIBILITY_PLAYER_REQUIRED';
   END IF;
 
+  -- The offer has to have happened in a run of this player's. The session is
+  -- not required to be settled — the appearance is consumed while the run is
+  -- still open — but it may not belong to anyone else.
+  IF NOT EXISTS (
+    SELECT 1 FROM game_sessions AS gs
+    WHERE gs.id = p_session_id AND gs.player_id = p_player_id
+  ) THEN
+    RAISE EXCEPTION 'GENE_ELIGIBILITY_SESSION_NOT_AUTHORITATIVE: %', p_session_id;
+  END IF;
+
   UPDATE player_gene_eligibility AS pge
-  -- GREATEST, so a replayed or out-of-order settlement can only ever move the
-  -- counter forward, and LEAST at the CHECK's own bound so a corrupted caller
-  -- cannot raise on a settlement path.
-     SET trial_offers_seen = LEAST(3, GREATEST(pge.trial_offers_seen, pge.trial_offers_seen + 1)),
-         resolved_session_id = COALESCE(pge.resolved_session_id, p_session_id),
+  -- GREATEST, so a replayed or out-of-order write can only move the counter
+  -- forward, and LEAST at the CHECK's own bound so a caller that over-counts
+  -- cannot raise on a live run's settlement path.
+     SET trial_offers_seen = LEAST(
+           3, GREATEST(pge.trial_offers_seen, pge.trial_offers_seen + 1)
+         ),
          updated_at = NOW()
    WHERE pge.player_id = p_player_id
      AND pge.rules_version = p_rules_version
      AND pge.gene_id = p_gene_id
+     -- `resolved_session_id` is deliberately NOT written here: it records the
+     -- settled run that carried the learning EVENT, not a run that merely
+     -- showed the trial.
      AND pge.state = 'trial'
   RETURNING pge.trial_offers_seen INTO v_seen;
 

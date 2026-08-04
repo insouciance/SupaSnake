@@ -300,24 +300,6 @@ BEGIN
     RAISE EXCEPTION 'An earned Gene was rewritten by a trial selection';
   END IF;
 
-  -- The guarantee is consumed by collected offers, and never past three.
-  v_remaining := record_trial_offer(
-    v_player, 2::SMALLINT, 'loom_anchor', NULL
-  );
-  IF v_remaining <> 2 THEN
-    RAISE EXCEPTION 'First trial appearance left % guaranteed, expected 2', v_remaining;
-  END IF;
-  PERFORM record_trial_offer(v_player, 2::SMALLINT, 'loom_anchor', NULL);
-  PERFORM record_trial_offer(v_player, 2::SMALLINT, 'loom_anchor', NULL);
-  IF record_trial_offer(v_player, 2::SMALLINT, 'loom_anchor', NULL) <> 0 THEN
-    RAISE EXCEPTION 'The trial guarantee ran past three appearances';
-  END IF;
-  IF (SELECT trial_offers_seen FROM player_gene_eligibility
-      WHERE player_id = v_player AND rules_version = 2
-        AND gene_id = 'loom_anchor') <> 3 THEN
-    RAISE EXCEPTION 'Trial appearance counter is not capped at three';
-  END IF;
-
   -- Free Play and an unvalidated run are not resolution authority.
   -- Free Play can be completed directly because it has no economy transition.
   INSERT INTO game_sessions(
@@ -327,6 +309,38 @@ BEGIN
     v_free_session, v_player, 'CYBER', v_started, v_started,
     clock_timestamp() - INTERVAL '40 seconds', 'completed', TRUE, TRUE, TRUE
   );
+
+  -- The guarantee is consumed by collected offers, and never past three.
+  v_remaining := record_trial_offer(
+    v_player, 2::SMALLINT, 'loom_anchor', v_free_session
+  );
+  IF v_remaining <> 2 THEN
+    RAISE EXCEPTION 'First trial appearance left % guaranteed, expected 2', v_remaining;
+  END IF;
+  PERFORM record_trial_offer(v_player, 2::SMALLINT, 'loom_anchor', v_free_session);
+  PERFORM record_trial_offer(v_player, 2::SMALLINT, 'loom_anchor', v_free_session);
+  IF record_trial_offer(v_player, 2::SMALLINT, 'loom_anchor', v_free_session) <> 0 THEN
+    RAISE EXCEPTION 'The trial guarantee ran past three appearances';
+  END IF;
+  IF (SELECT trial_offers_seen FROM player_gene_eligibility
+      WHERE player_id = v_player AND rules_version = 2
+        AND gene_id = 'loom_anchor') <> 3
+     OR (SELECT resolved_session_id FROM player_gene_eligibility
+         WHERE player_id = v_player AND rules_version = 2
+           AND gene_id = 'loom_anchor') IS NOT NULL THEN
+    RAISE EXCEPTION 'Trial appearances are miscounted or claim a resolution';
+  END IF;
+
+  -- Another player's run cannot consume this player's guarantee.
+  BEGIN
+    PERFORM record_trial_offer(
+      v_other_player, 2::SMALLINT, 'loom_anchor', v_free_session
+    );
+    RAISE EXCEPTION 'A foreign session unexpectedly consumed a guarantee';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'A foreign session unexpectedly consumed a guarantee' THEN RAISE; END IF;
+    IF POSITION('GENE_ELIGIBILITY_SESSION_NOT_AUTHORITATIVE' IN SQLERRM) = 0 THEN RAISE; END IF;
+  END;
   -- The two earning runs settle through the atomic path. The second is a
   -- CRASH: success and failure both resolve (boundary 7).
   -- One at a time: `guard_one_open_game_session` allows a player exactly one
