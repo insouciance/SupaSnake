@@ -69,7 +69,7 @@ export function AscendanceProgressionInstrument({
         <div>
           <p className="font-body text-[9px] font-bold uppercase tracking-[0.16em] text-venom-orange">Legacy</p>
           <p className={`${compact ? 'text-xl' : 'text-2xl'} font-display text-bone-white`}>
-            Gen {model.generation} · Yield ×{model.currentMultiplier}
+            Gen {model.generation} · Payout ×{model.currentMultiplier}
           </p>
         </div>
         {!v2 ? (

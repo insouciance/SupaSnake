@@ -24,7 +24,7 @@
  * runtime the OG images render in.
  */
 
-import { GENES, isGeneId, type GeneId } from '@/shared/game/genes';
+import { GENES, geneDisplayName, isGeneId, type GeneId } from '@/shared/game/genes';
 
 export interface LineageCardModel {
   snakeName: string;
@@ -111,5 +111,8 @@ export function decodeLineageCode(raw: unknown): LineageCardModel | null {
 
 /** Display names for the card and the share text. */
 export function lineageGeneNames(model: LineageCardModel): string[] {
-  return model.genes.map((id) => GENES[id].name);
+  // A share card is a public artifact of a real snake. Naming its Powers
+  // differently from every other surface would put the double-naming bug back
+  // in the one place a stranger sees first.
+  return model.genes.map((id) => geneDisplayName(id));
 }

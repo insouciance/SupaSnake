@@ -3,6 +3,7 @@
 import {
   GENES,
   GENOME_V2_GENES,
+  geneDisplayName,
   isGeneId,
   isGenomeV2ActiveGeneId,
 } from '@/shared/game/genes';
@@ -86,7 +87,7 @@ export function codexEntryName(
   // double-naming this pass exists to delete. The v1 catalog keeps its own
   // prose for the ids the v2 pool never took.
   if (type === 'gene' && isGenomeV2ActiveGeneId(entryId)) {
-    return GENOME_V2_GENES[entryId].name;
+    return geneDisplayName(entryId);
   }
   if (
     type === 'splice'

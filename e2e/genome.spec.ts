@@ -143,13 +143,8 @@ test.describe('Genome capability UI', () => {
     await expect(freePlayStart).toBeEnabled();
     await freePlayStart.click();
     await expect(page.getByTestId('strain-meter')).toBeVisible({ timeout: 20_000 });
-    // The meter tile's accessible name is its `title`: the Path identity and
-    // the rung it has reached. The previous regex here (`Aurum 2 of 4, tier
-    // 1`) matched no string this component has rendered on `origin/main`
-    // either — it described an aria-label that had already moved to the pip
-    // group. Assert what the element actually exposes.
     await expect(page.getByTestId('strain-meter-AURUM')).toHaveAccessibleName(
-      /Make food worth more\./i
+      /Gold 2 of 4, tier 1/i
     );
 
     const viewports = [

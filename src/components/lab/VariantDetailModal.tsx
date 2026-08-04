@@ -442,7 +442,7 @@ export function VariantDetailModal({
                   style={{ color: theme.glow }}
                   data-testid="variant-yield-multiplier"
                 >
-                  Yield ×{formatAscendanceYieldMultiplier(owned.generation)}
+                  Payout ×{formatAscendanceYieldMultiplier(owned.generation)}
                 </span>
               </div>
             </div>

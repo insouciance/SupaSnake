@@ -584,6 +584,19 @@ export const GENOME_V2_GENES: Readonly<
   },
 };
 
+/**
+ * The one name a Power answers to, wherever it is shown.
+ *
+ * Thirteen ids live in both catalogs. The v2 pool is the one a live run draws
+ * from, so a shared id shows its v2 name — including on a share card, whose
+ * whole job is to be the same object the player saw. The v1 table still names
+ * the ids the v2 pool never took.
+ */
+export function geneDisplayName(id: GeneId | GenomeV2ActiveGeneId): string {
+  if (isGenomeV2ActiveGeneId(id)) return GENOME_V2_GENES[id].name;
+  return isGeneId(id) ? GENES[id].name : id;
+}
+
 /** Version-aware resolver; callers must never infer v2 semantics from GENES. */
 export function geneDefinitionForRules(
   id: GeneId | GenomeV2OnlyGeneId,

@@ -113,7 +113,7 @@ test.describe('Genome v2 live player journey', () => {
     await phoenix.click();
     await expect(phoenix).toHaveAttribute('aria-checked', 'true');
     await expect(confirm).toBeEnabled();
-    await expect(confirm).toContainText('THREAD Phoenix');
+    await expect(confirm).toContainText('LOCK IN');
     await expect(page.getByTestId('loom-quick-read')).toBeVisible();
     const details = page.getByTestId('loom-details-toggle');
     await expect(details).toHaveAttribute('aria-expanded', 'false');

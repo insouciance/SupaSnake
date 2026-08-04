@@ -15,7 +15,7 @@ describe('AscendanceProgressionInstrument', () => {
       formatMultiplier: format,
     });
     render(<AscendanceProgressionInstrument model={model} />);
-    expect(screen.getByTestId('ascendance-progression')).toHaveTextContent('Gen 10 · Yield ×1.1487');
+    expect(screen.getByTestId('ascendance-progression')).toHaveTextContent('Gen 10 · Payout ×1.1487');
     expect(screen.getByTestId('ascendance-v2-next')).toHaveTextContent('Gen 11 · ×1.1717');
     expect(screen.getByTestId('ascendance-v2-next')).toHaveTextContent('+2.00% relative · every generation');
     expect(screen.getByTestId('ascendance-v2-next')).toHaveTextContent('Gen 15 · ×1.2682');

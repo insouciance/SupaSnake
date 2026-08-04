@@ -145,7 +145,7 @@ describe('CollectionGrid', () => {
     );
     expect(within(card).queryByTestId('variant-card-roster-count')).toBeNull();
     expect(within(card).getByTestId('variant-card-generation-yield')).toHaveTextContent(
-      'Yield ×1.8114'
+      'Payout ×1.8114'
     );
   });
 

@@ -173,7 +173,7 @@ describe('VariantDetailModal reads the selected sibling', () => {
     // GEN_7 leads the roster; the stat must describe the SELECTED snake.
     expect(screen.getByTestId('variant-generation')).toHaveTextContent('Gen 1');
     expect(screen.getByTestId('variant-yield-multiplier')).toHaveTextContent(
-      'Yield ×1.00'
+      'Payout ×1.00'
     );
     expect(screen.getByTestId('variant-ascendance')).toHaveTextContent(
       'Legacy begins at Gen4'
@@ -185,7 +185,7 @@ describe('VariantDetailModal reads the selected sibling', () => {
 
     expect(screen.getByTestId('variant-generation')).toHaveTextContent('Gen 7');
     expect(screen.getByTestId('variant-yield-multiplier')).toHaveTextContent(
-      'Yield ×1.0824'
+      'Payout ×1.0824'
     );
     expect(screen.getByTestId('variant-ascendance')).toHaveTextContent(
       'Next visible evolution'

@@ -106,4 +106,13 @@ describe('encodeLineageCode / decodeLineageCode', () => {
       GENES.bulk_up.name,
     ]);
   });
+
+  it('names a Power the way every other surface names it', () => {
+    // A share card is the first thing a stranger sees. It used to read the v1
+    // catalog directly, so `gold_trail` was "Gold Trail" here and "Golden
+    // Hour" everywhere else — the double-naming bug, in public.
+    expect(
+      lineageGeneNames({ ...VYPER, genes: ['gold_trail', 'slipstream'] })
+    ).toEqual(['Golden Hour', GENES.slipstream.name]);
+  });
 });

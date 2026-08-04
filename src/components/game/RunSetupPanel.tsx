@@ -347,7 +347,7 @@ export function RunSetupPanel({
                 <p className="truncate font-body text-[10px] text-beige/65 sm:mt-0.5 sm:text-xs">
                   <span className="hidden sm:inline">Generation {snake.generation} · </span>
                   <span data-testid="run-setup-yield-multiplier">
-                    Yield ×{formatAscendanceYieldMultiplier(snake.generation)}
+                    Payout ×{formatAscendanceYieldMultiplier(snake.generation)}
                   </span>
                 </p>
               </div>
@@ -462,7 +462,7 @@ export function RunSetupPanel({
             </p>
             {ladderNote ? <div className="mt-1 [&>*]:text-xs">{ladderNote}</div> : null}
             <p className="mt-1 font-body text-[10px] text-beige/45">
-              Exit portal banks +25% · crashing salvages 60%
+              BANK at a portal pays +25% · crash and you keep 60%
             </p>
           </section>
 

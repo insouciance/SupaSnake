@@ -81,8 +81,19 @@ describe('RunSetupPanel', () => {
     );
     expect(screen.getByText('Ouro')).toBeInTheDocument();
     expect(screen.getByTestId('run-setup-yield-multiplier')).toHaveTextContent(
-      'Yield ×1.00'
+      'Payout ×1.00'
     );
+  });
+
+  it('states the portal deal in the words the portal uses', () => {
+    // This hint is the first time a player meets the extraction, and it is
+    // the string `e2e/game.spec.ts` reads on the shipped flag shape. The
+    // legacy pre-game screen in `app/game/page.tsx` carries its own copy of
+    // it; both must say the same thing, because they are the same sentence.
+    render(<RunSetupPanel {...props()} />);
+    expect(
+      screen.getByText(/BANK at a portal pays \+25% · crash and you keep 60%/)
+    ).toBeInTheDocument();
   });
 
   it('opens a local snake chooser while keeping full Lab management contextual', () => {

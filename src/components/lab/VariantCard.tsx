@@ -322,7 +322,7 @@ export function VariantCard({
             data-testid="variant-card-generation-yield"
           >
             <span className="text-xs">Gen {owned.generation}</span>
-            <span className="text-[10px] sm:text-[11px]">Yield ×{yieldMultiplier}</span>
+            <span className="text-[10px] sm:text-[11px]">Payout ×{yieldMultiplier}</span>
           </span>
         ) : (
           <span
