@@ -2983,6 +2983,21 @@ export class SnakeGameLogic {
       ) {
         pendingPhaseGate = gate;
         newHead = { ...exit, y: 0 };
+        // THE HEAD MOVED DISCONTINUOUSLY, SO THE BUFFER IS STALE (D2).
+        //
+        // `rebirthBody` - the only other place a head is relocated - has
+        // always discarded the buffer, and the gate path simply never did.
+        // The turns queued behind this tick were composed for the ENTRY
+        // neighbourhood; firing them from the EXIT is not the input the
+        // player gave. Worse, they occupy the front of the FIFO: with two
+        // queued, the first tick a corrective press can reach is N+3, and an
+        // exit two cells from the wall kills at N+2. That is what made the
+        // death unavoidable rather than merely hard.
+        //
+        // Replay is unaffected: the trace records turns at CONSUMPTION, so a
+        // discarded turn was never written, and `applyReplayTurn` holds at
+        // most one queued turn which this tick has already consumed.
+        this.clearDirectionalIntent();
       }
     }
 
