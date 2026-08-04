@@ -1,5 +1,5 @@
 -- ###########################################################################
--- ## MIGRATION 066 — NOT APPLIED TO ANY DATABASE BY THIS WORK PACKAGE.     ##
+-- ## MIGRATION 067 — NOT APPLIED TO ANY DATABASE BY THIS WORK PACKAGE.     ##
 -- ## Written and replayed only against an isolated local Supabase stack.   ##
 -- ## Release order is DEPLOY THE APP FIRST, THEN APPLY THIS: the curriculum##
 -- ## reader degrades quietly when the table is absent, so a deployment     ##
@@ -7,7 +7,7 @@
 -- ## composes today. The reverse order is also safe — the flag ships off.  ##
 -- ###########################################################################
 --
--- Migration 066: Player Evolution — curriculum Gene eligibility (WP-B)
+-- Migration 067: Player Evolution — curriculum Gene eligibility (WP-B)
 --
 -- Authority: docs/game/PLAYER_EVOLUTION_ONBOARDING.md §4 and §8,
 -- docs/game/PLAYER_EVOLUTION_SERVER_CONTRACT.md §1-2 and §6,
@@ -100,7 +100,7 @@ COMMENT ON COLUMN player_gene_eligibility.state IS
 COMMENT ON COLUMN player_gene_eligibility.source IS
   'How the account came to hold this: starter (Dynasty starter seven), '
   'trial_resolved (its learning event fired in authoritative play), '
-  'migration_credit (authoritative history at migration 066), graduation '
+  'migration_credit (authoritative history at migration 067), graduation '
   '(>=10 banked runs or Mastery >=3 — the existing Apex thresholds).';
 
 COMMENT ON COLUMN player_gene_eligibility.trial_offers_seen IS
@@ -557,7 +557,7 @@ BEGIN
     WHERE rules_version = v_rules_version AND active
   ) THEN
     RAISE NOTICE
-      'Migration 066: no active Genome v2 catalog rows; eligibility backfill skipped.';
+      'Migration 067: no active Genome v2 catalog rows; eligibility backfill skipped.';
     RETURN;
   END IF;
 
@@ -661,7 +661,7 @@ BEGIN
   -- The counts describe exactly the rows the statements above selected:
   -- rows WRITTEN, not accounts examined and not rows that already existed.
   RAISE NOTICE
-    'Migration 066: % graduation rows, % history-credit rows and % starter rows written (rows inserted, not accounts examined; a re-run writes 0).',
+    'Migration 067: % graduation rows, % history-credit rows and % starter rows written (rows inserted, not accounts examined; a re-run writes 0).',
     v_graduated, v_credited, v_seeded;
 END;
 $$;

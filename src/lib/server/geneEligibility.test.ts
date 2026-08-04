@@ -3,7 +3,7 @@
  *
  * What this file pins:
  *
- *   - MIGRATION 066'S ABSENCE IS SILENT AND SAFE. The runbook requires the app
+ *   - MIGRATION 067'S ABSENCE IS SILENT AND SAFE. The runbook requires the app
  *     to be deployable before its migrations apply, so a missing table or RPC
  *     must report "no curriculum state" without an alert and without an
  *     exception. Composition then answers with the complete legal Dynasty

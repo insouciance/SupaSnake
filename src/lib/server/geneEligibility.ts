@@ -36,7 +36,7 @@ import { GENOME_RULES_V2 } from '@/shared/game/genomeV2';
 export const GENE_ELIGIBILITY_RULES_VERSION = GENOME_RULES_V2;
 
 /**
- * True when a Supabase error just means migration 066 has not been applied
+ * True when a Supabase error just means migration 067 has not been applied
  * here yet: unknown table/column (42P01, 42703), unknown function (42883), or
  * PostgREST's schema-cache equivalents. Mirrors `isMissingLadderInfra`.
  *

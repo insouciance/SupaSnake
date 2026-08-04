@@ -1,7 +1,7 @@
 /**
- * Migration 066 — curriculum Gene eligibility, asserted as text.
+ * Migration 067 — curriculum Gene eligibility, asserted as text.
  *
- * The isolated SQL contract (`supabase/tests/066_player_gene_eligibility.sql`)
+ * The isolated SQL contract (`supabase/tests/067_player_gene_eligibility.sql`)
  * proves the RPCs BEHAVE. This file proves the migration SAYS what the server
  * contract requires — the RLS shape, the grant boundary, and the three
  * backfill passes, which run exactly once and can never be re-proved against a
@@ -19,7 +19,7 @@ import { GENOME_V2_CONFIG } from '@/shared/game/genomeV2';
 import { GENOME_V2_GRADUATION } from '@/shared/game/genes';
 
 const sql = readFileSync(
-  join(process.cwd(), 'supabase/migrations/066_player_gene_eligibility.sql'),
+  join(process.cwd(), 'supabase/migrations/067_player_gene_eligibility.sql'),
   'utf8'
 );
 const code = sql
@@ -28,7 +28,7 @@ const code = sql
   .join('\n');
 const normalized = code.replace(/\s+/g, ' ');
 
-describe('migration 066: the table', () => {
+describe('migration 067: the table', () => {
   it('is keyed by player, rules version and gene, and cascades with the player', () => {
     expect(normalized).toContain(
       'CREATE TABLE IF NOT EXISTS player_gene_eligibility'
@@ -80,7 +80,7 @@ describe('migration 066: the table', () => {
   });
 });
 
-describe('migration 066: the functions', () => {
+describe('migration 067: the functions', () => {
   const functions = [
     'genome_eligibility_active_gene_ids(SMALLINT, TEXT[])',
     'grant_starter_eligibility(UUID, SMALLINT, TEXT[])',
@@ -151,7 +151,7 @@ describe('migration 066: the functions', () => {
   });
 });
 
-describe('migration 066: the backfill', () => {
+describe('migration 067: the backfill', () => {
   it('graduates at the shipped Apex thresholds and nothing new', () => {
     expect(GENOME_V2_GRADUATION.bankedRuns).toBe(
       GENOME_V2_CONFIG.ftue.apexAtBankedRuns

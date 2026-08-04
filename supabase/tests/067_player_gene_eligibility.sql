@@ -1,7 +1,7 @@
--- Local integration contract for migration 066.
+-- Local integration contract for migration 067.
 -- Run only against an isolated `supabase db reset` database:
 --   psql "$LOCAL_DATABASE_URL" -v ON_ERROR_STOP=1 \
---     -f supabase/tests/066_player_gene_eligibility.sql
+--     -f supabase/tests/067_player_gene_eligibility.sql
 
 BEGIN;
 
@@ -203,13 +203,13 @@ $$;
 
 DO $$
 DECLARE
-  v_user           UUID := '06600000-0000-4000-8000-000000000101';
-  v_other_user     UUID := '06600000-0000-4000-8000-000000000102';
+  v_user           UUID := '06700000-0000-4000-8000-000000000101';
+  v_other_user     UUID := '06700000-0000-4000-8000-000000000102';
   v_player         UUID;
   v_other_player   UUID;
-  v_free_session   UUID := '06600000-0000-4000-8000-000000000201';
-  v_invalid_session UUID := '06600000-0000-4000-8000-000000000202';
-  v_valid_session  UUID := '06600000-0000-4000-8000-000000000203';
+  v_free_session   UUID := '06700000-0000-4000-8000-000000000201';
+  v_invalid_session UUID := '06700000-0000-4000-8000-000000000202';
+  v_valid_session  UUID := '06700000-0000-4000-8000-000000000203';
   v_started        TIMESTAMPTZ := clock_timestamp() - INTERVAL '90 seconds';
   v_starters       TEXT[] := ARRAY[
     'zenith_protocol', 'live_wire', 'gold_trail', 'compound_interest',
@@ -226,13 +226,13 @@ BEGIN
   INSERT INTO auth.users(id, aud, role, email, created_at, updated_at)
   VALUES
     (v_user, 'authenticated', 'authenticated',
-     'eligibility-066@example.test', NOW(), NOW()),
+     'eligibility-067@example.test', NOW(), NOW()),
     (v_other_user, 'authenticated', 'authenticated',
-     'eligibility-066-other@example.test', NOW(), NOW());
+     'eligibility-067-other@example.test', NOW(), NOW());
   SELECT id INTO v_player FROM players WHERE user_id = v_user;
   SELECT id INTO v_other_player FROM players WHERE user_id = v_other_user;
   IF v_player IS NULL OR v_other_player IS NULL THEN
-    RAISE EXCEPTION 'Gene eligibility 066 player provisioning failed';
+    RAISE EXCEPTION 'Gene eligibility 067 player provisioning failed';
   END IF;
 
   -- An account with no rows composes to "no curriculum state", which the

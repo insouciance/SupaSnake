@@ -259,7 +259,7 @@ describe('production environment validation', () => {
     expect(localHarness).toContain('supabase/tests/064_atomic_dynasty_favorites.sql');
     expect(localHarness).toContain('supabase/tests/065_genome_v2.sql');
     expect(localHarness).toContain(
-      'supabase/tests/066_player_gene_eligibility.sql'
+      'supabase/tests/067_player_gene_eligibility.sql'
     );
     expect(localHarness).toContain(
       'supabase/tests/064_atomic_dynasty_favorites_concurrency.sql'
