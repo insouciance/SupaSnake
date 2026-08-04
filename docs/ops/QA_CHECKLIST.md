@@ -27,29 +27,30 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `381491e23b60c004a843266169fd7a30d4436378` — stranded-settlement recovery, integer amount display, Player Evolution Package A contracts, and merge-queue CI triggers |
-| Current deployment | `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`supasnake-pk5b7d8bv-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`2fe33ca`); dual-version and schema-compatible, but reinstates the stranded-settlement trap |
+| Production behavior commit | `ba253b5a23c6d8bc3f887e9d1a8ae617c970c79f` — settlement payload fix with migration 066, the plain-language vocabulary, engine one-source-of-truth hardening, and the reviewed 066 rollout contract |
+| Current deployment | `dpl_4PGGV7FS3EYVBXHv19mYXA4KpepA` (`supasnake-muv8yqmn0-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`381491e`); predates 066 but stays schema-safe because 066 only widens bounds; loses payload projection, the vocabulary, and the engine hardening |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–065 deployed and aligned; no pending migration |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–066 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 22/22 manifest flags enabled |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `381491e23b60c004a843266169fd7a30d4436378` |
+| Canonical source | `main`; canonical health reports exact SHA `ba253b5a23c6d8bc3f887e9d1a8ae617c970c79f` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle system, control responsiveness, Career Spine, and
-player-pulled Tactical Genome v2 are live through migration 065. The 22-flag
-public contract, exact release SHA, linked schema proof, Genome service
-capability, canonical alias, and cron owner passed together. The
-run-continuity, terminal-authority and Tactical Loom release, the Gilded Fork
-engine fix, and the current four-PR settlement-recovery/integer-display train
-are application-only and add no migration. Use a flag-off
-forward deployment of the dual-version code rather than the retired pre-v2
-application as rollback.
+player-pulled Tactical Genome v2 are live, and the hosted schema now runs
+through migration 066. The 22-flag public contract, exact release SHA, linked
+schema proof, Genome service capability, canonical alias, and cron owner passed
+together. The run-continuity, terminal-authority and Tactical Loom release, the
+Gilded Fork engine fix, and the settlement-recovery/integer-display train were
+application-only; the current settlement-payload, plain-language and
+engine-hardening train applied migration 066 under a reviewed rollout contract.
+Use a flag-off forward deployment of the dual-version code rather than the
+retired pre-v2 application as rollback.
 
 ### Genome v2 release checks
 
@@ -76,6 +77,51 @@ application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Settlement-payload, plain-language and engine-hardening production evidence
+
+- Five PRs deployed together as exact main SHA
+  `ba253b5a23c6d8bc3f887e9d1a8ae617c970c79f`: PR 72 settlement payload fix with
+  migration 066, PR 71 the plain-language vocabulary, PR 70 engine
+  one-source-of-truth hardening, PR 73 the reviewed rollout contract for 066,
+  and PR 68 the previous release record.
+- **This release applied migration 066 — the first hosted migration since 065.**
+  The ledger evidence is: pre-push plan exactly `066`; the push raised the
+  firing notice `complete_free_run_continuity p_facts bound raised to 262144`,
+  which is the migration doing work rather than the no-op notice; post-push plan
+  exactly `none`; and linked database lint passed with the known non-blocking
+  warning. Hosted migrations are now aligned 001–066.
+- The dedicated read-only probe is now `cohesive_release_read_only_v4`. It
+  carries 15 keys, the new one being `settlementBoundsAligned`, and it passed.
+- The deploy workflow's reviewed rollout allowlist now holds three contracts:
+  `genome-v2-initial`, `genome-v2-resume`, and the new
+  `settlement-payload-bounds`. This run proved the new contract end to end.
+- The cron definition hash
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf` was
+  unchanged at all three observation points: the outgoing snapshot, after the
+  bridge push, and on the new deployment. Cron owner and every cron host resolve
+  to the new deployment and cron remains enabled.
+- Production workflow `30936005977` succeeded in Stripe test mode between
+  17:53:34 and 18:13:12 UTC on 2026-08-04 and deployed and verified
+  `dpl_4PGGV7FS3EYVBXHv19mYXA4KpepA`
+  (`supasnake-muv8yqmn0-josef-bells-projects.vercel.app`) as READY/production.
+  The outgoing deployment was `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` on `381491e`.
+- Canonical health, re-checked 54 minutes after cutover and still stable,
+  reports the exact release SHA, healthy database, project ref
+  `gmpwyzqafoyowndbvlma`, 22/22 flags, public-surface hash
+  `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, and Genome
+  schema/catalog/Ascendance 2/2/2.
+- The stranded-settlement class is closed rather than mitigated. Three layers
+  are live together: the server absorbs a stranded terminal run on the next
+  start (PR 65, previous release), the settlement payload is projected to stay
+  inside its bounds (PR 72), and migration 066 raises the database caps so a
+  payload can no longer be frozen at a size that could never settle. The
+  incident history that produced this is recorded in the two sections below.
+- Player-facing: the whole game now speaks the ratified plain vocabulary —
+  roughly 366 strings, including THE DROP, BANK and RIDE ON, TRADE UP, GOLDEN
+  HOUR, and GOLD, PULSE, COILS, WARP and RISK — with a mounted glossary. Engine
+  legal-play hardening is live: replay poisoning, wave geometry, Phase Gate, and
+  bare catches now resolve at one source of truth.
 
 ### Settlement-recovery and integer-display train production evidence
 

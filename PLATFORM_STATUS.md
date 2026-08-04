@@ -12,7 +12,7 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–065 deployed and aligned; no pending migration |
+| Schema | Migrations 001–066 deployed and aligned; no pending migration |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
 | Practice | Training Lab enabled; deterministic and rewardless |
@@ -21,24 +21,27 @@
 | Career | Durable run ingress; atomic progression; bounded recognition; server-backed attention and memory |
 | Tactical Genome | v2 enabled; player-pulled relics, six loci, 13 shared Genes, three signatures, eight Splices, 2/3/4 neutral Strain ladder |
 | Run continuity | Nonblocking save status in the cockpit; only a proven exclusive-lease conflict interrupts play |
-| Player-feature baseline | `381491e23b60c004a843266169fd7a30d4436378` |
-| Current deployment | `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`supasnake-pk5b7d8bv-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`2fe33ca`); dual-version and schema-compatible, but restores the stranded-settlement trap |
+| Language | Plain-language vocabulary live across the game, with a mounted glossary |
+| Player-feature baseline | `ba253b5a23c6d8bc3f887e9d1a8ae617c970c79f` |
+| Current deployment | `dpl_4PGGV7FS3EYVBXHv19mYXA4KpepA` (`supasnake-muv8yqmn0-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`381491e`); predates migration 066 but stays schema-safe because 066 only widens bounds; gives up payload projection, the new vocabulary, and the engine hardening |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release is a four-PR train deployed together: PR 65
-(stranded-settlement recovery), PR 66 (integer amount display), PR 64 (Player
-Evolution & Onboarding Package A contracts and tooling) and PR 67 (merge-queue
-CI triggers). Each passed all ten protected-PR checks in sequence, including all
-four isolated-Supabase E2E flag shapes, and each merge's four post-main push
-workflows passed on its exact main SHA. The train also passed full type
-checking, lint, `verify:constitution`, the production build, the deterministic
-cockpit verifications, local migrations 001–065 from zero, ordinary and
-two-session SQL integration, the production runtime dependency audit, staged and
-canonical health, linked read-only schema proof, exact cron ownership, and
-focused public-production smoke. Production workflow `30907807862` deployed it
-with no migration. Detailed evidence is maintained in
+The current release is a five-PR train deployed together: PR 72 (settlement
+payload fix and migration 066), PR 71 (the plain-language vocabulary), PR 70
+(engine one-source-of-truth hardening), PR 73 (the reviewed rollout contract for
+066) and PR 68 (the previous release record). Each passed all ten protected-PR
+checks, including all four isolated-Supabase E2E flag shapes, and each merge's
+four post-main push workflows passed on its exact main SHA. The train also
+passed full type checking, lint, `verify:constitution`, the production build,
+the deterministic cockpit verifications, local migrations 001–066 from zero,
+ordinary and two-session SQL integration, the production runtime dependency
+audit, staged and canonical health, the 15-key
+`cohesive_release_read_only_v4` schema probe including its new
+`settlementBoundsAligned` check, exact cron ownership, and focused
+public-production smoke. Production workflow `30936005977` deployed it and
+applied migration 066. Detailed evidence is maintained in
 `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -112,6 +115,18 @@ with no migration. Detailed evidence is maintained in
   from server state on a 2s→30s backoff that re-arms itself, and `Start a new
   run` is always available as an escape. This closed a production incident in
   which two accounts sat hard-blocked behind the `Result secured` modal.
+- The stranded-settlement class is now closed rather than mitigated, in three
+  independent layers: the server absorbs a stranded run on the next start, the
+  settlement payload is projected to stay inside its bounds, and migration 066
+  raises the database caps so a long run's payload can no longer be frozen at a
+  size that could never settle.
+- The game speaks one plain vocabulary rather than jargon: THE DROP, BANK and
+  RIDE ON, TRADE UP, GOLDEN HOUR, and GOLD, PULSE, COILS, WARP and RISK. A
+  mounted glossary is available wherever the terms appear, so a term is never
+  the thing standing between a player and the decision.
+- Replay, reducer, and wave geometry accept everything legal play can produce.
+  Replay poisoning, wave-geometry disagreement, Phase Gate edge cases, and bare
+  catches are handled at one source of truth rather than at each call site.
 - Every amount the player is shown — Score, DNA, Yield, Depth, Mastery XP,
   costs, pools, thresholds — reads as a whole number through one shared
   formatter. Factors, percentages, durations, and prices keep their decimals,

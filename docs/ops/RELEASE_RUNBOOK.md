@@ -1,13 +1,19 @@
 # Production Release Runbook
 
-Current production baseline: the settlement-recovery, integer-display,
-Player-Evolution-contracts and merge-queue-CI train
-`381491e23b60c004a843266169fd7a30d4436378`, independently verified on
-4 August 2026 by successful production workflow `30907807862` (12:08:50 to
-12:27:26 UTC) as deployment `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM`
-(`supasnake-pk5b7d8bv-josef-bells-projects.vercel.app`). This release carried no
-migration and no `SNAKE_RULES_VERSION` bump; hosted migrations remain aligned
-through 065 with no pending plan.
+Current production baseline: the settlement-payload, plain-language and
+engine-hardening train `ba253b5a23c6d8bc3f887e9d1a8ae617c970c79f`,
+independently verified on 4 August 2026 by successful production workflow
+`30936005977` (17:53:34 to 18:13:12 UTC) as deployment
+`dpl_4PGGV7FS3EYVBXHv19mYXA4KpepA`
+(`supasnake-muv8yqmn0-josef-bells-projects.vercel.app`). This release applied
+**migration 066**, the first hosted migration since 065: the pre-push plan was
+exactly `066`, the push raised the firing notice
+`complete_free_run_continuity p_facts bound raised to 262144` rather than the
+no-op notice, the post-push plan was exactly `none`, and linked database lint
+passed with the known non-blocking warning. Hosted migrations are now aligned
+through **066**. The dedicated read-only probe is
+`cohesive_release_read_only_v4`, whose 15 keys include the new
+`settlementBoundsAligned`; it passed.
 Canonical health reports the exact release SHA, healthy database, project ref
 `gmpwyzqafoyowndbvlma`, 22/22 public surfaces, public hash
 `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, and
@@ -16,16 +22,23 @@ neutral 2/3/4 Strain thresholds. Canonical alias, cron owner, and every cron hos
 name the same READY production deployment; cron is enabled and its normalized
 definition hash remains
 `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
-Stripe remains in sandbox/test mode.
+Stripe remains in sandbox/test mode. The deploy workflow's reviewed rollout
+allowlist now holds three contracts — `genome-v2-initial`, `genome-v2-resume`
+and `settlement-payload-bounds` — and this run proved the newest one end to end.
 
 The live interaction-v2 contract uses optional physical Gene relics on a
 deterministic 6 ± 2-food cadence; already-issued or omitted interaction stamps
 retain automatic-offer v1 compatibility. The now-previous deployment
-`dpl_CLE4n4uQVw7kYopCpavA5miY8yuT` (`2fe33ca`) is dual-version and shares hosted
-schema 001–065, so it is the only artifact-level rollback candidate for this
-application-only release — and it restores the stranded-settlement trap that
-hard-blocked two production accounts behind the “Result secured” modal, so
-prefer a forward fix. Older artifacts additionally restore the fatal Gilded Fork
+`dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`381491e`) predates migration 066. Because
+066 only *widens* the settlement payload bounds and is forward-only, the raised
+caps stay in force whatever artifact is serving, so that deployment still reads
+and writes the hosted schema safely and remains the artifact-level rollback
+candidate. What it gives up is the payload projection that keeps a terminal
+outcome inside those bounds, the plain-language vocabulary, and the engine
+legal-play hardening. Older artifacts additionally restore the
+stranded-settlement trap that
+hard-blocked two production accounts behind the “Result secured” modal
+(`dpl_CLE4n4uQVw7kYopCpavA5miY8yuT`, `2fe33ca`), the fatal Gilded Fork
 rejection for Gene-only golden food (`dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw`,
 `4fb6271`) and the blocking reconnect surface, session-unbound terminal
 settlement, and pre-fix five-star wave preflight
@@ -167,7 +180,7 @@ and exercise fixture state.
 The A/B/C state machine below records the completed first Genome v2 cutover and
 remains the recovery and incident-classification contract for a linked project
 that genuinely lacks migration 065. It is not the ordinary state machine for
-later application-only releases. Future releases start from the current 001–065
+later application-only releases. Future releases start from the current 001–066
 baseline and follow the Release law and Automated sequence in this runbook;
 their linked migration plan is `none` unless an exact reviewed suffix is named
 at dispatch.
@@ -190,7 +203,7 @@ If any check fails here, stop. No hosted migration has been attempted.
 
 ### B. Post-migration, pre-production
 
-- Hosted schema: 001–065, or the recognized forward-only partial state while a
+- Hosted schema: 001–066, or the recognized forward-only partial state while a
   failed push is being investigated.
 - Canonical alias and cron state: still exactly outgoing.
 - Outgoing application: healthy on the bridge schema.
@@ -220,7 +233,7 @@ never operator memory, decides.
 
 ### C. Post-cutover
 
-- Hosted schema: 001–065.
+- Hosted schema: 001–066.
 - Canonical alias: exact deployment ID and host returned by the deliberate
   Production deployment.
 - Canonical health: exact Git SHA, exact project ref/public-surface hash,
