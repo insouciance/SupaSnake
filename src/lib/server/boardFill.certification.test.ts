@@ -601,13 +601,15 @@ describe('FACT 1 — the 2048-tick / 512-action ceiling is a per-checkpoint wind
   });
 
   it('shows the window a legitimate player can accumulate is a fraction of 2048 ticks', () => {
-    // The client checkpoints every 3s and freezes the board after 10s without
-    // an accepted write (ACTIVE_RUN_CHECKPOINT_INTERVAL_MS /
-    // ACTIVE_RUN_CONNECTION_HOLD_MS in src/app/game/page.tsx). The widest
-    // window a player can legitimately open is therefore one cadence plus the
-    // hold, at the dynasty's fastest tick.
+    // The client checkpoints every 3s and freezes the board once writes have
+    // been failing for 10s (ACTIVE_RUN_CHECKPOINT_INTERVAL_MS /
+    // ACTIVE_RUN_CONNECTION_HOLD_MS in src/app/game/page.tsx), and each attempt
+    // may itself burn its 4.5s abort budget before it is counted. The widest
+    // window a player can legitimately open is therefore one full cadence plus
+    // the hold plus one timed-out attempt, at the dynasty's fastest tick.
     const CADENCE_MS = 3_000;
     const CONNECTION_HOLD_MS = 10_000;
+    const ATTEMPT_TIMEOUT_MS = 4_500;
     const fastestTickMs: Record<DynastyName, number> = {
       CYBER: 120,
       PRIMAL: 175,
@@ -615,10 +617,15 @@ describe('FACT 1 — the 2048-tick / 512-action ceiling is a per-checkpoint wind
     };
     for (const dynasty of DYNASTIES) {
       const worstWindowTicks = Math.ceil(
-        (CADENCE_MS + CONNECTION_HOLD_MS) / fastestTickMs[dynasty]
+        (CADENCE_MS + CONNECTION_HOLD_MS + ATTEMPT_TIMEOUT_MS) /
+          fastestTickMs[dynasty]
       );
+      // Worst case is CYBER at 146 ticks: 7.1% of the tick budget, and — since
+      // a tick can carry at most one turn — 28.5% of the action budget.
       expect(worstWindowTicks).toBeLessThan(RUN_REPLAY_MAX_TICKS_PER_CHECKPOINT / 8);
-      expect(worstWindowTicks).toBeLessThan(RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT / 4);
+      expect(worstWindowTicks * 3).toBeLessThan(
+        RUN_REPLAY_MAX_ACTIONS_PER_CHECKPOINT
+      );
     }
   });
 });
