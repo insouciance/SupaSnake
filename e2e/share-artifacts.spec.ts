@@ -124,6 +124,10 @@ test.describe('the build artifact — a recipe, never evidence (WP-2.08)', () =>
     // rankable number, so neither does the page rendered from it.
     const body = (await page.getByTestId('artifact-landing').innerText()).toLowerCase();
     expect(body).not.toContain('yield');
+    // The quantity is called Payout now. A guard that only knows the retired
+    // word would go quiet the moment the number it forbids came back under
+    // the new one.
+    expect(body).not.toContain('payout');
     expect(body).not.toContain('score');
 
     // Rule 7: no commercial surface.
