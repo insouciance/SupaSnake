@@ -636,6 +636,182 @@ export function isGenomeV2ActiveGeneId(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Curriculum vocabulary (WP-B — PEO §4.1-4.3, server contract §3)
+// ---------------------------------------------------------------------------
+
+/** Every Dynasty a v2 run can be issued for. */
+export type GenomeV2Dynasty = keyof typeof SIGNATURE_GENES;
+
+/**
+ * The eligibility contract this build stamps and re-derives against
+ * (`PLAYER_EVOLUTION_SERVER_CONTRACT.md`). A change to the composition rule
+ * below changes this number, and a run stamped at an older contract keeps
+ * settling under the pool it was stamped with.
+ */
+export const GENOME_V2_ELIGIBILITY_CONTRACT_VERSION = 1;
+
+/**
+ * Starter pools, one per Dynasty (PEO §4.3, owner-ratified 2026-08-04).
+ *
+ * SEVEN, NOT SIX, AND THE SIGNATURE IS IN IT. `rollGenomeV2Offer` stops
+ * serving once fewer than two unseen legal entries remain, and every
+ * acquisition *and every Recode* consumes one — so an n-Gene pool supports at
+ * most n-1 acquisitions and six can never fill six loci. A starved run is
+ * permanent: the runtime parks the next cadence offer at MAX_SAFE_INTEGER and
+ * relics stop for the rest of the run.
+ * `PLAYER_EVOLUTION_STARTER_POOL_SIMULATION.md` measures it — every 6-pool
+ * starves in 1.000 of 1,600 traversals, every 7-pool in 0.000.
+ *
+ * The three lists differ by exactly one entry beyond the Signature (the
+ * execution Gene that partners its Strain), which is the mechanical proof that
+ * no Dynasty is presented as the neutral tutorial.
+ */
+export const GENOME_V2_STARTER_POOLS: Readonly<
+  Record<GenomeV2Dynasty, readonly GenomeV2ActiveGeneId[]>
+> = {
+  CYBER: [
+    'zenith_protocol',
+    'live_wire',
+    'gold_trail',
+    'compound_interest',
+    'phoenix',
+    'overgrowth',
+    'phase_gate',
+  ],
+  PRIMAL: [
+    'heartwood',
+    'live_wire',
+    'gold_trail',
+    'compound_interest',
+    'phoenix',
+    'overgrowth',
+    'phase_gate',
+  ],
+  COSMIC: [
+    'constellation_crown',
+    'circuit_run',
+    'gold_trail',
+    'compound_interest',
+    'phoenix',
+    'overgrowth',
+    'phase_gate',
+  ],
+};
+
+/** Seven is the arithmetic floor, not a preference. See above. */
+export const GENOME_V2_STARTER_POOL_SIZE = 7;
+
+/**
+ * Graduation to the complete legal roster (PEO §8, decision 9).
+ *
+ * Deliberately the existing Apex thresholds
+ * (`GENOME_V2_CONFIG.ftue.apexAtBankedRuns` / `apexAtMastery`), so the
+ * curriculum introduces no new progression number. They are duplicated here
+ * rather than imported because `genomeV2.ts` imports this module;
+ * `genomeV2.starterPool.test.ts` asserts the two stay in lockstep.
+ */
+export const GENOME_V2_GRADUATION = {
+  bankedRuns: 10,
+  masteryLevel: 3,
+} as const;
+
+/** The per-account inputs a composed vocabulary is derivable from. */
+export interface GenomeV2EligibilityFacts {
+  /** Offer-eligible Genes held by the account, from the satellite table. */
+  eligibleGeneIds: readonly GenomeV2ActiveGeneId[];
+  /** The single selected trial, which occupies a candidate position. */
+  trialGeneId: GenomeV2ActiveGeneId | null;
+  /** Validated banked runs at run start. */
+  bankedRuns: number;
+  /** Highest Mastery level across Dynasties at run start. */
+  masteryLevel: number;
+}
+
+/**
+ * True once an account holds the complete legal roster by seniority alone.
+ * A veteran is never pushed backward into onboarding (PEO §8).
+ */
+export function genomeV2Graduated(
+  bankedRuns: number,
+  masteryLevel: number
+): boolean {
+  return (
+    bankedRuns >= GENOME_V2_GRADUATION.bankedRuns ||
+    masteryLevel >= GENOME_V2_GRADUATION.masteryLevel
+  );
+}
+
+/**
+ * The Gene vocabulary a run may draw offers from, for THIS account and THIS
+ * Dynasty. Replaces `genomeV2ActivePool(dynasty)` at run start when the
+ * curriculum is live.
+ *
+ * PURE AND TOTAL. It never reads the database, never throws, and satisfies
+ * three invariants unconditionally, because the run stamped from it must be
+ * re-derivable at settlement and can never be allowed to starve:
+ *
+ *   1. `result ⊆ genomeV2ActivePool(dynasty)` — `createGenomeV2State` enforces
+ *      the same ceiling and rejects anything above it.
+ *   2. `result.length >= GENOME_V2_STARTER_POOL_SIZE` — a malformed or
+ *      partially-backfilled account composes the complete legal roster
+ *      (server contract §7: fail closed to the reviewed legacy behaviour,
+ *      never to an empty or client-selected pool).
+ *   3. The order is the catalog's, so two callers with the same facts produce
+ *      byte-identical arrays.
+ *
+ * The Dynasty starter seven is a constant of the Dynasty, not an account fact,
+ * so it is unioned in here as well as written to the satellite table. That is
+ * what makes "a new account receives exactly its seven" true even before the
+ * first `grant_starter_eligibility` write lands.
+ */
+export function genomeV2PlayableVocabulary(
+  dynasty: GenomeV2Dynasty,
+  facts: GenomeV2EligibilityFacts
+): GenomeV2ActiveGeneId[] {
+  const catalog = genomeV2ActivePool(dynasty);
+  if (
+    !Number.isSafeInteger(facts.bankedRuns) ||
+    facts.bankedRuns < 0 ||
+    !Number.isSafeInteger(facts.masteryLevel) ||
+    facts.masteryLevel < 0 ||
+    !Array.isArray(facts.eligibleGeneIds) ||
+    facts.eligibleGeneIds.some((geneId) => !isGenomeV2ActiveGeneId(geneId)) ||
+    (facts.trialGeneId !== null && !isGenomeV2ActiveGeneId(facts.trialGeneId))
+  ) {
+    return catalog;
+  }
+  if (genomeV2Graduated(facts.bankedRuns, facts.masteryLevel)) return catalog;
+  const eligible = new Set<GenomeV2ActiveGeneId>([
+    ...GENOME_V2_STARTER_POOLS[dynasty],
+    ...facts.eligibleGeneIds,
+  ]);
+  if (facts.trialGeneId) eligible.add(facts.trialGeneId);
+  const composed = catalog.filter((geneId) => eligible.has(geneId));
+  return composed.length < GENOME_V2_STARTER_POOL_SIZE ? catalog : composed;
+}
+
+/**
+ * The Dynasty a composed vocabulary belongs to, or null when it is not a legal
+ * composition for any of them.
+ *
+ * Every composed pool contains exactly one Signature — the starter seven
+ * always carries it, and both fallbacks return the complete roster — so the
+ * Dynasty is recoverable from the pool alone. That is what lets
+ * `parseRunStartContext` re-derive and compare a stamped vocabulary without
+ * being handed a Dynasty it would then have to trust.
+ */
+export function genomeV2DynastyForVocabulary(
+  genePool: readonly GenomeV2ActiveGeneId[]
+): GenomeV2Dynasty | null {
+  const matches = (
+    Object.keys(SIGNATURE_GENES) as GenomeV2Dynasty[]
+  ).filter((dynasty) =>
+    genePool.includes(SIGNATURE_GENES[dynasty] as GenomeV2ActiveGeneId)
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
 /** Version-aware tags without changing any v1 call site. */
 export function genomeV2GeneStrains(
   id: GenomeV2ActiveGeneId
