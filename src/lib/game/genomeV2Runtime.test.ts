@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 import { describe, expect, it } from '@jest/globals';
 import {
   GENOME_V2_INTERACTION_AUTO_OFFER,
@@ -715,5 +718,76 @@ describe('GenomeV2Runtime target and signature bridges', () => {
     expect(
       new TextEncoder().encode(JSON.stringify(state)).byteLength
     ).toBeLessThanOrEqual(GENOME_V2_CONFIG.persistence.maximumSerializedBytes);
+  });
+});
+
+describe('GenomeV2Runtime reducer refusals', () => {
+  /**
+   * The audit's swallow inventory: ten bare `catch {}` blocks discarded the
+   * reducer's error object entirely, and eight of them fed a caller that
+   * converted the bare `false`/`null` into a GENERIC fatal error. The specific
+   * guard that refused - the only useful part - was destroyed at the exact
+   * point it was created, which is why this whole bug class was invisible in
+   * production telemetry.
+   */
+  function refusedCoilSeal(): {
+    runtime: GenomeV2Runtime;
+    result: string | null;
+    logged: string[];
+  } {
+    // Coilkeeper held, but the seal is not charged: the runtime can only check
+    // the cell count, so this refusal can ONLY come from the reducer.
+    const runtime = runtimeFromState(stateWithGene('PRIMAL', 'coilkeeper'));
+    expect(runtime.getState().coilCharge).toBeLessThan(
+      GENOME_V2_CONFIG.coilkeeper.chargeFoods
+    );
+    const logged: string[] = [];
+    const spy = jest
+      .spyOn(console, 'error')
+      .mockImplementation((message?: unknown) => {
+        logged.push(String(message));
+      });
+    try {
+      const result = runtime.recordCoilSeal(1, [
+        { x: 1, z: 1 },
+        { x: 1, z: 2 },
+        { x: 2, z: 1 },
+        { x: 2, z: 2 },
+      ]);
+      return { runtime, result, logged };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('keeps the reducer message instead of discarding it', () => {
+    const { runtime, result, logged } = refusedCoilSeal();
+    expect(result).toBeNull();
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain('recordCoilSeal');
+    expect(logged[0]).toContain('not charged or large enough');
+    expect(runtime.takeReducerRefusal()).toBe(
+      'recordCoilSeal: Genome v2 Coilkeeper seal is not charged or large enough.'
+    );
+  });
+
+  it('hands the refusal to exactly one reader and leaves state untouched', () => {
+    const { runtime } = refusedCoilSeal();
+    const before = JSON.stringify(runtime.getState());
+    expect(runtime.takeReducerRefusal()).not.toBeNull();
+    // One reader: a later, unrelated failure must not inherit this reason.
+    expect(runtime.takeReducerRefusal()).toBeNull();
+    // `apply` is transactional, so a refusal cannot half-mutate the run.
+    expect(JSON.stringify(runtime.getState())).toBe(before);
+  });
+
+  it('leaves no bare catch in the runtime', () => {
+    const source = readFileSync(
+      join(__dirname, 'genomeV2Runtime.ts'),
+      'utf8'
+    );
+    expect(source).not.toContain('} catch {');
+    expect(source.match(/\} catch \(error\) \{/g)).toHaveLength(10);
+    expect(source.match(/this\.refuse\(/g)).toHaveLength(10);
   });
 });
