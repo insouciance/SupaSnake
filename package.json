@@ -13,6 +13,7 @@
     "verify:production-env": "node scripts/verify-production-env.mjs",
     "verify:constitution": "node scripts/verify-constitution.mjs",
     "test": "jest",
+    "simulate:starter-pools": "jest src/shared/simulation",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
