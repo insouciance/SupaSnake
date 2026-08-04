@@ -194,7 +194,7 @@ export function ClanGloryPanel({
               Contributor
               <select value={chosenUserId} onChange={(event) => setChosenUserId(event.target.value)} className="mt-1 min-h-[44px] w-full rounded-arcade border border-scale-blue-light/60 bg-void/70 px-3 text-bone-white">
                 <option value="">Choose a verified contributor</option>
-                {candidates.map((candidate) => <option key={candidate.userId} value={candidate.userId}>#{candidate.contribution.rank} · {candidateName(candidate)} · {candidate.contribution.bestFiveDepth === undefined ? undefined : formatAmount(candidate.contribution.bestFiveDepth)} Depth</option>)}
+                {candidates.map((candidate) => <option key={candidate.userId} value={candidate.userId}>#{candidate.contribution.rank} · {candidateName(candidate)} · {candidate.contribution.bestFiveDepth == null ? undefined : formatAmount(candidate.contribution.bestFiveDepth)} Depth</option>)}
               </select>
             </label>
             {(candidates.length === 0 || availableSeats.length === 0) && (
@@ -219,7 +219,7 @@ export function ClanGloryPanel({
             <p className="label-arcade text-amber-300">Glory Seat {chosenSeat}</p>
             <h3 id="glory-confirm-title" className="mt-1 heading-display text-2xl text-bone-white">Recognize {candidateName(selected)}?</h3>
             <p id="glory-confirm-description" className="mt-2 text-sm font-body text-beige/75">
-              Their verified rank #{selected.contribution.rank} and {selected.contribution.bestFiveDepth === undefined ? undefined : formatAmount(selected.contribution.bestFiveDepth)} Depth become the public evidence. The seat locks for the next battle; {formatAmount(terms.rewardDna)} DNA is awarded once only if they contribute there.
+              Their verified rank #{selected.contribution.rank} and {selected.contribution.bestFiveDepth == null ? undefined : formatAmount(selected.contribution.bestFiveDepth)} Depth become the public evidence. The seat locks for the next battle; {formatAmount(terms.rewardDna)} DNA is awarded once only if they contribute there.
             </p>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <button type="button" disabled={busy} onClick={() => setConfirming(false)} className="btn-neutral min-h-[44px] px-4">Cancel</button>

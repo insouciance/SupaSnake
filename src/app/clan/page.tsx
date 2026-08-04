@@ -172,7 +172,7 @@ function StandingsPreview({ view }: { view: ClanFullView }) {
               >
                 Report
               </a>
-              <span className="shrink-0 font-display text-bone-white">{member.contribution.bestFiveDepth === undefined ? undefined : formatAmount(member.contribution.bestFiveDepth)}</span>
+              <span className="shrink-0 font-display text-bone-white">{member.contribution.bestFiveDepth == null ? undefined : formatAmount(member.contribution.bestFiveDepth)}</span>
             </li>
           ))}
         </ol>
