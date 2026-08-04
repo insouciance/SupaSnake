@@ -1,11 +1,12 @@
 # Production Release Runbook
 
-Current production baseline: run-continuity, terminal-authority and Tactical
-Loom runtime `4fb62712a5ecf57015aedab98cf732bfa11c69ad`, independently verified
-on 3 August 2026 by successful production workflow `30853735919` (17m19s,
-completed 21:31:04 UTC) as deployment `dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw`
-(`supasnake-m3mpjs2ij-josef-bells-projects.vercel.app`). This release carried no
-migration; hosted migrations remain aligned through 065 with no pending plan.
+Current production baseline: Gilded Fork engine-fix runtime
+`2fe33cabb5dd9488e53d5f75a2e38f41a4da77ea`, independently verified on
+4 August 2026 by successful production workflow `30887227521` (07:17:39 to
+07:35:29 UTC) as deployment `dpl_CLE4n4uQVw7kYopCpavA5miY8yuT`
+(`supasnake-yoyq183cf-josef-bells-projects.vercel.app`). This release carried no
+migration and no `SNAKE_RULES_VERSION` bump; hosted migrations remain aligned
+through 065 with no pending plan.
 Canonical health reports the exact release SHA, healthy database, project ref
 `gmpwyzqafoyowndbvlma`, 22/22 public surfaces, public hash
 `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, and
@@ -19,11 +20,13 @@ Stripe remains in sandbox/test mode.
 The live interaction-v2 contract uses optional physical Gene relics on a
 deterministic 6 ± 2-food cadence; already-issued or omitted interaction stamps
 retain automatic-offer v1 compatibility. The now-previous deployment
-`dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`8bb3ef9`) is dual-version and shares hosted
+`dpl_6LcpMZ3ZADXSYv9bdQKv2U3sovkw` (`4fb6271`) is dual-version and shares hosted
 schema 001–065, so it is the only artifact-level rollback candidate for this
-application-only release — and it restores the blocking reconnect surface,
-session-unbound terminal settlement, and the pre-fix five-star wave preflight,
-so prefer a forward fix. The retired pre-Genome deployment
+application-only release — and it restores the fatal Gilded Fork rejection for
+Gene-only golden food, so prefer a forward fix. The older
+`dpl_EjXZeApTYFtuc7RFitTWkgHtpWqQ` (`8bb3ef9`) additionally restores the
+blocking reconnect surface, session-unbound terminal settlement, and the pre-fix
+five-star wave preflight. The retired pre-Genome deployment
 `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx` is still not a safe rollback target for
 issued v2 sessions because it cannot resume or settle that immutable contract.
 Use the dual-version, flag-off forward procedure below. Keep this volatile
