@@ -64,6 +64,7 @@ import {
   adoptPendingGameSessionEnds,
   listPendingRunProgression,
   listStrandedTerminalRuns,
+  RECOVERY_ATTENTION_THRESHOLD,
   resumeOrRecoverRunImpact,
   type PendingEndAdoptionSummary,
 } from '@/lib/server/gameProgressionSettlement';
@@ -98,13 +99,6 @@ const PENDING_END_BATCH_LIMIT = 50;
 
 /** Hard stop on loop iterations, so a scan that never drains cannot spin. */
 const MAX_STAGE_PASSES = 25;
-
-/**
- * A row the server has tried this many times is not given up on — nothing is
- * ever given up on — but it stops being a silent statistic and is named in the
- * response, which is the operator's cue that it needs a human.
- */
-export const RECOVERY_ATTENTION_THRESHOLD = 8;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',

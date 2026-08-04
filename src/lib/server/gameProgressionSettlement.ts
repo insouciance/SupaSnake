@@ -464,6 +464,17 @@ export async function settleDurableRunProgression(
   }
 }
 
+/**
+ * A row the server has tried this many times is not given up on — nothing is
+ * ever given up on — but it stops being a silent statistic and is named in the
+ * sweep's response, which is the operator's cue that it needs a human.
+ *
+ * Lives here rather than beside the sweep because a Next.js route module may
+ * only export route fields; `export const` on a threshold there fails the
+ * production build.
+ */
+export const RECOVERY_ATTENTION_THRESHOLD = 8;
+
 export interface PendingRunProgressionCandidate {
   playerId: string;
   sessionId: string;

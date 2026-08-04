@@ -218,7 +218,8 @@ async function fakeRpc(fn: string, params: Row = {}) {
 }
 
 import { NextRequest } from 'next/server';
-import { GET, RECOVERY_ATTENTION_THRESHOLD } from './route';
+import { GET } from './route';
+import { RECOVERY_ATTENTION_THRESHOLD } from '@/lib/server/gameProgressionSettlement';
 import {
   STALE_OPEN_MINUTES,
   STALE_PENDING_SETTLEMENT_MINUTES,
@@ -311,6 +312,17 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.restoreAllMocks();
+});
+
+describe('the route module', () => {
+  it('exports only the fields Next.js allows on a route', async () => {
+    // A route file is an entry point, not a module: `next build` rejects any
+    // other export with "is not a valid Route export field". That failure
+    // costs a 15-minute production build to discover, so it is caught here.
+    // Shared constants belong in `@/lib/server/*`.
+    const moduleExports = await import('./route');
+    expect(Object.keys(moduleExports).sort()).toEqual(['GET', 'maxDuration']);
+  });
 });
 
 describe('authorization', () => {
