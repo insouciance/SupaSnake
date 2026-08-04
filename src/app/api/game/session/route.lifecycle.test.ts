@@ -1359,3 +1359,93 @@ describe('players.high_score is written from the recompute (F-1, WP-2.05)', () =
     expect(session().duration_seconds).toBeGreaterThanOrEqual(115);
   });
 });
+
+// ---------------------------------------------------------------------------
+// STRANDED TERMINAL RUNS — the settlement-recovery incident
+// ---------------------------------------------------------------------------
+//
+// A run the server terminalized but never folded keeps `ended_at IS NULL`, so
+// `readActiveRun` keeps returning it and the start guard refused every future
+// run — permanently, because no sweeper can reach such a row:
+// `expire_stale_game_sessions` skips continuity rows, and both pending
+// settlement scans require a durable envelope this run never staged. The start
+// path now folds it first, through this route's own audited settlement branch.
+
+describe('a start absorbs a stranded terminal run instead of refusing forever', () => {
+  const startRequest = (startRequestId: string) =>
+    post({
+      action: 'start',
+      startRequestId,
+      mode: 'earn',
+      snake_id: 'snake-1',
+      energyCommitment: 1,
+    });
+
+  it('folds the server-locked outcome and stops answering `active_run`', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+    db.collected_snakes = [{ id: 'snake-1', player_id: PLAYER_ID }];
+
+    const response = await POST(startRequest('4d0cf776-7646-4db9-8cb4-f6557d99926d'));
+    const body = await response.json();
+
+    // The stranded run is settled, not merely inspected.
+    expect(session().end_reason).toBe('completed');
+    expect(session().ended_at).not.toBeNull();
+    expect(
+      rpcCalls.find((call) => call.fn === 'stage_continuity_game_session_end')
+        ?.params
+    ).toMatchObject({ p_session_id: 'session-1', p_lease_hash: null });
+
+    // And the account is no longer locked out by that run.
+    expect(body?.reason).not.toBe('active_run');
+  });
+
+  it('pays the absorbed run exactly once, however many starts are attempted', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+    db.collected_snakes = [{ id: 'snake-1', player_id: PLAYER_ID }];
+
+    await POST(startRequest('4d0cf776-7646-4db9-8cb4-f6557d99926d'));
+    const dnaAfterFirst = Number(player().dna ?? 0);
+    const gamesAfterFirst = Number(player().total_games_played ?? 0);
+    const settlementsAfterFirst = mockSettleSessionReward.mock.calls.length;
+
+    await POST(startRequest('9128ca9f-2a4b-41d0-bfe0-af993743e610'));
+
+    expect(mockSettleSessionReward.mock.calls.length).toBe(settlementsAfterFirst);
+    expect(Number(player().dna ?? 0)).toBe(dnaAfterFirst);
+    expect(Number(player().total_games_played ?? 0)).toBe(gamesAfterFirst);
+    expect(
+      db.economy_transactions.filter(
+        (row) => row.source_id === 'session-1'
+      ).length
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it('absorbs through one delegated settlement, never a recursive cascade', async () => {
+    seedContinuityTerminalRun({ phase: 'terminal' });
+    db.collected_snakes = [{ id: 'snake-1', player_id: PLAYER_ID }];
+
+    await POST(startRequest('4d0cf776-7646-4db9-8cb4-f6557d99926d'));
+
+    expect(
+      rpcCalls.filter((call) => call.fn === 'stage_continuity_game_session_end')
+        .length
+    ).toBe(1);
+  });
+
+  it('leaves an ordinary active run refused — absorption is only for locked outcomes', async () => {
+    seedContinuityTerminalRun({ phase: 'active' });
+    db.collected_snakes = [{ id: 'snake-1', player_id: PLAYER_ID }];
+
+    const response = await POST(startRequest('4d0cf776-7646-4db9-8cb4-f6557d99926d'));
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({ reason: 'active_run' });
+    expect(session().ended_at).toBeNull();
+    expect(session().end_reason).toBeNull();
+    expect(rpcCalls.map((call) => call.fn)).not.toContain(
+      'stage_continuity_game_session_end'
+    );
+  });
+});
