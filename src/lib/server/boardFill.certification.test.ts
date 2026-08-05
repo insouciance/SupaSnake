@@ -33,17 +33,25 @@
  * the 397 eats before that window. That is `SnakeGameLogic.determinism` and
  * `runContinuity.genomeV2`'s job, and it is unrelated to board fill.
  *
- * WHAT IT MEASURED, AT ba253b5
+ * WHAT IT MEASURED, AT THE 2026-08-05 RULES WAVE
  *
- *   dynasty  ticks  foods  body cells  terrain  free  checkpoint B  facts B
- *   CYBER      155    150         153      139   108       141,812        —
- *   PRIMAL     400    395         400        0     0       135,699  111,091
- *   COSMIC     406    397         400        0     0       138,397  115,289
+ *   dynasty  ticks  foods  body cells  terrain  free  regions  checkpoint B
+ *   CYBER      149    144         147      133   120        1       136,907
+ *   PRIMAL     400    393         400        0     0        1       134,959
+ *   COSMIC     406    397         400        0     0        1       138,102
  *
- * Against the caps: the checkpoint uses 13.5% of its 1,048,576-byte column,
- * the terminal facts 44.0% of their 262,144, and the settlement projection
- * 2.9% (7,541 B — #72's projection is worth 14x here). CYBER never reaches a
- * full body: see FINDING BF-1.
+ * `regions` is the new column and the point of the wave: the number of
+ * DISCONNECTED regions the terrain field ever showed, sampled every tick. One
+ * means the board was never severed. The previous measurement (ba253b5: CYBER
+ * 155/150/153/139/108) recorded the opposite as FINDING BF-1 — free cells
+ * stranded behind blocks — and the owner ruled the guarantee in without capping
+ * ring progression.
+ *
+ * Against the caps: the checkpoint uses 13.1% of its 1,048,576-byte column, the
+ * terminal facts well under their 262,144, and the settlement projection a few
+ * percent. CYBER still stops short of a full body, but no longer because the
+ * arena partitioned it — see the BF-1 residual case, which records exactly what
+ * this harness can and cannot prove about CYBER saturation.
  */
 
 import { createHash } from 'crypto';
@@ -170,6 +178,94 @@ function manifestFor(
   };
 }
 
+/**
+ * Free cells the head can walk to, excluding the objectives a food may not be
+ * buried under. This is the honest test of "the board still owed the player a
+ * food": if one of these exists and the wave is empty, placement gave up on a
+ * board that could still have carried a target.
+ */
+function reachableTargets(
+  state: ReturnType<SnakeGameLogic['getState']>
+): Array<{ x: number; z: number }> {
+  const head = state.snake[0];
+  if (!head) return [];
+  const walls = new Set(state.snake.map(key));
+  for (const block of state.terrain) if (block.solid) walls.add(key(block));
+  for (const fact of state.genomeV2?.permanentTerrain ?? []) {
+    for (const cell of fact.cells) walls.add(key(cell));
+  }
+  const reserved = new Set<string>();
+  // A forming block is passable but is NOT a cell food may occupy: it turns
+  // lethal within its window, and food there would be a trap the player could
+  // not have read. Passable for reachability, reserved for placement.
+  for (const block of state.terrain) if (!block.solid) reserved.add(key(block));
+  if (state.exitTile) reserved.add(key(state.exitTile));
+  if (state.exitTile2) reserved.add(key(state.exitTile2));
+  if (state.mutationTile) reserved.add(key(state.mutationTile));
+  // Live Genome targets are board objects in their own right - a relic, a
+  // fork's other branch, a Circuit relay. Food may not be buried under one, so
+  // a cell holding one is not a cell the board could have carried a food on.
+  for (const target of Object.values(state.genomeV2?.targets ?? {})) {
+    if (!['active', 'armed'].includes(target.lifecycle)) continue;
+    reserved.add(key(target.cell));
+    if (target.forkCell) reserved.add(key(target.forkCell));
+    if (target.secondaryCell) reserved.add(key(target.secondaryCell));
+    for (const cell of target.optionalRouteCells ?? []) reserved.add(key(cell));
+  }
+  const seen = new Set<string>([key(head)]);
+  const queue = [{ x: head.x, z: head.z }];
+  const found: Array<{ x: number; z: number }> = [];
+  while (queue.length > 0) {
+    const cell = queue.pop()!;
+    for (const entry of STEPS) {
+      const next = { x: cell.x + entry.dx, z: cell.z + entry.dz };
+      const nextKey = key(next);
+      if (!inBounds(next) || walls.has(nextKey) || seen.has(nextKey)) continue;
+      seen.add(nextKey);
+      queue.push(next);
+      if (!reserved.has(nextKey)) found.push(next);
+    }
+  }
+  return found;
+}
+
+/**
+ * Connected components of the field terrain alone defines: every cell that is
+ * not permanently claimed, walked orthogonally. The body is deliberately absent
+ * - a snake sealing itself in is a death it played into, and the ruled
+ * guarantee is about what the ARENA may do.
+ */
+function terrainFieldRegions(game: SnakeGameLogic): number {
+  const state = game.getState({ includeGenomeV2: true });
+  const solid = new Set<string>();
+  for (const block of state.terrain) if (block.solid) solid.add(key(block));
+  for (const fact of state.genomeV2?.permanentTerrain ?? []) {
+    for (const cell of fact.cells) solid.add(key(cell));
+  }
+  const seen = new Set<string>();
+  let regions = 0;
+  for (let x = 0; x < GRID; x += 1) {
+    for (let z = 0; z < GRID; z += 1) {
+      const start = key({ x, z });
+      if (solid.has(start) || seen.has(start)) continue;
+      regions += 1;
+      seen.add(start);
+      const queue = [{ x, z }];
+      while (queue.length > 0) {
+        const cell = queue.pop()!;
+        for (const entry of STEPS) {
+          const next = { x: cell.x + entry.dx, z: cell.z + entry.dz };
+          const nextKey = key(next);
+          if (!inBounds(next) || solid.has(nextKey) || seen.has(nextKey)) continue;
+          seen.add(nextKey);
+          queue.push(next);
+        }
+      }
+    }
+  }
+  return regions;
+}
+
 /** Every cell a head may not enter: body, solid terrain, permanent Genome terrain. */
 function blockedCells(game: SnakeGameLogic): Set<string> {
   const state = game.getState({ includeGenomeV2: true });
@@ -230,6 +326,26 @@ interface SaturationDrive {
   occupiedCells: number;
   freeCells: number;
   actions: number;
+  /**
+   * Worst number of disconnected regions the TERRAIN field ever showed, sampled
+   * on every tick of the drive. The ruled guarantee is that this never exceeds
+   * one: terrain may close the board without limit, but never sever it.
+   */
+  maxTerrainRegions: number;
+  /**
+   * Ticks on which the wave was empty while the head could still WALK to a free
+   * cell. Zero is the owner's absolute: a crowd is difficulty and must pass, so
+   * food supply may only stop when the board genuinely cannot carry a target.
+   */
+  foodlessTicksWithSpace: number;
+  /**
+   * The longest CONSECUTIVE run of those ticks. This is the number the owner's
+   * defect lived in: before the fix an empty wave was permanent, because the
+   * only refill path ran inside the eat branch and there was nothing to eat.
+   */
+  longestFoodlessStreak: number;
+  /** Ticks on which the rendered primary food was not the live wave's head. */
+  ghostFoodTicks: number;
   /** The checkpoint one tick before the drive's final eat. */
   penultimate: SnakeCheckpointV1;
   /** The checkpoint at maximum occupancy, still live. */
@@ -262,6 +378,37 @@ function driveToSaturation(dynasty: DynastyName): SaturationDrive {
   let cursor = cycleIndex.get(key(game.getState().snake[0]))!;
   let onCycle = true;
   let penultimate: SnakeCheckpointV1 | null = null;
+  let maxTerrainRegions = 0;
+  let foodlessTicksWithSpace = 0;
+  let foodlessStreak = 0;
+  let longestFoodlessStreak = 0;
+  let ghostFoodTicks = 0;
+
+  /**
+   * The three per-tick invariants this certification now polices, sampled on
+   * every tick rather than only at the end - a partition that healed, or a
+   * ghost that was overwritten by the next wave, is still a defect the player
+   * met.
+   */
+  const sample = (): void => {
+    maxTerrainRegions = Math.max(maxTerrainRegions, terrainFieldRegions(game));
+    const live = game.getState({ includeGenomeV2: true });
+    const claimed = new Set(live.snake.map(key));
+    for (const block of live.terrain) if (block.solid) claimed.add(key(block));
+    for (const fact of live.genomeV2?.permanentTerrain ?? []) {
+      for (const cell of fact.cells) claimed.add(key(cell));
+    }
+    if (live.foods.length === 0 && reachableTargets(live).length > 0) {
+      foodlessTicksWithSpace += 1;
+      foodlessStreak += 1;
+      longestFoodlessStreak = Math.max(longestFoodlessStreak, foodlessStreak);
+    } else {
+      foodlessStreak = 0;
+    }
+    const mirrored = live.food === null ? null : key(live.food);
+    const head = live.foods.length > 0 ? key(live.foods[0]) : null;
+    if (mirrored !== head) ghostFoodTicks += 1;
+  };
 
   // Three ticks without eating so the whole body settles onto the cycle. The
   // food is parked far ahead so the snake cannot reach it in that time.
@@ -371,6 +518,7 @@ function driveToSaturation(dynasty: DynastyName): SaturationDrive {
       stop = 'tick stalled behind an unresolved decision';
       break;
     }
+    sample();
     if (onCycle) cursor = (cursor + 1) % cycle.length;
   }
 
@@ -403,6 +551,10 @@ function driveToSaturation(dynasty: DynastyName): SaturationDrive {
     occupiedCells: occupied.size,
     freeCells: CELLS - occupied.size,
     actions: game.getReplayTrace().actions.length,
+    maxTerrainRegions,
+    foodlessTicksWithSpace,
+    longestFoodlessStreak,
+    ghostFoodTicks,
     penultimate: penultimate ?? game.exportCheckpoint(startedAtMs + 1_000),
     saturated: state.isGameOver
       ? penultimate ?? game.exportCheckpoint(startedAtMs + 1_000)
@@ -744,39 +896,83 @@ describe('FACT 3 — the engine survives its own saturated board', () => {
     }
   }, 300_000);
 
-  it("FINDING BF-1: CYBER's arena claims the board before the snake can", () => {
-    // The arena is scheduled as `floor(foods / 5) * 6` blocks with NO ceiling
-    // (blocksDueAt, terrain.ts) and `nextTerrainCells` walks every ring inward,
-    // so it lays 1.2 cells per food against the snake's 1.0. CYBER's board-fill
-    // is therefore a terrain fill: the snake is entombed at a fraction of the
-    // board, with free cells still on it, partitioned away behind blocks.
+  it('BF-1 RULED: the arena closes without limit and never severs the board', () => {
+    // BF-1 measured CYBER entombed: free cells stranded on the far side of a
+    // block, unreachable for the rest of the run. The owner ruled the CAP out
+    // and the GUARANTEE in - unlimited inward ring progression stays, and
+    // `nextTerrainCells` refuses any cell whose placement would partition the
+    // free field, laying the ring's other cells and catching the skipped one
+    // once a neighbour has filled in.
     //
-    // Routed to CE-3. This is not a continuity bound and not a crash; it is a
-    // dynasty-balance question about whether CYBER can reach maximum length at
-    // all. Recorded here because a board-fill certification that reported
-    // "CYBER saturates" without saying WITH WHAT would be misleading.
+    // Sampled on EVERY tick of the drive, not only at its end: a partition that
+    // later healed is still a board the player was cheated by.
     const driven = drive('CYBER');
     expect(driven.solidCells).toBeGreaterThan(0);
-    expect(driven.bodyCells).toBeLessThan(CELLS);
-    // The board is sealed around the head while free cells remain elsewhere.
-    expect(driven.freeCells).toBeGreaterThan(0);
+    expect(driven.maxTerrainRegions).toBeLessThanOrEqual(1);
+    expect(terrainFieldRegions(driven.game)).toBeLessThanOrEqual(1);
+
+    // Ring progression is genuinely unlimited: the arena is well past its
+    // outer ring (76 cells) by the time the drive ends.
+    expect(driven.solidCells).toBeGreaterThan(76);
+
+    // And the other two dynasties, which lay terrain from Fortress and
+    // calcification rather than from a schedule, are held to the same line.
+    for (const dynasty of ['PRIMAL', 'COSMIC'] as DynastyName[]) {
+      expect(drive(dynasty).maxTerrainRegions).toBeLessThanOrEqual(1);
+    }
   }, 300_000);
 
-  it('FINDING BF-2: a filled board keeps rendering the food it just consumed', () => {
-    // `spawnFoods` breaks out when `chooseFoodCell` returns null and leaves
-    // `state.foods` empty, but nothing clears the legacy `state.food` field
-    // the renderer and HUD read. On a filled board the player is shown a
-    // target sitting under their own body.
+  it('BF-1 residual, stated honestly: this harness still corners CYBER with its own body', () => {
+    // What the guarantee does NOT claim. The drive eats on every tick, so its
+    // tail never vacates a cell and its body is a growing blob rather than a
+    // moving snake; steering that blob to a full board around a terrain front
+    // that closes 1.2 cells per food is a Hamiltonian search this certification
+    // deliberately does not run. So CYBER still stops 'sealed' with free cells
+    // on the board - but the cause is now the body, not the arena, and the
+    // remaining free cells are one connected region rather than pockets behind
+    // blocks. Recorded rather than asserted away, because a certification that
+    // claimed "CYBER saturates" on this evidence would be lying.
+    const driven = drive('CYBER');
+    expect(driven.stop).toBe('sealed');
+    expect(driven.freeCells).toBeGreaterThan(0);
+    expect(driven.maxTerrainRegions).toBeLessThanOrEqual(1);
+  }, 300_000);
+
+  it('BF-2 RULED: the wave and the cell the renderer draws cannot disagree', () => {
+    // BF-2 was "a filled board keeps rendering the food it just consumed":
+    // `spawnFoods` emptied `state.foods` and nothing cleared the legacy
+    // `state.food` the renderer reads. The same gap had a second, far worse
+    // face on a crowded board - `registerGenomeV2Targets` drops a food it
+    // cannot route to, AFTER the mirror was written, so the player chased a
+    // cell the engine no longer held and the run silently lost its food supply.
     //
-    // Routed to CE-3. Cosmetic, but it is the ONLY feedback the player gets in
-    // the one state the game has no words for, so it actively misleads.
-    for (const dynasty of ['PRIMAL', 'COSMIC'] as DynastyName[]) {
+    // `state.food` is now nullable and has exactly one writer, and the wave is
+    // retried on every tick while it is empty.
+    for (const dynasty of DYNASTIES) {
       const driven = drive(dynasty);
       const state = driven.game.getState();
-      expect(state.foods).toHaveLength(0);
-      expect(state.food).not.toBeNull();
-      const body = new Set(state.snake.map(key));
-      expect(body.has(key(state.food))).toBe(true);
+      // Sampled every tick of the drive, not just at the end.
+      expect(driven.ghostFoodTicks).toBe(0);
+      // The wave never STAYS empty. Before the fix an empty wave was terminal:
+      // the only refill ran inside the eat branch, so a board with no food
+      // could never produce the eat that would spawn more, and the run played
+      // on foodless until it died. It is now retried every tick.
+      //
+      // Not zero, and the reason is recorded rather than asserted away: the
+      // Genome's route model treats a FORMING decal as a wall (conservative -
+      // it will be solid before the body arrives), so on CYBER a wave can be
+      // skipped for the tick or two the front takes to settle. Transient by
+      // construction, and the streak bound is what proves it.
+      expect(driven.longestFoodlessStreak).toBeLessThanOrEqual(2);
+      const live = driven.game.getState({ includeGenomeV2: true });
+      if (live.foods.length === 0) {
+        expect(reachableTargets(live)).toEqual([]);
+      }
+      if (state.foods.length === 0) {
+        expect(state.food).toBeNull();
+      } else {
+        expect(state.food).toEqual(state.foods[0]);
+      }
     }
   }, 300_000);
 

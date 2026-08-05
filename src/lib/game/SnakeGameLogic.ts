@@ -273,8 +273,21 @@ export type ExtractionKind = 'portal' | 'saturation';
 
 export interface GameState {
   snake: Position[];
-  /** Primary food cell (= foods[0]) - kept for renderer/store compatibility. */
-  food: Position;
+  /**
+   * Primary food cell (= `foods[0]`), or null when no wave is live.
+   *
+   * A MIRROR, NEVER A SECOND TRUTH. It was a bare `Position` written at some of
+   * the places `foods` changes and not at others, and that gap shipped a defect
+   * with two faces: at saturation `spawnFoods` emptied `foods` and left this
+   * field pointing at the food the player had just eaten (BF-2), and on a
+   * crowded board `registerGenomeV2Targets` dropped an unroutable wave AFTER
+   * this field had already been written - so the renderer drew a target the
+   * engine no longer recognised, the head passed straight through it, and the
+   * run had no food left to eat. Nullable plus one writer
+   * (`syncPrimaryFood`) makes "there is no food" a state the field can express
+   * rather than one it silently misreports.
+   */
+  food: Position | null;
   /**
    * All live food cells. One food normally; Splitter adds a second;
    * COSMIC spawns a scattered constellation. A new wave spawns when every
@@ -754,7 +767,7 @@ export const DEATH_SEQUENCE_DURATION_MS = 800;
  * this deployment must not continue.  Bump this value whenever a change can
  * alter deterministic board evolution or the meaning of persisted state.
  */
-export const SNAKE_RULES_VERSION = 'snake-rules-2026-08-05.1' as const;
+export const SNAKE_RULES_VERSION = 'snake-rules-2026-08-05.2' as const;
 
 /**
  * Compact, deterministic evidence for every player-authored state change.
@@ -853,6 +866,7 @@ export interface SnakeCheckpointV1 {
     speed: number;
     portalIndex: number;
     portalsMet: number;
+    portalDrawDebt: number;
     fusedView: FusedView;
     activations: StrainActivations | null;
     lengthTrace: LengthTrace;
@@ -947,11 +961,19 @@ export class SnakeGameLogic {
   private spacedScratch: Uint8Array | null = null;
   /**
    * How far the seeded portal schedule has been walked, and how many doors it
-   * has produced. They differ only in the theoretical merge case documented on
-   * `advancePortalSchedule`; `portalsMet` is what the carry reads.
+   * has produced. `portalIndex` is the food-indexed cursor the settlement also
+   * walks; `portalsMet` counts the doors that actually appeared on the board,
+   * and is what the carry reads.
    */
   private portalIndex = 0;
   private portalsMet = 0;
+  /**
+   * Scheduled doors the board could not hold yet, waiting to be drawn.
+   *
+   * Part of the run's private state and therefore checkpointed: a resumed run
+   * still owes the player the door it never showed them.
+   */
+  private portalDrawDebt = 0;
   private traits: TraitId[];
   private mutationPool: MutationId[];
   private anomaly: AnomalyId | null;
@@ -1559,7 +1581,7 @@ export class SnakeGameLogic {
   private createInitialState(): GameState {
     return {
       snake: [],
-      food: { x: 0, y: 0, z: 0 },
+      food: null,
       foods: [],
       terrain: [],
       direction: 'RIGHT',
@@ -1712,6 +1734,7 @@ export class SnakeGameLogic {
     this.offerIndex = 0;
     this.portalIndex = 0;
     this.portalsMet = 0;
+    this.portalDrawDebt = 0;
     this.offerTrace = [];
     this.recentOffers = [];
     this.ticksSinceAnyEat = 1_000_000;
@@ -1905,7 +1928,7 @@ export class SnakeGameLogic {
     return {
       ...this.state,
       snake: this.state.snake.map((s) => ({ ...s })),
-      food: { ...this.state.food },
+      food: this.state.food ? { ...this.state.food } : null,
       foods: this.state.foods.map((f) => ({ ...f })),
       // Cloned per tick, deliberately: the renderer reads this through zustand,
       // and a stable array reference would never re-render — terrain would be
@@ -1973,6 +1996,7 @@ export class SnakeGameLogic {
         speed: this.speed,
         portalIndex: this.portalIndex,
         portalsMet: this.portalsMet,
+        portalDrawDebt: this.portalDrawDebt,
         fusedView: checkpointClone(this.fusedView),
         activations: this.activations
           ? checkpointClone(this.activations)
@@ -2127,6 +2151,10 @@ export class SnakeGameLogic {
     this.portalsMet = checkpointInteger(
       checkpoint.privateState.portalsMet,
       'portalsMet'
+    );
+    this.portalDrawDebt = checkpointInteger(
+      checkpoint.privateState.portalDrawDebt,
+      'portalDrawDebt'
     );
     this.fusedView = checkpointClone(checkpoint.privateState.fusedView);
     this.activations = checkpoint.privateState.activations
@@ -3318,7 +3346,7 @@ export class SnakeGameLogic {
           y: 0,
           z: circuit.destination.z,
         };
-        this.state.food = { ...this.state.foods[0] };
+        this.syncPrimaryFood();
         foodIndex = -1;
       }
     }
@@ -3481,7 +3509,7 @@ export class SnakeGameLogic {
       } else if (this.state.foods.length === 0) {
         this.spawnFoods();
       } else {
-        this.state.food = { ...this.state.foods[0] };
+        this.syncPrimaryFood();
       }
 
       this.advancePortalSchedule(n);
@@ -3652,6 +3680,13 @@ export class SnakeGameLogic {
     // That boundary is what makes a completed loop replayable: the exact
     // body/terrain cells that enclosed the region are already committed.
     this.maybeSealGenomeV2Coil();
+
+    // Two placements the board may have refused earlier, retried against the
+    // board as it stands NOW. Both are consequences of the move - the body just
+    // vacated a cell - so they belong after it, and both are pure functions of
+    // the resolved state, so the server replays them identically.
+    this.refillEmptyFoodWave();
+    this.drawOwedPortal();
 
     this.emit('tick');
   }
@@ -4628,9 +4663,7 @@ export class SnakeGameLogic {
         dna: this.state.dnaCollected,
       });
     }
-    if (this.state.foods.length > 0) {
-      this.state.food = { ...this.state.foods[0] };
-    }
+    this.syncPrimaryFood();
   }
 
   /**
@@ -4869,14 +4902,33 @@ export class SnakeGameLogic {
       );
     }
     if (routePlans.length === 0) {
-      const fallback = chooseSurvivableTargetCell(
-        this.gridSize,
-        head,
-        this.waveBlockedGrid(),
-        this.rng,
-        this.state.snake.length
-      );
-      if (fallback) {
+      // TWO ATTEMPTS, AND THE SECOND IS THE OWNER'S ABSOLUTE.
+      //
+      // The escape budget is a FAIRNESS PREFERENCE - it keeps food out of a
+      // cul-de-sac smaller than the body that comes to get it. Treating it as a
+      // requirement is what ended a live run: a long PRIMAL snake whose pocket
+      // held fewer free cells than its own length got no food at all, and since
+      // the wave only ever refilled after an eat, it never got food again. The
+      // pocket was transient - a tail vacates a cell every tick - but the
+      // refusal was permanent.
+      //
+      // So a cell the head can REACH always beats no cell. A route is still
+      // required and is not negotiable: Genome state is a claim about physical
+      // geometry, and a target with no path is a fact that is simply false.
+      const attempts: Array<{ minEscapeCells: number; closingRing: boolean }> = [
+        { minEscapeCells: this.state.snake.length, closingRing: true },
+        { minEscapeCells: 0, closingRing: true },
+        { minEscapeCells: 0, closingRing: false },
+      ];
+      for (const { minEscapeCells, closingRing } of attempts) {
+        const fallback = chooseSurvivableTargetCell(
+          this.gridSize,
+          head,
+          this.waveBlockedGrid({ closingRing }),
+          this.rng,
+          minEscapeCells
+        );
+        if (!fallback) continue;
         const food = { ...fallback, y: 0 };
         const route = shortestGenomeV2Route(
           this.gridSize,
@@ -4885,10 +4937,10 @@ export class SnakeGameLogic {
           baseBlocked,
           this.ruleset.torus === true
         );
-        if (route) {
-          foods.push(food);
-          routePlans = [{ food, route }];
-        }
+        if (!route) continue;
+        foods.push(food);
+        routePlans = [{ food, route }];
+        break;
       }
     }
     // A Gilded Fork appends one mutually exclusive physical branch to the
@@ -5025,7 +5077,7 @@ export class SnakeGameLogic {
       // reason recorded, never thrown: no half-registered wave, no halt.
       runtime.openCrownWave(this.replayTicks, currentTargetIds, futureTargetId);
     }
-    if (foods.length > 0) this.state.food = { ...foods[0] };
+    this.syncPrimaryFood();
     this.syncGenomeV2State();
   }
 
@@ -5073,7 +5125,7 @@ export class SnakeGameLogic {
       true
     );
     this.state.foods = [{ ...cell, y: 0 }];
-    this.state.food = { ...this.state.foods[0] };
+    this.syncPrimaryFood();
     runtime.spawnTarget(this.replayTicks, {
       cell,
       speedAtSpawnMs: this.getSpeed(),
@@ -5460,9 +5512,29 @@ export class SnakeGameLogic {
       }
       foods.push({ x: cell.x, y: 0, z: cell.z });
     }
+    // LAST RESORT: a board whose only reachable cells sit inside the arena's
+    // closing front. Refusing there is the same silent end-of-food-supply the
+    // Genome fallback ladder exists to prevent, and the forming decal still
+    // telegraphs for its full window, so the placement is honest.
+    if (foods.length === 0) {
+      const relaxed = chooseFoodCell(
+        this.gridSize,
+        head,
+        this.waveBlockedGrid({ closingRing: false }),
+        occupancy,
+        this.rng,
+        null,
+        escape
+      );
+      if (relaxed) foods.push({ x: relaxed.x, y: 0, z: relaxed.z });
+    }
     this.state.foods = foods;
-    if (foods.length > 0) this.state.food = { ...foods[0] };
     this.registerGenomeV2Targets(foods);
+    // AFTER registration, never before: the reducer may drop an unroutable
+    // food from this very array, and a mirror written first would then point
+    // at a cell the engine no longer holds - which is exactly the ghost the
+    // player chased across an empty board.
+    this.syncPrimaryFood();
 
     // The window opens with the wave and closes on whatever is left.
     if (constellation) {
@@ -5623,7 +5695,9 @@ export class SnakeGameLogic {
    * Walk the OBJECTS, never probe every cell: `isPositionOnTerrain` is a scan,
    * so a per-cell probe would be O(gridSize^2 x terrain).
    */
-  private waveBlockedGrid(): Uint8Array {
+  private waveBlockedGrid(
+    options: { closingRing?: boolean } = {}
+  ): Uint8Array {
     const cells = Math.max(0, this.gridSize * this.gridSize);
     if (!this.blockedScratch || this.blockedScratch.length !== cells) {
       this.blockedScratch = blockedGrid(this.gridSize);
@@ -5646,7 +5720,11 @@ export class SnakeGameLogic {
         markBlocked(blocked, this.gridSize, cell.x, cell.z);
       }
     }
-    this.markClosingRing(blocked);
+    // The arena's closing front is excluded so food never BAITS the player into
+    // the ring that is about to harden. It is a fairness preference, not a
+    // physical fact, and the last-resort placement drops it rather than leave a
+    // board with no food at all - see `spawnFoods`.
+    if (options.closingRing !== false) this.markClosingRing(blocked);
     if (this.state.exitTile) {
       markBlocked(
         blocked,
@@ -5818,6 +5896,50 @@ export class SnakeGameLogic {
   }
 
   /**
+   * Re-point the legacy single-food mirror at the live wave.
+   *
+   * THE ONLY WRITER of `state.food`, and the only reason the field is allowed
+   * to exist. Every path that changes `state.foods` ends here, so the mirror
+   * cannot disagree with the wave and cannot survive it.
+   */
+  private syncPrimaryFood(): void {
+    const primary = this.state.foods[0];
+    this.state.food = primary ? { ...primary } : null;
+  }
+
+  /**
+   * Put food back on the board when the wave came up empty.
+   *
+   * THE OWNER'S RUN THIS EXISTS FOR. A live PRIMAL run stopped eating "at a
+   * certain length": the snake flew through a rendered food and nothing
+   * happened, and the run was over without ending. The mechanism had two
+   * halves. `registerGenomeV2Targets` drops a food it cannot route to through
+   * the CURRENT body - a transient fact, since the tail vacates a cell every
+   * tick - and when its own survivable fallback also declines, the wave is
+   * emptied. Then nothing ever refilled it: `spawnFoods` was only ever reached
+   * from inside the eat branch, so a board with no food could never produce the
+   * eat that would spawn more. One unlucky body configuration ended food supply
+   * for the rest of the run.
+   *
+   * OWNER ABSOLUTE: no hidden walls skill can hit. A crowd is a difficulty, and
+   * a difficulty must pass. So the wave is retried on EVERY resolved tick while
+   * it is empty; a body that moves one cell is a different board, and the food
+   * returns the moment the geometry allows it. On a genuinely saturated board
+   * the retry places nothing, which is the honest answer and the state
+   * `boardIsSaturated` terminalizes as an extraction on the next contact.
+   *
+   * Replay-stable: it runs at a fixed point in the tick from state the server
+   * replays anyway, and it consumes the same seeded stream `spawnFoods` always
+   * consumed.
+   */
+  private refillEmptyFoodWave(): void {
+    if (this.state.foods.length > 0) return;
+    if (this.state.isGameOver || this.state.extracted) return;
+    if (this.state.snake.length === 0) return;
+    this.spawnFoods();
+  }
+
+  /**
    * Spawn food at random valid position(s). Public for compatibility -
    * replaces the whole wave.
    */
@@ -5832,16 +5954,19 @@ export class SnakeGameLogic {
    * the destination must also sit in a free region large enough for the live
    * body to manoeuvre. The seeded rng still owns which valid cell is chosen.
    */
-  private spawnExit(): void {
-    const position = this.sampleExitCell(null);
+  private spawnExit(relaxEscape = false): boolean {
+    const position = this.sampleExitCell(null, relaxEscape);
     // A completely partitioned late board may have no honest portal cell.
-    // Not drawing a choice is better than drawing one the player cannot take;
-    // the cadence walker will retry or advance according to its existing rule.
-    if (!position) return;
+    // Not drawing a choice is better than drawing one the player cannot take -
+    // but the caller has to KNOW, because a door that was never drawn is a door
+    // the player never met. `advancePortalSchedule` holds the debt and retries.
+    if (!position) return false;
     this.state.exitTile = position;
     // Twin Exits (anomaly): portals spawn as a pair sharing one window
     this.state.exitTile2 =
-      this.anomaly === 'twin_exits' ? this.sampleExitCell(position) : null;
+      this.anomaly === 'twin_exits'
+        ? this.sampleExitCell(position, relaxEscape)
+        : null;
     this.state.exitTicksRemaining = this.effectiveExitDespawnTicks();
     this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'spawn' });
     this.emit('exitSpawned', {
@@ -5851,6 +5976,7 @@ export class SnakeGameLogic {
         : {}),
       ticksRemaining: this.state.exitTicksRemaining,
     });
+    return true;
   }
 
   /**
@@ -5858,7 +5984,20 @@ export class SnakeGameLogic {
    * rejection sampler, this never returns its last illegal guess after an
    * arbitrary attempt limit.
    */
-  private sampleExitCell(exclude: Position | null): Position | null {
+  private sampleExitCell(
+    exclude: Position | null,
+    /**
+     * Drop the escape-pocket requirement.
+     *
+     * Only the RETRY passes this. The first attempt keeps the strict rule -
+     * an optional objective must not be a cul-de-sac the body cannot leave -
+     * but a door the schedule already owes has failed that test at least once,
+     * and by then the alternative is not "a safer door" but NO door, on a
+     * decision the settlement is charging for either way. A reachable door the
+     * player may decline beats a door they never saw.
+     */
+    relaxEscape = false
+  ): Position | null {
     const head = this.state.snake[0];
     if (!head) return null;
     const cell = chooseSurvivableTargetCell(
@@ -5866,7 +6005,7 @@ export class SnakeGameLogic {
       head,
       this.opportunityBlockedGrid(exclude),
       this.rng,
-      this.state.snake.length
+      relaxEscape ? 0 : this.state.snake.length
     );
     return cell ? { ...cell, y: 0 } : null;
   }
@@ -5922,8 +6061,8 @@ export class SnakeGameLogic {
   placeFood(position: Position, glyph?: number): void {
     this.expireDisplacedGenomeV2Targets(this.state.foods);
     this.state.foods = [{ ...position }];
-    this.state.food = { ...position };
     this.registerGenomeV2Targets(this.state.foods);
+    this.syncPrimaryFood();
     if (this.ruleset.constellation) {
       this.state.constellationGlyph =
         glyph ??
@@ -5937,8 +6076,8 @@ export class SnakeGameLogic {
     if (positions.length === 0) return;
     this.expireDisplacedGenomeV2Targets(this.state.foods);
     this.state.foods = positions.map((p) => ({ ...p }));
-    this.state.food = { ...positions[0] };
     this.registerGenomeV2Targets(this.state.foods);
+    this.syncPrimaryFood();
     if (this.ruleset.constellation && glyph !== undefined) {
       this.state.constellationGlyph = glyph;
     }
@@ -6131,6 +6270,13 @@ export class SnakeGameLogic {
    * Food-indexed, so a replay hardens the arena identically. Blocks may form
    * UNDER the snake - that is the interesting case, and `tickTerrain` keeps it
    * fair - but never on food or the exit portal, which would bury them.
+   *
+   * The SOLID set handed to the selector is deliberately narrower than the
+   * blocked set: only permanent terrain walls the field. Food, portals and
+   * relics are cells the head crosses freely, so counting them as walls would
+   * make the connectivity guard refuse placements that partition nothing - and
+   * would make the arena's shape depend on where the food happened to sit,
+   * which is not a fact the schedule is allowed to read.
    */
   private placeDueTerrain(): void {
     const schedule = this.ruleset.arena;
@@ -6139,7 +6285,11 @@ export class SnakeGameLogic {
     const missing = due - this.state.terrain.length;
     if (missing <= 0) return;
 
-    const blocked = new Set(this.state.terrain.map((b) => cellKey(b.x, b.z)));
+    const solid = new Set(this.state.terrain.map((b) => cellKey(b.x, b.z)));
+    for (const fact of this.state.genomeV2?.permanentTerrain ?? []) {
+      for (const cell of fact.cells) solid.add(cellKey(cell.x, cell.z));
+    }
+    const blocked = new Set(solid);
     for (const food of this.state.foods) blocked.add(cellKey(food.x, food.z));
     if (this.state.exitTile) {
       blocked.add(cellKey(this.state.exitTile.x, this.state.exitTile.z));
@@ -6157,7 +6307,10 @@ export class SnakeGameLogic {
     }
 
     this.placeTerrainAt(
-      nextTerrainCells(this.gridSize, blocked, missing, this.rng),
+      nextTerrainCells(this.gridSize, blocked, missing, this.rng, {
+        solid,
+        wrap: this.ruleset.torus === true,
+      }),
       schedule.formingSeconds,
       schedule.source
     );
@@ -6313,9 +6466,7 @@ export class SnakeGameLogic {
     // cell, and Arc Lightning can clear the wave mid-tick. Spreading
     // `foods[0]` unguarded wrote `{}` into a Position and corrupted the
     // legacy single-food mirror.
-    if (this.state.foods.length > 0) {
-      this.state.food = { ...this.state.foods[0] };
-    }
+    this.syncPrimaryFood();
   }
 
   /**
@@ -6353,17 +6504,34 @@ export class SnakeGameLogic {
    * whenever the last door resolved" — that was a tick-timing fact the server
    * could not reconstruct, and the carry cannot be a client claim.
    *
-   * A door is COUNTED whether or not it is drawn. If one is somehow still open
-   * when the next comes due, the new one merges into it rather than stacking a
-   * second portal on the board — but the index still advances, so the engine
-   * and the settlement agree on how many doors the run met. (At the shipped
-   * cadence this cannot happen: an 18-second window against an 8-16 food
-   * interval leaves no overlap. It is defined because "cannot happen" is not
-   * the same as "is undefined".)
+   * A door that is ALREADY OPEN when the next comes due merges into it rather
+   * than stacking a second portal on the board, and still counts: the player is
+   * looking at a door. (At the shipped cadence this cannot happen — an
+   * 18-second window against an 8-16 food interval leaves no overlap. It is
+   * defined because "cannot happen" is not the same as "is undefined".)
+   *
+   * A DOOR THAT NEVER MATERIALIZED IS NOT MET (owner ruling, 2026-08-05).
+   * `spawnExit` declines when the late board offers no reachable, escape-capable
+   * cell — correctly, because a portal you cannot survive reaching is worse than
+   * no portal. What was wrong is what happened next: the schedule counted it
+   * anyway, so the carry's stake climbed and salvage decayed for a decision the
+   * player was never shown. The door is now held as a DEBT and retried on every
+   * resolved tick until it draws; `portalsMet` moves when a door is actually on
+   * the board.
+   *
+   * THE SCHEDULE CURSOR IS DELIBERATELY UNTOUCHED. `portalIndex` and
+   * `nextExitAtFood` still advance on the food-indexed recurrence, because the
+   * settlement walks the identical recurrence from `(runSeed, foodCount, taxes)`
+   * and cannot see the board. Deferring the cursor would fork the two schedules
+   * and turn a fairness fix into a payout disagreement. What the retry buys is
+   * that the two sets coincide: every scheduled door is shown, so counting shown
+   * doors and counting scheduled doors give the same number.
    */
   private advancePortalSchedule(n: number): void {
     if (!this.portalScheduleActive()) {
-      // Legacy path, unchanged.
+      // Legacy path, unchanged: with no seeded cursor, an undrawn door is
+      // simply re-attempted after the next eat, because `nextExitAtFood` has
+      // not moved.
       if (!this.state.exitTile && n >= this.state.nextExitAtFood) {
         this.spawnExit();
       }
@@ -6374,8 +6542,12 @@ export class SnakeGameLogic {
       n >= this.state.nextExitAtFood &&
       this.portalIndex < PORTAL_SCHEDULE_LIMIT
     ) {
-      this.portalsMet += 1;
-      if (!this.state.exitTile) this.spawnExit();
+      if (this.state.exitTile !== null || this.spawnExit()) {
+        this.portalsMet += 1 + this.portalDrawDebt;
+        this.portalDrawDebt = 0;
+      } else {
+        this.portalDrawDebt += 1;
+      }
       const interval =
         rollExitInterval(
           this.exitCadence(),
@@ -6384,6 +6556,25 @@ export class SnakeGameLogic {
       this.state.nextExitAtFood += Math.max(1, interval);
       this.portalIndex += 1;
     }
+  }
+
+  /**
+   * Draw a door the schedule owes but the board could not hold.
+   *
+   * Runs once per resolved tick. The body moves a cell every tick, so the
+   * geometry that refused the portal is a transient fact and the door arrives
+   * within a few ticks - the player meets every door the settlement charges
+   * them for. Nothing is drawn while one is already open: that door IS the
+   * pending decision, and the debt is credited when it resolves into the next
+   * scheduled draw.
+   */
+  private drawOwedPortal(): void {
+    if (this.portalDrawDebt <= 0) return;
+    if (!this.portalScheduleActive()) return;
+    if (this.state.exitTile !== null) return;
+    if (!this.spawnExit(true)) return;
+    this.portalsMet += this.portalDrawDebt;
+    this.portalDrawDebt = 0;
   }
 
   /**
@@ -6447,7 +6638,7 @@ export class SnakeGameLogic {
 
   /**
    * Genome cadence roll incl. the Patient trait cost: spawn rate -50%
-   * means the universal 4-8-food interval doubles to 8-16.
+   * means the universal 6-10-food interval doubles to 12-20.
    */
   private rollNextMutationInterval(): number {
     const interval = rollGeneOfferInterval(this.rng);
@@ -6633,7 +6824,7 @@ export class SnakeGameLogic {
       pulled.push(this.sampleCellNearHead(head, radius, pulled) ?? food);
     }
     this.state.foods = pulled;
-    this.state.food = { ...pulled[0] };
+    this.syncPrimaryFood();
   }
 
   /**

@@ -129,3 +129,187 @@ describe('terrain: placement is replayable', () => {
     expect(nextTerrainCells(0, new Set(), 5, seeded(1))).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// THE CONNECTIVITY GUARANTEE (owner ruling, 2026-08-05)
+// ---------------------------------------------------------------------------
+
+/** Connected components of the free field (grid minus `solid`), 4-neighbour. */
+function freeRegions(gridSize: number, solid: ReadonlySet<string>): number {
+  const seen = new Set<string>();
+  let regions = 0;
+  for (let x = 0; x < gridSize; x++) {
+    for (let z = 0; z < gridSize; z++) {
+      const start = cellKey(x, z);
+      if (solid.has(start) || seen.has(start)) continue;
+      regions += 1;
+      const queue = [{ x, z }];
+      seen.add(start);
+      while (queue.length > 0) {
+        const cell = queue.pop()!;
+        for (const [dx, dz] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          const nx = cell.x + dx;
+          const nz = cell.z + dz;
+          if (nx < 0 || nz < 0 || nx >= gridSize || nz >= gridSize) continue;
+          const key = cellKey(nx, nz);
+          if (solid.has(key) || seen.has(key)) continue;
+          seen.add(key);
+          queue.push({ x: nx, z: nz });
+        }
+      }
+    }
+  }
+  return regions;
+}
+
+/** An rng that records how many numbers it was asked for. */
+function counting(seed: number): { rng: () => number; draws: () => number } {
+  const inner = seeded(seed);
+  let draws = 0;
+  return {
+    rng: () => {
+      draws += 1;
+      return inner();
+    },
+    draws: () => draws,
+  };
+}
+
+describe('terrain: placement never splits the reachable field', () => {
+  it('holds the invariant across a full CYBER arena run, six blocks at a time', () => {
+    // The shipped schedule: six blocks every five foods, no ceiling. Driven to
+    // the end of the board, asserting after EVERY batch that the free field is
+    // still one region. This is the assertion FINDING BF-1 could not make.
+    const rng = seeded(4242);
+    const solid = new Set<string>();
+    let batches = 0;
+    for (; batches < 500; batches++) {
+      const cells = nextTerrainCells(20, solid, 6, rng, { solid });
+      if (cells.length === 0) break;
+      for (const cell of cells) solid.add(cellKey(cell.x, cell.z));
+      expect(freeRegions(20, solid)).toBeLessThanOrEqual(1);
+    }
+    // The board still closes all the way: unlimited ring progression stays, and
+    // the guard is a placement ORDER, not a cap.
+    expect(solid.size).toBe(400);
+    expect(freeRegions(20, solid)).toBe(0);
+    expect(batches).toBeLessThanOrEqual(400 / 6 + 2);
+  });
+
+  it('holds the invariant one block at a time, which is the harshest order', () => {
+    const rng = seeded(77);
+    const solid = new Set<string>();
+    for (let step = 0; step < 400; step++) {
+      const cells = nextTerrainCells(20, solid, 1, rng, { solid });
+      expect(cells).toHaveLength(1);
+      solid.add(cellKey(cells[0].x, cells[0].z));
+      expect(freeRegions(20, solid)).toBeLessThanOrEqual(1);
+    }
+    expect(solid.size).toBe(400);
+  });
+
+  it('skips an articulation point, and takes it once the bridge is redundant', () => {
+    // A 5x5 with column 2 solid except (2,2): that cell is the ONLY link
+    // between the left and right halves.
+    const bridgeSolid = new Set([
+      cellKey(2, 0),
+      cellKey(2, 1),
+      cellKey(2, 3),
+      cellKey(2, 4),
+    ]);
+    // Every cell but the bridge is excluded from candidacy, so the bridge is
+    // the only thing placement could choose - and it must refuse.
+    const onlyBridge = new Set<string>();
+    for (let x = 0; x < 5; x++) {
+      for (let z = 0; z < 5; z++) {
+        if (x === 2 && z === 2) continue;
+        onlyBridge.add(cellKey(x, z));
+      }
+    }
+    expect(
+      nextTerrainCells(5, onlyBridge, 1, seeded(1), { solid: bridgeSolid })
+    ).toEqual([]);
+
+    // Re-open one neighbour of the bridge: the halves now meet through row 1,
+    // the cell is no longer an articulation point, and it is taken.
+    const relieved = new Set(bridgeSolid);
+    relieved.delete(cellKey(2, 1));
+    expect(
+      nextTerrainCells(5, onlyBridge, 1, seeded(1), { solid: relieved })
+    ).toEqual([{ x: 2, z: 2 }]);
+  });
+
+  it('reads food and portals as walkable, not as walls', () => {
+    // `blocked` carries cells placement must not bury; `solid` carries walls.
+    // A food sitting in the only corridor must not make the corridor look
+    // severed - the head walks over food, so the corridor is open.
+    //
+    // Column 2 is walled except (2,2) and (2,3). Everything but (2,2) is
+    // excluded from candidacy, so the guard's verdict is the whole answer.
+    const onlyCentre = new Set<string>();
+    for (let x = 0; x < 5; x++) {
+      for (let z = 0; z < 5; z++) {
+        if (x === 2 && z === 2) continue;
+        onlyCentre.add(cellKey(x, z));
+      }
+    }
+    const withFood = new Set([cellKey(2, 0), cellKey(2, 1), cellKey(2, 4)]);
+    // (2,3) holds a food: in `blocked`, deliberately absent from `solid`.
+    expect(
+      nextTerrainCells(5, onlyCentre, 1, seeded(9), { solid: withFood })
+    ).toEqual([{ x: 2, z: 2 }]);
+
+    // The same geometry with (2,3) walled instead of fed: now (2,2) really is
+    // the only link, and it is refused.
+    const walled = new Set(withFood);
+    walled.add(cellKey(2, 3));
+    expect(
+      nextTerrainCells(5, onlyCentre, 1, seeded(9), { solid: walled })
+    ).toEqual([]);
+  });
+
+  it('consumes no randomness of its own: the guard cannot move the stream', () => {
+    // The seeded shuffle draws exactly (candidates - 1) per visited ring,
+    // before any connectivity decision is made. Both cases visit ring 0 only.
+    const open = counting(31);
+    nextTerrainCells(20, new Set(), 6, open.rng, { solid: new Set() });
+    expect(open.draws()).toBe(75); // 76 outer-ring cells
+
+    const wall = new Set([cellKey(1, 0)]);
+    const constrained = counting(31);
+    nextTerrainCells(20, wall, 6, constrained.rng, { solid: wall });
+    expect(constrained.draws()).toBe(74); // one fewer candidate, same rule
+  });
+
+  it('lays the same arena twice from the same seed, guard and all', () => {
+    const solid = new Set([cellKey(0, 1), cellKey(1, 0), cellKey(19, 18)]);
+    const a = nextTerrainCells(20, solid, 12, seeded(2026), { solid });
+    const b = nextTerrainCells(20, solid, 12, seeded(2026), { solid });
+    expect(a).toEqual(b);
+  });
+
+  it('wraps adjacency on a torus, so a seam neighbour is a neighbour', () => {
+    // On a torus the outer ring is not a boundary: (0,0) still touches (19,0).
+    // Sealing (1,0) and (0,1) therefore does NOT isolate it, and the cell is
+    // legal - which it would not be on a walled board.
+    const walls = new Set([cellKey(1, 0), cellKey(0, 1)]);
+    const blocked = new Set(walls);
+    for (let x = 0; x < 20; x++) {
+      for (let z = 0; z < 20; z++) {
+        if (x === 19 && z === 0) continue;
+        blocked.add(cellKey(x, z));
+      }
+    }
+    expect(
+      nextTerrainCells(20, blocked, 1, seeded(5), { solid: walls, wrap: true })
+    ).toEqual([{ x: 19, z: 0 }]);
+    expect(
+      nextTerrainCells(20, blocked, 1, seeded(5), { solid: walls })
+    ).toEqual([]);
+  });
+});

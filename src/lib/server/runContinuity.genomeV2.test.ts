@@ -543,12 +543,27 @@ describe('Genome v2 continuity replay boundary', () => {
     expect(postResumeMoves).toBeGreaterThan(0);
     expect(acceptedAfterMove.state.foodEaten).toBe(foodBeforeRoute + 1);
     expect(acceptedAfterMove.state.genomeV2?.offer).toBeNull();
-    expect(acceptedAfterMove.rng.draws).toBeGreaterThan(
+    // WEAKENED DELIBERATELY, 2026-08-05, and why. This read `toBeGreaterThan`,
+    // which was never a statement about the food boundary: on COSMIC a wave is
+    // a five-star constellation, so collecting ONE star spawns nothing and
+    // draws nothing. It passed because the old 6 +/- 2 relic cadence happened
+    // to land an offer inside this window and the 8 +/- 2 cadence does not.
+    // The property the case actually proves - that the newly folded RNG state
+    // is a usable replay base rather than a proposal that validates once - is
+    // proved by `acceptedSuccessor` below, which is validated AGAINST this
+    // checkpoint and would reject a stream that had drifted. What stays here is
+    // the monotonicity: a counter that went backwards would be a replayed
+    // stream rewinding.
+    expect(acceptedAfterMove.rng.draws).toBeGreaterThanOrEqual(
       acceptedResumed.rng.draws
     );
+    // Same fact, same weakening, same reason: the ordinal counts REGISTERED
+    // targets, and collecting one star of a five-star constellation registers
+    // none. The reducer's own food count is the assertion that still bites,
+    // and it is made above.
     expect(
       acceptedAfterMove.privateState.genomeV2Runtime?.targetOrdinal
-    ).toBeGreaterThan(targetOrdinalBeforeRoute);
+    ).toBeGreaterThanOrEqual(targetOrdinalBeforeRoute);
     expect(
       acceptedAfterMove.privateState.genomeV2Runtime
         ?.nextCadenceOfferAtFood

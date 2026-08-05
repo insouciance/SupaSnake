@@ -1690,7 +1690,7 @@ describe('SnakeGameLogic', () => {
       ).toBe(false);
     });
 
-    it('despawns after its tick window and reschedules 4-8 foods out', () => {
+    it('despawns after its tick window and reschedules 6-10 foods out', () => {
       const engine = new SnakeGameLogic({
         gridSize: 60,
         ruleset: RULESETS.PRIMAL,
@@ -1715,7 +1715,7 @@ describe('SnakeGameLogic', () => {
       expect(despawned).toBe(true);
       const state = engine.getState();
       expect(state.mutationTile).toBeNull();
-      expect(state.nextMutationAtFood).toBe(state.foodEaten + 6);
+      expect(state.nextMutationAtFood).toBe(state.foodEaten + 8);
     });
 
     it('stops spawning at the 4-held stacking cap', () => {
@@ -2147,7 +2147,7 @@ describe('SnakeGameLogic', () => {
       expect(state.mutationTile).toBeNull();
       expect(state.phoenixAvailable).toBe(false);
       expect(state.phoenixTriggeredAtFood).toBeNull();
-      expect(state.nextMutationAtFood).toBe(6); // rng 0.5 -> 6
+      expect(state.nextMutationAtFood).toBe(8); // rng 0.5 -> 8
       expect(state.foods).toHaveLength(COSMIC_CONSTELLATION.size);
       // A fresh run opens a fresh window - 8s at COSMIC's 160ms tick.
       expect(state.constellationWindowTicks).toBe(50);

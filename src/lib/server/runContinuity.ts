@@ -850,9 +850,19 @@ function validateCheckpointBoard(
   const foods = state.foods.map((cell, index) =>
     checkpointCell(cell, gridSize, `foods[${index}]`)
   );
-  const primary = checkpointCell(state.food, gridSize, 'primary food');
-  if (foods.length > 0 && !jsonEquivalent(primary, foods[0])) {
-    rejectCheckpoint('Run checkpoint primary food disagrees with its wave.');
+  // The legacy single-food mirror is exactly `foods[0]`, or null when no wave
+  // is live. Both halves are checked: a stale cell beside an empty wave is the
+  // ghost food a crowded board used to render, and a mirror that disagrees with
+  // a live wave is the same defect one step earlier.
+  if (state.food === null || state.food === undefined) {
+    if (foods.length > 0) {
+      rejectCheckpoint('Run checkpoint primary food disagrees with its wave.');
+    }
+  } else {
+    const primary = checkpointCell(state.food, gridSize, 'primary food');
+    if (foods.length === 0 || !jsonEquivalent(primary, foods[0])) {
+      rejectCheckpoint('Run checkpoint primary food disagrees with its wave.');
+    }
   }
   const foodIds = new Set(foods.map(cellId));
   if (foodIds.size !== foods.length) {

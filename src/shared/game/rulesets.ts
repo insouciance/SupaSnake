@@ -167,8 +167,24 @@ const EXTRACTION_DEFAULTS: ExtractionConfig = {
  *
  * So the arena hardens instead: six blocks every five foods, outermost ring
  * first. The outer ring of a 20x20 holds 76 cells, so it completes around food
- * 65 - which lands on the terminus rather than before it. A second ring is a
- * ladder rung, not base content.
+ * 65 - which lands on the terminus rather than before it.
+ *
+ * RING PROGRESSION IS UNLIMITED, AND THAT IS THE RULED DESIGN (owner,
+ * 2026-08-05). An earlier note here read "a second ring is a ladder rung, not
+ * base content"; the owner overruled it. The arena keeps walking inward for as
+ * long as the run lasts, because a board that stops closing stops being CYBER -
+ * the dynasty's difficulty IS the shrinking field, and capping it at one ring
+ * would hand the late run back to tempo, which is the thing this schedule exists
+ * to replace.
+ *
+ * What the ruling added instead is a GUARANTEE, not a cap: terrain placement may
+ * never split the reachable field. `nextTerrainCells` runs a deterministic
+ * connectivity check before laying each cell and skips any candidate that would
+ * partition the free cells into disconnected regions; the ring lays its other
+ * cells and catches the skipped one on a later pass, once a neighbour has filled
+ * in and it is no longer an articulation point. So the board closes without
+ * limit and without ever stranding a cell behind a wall - which is what makes a
+ * CYBER run able to reach saturation-extraction rather than entombment.
  *
  * It is also the cure for the defect that ended the owner's CYBER run: ticks
  * per food climbed 18 -> 113 because at speed you cannot take the short line.
