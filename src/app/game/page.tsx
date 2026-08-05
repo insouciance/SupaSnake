@@ -7806,6 +7806,12 @@ function GameBoard({
         laneColor={HUD_COCKPIT_V1_ENABLED
           ? materialProfile.arena.rimColor
           : theme.primary}
+        /* THE LEAD is truncated at a wall and carried across a seam. On a
+           torus there is no wall, so the guide must not stop at one: the
+           three cells it marks are exactly the three cells the snake will
+           occupy. Render-only and deterministic - the same `torus` the rim
+           and the trail's fusion metric already read. */
+        torus={torus}
       />
 
       <GenomeBoardEffects gildedCells={gildedCells} genomeV2={genomeV2Board} />

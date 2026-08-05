@@ -1,8 +1,9 @@
 /**
  * Aim systems - the four aim telegraphs, all four available from run 1.
  *
- * - deadeye   (default)  heading-relative T guide extending from the fluid
- *                        head to the board edges + a snapped current-cell tile
+ * - deadeye   (default)  THE LEAD: three tapering white dashes on the next
+ *                        three cells along the committed heading, riding the
+ *                        fluid head + a snapped current-cell tile
  * - gridlock             row+column rails following the head + snapped
  *                        cell highlight; aligned rails brighten toward
  *                        food/portal with a pip at the target
@@ -47,7 +48,7 @@ export const AIM_SYSTEMS: readonly AimSystemDef[] = [
     id: 'deadeye',
     name: 'Deadeye',
     description:
-      'A heading-relative T guide reaches the board edges while a highlighted tile marks your current cell.',
+      'Three dashes lie on the next three cells ahead while a highlighted tile marks your current cell.',
   },
   {
     id: 'gridlock',

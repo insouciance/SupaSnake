@@ -4,9 +4,11 @@
  * AimRenderer - the aim telegraph, one renderer per selected aim system
  * (v2 meta-progression, see src/lib/game/aimSystems.ts):
  *
- * - deadeye:  heading-relative T guide smooth-following the head: its
- *             crossbar spans the board and its forward stem reaches the
- *             wall, plus a grid-snapped cell highlight under the head.
+ * - deadeye:  THE LEAD - three chunky white dashes lying on the next three
+ *             cells along the committed heading, rigidly attached to the
+ *             smooth head, plus the grid-snapped cell highlight under it.
+ *             (The board-spanning dashed crosshair this system used to draw
+ *             was rejected outright; see THE LEAD below.)
  * - gridlock: full row+column rails smooth-following the INTERPOLATED
  *             head + a grid-snapped cell highlight under it (the "where
  *             exactly am I" fix); a rail brightens when a target sits on
@@ -46,6 +48,8 @@ import {
   projectDangerPath,
   type AimTarget,
 } from './aimUtils';
+import { createExactUnitRoundedBoxGeometry } from './screen/gameRenderGeometry';
+import { createInkHullMaterial } from './screen/inkAmber';
 
 export interface AimRendererProps {
   /** Snake head cell (null when not playing) */
@@ -70,6 +74,15 @@ export interface AimRendererProps {
   color?: string;
   /** Lane/rail color (dynasty primary) */
   laneColor?: string;
+  /**
+   * True on a dynasty whose edges wrap instead of killing (COSMIC).
+   *
+   * Render-only and deterministic: it decides whether THE LEAD is truncated
+   * at the wall or continues across the seam. It reads no engine state and
+   * changes no engine state - the cells it points at are exactly the cells
+   * `SnakeGameLogic` would move through.
+   */
+  torus?: boolean;
 }
 
 /** Board-plane height for aim layers (above floor + grid lines) */
@@ -83,9 +96,90 @@ const DANGER_OPACITIES = [0.7, 0.52, 0.38, 0.26, 0.16];
 /** Neon rose - the palette's danger accent */
 const DANGER_COLOR = '#f43f5e';
 
-/** Deadeye guide line dimensions. */
-const DEADEYE_LINE_THICKNESS = 0.06;
-const DEADEYE_LINE_Y = 0.06;
+/**
+ * THE LEAD - what Deadeye draws.
+ *
+ * The board-spanning crosshair is gone, on a ruling about the whole system
+ * rather than its styling: "completely wrong - take it away and replace it
+ * with a different one." The crossbar, the forward stem and the grid-phased
+ * dash shader are all deleted; what replaces them is a mark that occupies
+ * three cells instead of two full board spans.
+ *
+ * WHY A SHORT PROJECTED PATH AND NOT A LANDING-CELL HIGHLIGHT
+ *
+ * Both candidates answer "where am I going". Only one of them answers it in
+ * time. At the fastest ruleset a cell passes in 100-175ms, so a mark that
+ * covers only the NEXT cell hands the player 100-175ms of notice - inside
+ * human reaction time (~200-250ms), i.e. by the time it is read it is already
+ * spent. Three cells of lead is 300-525ms: it brackets reaction time at every
+ * speed the game runs at, which is why the number is three and not one and
+ * not five. Five cells (Pathline's length) is a different, busier system that
+ * also has to editorialise about danger; three is the shortest lead that is
+ * still actionable, which is what "minimal" means here.
+ *
+ * The landing-cell idea is not discarded, it is folded in: dash 1 IS the next
+ * landing cell and it is the biggest of the three. The taper makes the
+ * immediate cell dominant without a second kind of mark competing with it.
+ *
+ * WHY IT IS A DASH PER CELL, TAPERING IN LENGTH
+ *
+ * One dash per cell centre, aligned WITH the heading, so it reads as lane
+ * marking rather than as a stop line - a bar across the path says "barrier",
+ * a bar along it says "this way". One dash per cell also keeps the guide
+ * countable: the player reads lead distance without estimating it.
+ *
+ * The taper is in LENGTH, never in width. Width carries the ink edge, and an
+ * edge is a fixed world thickness: narrowing a dash would eat its white core
+ * until the third dash was all outline. Shortening it recedes just as clearly
+ * and costs the third dash nothing in legibility.
+ *
+ * WHY WHITE, AND WHY IT IS A RAISED CHIP
+ *
+ * White because nothing else on the board is a flat white bar: the snake is
+ * dynasty-coloured, terrain is slate, food and the portal are amber and
+ * round. The dynasty accent would have tied the mark to the run, but it is
+ * also the snake's own colour - the one confusion that matters most. Amber
+ * stays spoken for (value), per the INK & AMBER law.
+ *
+ * The dashes are real low geometry wearing `createInkHullMaterial` - the
+ * board's one outline mechanism, at the board's one line weight - rather than
+ * an additive decal. That buys three things: depth, correct occlusion (the
+ * snake passes OVER its own lead instead of glowing through it), and the
+ * guarantee the ink hull exists for - wherever the mark overlaps a lit
+ * object, a hard dark edge separates them. Against the dark board the edge is
+ * invisible and does not need to be visible; against the snake, terrain or
+ * food it is the whole point.
+ *
+ * WHY IT GLIDES INSTEAD OF SNAPPING
+ *
+ * The lead hangs off the INTERPOLATED head, so the mark and the head move as
+ * one rigid body: the eye is already locked on the head and never has to
+ * re-acquire the guide. Snapping the dashes to cell centres would teleport a
+ * white object once per tick - 6-10Hz of strobe next to the most important
+ * thing on screen, which is exactly the clutter this system replaces. The
+ * snapped answer to "which cell am I in" is still given, by the cell tile
+ * underneath, which is the same smooth-guide / snapped-tile split Gridlock
+ * has always used.
+ */
+const LEAD_CELLS = 3;
+/**
+ * Dash length along the heading, per lead cell, in cells.
+ *
+ * The floor is the aspect ratio, not the arithmetic: measured on the board, a
+ * third dash near 0.36 came out square and stopped reading as a dash at all.
+ * 0.42 against the 0.28 width is 1.5:1, the shallowest ratio that still reads
+ * as "pointing" rather than "sitting", so the taper is spent down to that
+ * limit and no further.
+ */
+const LEAD_LENGTHS = [0.74, 0.58, 0.42];
+/** Dash height, per lead cell - a mild recede, the mark stays board-flat. */
+const LEAD_HEIGHTS = [0.16, 0.13, 0.1];
+/** Width across the heading. Constant: see the taper note above. */
+const LEAD_WIDTH = 0.28;
+/** Corner radius of the chip, in its own unit space. */
+const LEAD_CORNER_RADIUS = 0.09;
+/** Paper. The core the ink edge is drawn around. */
+const LEAD_PAPER = '#ffffff';
 
 const EMPTY_QUEUE: readonly Direction[] = [];
 const EMPTY_SNAKE: readonly Position[] = [];
@@ -98,6 +192,56 @@ const NULL_BUFFER = { current: null } as const;
 // -----------------------------------------------------------------------------
 
 const _pursuit = new THREE.Vector3();
+
+/** Lead instance authoring - runs at mount only, but never allocates anyway. */
+const _leadMatrix = new THREE.Matrix4();
+const _leadPosition = new THREE.Vector3();
+const _leadScale = new THREE.Vector3();
+const _leadRotation = new THREE.Quaternion();
+
+export interface LeadHeadSample {
+  /** Interpolated head centre - what the mark glides with. */
+  smoothX: number;
+  smoothZ: number;
+  /** Authoritative head cell - what the tile snaps to. */
+  snapX: number;
+  snapZ: number;
+}
+
+const _headSample: LeadHeadSample = {
+  smoothX: 0,
+  smoothZ: 0,
+  snapX: 0,
+  snapZ: 0,
+};
+
+/**
+ * The head sample THE LEAD is bound to: the interpolated centre to glide with,
+ * and the authoritative cell to snap to.
+ *
+ * Returns the SHARED module scratch rather than a fresh object - this runs
+ * every frame and the render loops in this file allocate nothing. Callers read
+ * the fields immediately and never retain the reference. Reading the
+ * interpolation buffer never mutates it.
+ */
+export function readLeadHeadSample(
+  head: Position,
+  buffer: InterpolationBuffer | null,
+  now: number
+): LeadHeadSample {
+  _headSample.smoothX = head.x;
+  _headSample.smoothZ = head.z;
+  _headSample.snapX = head.x;
+  _headSample.snapZ = head.z;
+  if (buffer && buffer.count > 0) {
+    const alpha = getAlpha(buffer, now);
+    _headSample.smoothX = getInterpolatedX(buffer, 0, alpha);
+    _headSample.smoothZ = getInterpolatedZ(buffer, 0, alpha);
+    _headSample.snapX = buffer.curr[0];
+    _headSample.snapZ = buffer.curr[1];
+  }
+  return _headSample;
+}
 
 // -----------------------------------------------------------------------------
 // Module-scope geometry pools (parameter-free, shared, never disposed)
@@ -119,8 +263,23 @@ const chevronGeometry = (() => {
   return new THREE.ShapeGeometry(shape);
 })();
 
-/** Deadeye guide: one unit plane shared by the crossbar and forward stem. */
-const crosshairLineGeometry = new THREE.PlaneGeometry(1, 1);
+/**
+ * THE LEAD's chip: one exact-unit rounded box, so instance SCALE is the sole
+ * authority over each dash's footprint, and the analytic bevel normals let the
+ * shared ink hull expand continuously instead of splitting at the corners.
+ *
+ * Both materials are parameter-free (paper and ink are dynasty-independent by
+ * design), so they live at module scope as singletons like the board's other
+ * ink-hulled objects, rather than being memoized and disposed per mount.
+ */
+const leadGeometry = createExactUnitRoundedBoxGeometry(LEAD_CORNER_RADIUS);
+const leadMaterial = new THREE.MeshBasicMaterial({
+  color: LEAD_PAPER,
+  // A guide must read at one constant brightness wherever it is on the board;
+  // tone mapping would let the arena's lighting decide how loud the aid is.
+  toneMapped: false,
+});
+const leadHullMaterial = createInkHullMaterial();
 
 /** Gridlock rail: unit plane, scaled per axis at mount. */
 const railGeometry = new THREE.PlaneGeometry(1, 1);
@@ -185,7 +344,7 @@ function getFireflyGlowMaterial(): THREE.SpriteMaterial | null {
 }
 
 // -----------------------------------------------------------------------------
-// DEADEYE
+// DEADEYE - the snapped cell tile + THE LEAD
 // -----------------------------------------------------------------------------
 
 interface DeadeyeProps {
@@ -194,157 +353,73 @@ interface DeadeyeProps {
   gridSize: number;
   bufferRef: { readonly current: InterpolationBuffer | null };
   color: string;
-}
-
-interface PositionWriter {
-  set(x: number, y: number, z: number): unknown;
-}
-
-interface TransformWriter {
-  position: PositionWriter;
-  scale: PositionWriter;
-}
-
-type VectorTuple = [number, number, number];
-
-export interface DeadeyeGuideLayout {
-  crossbar: {
-    position: VectorTuple;
-    scale: VectorTuple;
-  };
-  stem: {
-    position: VectorTuple;
-    scale: VectorTuple;
-  };
+  torus: boolean;
 }
 
 /**
- * Write the two T-guide transforms without allocating in the render loop.
- * The crossbar spans the complete board perpendicular to the heading. The
- * stem starts at the head center and ends exactly at the forward boundary.
+ * Author the three lead chips once, into a shared instance buffer.
+ *
+ * They live in the group's LOCAL space with the heading along -Z (the same
+ * convention `DIRECTION_YAW` already maps the chevron by), so the group's yaw
+ * is the only thing that changes on a turn and the matrices themselves are
+ * constant for the life of the mount. Dash i sits on the centre of the i-th
+ * cell ahead; its base rests at `AIM_Y`, clear of the board graphics.
  */
-function writeDeadeyeGuideTransforms(
-  headCenterX: number,
-  headCenterZ: number,
+export function writeLeadInstances(mesh: THREE.InstancedMesh): void {
+  _leadRotation.identity();
+  for (let i = 0; i < LEAD_CELLS; i += 1) {
+    const height = LEAD_HEIGHTS[i];
+    _leadPosition.set(0, AIM_Y + height / 2, -(i + 1));
+    _leadScale.set(LEAD_WIDTH, height, LEAD_LENGTHS[i]);
+    _leadMatrix.compose(_leadPosition, _leadRotation, _leadScale);
+    mesh.setMatrixAt(i, _leadMatrix);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+}
+
+/**
+ * How many lead cells are still on the board.
+ *
+ * Counted from the AUTHORITATIVE head cell, so the count changes exactly once
+ * per tick and never flickers on a fractional interpolated position. A dash
+ * drawn past the wall would be a mark on nothing.
+ *
+ * On a torus the board has no wall to truncate at, so the full lead is always
+ * drawn: the group simply carries the dashes over the seam, which is where the
+ * snake is going. This is the render half of the same truth `projectAimPath`
+ * conservatively omits; nothing here consults or mutates engine state.
+ */
+export function countLeadCells(
+  head: Position,
   direction: Direction,
   gridSize: number,
-  crossbar: TransformWriter,
-  stem: TransformWriter
-): void {
+  torus: boolean
+): number {
+  if (torus) return LEAD_CELLS;
   const delta = DIRECTION_DELTAS[direction];
-  const boardCenter = gridSize / 2;
-
-  if (delta.x !== 0) {
-    const forwardEdge = delta.x > 0 ? gridSize : 0;
-    crossbar.position.set(headCenterX, DEADEYE_LINE_Y, boardCenter);
-    crossbar.scale.set(DEADEYE_LINE_THICKNESS, gridSize, 1);
-    stem.position.set((headCenterX + forwardEdge) / 2, DEADEYE_LINE_Y, headCenterZ);
-    stem.scale.set(Math.abs(forwardEdge - headCenterX), DEADEYE_LINE_THICKNESS, 1);
-    return;
+  let visible = 0;
+  for (let i = 1; i <= LEAD_CELLS; i += 1) {
+    const x = head.x + delta.x * i;
+    const z = head.z + delta.z * i;
+    if (x < 0 || x >= gridSize || z < 0 || z >= gridSize) break;
+    visible += 1;
   }
-
-  const forwardEdge = delta.z > 0 ? gridSize : 0;
-  crossbar.position.set(boardCenter, DEADEYE_LINE_Y, headCenterZ);
-  crossbar.scale.set(gridSize, DEADEYE_LINE_THICKNESS, 1);
-  stem.position.set(headCenterX, DEADEYE_LINE_Y, (headCenterZ + forwardEdge) / 2);
-  stem.scale.set(DEADEYE_LINE_THICKNESS, Math.abs(forwardEdge - headCenterZ), 1);
+  return visible;
 }
 
-/** Initial-render layout; per-frame updates use the allocation-free writer. */
-export function getDeadeyeGuideLayout(
-  head: Position,
-  direction: Direction,
-  gridSize: number
-): DeadeyeGuideLayout {
-  const crossbar = {
-    position: new THREE.Vector3(),
-    scale: new THREE.Vector3(),
-  };
-  const stem = {
-    position: new THREE.Vector3(),
-    scale: new THREE.Vector3(),
-  };
-  writeDeadeyeGuideTransforms(
-    head.x + 0.5,
-    head.z + 0.5,
-    direction,
-    gridSize,
-    crossbar,
-    stem
-  );
-  return {
-    crossbar: {
-      position: crossbar.position.toArray() as VectorTuple,
-      scale: crossbar.scale.toArray() as VectorTuple,
-    },
-    stem: {
-      position: stem.position.toArray() as VectorTuple,
-      scale: stem.scale.toArray() as VectorTuple,
-    },
-  };
-}
-
-/**
- * Track the guide and floor cue without mutating engine or movement state.
- * The T guide follows the same interpolated head position as the snake;
- * the tile deliberately uses the current authoritative cell, matching the
- * existing Gridlock visual-feedback contract.
- */
-export function updateDeadeyeVisualTransforms(
-  head: Position,
-  direction: Direction,
-  gridSize: number,
-  buffer: InterpolationBuffer | null,
-  now: number,
-  crossbar: TransformWriter,
-  stem: TransformWriter,
-  highlightPosition: PositionWriter
-): void {
-  let smoothX = head.x;
-  let smoothZ = head.z;
-  let snapX = head.x;
-  let snapZ = head.z;
-
-  if (buffer && buffer.count > 0) {
-    const alpha = getAlpha(buffer, now);
-    smoothX = getInterpolatedX(buffer, 0, alpha);
-    smoothZ = getInterpolatedZ(buffer, 0, alpha);
-    snapX = buffer.curr[0];
-    snapZ = buffer.curr[1];
-  }
-
-  writeDeadeyeGuideTransforms(
-    smoothX + 0.5,
-    smoothZ + 0.5,
-    direction,
-    gridSize,
-    crossbar,
-    stem
-  );
-  highlightPosition.set(snapX + 0.5, AIM_Y - 0.01, snapZ + 0.5);
-}
-
-function Deadeye({ head, direction, gridSize, bufferRef, color }: DeadeyeProps) {
-  const crossbarRef = useRef<THREE.Mesh>(null);
-  const stemRef = useRef<THREE.Mesh>(null);
+function Deadeye({
+  head,
+  direction,
+  gridSize,
+  bufferRef,
+  color,
+  torus,
+}: DeadeyeProps) {
+  const leadRef = useRef<THREE.Group>(null);
+  const chipsRef = useRef<THREE.InstancedMesh>(null);
+  const chipsInkRef = useRef<THREE.InstancedMesh>(null);
   const highlightRef = useRef<THREE.Mesh>(null);
-  const initialGuide = useMemo(
-    () => getDeadeyeGuideLayout(head, direction, gridSize),
-    [head, direction, gridSize]
-  );
 
-  const crosshairMaterial = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.68,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    [color]
-  );
   const highlightMaterial = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
@@ -359,25 +434,65 @@ function Deadeye({ head, direction, gridSize, bufferRef, color }: DeadeyeProps) 
 
   useEffect(() => {
     return () => {
-      crosshairMaterial.dispose();
       highlightMaterial.dispose();
     };
-  }, [crosshairMaterial, highlightMaterial]);
+  }, [highlightMaterial]);
+
+  /**
+   * The chips are authored ONCE, on the first frame that has both meshes.
+   *
+   * On the frame loop rather than in an effect because that is where the
+   * instanced meshes are guaranteed to exist and to have survived any
+   * geometry or material swap: R3F recreates an `instancedMesh` when its
+   * `args` change, and a mount-time effect would have written a buffer that
+   * no longer belongs to the mesh on screen. Nothing but the group's
+   * transform moves afterwards, so this runs exactly once per mesh identity
+   * for the life of the run.
+   */
+  const authoredRef = useRef<THREE.InstancedMesh | null>(null);
+
+  /**
+   * Wall clip, recomputed per TICK (the head prop is a new object each tick),
+   * never per frame.
+   */
+  const leadCount = useMemo(
+    () => countLeadCells(head, direction, gridSize, torus),
+    [head, direction, gridSize, torus]
+  );
 
   useFrame(({ clock }) => {
-    const crossbar = crossbarRef.current;
-    const stem = stemRef.current;
+    const chipsMesh = chipsRef.current;
+    const inkMesh = chipsInkRef.current;
+    if (chipsMesh && inkMesh && authoredRef.current !== chipsMesh) {
+      authoredRef.current = chipsMesh;
+      writeLeadInstances(chipsMesh);
+      // The ink hull is the identical instance set: the expansion happens in
+      // its vertex shader, so it needs one typed-array copy, never a second
+      // transform pass.
+      (inkMesh.instanceMatrix.array as Float32Array).set(
+        chipsMesh.instanceMatrix.array as Float32Array
+      );
+      inkMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    const sample = readLeadHeadSample(head, bufferRef.current, performance.now());
+    // The lead rides the SMOOTH head, so the mark and the head move as one
+    // rigid body; the tile snaps to the authoritative cell. That is the same
+    // smooth-guide / snapped-tile split Gridlock has always used.
+    const lead = leadRef.current;
+    if (lead) {
+      lead.position.set(sample.smoothX + 0.5, 0, sample.smoothZ + 0.5);
+    }
+    const chips = chipsRef.current;
+    const ink = chipsInkRef.current;
+    if (chips) chips.count = leadCount;
+    if (ink) ink.count = leadCount;
     const highlight = highlightRef.current;
-    if (crossbar && stem && highlight) {
-      updateDeadeyeVisualTransforms(
-        head,
-        direction,
-        gridSize,
-        bufferRef.current,
-        performance.now(),
-        crossbar,
-        stem,
-        highlight.position
+    if (highlight) {
+      highlight.position.set(
+        sample.snapX + 0.5,
+        AIM_Y - 0.01,
+        sample.snapZ + 0.5
       );
     }
     // Exact reuse of Gridlock's quiet current-cell breathe (~0.35Hz).
@@ -397,25 +512,27 @@ function Deadeye({ head, direction, gridSize, bufferRef, color }: DeadeyeProps) 
         rotation-x={-Math.PI / 2}
       />
 
-      {/* Board-wide crossbar plus a stem that projects only toward the heading. */}
-      <group name="deadeye-crosshair">
-        <mesh
-          ref={crossbarRef}
-          name="deadeye-crosshair-crossbar"
-          geometry={crosshairLineGeometry}
-          material={crosshairMaterial}
-          position={initialGuide.crossbar.position}
-          rotation-x={-Math.PI / 2}
-          scale={initialGuide.crossbar.scale}
+      {/* THE LEAD - the next three cells, in two draw calls. The yaw is a
+          declarative prop, so a turn costs nothing per frame, and it SNAPS:
+          a guide that eases into a turn spends that ease telling the player
+          something that stopped being true a tick ago. */}
+      <group
+        ref={leadRef}
+        name="deadeye-lead"
+        rotation-y={DIRECTION_YAW[direction]}
+      >
+        <instancedMesh
+          ref={chipsInkRef}
+          name="deadeye-lead-ink"
+          args={[leadGeometry, leadHullMaterial, LEAD_CELLS]}
+          frustumCulled={false}
+          renderOrder={-1}
         />
-        <mesh
-          ref={stemRef}
-          name="deadeye-crosshair-stem"
-          geometry={crosshairLineGeometry}
-          material={crosshairMaterial}
-          position={initialGuide.stem.position}
-          rotation-x={-Math.PI / 2}
-          scale={initialGuide.stem.scale}
+        <instancedMesh
+          ref={chipsRef}
+          name="deadeye-lead-chips"
+          args={[leadGeometry, leadMaterial, LEAD_CELLS]}
+          frustumCulled={false}
         />
       </group>
     </group>
@@ -867,6 +984,7 @@ export function AimRenderer({
   bufferRef = NULL_BUFFER,
   color = '#22d3ee',
   laneColor = '#22d3ee',
+  torus = false,
 }: AimRendererProps) {
   if (!headPosition) return null;
 
@@ -906,6 +1024,7 @@ export function AimRenderer({
           gridSize={gridSize}
           bufferRef={bufferRef}
           color={color}
+          torus={torus}
         />
       );
   }
