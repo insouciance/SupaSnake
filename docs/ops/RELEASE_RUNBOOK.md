@@ -27,9 +27,9 @@ name the same READY production deployment; cron is enabled and its normalized
 definition hash remains
 `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
 Stripe remains in sandbox/test mode. The deploy workflow's reviewed rollout
-allowlist holds five contracts — `genome-v2-initial`, `genome-v2-resume`,
-`settlement-payload-bounds`, `player-gene-eligibility` and
-`settlement-sweep-primary`.
+allowlist holds six contracts — `genome-v2-initial`, `genome-v2-resume`,
+`settlement-payload-bounds`, `player-gene-eligibility`,
+`settlement-sweep-primary` and `snake-cosmetic-loadout`.
 
 The engine rules version is now `snake-rules-2026-08-05.2`, verified in the
 served production chunk `2894-433978b3ede14d00.js`; the previous `.1` string is
@@ -463,8 +463,9 @@ The workflow performs:
    reviewed rollout push and linked lint. The recognized rollouts are the exact
    062–065 initial/resume suffix, the exact single-file
    `066_settlement_payload_bounds.sql` plan, the exact single-file
-   `067_player_gene_eligibility.sql` plan, and the exact single-file
-   `068_settlement_sweep_primary.sql` plan; each is named explicitly by the
+   `067_player_gene_eligibility.sql` plan, the exact single-file
+   `068_settlement_sweep_primary.sql` plan, and the exact single-file
+   `069_snake_cosmetic_loadout.sql` plan; each is named explicitly by the
    apply and validate steps, and any other plan stops at classification.
    Contracts are written for plans this workflow can actually observe. It
    dry-runs only after `supabase link` against the production project ref, and
@@ -479,6 +480,26 @@ The workflow performs:
    definition** — the settlement sweep keeps its `*/10 * * * *` schedule, so
    `EXPECTED_CRON_DEFINITIONS_SHA` is unaffected and every cron proof in this
    procedure holds unchanged.
+   `069` extends the cosmetic slot vocabulary to `face`, `crown` and
+   `food_skin` (each CHECK dropped by its 022 name and re-added whole, never a
+   second constraint alongside), adds `default_owned` and `supporter_only` to
+   `cosmetic_definitions`, seeds two free snake cosmetics
+   (`face_shades_deadpan`, `crown_braids_amber`), adds the read RPCs
+   `read_snake_loadout` and `read_snake_cosmetic_catalog`, and re-creates
+   `equip_cosmetic` so it serves the new slots, resolves ownership through
+   `default_owned` instead of a hardcoded banner id, and pins `search_path`.
+   It also closes a policy-without-GRANT gap open since 022: `player_cosmetics`
+   and `player_loadout` carried own-row SELECT policies with no matching table
+   grant, so those reads were unreachable; both are revoked and re-granted
+   `SELECT` to `authenticated` only. It moves no value and rewrites no player
+   row: the only UPDATE it performs backfills the catalog flag that replaces
+   the `banner_hatchery_standard` literal, and unequip deletes a selection from
+   `player_loadout` while the owned row in `player_cosmetics` is never touched.
+   **It changes no cron definition** — no schedule is added, removed or
+   retimed, so `EXPECTED_CRON_DEFINITIONS_SHA` is unaffected and every cron
+   proof in this procedure holds unchanged. Release order is deploy the app
+   first, then apply: the app degrades to "no snake cosmetics" while the RPCs
+   are absent, so a deploy that precedes this file is a quiet no-op.
 8. Empty post-push dry-run and hosted read-only migration-ledger/structural probe.
 9. A second proof that canonical alias and cron remain exactly outgoing after
    all schema work.

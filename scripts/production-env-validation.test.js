@@ -139,6 +139,14 @@ describe('production environment validation', () => {
     expect(
       rolloutApplyBlock.match(/rollout == 'settlement-sweep-primary'/g)?.length
     ).toBe(2);
+    // LF-B: migration 069 holds the snake cosmetic loadout on the server.
+    // Same closed-allowlist contract as 066, 067 and 068 — one exact plan, and
+    // both the apply and the validate step name it.
+    expect(workflow).toContain("\"$actual\" = '069_snake_cosmetic_loadout.sql'");
+    expect(workflow).toContain('rollout=snake-cosmetic-loadout');
+    expect(
+      rolloutApplyBlock.match(/rollout == 'snake-cosmetic-loadout'/g)?.length
+    ).toBe(2);
 
     const snapshotAt = workflow.indexOf('name: Snapshot exact outgoing cron state');
     const previewAt = workflow.indexOf('name: Build isolated Preview artifact');

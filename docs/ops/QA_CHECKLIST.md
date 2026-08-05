@@ -232,10 +232,11 @@ the second is the player-visible one and is the current behavior commit.
 **Both trains**
 
 - Hosted migrations are aligned 001–068 with no pending plan.
-- The reviewed rollout allowlist now holds five contracts: `genome-v2-initial`,
-  `genome-v2-resume`, `settlement-payload-bounds`, `player-gene-eligibility`
-  and `settlement-sweep-primary`. The last two were proved end to end by these
-  two runs.
+- The reviewed rollout allowlist now holds six contracts: `genome-v2-initial`,
+  `genome-v2-resume`, `settlement-payload-bounds`, `player-gene-eligibility`,
+  `settlement-sweep-primary` and `snake-cosmetic-loadout`. Of these,
+  `player-gene-eligibility` and `settlement-sweep-primary` were proved end to
+  end by these two runs.
 - The cron definition hash
   `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf` was
   unchanged at all three checkpoints of each train, and cron owner and every
