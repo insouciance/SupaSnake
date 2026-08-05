@@ -809,7 +809,13 @@
   background:
     radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--dynasty-primary) 11%, transparent), transparent 54%),
     rgba(1, 4, 8, 0.86) !important;
-  backdrop-filter: blur(6px) saturate(0.72) !important;
+  /* NO `backdrop-filter` HERE. It used to be `blur(6px) saturate(0.72)`, laid
+     over an arena that THE FOCUS PULL below already blurs by 7px - two lenses
+     on one subject, ~9.2px effective and saturation multiplying to 0.56. The
+     focus pull is the product's decision blur; a scrim blur on top of it is
+     the blanket veil that ruling deliberately replaced. Restoring one here
+     would defocus the scrim's own dynasty wash as well, which is drawn ON
+     this element and was never meant to be soft. */
   scrollbar-color: color-mix(in srgb, var(--dynasty-primary) 52%, transparent) transparent;
   scrollbar-width: thin;
 }
@@ -832,19 +838,29 @@
 .decisionDock > :global([role='dialog']) > :global(.panel-glow),
 .decisionDock > :global([role='alertdialog']) > :global(.panel-elevated),
 .decisionDock > :global([role='alertdialog']) > :global(.panel-glow) {
-  width: min(100%, 720px) !important;
+  /* ONE MEASURE. `--tray-w` is 45rem, which is this rule's historical 720px
+     to the pixel - the shared token was set FROM here, because this is the
+     one tray width `verify:cockpit-decisions` measures and it must not move. */
+  width: min(100%, var(--tray-w)) !important;
   min-width: 0 !important;
-  max-width: 720px !important;
+  max-width: var(--tray-w) !important;
   height: max-content !important;
   max-height: 100%;
   margin: auto !important;
   overflow: auto;
-  border-color: color-mix(in srgb, var(--glow, var(--dynasty-primary)) 52%, rgba(126, 164, 192, 0.5)) !important;
+  /* ONE TRAY, ONE OUTLINE. The dynasty-tinted keyline and its 42px coloured
+     halo are replaced by the product's modal frame: bone stroke, drawn shade,
+     one hard drop. A docked decision is a modal and now looks like every
+     other one. Drawn as spread rings, never border-width - these panels are
+     pixel-invariance protected and `box-sizing: border-box` means a heavier
+     border would shrink the content box and move every child inside it. */
+  border-color: transparent !important;
+  border-radius: 26px !important;
   background:
     linear-gradient(155deg, rgba(15, 26, 36, 0.98), rgba(3, 7, 11, 0.99)) !important;
   box-shadow:
-    0 30px 80px rgba(0, 0, 0, 0.72),
-    0 0 42px color-mix(in srgb, var(--glow, var(--dynasty-primary)) 18%, transparent) !important;
+    var(--paper-ring-3),
+    0 30px 80px rgba(0, 0, 0, 0.72) !important;
 }
 
 .decisionDock :global(h2) {
@@ -1052,10 +1068,22 @@
       rgba(6, 11, 17, 0.24) 46%,
       rgba(11, 17, 24, 0.36)
     );
-  /* The bone line is the drawn edge; this is the ink shadow it casts onto
-     the sky, so the tray reads as sitting IN FRONT of the environment. */
+  /* THE DRAWN SHADE (owner ruling, production-only refinement).
+     The bone line is the drawn edge. It used to carry a 1px INK ring here,
+     described as "the shadow it casts onto the sky" - but the sky it casts
+     onto is #06090d..#0b1118, so a near-black hairline on it cast nothing
+     the eye could find, and what was left was a white keyline with two
+     identical hard edges. That is the "a bit alien" the ruling names:
+     nothing a hand draws has two identical edges.
+
+     Replaced by `--paper-shade-ring`, the same grey companion every other
+     paper frame in the product wears, so the board frame and the modal
+     outlines read as one hand. Identical geometry - 1px, same offset, same
+     spread - so this is a colour change and nothing measures differently.
+     The soft cast shadow below it is untouched and still does the lifting
+     off the environment that the ink ring was credited with. */
   box-shadow:
-    0 0 0 1px rgba(11, 17, 24, 0.72),
+    var(--paper-shade-ring),
     0 10px 26px rgba(0, 0, 0, 0.4);
   opacity: 0.9;
 }

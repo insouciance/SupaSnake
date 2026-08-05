@@ -173,6 +173,50 @@
     0 18px 48px rgba(0, 0, 0, 0.55);
 }
 
+/* -----------------------------------------------------------------------
+   THE MODAL SCRIM - one backdrop, one dialect.
+
+   Before this there were six: bg-void-deep/85, /80 and /90, bg-black/75,
+   bg-ink/86 and a pair of bare gradients, three of them blurred and three
+   not, chosen by whoever wrote the surface. A scrim is not decoration; it
+   is the statement "the room behind this is not where you are", and a
+   product that makes that statement six different ways is telling the
+   player the surfaces are unrelated.
+
+   Blur belongs to the SURFACE BEHIND, not to the modal, which is why this
+   class carries none. On the game screen the arena's own 180ms focus pull
+   (`.liveRoot[data-decision='true'] .arenaBay`) is that blur, and a scrim
+   blur on top of it would be a second lens on the same subject. Off the
+   game screen the page behind is flat chrome and needs no defocus at all.
+   Surfaces that genuinely want one add `backdrop-blur-sm` themselves.
+   ----------------------------------------------------------------------- */
+.modal-scrim {
+  background-color: rgba(6, 9, 13, 0.86);
+}
+
+/* -----------------------------------------------------------------------
+   THE TRAY WIDTH - one measure, desktop and mobile. (Owner ruling.)
+
+   Widths were set per surface and ranged from `min-w-[300px]` uncapped to
+   `max-w-4xl`, with a `720px !important` override in the cockpit dock on
+   top. The player reads all of them as "the game talking", so they get one
+   measure: 45rem, which IS the cockpit dock's 720px, chosen so the one
+   surface that is pixel-invariance protected does not move at all.
+
+   `min(100%, …)` rather than `max-width` alone, so the same declaration is
+   correct on a 320px phone: the tray is the viewport minus its scrim
+   padding there, and the measure everywhere above it. That is what
+   "desktop = mobile tray width discipline" means - not a second breakpoint,
+   the absence of one.
+   ----------------------------------------------------------------------- */
+:root {
+  --tray-w: 45rem;
+  --tray-w-narrow: 28rem;
+}
+
+.modal-tray { width: min(100%, var(--tray-w)); }
+.modal-tray-narrow { width: min(100%, var(--tray-w-narrow)); }
+
 * {
   box-sizing: border-box;
 }
