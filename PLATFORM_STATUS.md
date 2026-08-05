@@ -23,32 +23,30 @@
 | Run continuity | Nonblocking save status in the cockpit; only a proven exclusive-lease conflict interrupts play |
 | Language | Plain-language vocabulary live across the game, with a mounted glossary |
 | Engine rules | `snake-rules-2026-08-05.1` |
-| Player-feature baseline | `28d21f1c83f335ad48257fdc0a4966062007b479` |
-| Current deployment | `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`supasnake-1ic69o9sk-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL` (`bf3020c`); schema-safe under forward-only 067/068, but serves the previous rules version and gives up the Side Door treatment, saturation extraction, and the primary sweep |
+| Player Evolution | **Live.** New players receive the seven-Gene starter curriculum; trials run in THE DROP and unlocks are revealed on Results |
+| Public surface | 23 flags, contract hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`; health reports 23/23 with no disabled flags |
+| Player-feature baseline | `4e51e817b7ceb802530c35ffb8399afaa6b2fc3a` |
+| Current deployment | `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`supasnake-ibhhdbou5-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`28d21f1`); same schema and rules version, but serves the 22-flag surface, so a rollback is itself a public contract change and withdraws the curriculum mid-journey |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current baseline arrived as two deployed trains. The first, `bf3020c`, was
-deliberately invisible: PR 69 landed the WP-B server curriculum core and PR 78
-its reviewed rollout contract, with PR 74, 75, 76 and 77 carrying docs, CI and
-tests. It applied migration 067 and changed nothing a player can see — the flag
-is absent from the public manifest, a test enforces that absence, and the
-public-surface hash and 22/22 count were unchanged. The second, `28d21f1`,
-is player-visible: PR 79 made the settlement sweep the primary settler with
-migration 068, and PR 81 shipped the Side Door treatment, saturation extraction,
-and the `snake-rules-2026-08-05.1` rules bump.
+The current release turned Player Evolution on. PR 83 landed CE-3a value
+protection, PR 84 the WP-D reveal and guidance surfaces, PR 86 the WP-E clan
+handoff together with two account-safety fixes, and PR 85 the WP-F telemetry
+and the manifest entry that made the flag public. It carried no migration: the
+curriculum's tables, RPCs and backfill had already shipped dormant in migration
+067, and this release only changed which artifact the flag is compiled into.
 
-Each PR passed all ten protected-PR checks, including all four
+Every PR passed all ten protected-PR checks, including all four
 isolated-Supabase E2E flag shapes, and each merge's post-main push workflows
-passed on its exact main SHA. Both trains passed full type checking, lint,
+passed on its exact main SHA. The release passed full type checking, lint,
 `verify:constitution`, the production build, the deterministic cockpit
 verifications, local migrations 001–068 from zero, ordinary and two-session SQL
 integration, the production runtime dependency audit, staged and canonical
-health, the 16-key `cohesive_release_read_only_v5` schema probe including its
-`geneEligibilityContractValid` check, exact cron ownership, and focused
-public-production smoke. Production workflows `30948525096` and `30969645760`
-deployed them, applying migrations 067 and 068. Detailed evidence is maintained
+health, the 16-key `cohesive_release_read_only_v5` schema probe, exact cron
+ownership, and focused public-production smoke. Production workflow
+`30992325611` deployed it. Detailed evidence is maintained
 in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -131,6 +129,13 @@ in `docs/ops/QA_CHECKLIST.md`.
   RIDE ON, TRADE UP, GOLDEN HOUR, and GOLD, PULSE, COILS, WARP and RISK. A
   mounted glossary is available wherever the terms appear, so a term is never
   the thing standing between a player and the decision.
+- A new player is taught rather than dropped in. They receive a seven-Gene
+  starter curriculum; trials are offered inside THE DROP rather than in a
+  separate tutorial mode; unlocks are revealed on Results; the first BANK gets
+  its own beat; and the clan handoff is revealed at eight banked runs.
+- Anonymous accounts can no longer found a clan, and an OAuth change can no
+  longer orphan one. Founding requires a durable account, so no clan can be left
+  owned by an identity that cannot come back.
 - The Side Door is a route, not a trap. It reads through a tether, a chevron,
   an arrival beat, and forming Scars, so a player can see where it goes and what
   it costs before committing.
@@ -186,11 +191,17 @@ in `docs/ops/QA_CHECKLIST.md`.
 - Stripe, Sentry, PostHog, Discord, and Analyst integrations with documented
   degraded modes
 - Jest, Playwright, GitHub Actions, Vercel, and isolated Supabase CI
-- Player Evolution (WP-B) server curriculum core and migration 067 are deployed
-  but **dormant**: no flag in the public manifest, a test that enforces that
-  absence, and no player-visible surface. Treat it as infrastructure in place
-  awaiting its rollout decision, not as a shipped feature — `PLATFORM_STATUS`
-  describes what players can see, and today they see none of it.
+- Player Evolution is **live** as of `4e51e817`. The curriculum core shipped
+  dormant in migration 067 and was switched on by adding
+  `NEXT_PUBLIC_PLAYER_EVOLUTION_V1` to the public manifest — the first change to
+  the public-surface contract in the project's history, taking it from 22 flags
+  to 23.
+- The public surface is defined only by `config/production-public-surface.json`.
+  The deploy workflow injects every manifest flag and a freshly computed
+  contract hash into both the job environment and the deployment, so a flag
+  rollout needs **no** Vercel dashboard mutation. Never pin the contract hash as
+  a literal anywhere: it is recomputed from the manifest, and a pinned copy goes
+  stale on the next contract change.
 - Merge cadence, as of 2026-08-04: pull requests auto-merge on green
   (`gh pr merge --squash --auto`) and strict up-to-date is off, because
   GitHub's merge queue proved to be organization-only for this account. The
@@ -208,19 +219,28 @@ NEXT_PUBLIC_LADDER_V1=true
 NEXT_PUBLIC_CAREER_SPINE_V1=true  # presentation only; never gates settlement
 NEXT_PUBLIC_RUN_FLOW_V1=true  # cockpit Setup and Victory Lap
 NEXT_PUBLIC_GENOME_V2=true  # new starts use physical-interaction v2; stamped v1 remains supported
+NEXT_PUBLIC_PLAYER_EVOLUTION_V1=true  # the starter curriculum; the 23rd flag
 ```
 
 The complete 23-flag production set is defined only in
 `config/production-public-surface.json`; the list above highlights the
 player-flow flags most relevant to this status summary. The 23rd,
-`NEXT_PUBLIC_PLAYER_EVOLUTION_V1`, was added by WP-F and is armed by the
-flag-on release described in `docs/ops/RELEASE_RUNBOOK.md`; the currently
-deployed artifact still proves the previous 22/22 contract.
+`NEXT_PUBLIC_PLAYER_EVOLUTION_V1`, was added by WP-F and went live with
+`4e51e817`; the deployed artifact now proves the 23/23 contract and hash
+`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`.
 
 ## Known follow-ups
 
 These do not invalidate the operator production release:
 
+- Two SQL changes are queued for the next Track-A migration and were
+  deliberately left out of the flag-on release, which carried no migration: the
+  clan RPC-layer anonymous guard (defence in depth behind the route-level guard
+  WP-E already ships) and a narrowing of the expire-race continuity predicate.
+  Neither is reachable from the curriculum flag.
+- Live Player Evolution tuning now that the curriculum is on: trial completion
+  and abandonment, whether the seven-Gene starter pool holds up against real
+  play, reveal pacing on Results, and the eight-bank clan handoff moment
 - Physical iOS Safari and Android Chrome safe-area, browser-chrome, haptic,
   audio, camera, and long-session touch validation
 - Owner calibration of PRIMAL's ruled 75/96/120 growth thresholds, plus live-run

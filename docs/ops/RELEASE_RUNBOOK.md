@@ -1,41 +1,39 @@
 # Production Release Runbook
 
-Current production baseline: the Side Door and saturation-extraction train
-`28d21f1c83f335ad48257fdc0a4966062007b479`, independently verified on
-5 August 2026 by successful production workflow `30969645760` (02:32 to
-02:52 UTC) as deployment `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M`
-(`supasnake-1ic69o9sk-josef-bells-projects.vercel.app`). It applied **migration
-068** cleanly with no backfill, and bumped the engine rules version to
-`snake-rules-2026-08-05.1`.
+Current production baseline: the Player Evolution flag-on release
+`4e51e817b7ceb802530c35ffb8399afaa6b2fc3a`, independently verified on
+5 August 2026 by successful production workflow `30992325611` as deployment
+`dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1`
+(`supasnake-ibhhdbou5-josef-bells-projects.vercel.app`). It carried no
+migration; hosted migrations remain aligned through **068** with no pending
+plan.
 
-It followed the dormant-infrastructure train
-`bf3020c9f59d212136998eac845902f076c812e9`, deployed the previous evening by
-workflow `30948525096` (20:35 to 20:54 UTC on 4 August 2026) as
-`dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL`
-(`supasnake-7eszq9ea1-josef-bells-projects.vercel.app`). That train applied
-**migration 067**, whose backfill notice reported 32 graduation, 7
-history-credit and 2,192 starter rows for 2,231 total; a re-run writes 0, which
-is the idempotence proof. It shipped **zero player-visible change**: its flag is
-absent from the public manifest, a test enforces that absence, the server code
-is dormant, and the public-surface hash and 22/22 count were unchanged.
+**This was the first change to the public-surface contract in the project's
+history.** The manifest went from 22 flags to 23 and the deterministic contract
+hash changed from
+`8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99` to
+`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`, recomputed
+independently before dispatch and matched. Canonical health reports 23/23 with
+an empty `disabledFlags`, the exact release SHA, healthy database, project ref
+`gmpwyzqafoyowndbvlma`, and Genome schema/catalog/Ascendance 2/2/2 with eight
+Splices, rules version 2, and neutral 2/3/4 Strain thresholds. The engine rules
+version remains `snake-rules-2026-08-05.1`.
 
-Hosted migrations are now aligned through **068**. The dedicated read-only probe
-is `cohesive_release_read_only_v5`, whose 16 keys include
-`geneEligibilityContractValid` — TRUE across both trains. Migration 068 added no
-probe key of its own.
-Canonical health reports the exact release SHA, healthy database, project ref
-`gmpwyzqafoyowndbvlma`, 22/22 public surfaces, public hash
-`8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, and
-Genome schema/catalog/Ascendance 2/2/2 with eight Splices, rules version 2, and
-neutral 2/3/4 Strain thresholds. Canonical alias, cron owner, and every cron host
+That the curriculum is actually served was proved three independent ways: the
+chunk marker `curriculum_trial_offered` was absent before the cutover and
+present after; `/api/genome/curriculum` answers 401 rather than 404, so the
+route exists and is merely unauthenticated; and `/api/health` carries a per-flag
+runtime check.
+
+The dedicated read-only probe remains `cohesive_release_read_only_v5` at 16
+keys. Canonical alias, cron owner, and every cron host
 name the same READY production deployment; cron is enabled and its normalized
 definition hash remains
-`a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`, unchanged at
-all three checkpoints of *each* train.
+`a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
 Stripe remains in sandbox/test mode. The deploy workflow's reviewed rollout
-allowlist now holds five contracts — `genome-v2-initial`, `genome-v2-resume`,
+allowlist holds five contracts — `genome-v2-initial`, `genome-v2-resume`,
 `settlement-payload-bounds`, `player-gene-eligibility` and
-`settlement-sweep-primary` — the last two proved end to end by these two runs.
+`settlement-sweep-primary`.
 
 The rules bump was verified in the served production chunk
 `2894-c16facb0187e24c2.js`, which carries `snake-rules-2026-08-05.1` with the
@@ -47,15 +45,17 @@ sense that the served artifact is exactly the reviewed one.
 The live interaction-v2 contract uses optional physical Gene relics on a
 deterministic 6 ± 2-food cadence; already-issued or omitted interaction stamps
 retain automatic-offer v1 compatibility. The now-previous deployment
-`dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL` (`bf3020c`) predates migration 068 and the
-rules bump. It remains the artifact-level rollback candidate — 067 and 068 are
-forward-only and additive, so the hosted schema stays safe under it — but it
-serves the previous rules version, so any run checkpointed under
-`snake-rules-2026-08-05.1` would be resumed by an artifact that does not know
-that version. It also gives up the Side Door treatment, saturation extraction,
-and the sweep as primary settler. The artifact before it
-(`dpl_4PGGV7FS3EYVBXHv19mYXA4KpepA`, `ba253b5`) additionally gives up the
-dormant curriculum server core. Older artifacts additionally restore the
+`dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`28d21f1`) is the artifact-level rollback
+candidate. It shares hosted schema 001–068 and the same rules version, so
+resume and settlement stay safe under it — but it serves the **22-flag** public
+surface and the old contract hash. A rollback to it is therefore a public
+contract change in its own right, and it withdraws the curriculum from every
+player mid-journey; prefer a reviewed forward release. The artifact before it
+(`dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL`, `bf3020c`) additionally predates the rules
+bump, so a run checkpointed under `snake-rules-2026-08-05.1` would be resumed by
+an artifact that does not know that version, and it gives up the Side Door
+treatment, saturation extraction, and the sweep as primary settler. Older
+artifacts additionally restore the
 stranded-settlement trap that
 hard-blocked two production accounts behind the “Result secured” modal
 (`dpl_CLE4n4uQVw7kYopCpavA5miY8yuT`, `2fe33ca`), the fatal Gilded Fork
@@ -151,9 +151,12 @@ only production mutation path; never run a separate hosted `supabase db push`.
 
 ## Addendum: the Genome Discovery flag-on release (WP-F)
 
-This addendum governs exactly one release — the one that first ships
-`NEXT_PUBLIC_PLAYER_EVOLUTION_V1` as a live public surface. After it, the flag
-is an ordinary manifest entry and the standard sequence above applies again.
+This addendum governed exactly one release — the one that first shipped
+`NEXT_PUBLIC_PLAYER_EVOLUTION_V1` as a live public surface. **That release has
+now happened** (`4e51e817b7ceb802530c35ffb8399afaa6b2fc3a`, workflow
+`30992325611`): the flag is now an ordinary manifest entry and the standard
+sequence above applies again. The addendum is kept as the record of the first
+public-surface contract change, with its one wrong instruction corrected below.
 
 ### What changes, and what does not
 
@@ -172,37 +175,41 @@ shipped dormant in migration 067 (the `bf3020c` train), which reported 32
 graduation, 7 history-credit and 2,192 starter rows and is idempotent on
 re-run. This release changes only which artifact the flag is compiled into.
 
-### Operator prerequisite — before dispatching the workflow
+### No operator prerequisite — the manifest is the source of truth
 
-`NEXT_PUBLIC_*` values are inlined at **build** time, and the deploy workflow
-validates the pulled Production environment **before** it builds anything. Two
-variables must therefore already exist in the Vercel project
-`josef-bells-projects/supasnake`, **Production** environment:
+**An earlier version of this addendum instructed the operator to create
+`NEXT_PUBLIC_PLAYER_EVOLUTION_V1` and a literal `SUPASNAKE_PUBLIC_SURFACE_HASH`
+in the Vercel dashboard before dispatching. That instruction was wrong, and the
+release proved it wrong.** No dashboard mutation is needed, and none is wanted.
 
-| Variable | Value |
-|---|---|
-| `NEXT_PUBLIC_PLAYER_EVOLUTION_V1` | `true` |
-| `SUPASNAKE_PUBLIC_SURFACE_HASH` | `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be` |
+`config/production-public-surface.json` is the single source of truth for every
+production-on `NEXT_PUBLIC_*` value and for the contract hash. The workflow
+derives both from it, in this order:
 
-The release operator sets both. Neither is optional and neither can be added
-mid-run:
+- The "Load exact production public-surface contract" step runs
+  `production-public-surface-cli.mjs github-env >> "$GITHUB_ENV"`, which writes
+  every manifest flag **and** a freshly computed
+  `SUPASNAKE_PUBLIC_SURFACE_HASH` into the job environment.
+- Only then does "Validate production environment contract" run
+  `verify:production-env`. It therefore validates against the manifest-derived
+  values, not against whatever the dashboard happens to hold.
+- The deployment itself receives the same values through
+  `production-public-surface-cli.mjs vercel-args`, which emits matched
+  `--build-env`/`--env` pairs for the build-time inlining and the runtime read.
 
-- `production-env-validation.cjs` derives its required list from the manifest
-  (`REQUIRED_VARIABLES` splices `PRODUCTION_PUBLIC_FLAGS`), so a **missing**
-  flag is an error even when every production value is sealed — sealing hides
-  the value, never the absence. `verify:production-env` runs at the "Validate
-  production environment contract" step and stops the release there, before
-  Preview and before any hosted mutation.
-- When the pulled values are not sealed, the same validator asserts the flag is
-  exactly `true` and the hash is exactly the checked-in one, so a stale hash in
-  the dashboard also stops the release.
-- The workflow additionally injects both through
-  `production-public-surface-cli.mjs vercel-args` as `--build-env`/`--env`, so
-  the artifact receives the correct values regardless of the dashboard. That
-  injection is belt-and-braces for the deploy path; it does not excuse leaving
-  the dashboard wrong, because `/api/health`'s `publicSurface` check reads the
-  runtime value and any deployment made outside this workflow would report
-  unhealthy.
+The evidence that no dashboard entry is required is not only structural: no
+dashboard variable ever existed for `NEXT_PUBLIC_GENOME_V2`, and it shipped and
+survived five releases this way.
+
+Do **not** pin the hash as a literal in the dashboard. A pinned hash is a
+stale-hash trap: the next manifest change recomputes the real hash and the
+pinned copy then fails the release for no reason, or worse, has to be chased by
+hand on every future contract change. Recompute it instead, and only for
+reading:
+
+```sh
+node scripts/production-public-surface-cli.mjs hash
+```
 
 ### Proof after cutover
 
@@ -212,6 +219,9 @@ hash above. `/api/release-contract` must report the same hash from the
 anonymous surface. A 22/22 count or the old hash after cutover means the
 environment, not the code, is wrong — treat it as a failed release health check
 under "Failure and recovery" and do not roll back the application.
+
+This passed on the actual cutover: 23/23 with an empty `disabledFlags`, the new
+hash, and no dashboard variable having been created.
 
 ### Rollback: flag-off is a forward release, and a full pool
 
