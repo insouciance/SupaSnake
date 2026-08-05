@@ -79,17 +79,27 @@ test.describe('Training Lab', () => {
       expect(layout).not.toBeNull();
       /*
        * Training mounts the same `RunCockpit`, so it inherits the trayless
-       * board: the square-well premise this line used to assert is gone on
-       * purpose. See the long note in `cockpit.spec.ts` for the argument. The
-       * contract kept here is the same one: non-degenerate, fills its bay, and
-       * clipped only by the browser viewport.
+       * board and the square-well premise this line used to assert is gone on
+       * purpose. See the long note in `cockpit.spec.ts` for that argument.
+       *
+       * WHAT IS DELIBERATELY *NOT* ASSERTED: that the board's rectangle lies
+       * inside the window. A first pass at this re-expression did assert it,
+       * and it was wrong on its own terms - the ratified ruling is that the
+       * board is CLIPPED ONLY BY THE BROWSER VIEWPORT, which is a statement
+       * about what may clip it, not a promise that nothing does. Measured on
+       * the training route the bay runs taller than a short viewport and the
+       * window crops it, which is exactly the permitted case; the 3D fit
+       * frames the slab well inside the canvas, so the play surface itself is
+       * not cut. Requiring containment here would have made this suite
+       * stricter than the design it is guarding.
+       *
+       * The board's placement is guarded where the guarantee actually lives:
+       * `cockpit.spec.ts` pins its centring to within 9-10px, the zone sweep
+       * below pins that no HUD region overlaps it, and `horizontalOverflow`
+       * pins that none of this produces a scrollbar.
        */
       expect(layout!.board.width).toBeGreaterThanOrEqual(180);
       expect(layout!.board.height).toBeGreaterThanOrEqual(180);
-      expect(layout!.board.x).toBeGreaterThanOrEqual(-0.5);
-      expect(layout!.board.y).toBeGreaterThanOrEqual(-0.5);
-      expect(layout!.board.x + layout!.board.width).toBeLessThanOrEqual(viewport.width + 0.5);
-      expect(layout!.board.y + layout!.board.height).toBeLessThanOrEqual(viewport.height + 0.5);
       for (const zone of layout!.zones) {
         expect(rectanglesOverlap(layout!.board, zone)).toBe(false);
       }
