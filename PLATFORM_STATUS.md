@@ -12,7 +12,7 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–066 deployed and aligned; no pending migration |
+| Schema | Migrations 001–068 deployed and aligned; no pending migration |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
 | Practice | Training Lab enabled; deterministic and rewardless |
@@ -22,27 +22,34 @@
 | Tactical Genome | v2 enabled; player-pulled relics, six loci, 13 shared Genes, three signatures, eight Splices, 2/3/4 neutral Strain ladder |
 | Run continuity | Nonblocking save status in the cockpit; only a proven exclusive-lease conflict interrupts play |
 | Language | Plain-language vocabulary live across the game, with a mounted glossary |
-| Player-feature baseline | `ba253b5a23c6d8bc3f887e9d1a8ae617c970c79f` |
-| Current deployment | `dpl_4PGGV7FS3EYVBXHv19mYXA4KpepA` (`supasnake-muv8yqmn0-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`381491e`); predates migration 066 but stays schema-safe because 066 only widens bounds; gives up payload projection, the new vocabulary, and the engine hardening |
+| Engine rules | `snake-rules-2026-08-05.1` |
+| Player-feature baseline | `28d21f1c83f335ad48257fdc0a4966062007b479` |
+| Current deployment | `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`supasnake-1ic69o9sk-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL` (`bf3020c`); schema-safe under forward-only 067/068, but serves the previous rules version and gives up the Side Door treatment, saturation extraction, and the primary sweep |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release is a five-PR train deployed together: PR 72 (settlement
-payload fix and migration 066), PR 71 (the plain-language vocabulary), PR 70
-(engine one-source-of-truth hardening), PR 73 (the reviewed rollout contract for
-066) and PR 68 (the previous release record). Each passed all ten protected-PR
-checks, including all four isolated-Supabase E2E flag shapes, and each merge's
-four post-main push workflows passed on its exact main SHA. The train also
-passed full type checking, lint, `verify:constitution`, the production build,
-the deterministic cockpit verifications, local migrations 001–066 from zero,
-ordinary and two-session SQL integration, the production runtime dependency
-audit, staged and canonical health, the 15-key
-`cohesive_release_read_only_v4` schema probe including its new
-`settlementBoundsAligned` check, exact cron ownership, and focused
-public-production smoke. Production workflow `30936005977` deployed it and
-applied migration 066. Detailed evidence is maintained in
-`docs/ops/QA_CHECKLIST.md`.
+The current baseline arrived as two deployed trains. The first, `bf3020c`, was
+deliberately invisible: PR 69 landed the WP-B server curriculum core and PR 78
+its reviewed rollout contract, with PR 74, 75, 76 and 77 carrying docs, CI and
+tests. It applied migration 067 and changed nothing a player can see — the flag
+is absent from the public manifest, a test enforces that absence, and the
+public-surface hash and 22/22 count were unchanged. The second, `28d21f1`,
+is player-visible: PR 79 made the settlement sweep the primary settler with
+migration 068, and PR 81 shipped the Side Door treatment, saturation extraction,
+and the `snake-rules-2026-08-05.1` rules bump.
+
+Each PR passed all ten protected-PR checks, including all four
+isolated-Supabase E2E flag shapes, and each merge's post-main push workflows
+passed on its exact main SHA. Both trains passed full type checking, lint,
+`verify:constitution`, the production build, the deterministic cockpit
+verifications, local migrations 001–068 from zero, ordinary and two-session SQL
+integration, the production runtime dependency audit, staged and canonical
+health, the 16-key `cohesive_release_read_only_v5` schema probe including its
+`geneEligibilityContractValid` check, exact cron ownership, and focused
+public-production smoke. Production workflows `30948525096` and `30969645760`
+deployed them, applying migrations 067 and 068. Detailed evidence is maintained
+in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
 
@@ -124,6 +131,16 @@ applied migration 066. Detailed evidence is maintained in
   RIDE ON, TRADE UP, GOLDEN HOUR, and GOLD, PULSE, COILS, WARP and RISK. A
   mounted glossary is available wherever the terms appear, so a term is never
   the thing standing between a player and the decision.
+- The Side Door is a route, not a trap. It reads through a tether, a chevron,
+  an arrival beat, and forming Scars, so a player can see where it goes and what
+  it costs before committing.
+- Filling the board is a win, not a death. A run that runs out of room settles
+  as a successful extraction with `extraction_kind` `saturation`, on the same
+  settlement path as a portal extraction.
+- Settlement no longer depends on the player's tab staying open: the server
+  sweep is the primary settler. It has a stranded-terminal driver, takes no
+  head-of-line blocking from a single stuck row, and retries on a backoff capped
+  at 24 hours without ever giving up.
 - Replay, reducer, and wave geometry accept everything legal play can produce.
   Replay poisoning, wave-geometry disagreement, Phase Gate edge cases, and bare
   catches are handled at one source of truth rather than at each call site.
@@ -169,6 +186,11 @@ applied migration 066. Detailed evidence is maintained in
 - Stripe, Sentry, PostHog, Discord, and Analyst integrations with documented
   degraded modes
 - Jest, Playwright, GitHub Actions, Vercel, and isolated Supabase CI
+- Player Evolution (WP-B) server curriculum core and migration 067 are deployed
+  but **dormant**: no flag in the public manifest, a test that enforces that
+  absence, and no player-visible surface. Treat it as infrastructure in place
+  awaiting its rollout decision, not as a shipped feature — `PLATFORM_STATUS`
+  describes what players can see, and today they see none of it.
 - Merge cadence, as of 2026-08-04: pull requests auto-merge on green
   (`gh pr merge --squash --auto`) and strict up-to-date is off, because
   GitHub's merge queue proved to be organization-only for this account. The

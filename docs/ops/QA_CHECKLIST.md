@@ -27,28 +27,30 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `ba253b5a23c6d8bc3f887e9d1a8ae617c970c79f` — settlement payload fix with migration 066, the plain-language vocabulary, engine one-source-of-truth hardening, and the reviewed 066 rollout contract |
-| Current deployment | `dpl_4PGGV7FS3EYVBXHv19mYXA4KpepA` (`supasnake-muv8yqmn0-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`381491e`); predates 066 but stays schema-safe because 066 only widens bounds; loses payload projection, the vocabulary, and the engine hardening |
+| Production behavior commit | `28d21f1c83f335ad48257fdc0a4966062007b479` — Side Door treatment, saturation extraction, sweep-primary settlement with migration 068, and the `snake-rules-2026-08-05.1` rules bump |
+| Current deployment | `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`supasnake-1ic69o9sk-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL` (`bf3020c`); schema-safe under forward-only 067/068, but serves the previous rules version and loses the Side Door, saturation extraction, and the primary sweep |
+| Engine rules version | `snake-rules-2026-08-05.1` |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–066 deployed and aligned; no pending migration |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–068 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 22/22 manifest flags enabled |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `ba253b5a23c6d8bc3f887e9d1a8ae617c970c79f` |
+| Canonical source | `main`; canonical health reports exact SHA `28d21f1c83f335ad48257fdc0a4966062007b479` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
 Commitment/Clan Energy Battle system, control responsiveness, Career Spine, and
 player-pulled Tactical Genome v2 are live, and the hosted schema now runs
-through migration 066. The 22-flag public contract, exact release SHA, linked
+through migration 068. The 22-flag public contract, exact release SHA, linked
 schema proof, Genome service capability, canonical alias, and cron owner passed
 together. The run-continuity, terminal-authority and Tactical Loom release, the
 Gilded Fork engine fix, and the settlement-recovery/integer-display train were
-application-only; the current settlement-payload, plain-language and
-engine-hardening train applied migration 066 under a reviewed rollout contract.
+application-only; migrations 066, 067 and 068 each shipped under their own
+reviewed rollout contract. The Player Evolution curriculum core behind 067 is
+deployed but dormant and has no QA surface yet.
 Use a flag-off forward deployment of the dual-version code rather than the
 retired pre-v2 application as rollback.
 
@@ -77,6 +79,72 @@ retired pre-v2 application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Side Door, saturation and sweep-primary production evidence
+
+Two trains reached production in sequence. The first was deliberately invisible;
+the second is the player-visible one and is the current behavior commit.
+
+**Train 1 — dormant infrastructure, `bf3020c9f59d212136998eac845902f076c812e9`**
+
+- PR 69 landed the WP-B Player Evolution server curriculum core and PR 78 its
+  reviewed rollout contract; PR 74, 75, 76 and 77 carried docs, CI and tests.
+- Production workflow `30948525096` succeeded between 20:35 and 20:54 UTC on
+  4 August 2026 and deployed `dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL`
+  (`supasnake-7eszq9ea1-josef-bells-projects.vercel.app`).
+- Migration 067 applied with a backfill notice reporting 32 graduation rows,
+  7 history-credit rows and 2,192 starter rows — 2,231 total. A re-run writes
+  0 rows, which is the idempotence proof.
+- The read-only probe moved to `cohesive_release_read_only_v5`, whose 16th key
+  `geneEligibilityContractValid` returned TRUE.
+- **Zero player-visible change, and that is the point.** The flag is absent from
+  the public manifest and a test enforces that absence; the server code is
+  dormant; the public-surface hash and 22/22 flag count were unchanged. There is
+  nothing to QA here yet — do not go looking for a curriculum surface.
+
+**Train 2 — player-visible, `28d21f1c83f335ad48257fdc0a4966062007b479`**
+
+- PR 79 made the settlement sweep the primary settler and added migration 068;
+  PR 81 shipped the Side Door treatment, saturation extraction, and the rules
+  bump.
+- Production workflow `30969645760` succeeded between 02:32 and 02:52 UTC on
+  5 August 2026 and deployed `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M`
+  (`supasnake-1ic69o9sk-josef-bells-projects.vercel.app`). The outgoing
+  deployment was `dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL` on `bf3020c`.
+- Migration 068 applied cleanly with no backfill. The probe stayed
+  `cohesive_release_read_only_v5` at 16 keys and passed; 068 adds no probe key
+  of its own.
+- The engine rules version is now `snake-rules-2026-08-05.1`. The bump was
+  verified at runtime in the served production chunk
+  `2894-c16facb0187e24c2.js`, which carries the new string with the old one
+  absent.
+- **Boundary of that proof, stated honestly:** canonical health was clean, but
+  without hosted queries there is no positive proof that zero runs were open
+  across the version change. The served artifact is provably the reviewed one;
+  the absence of a mid-flight run is not proven.
+- Player-visible behavior to QA: the Side Door reads through a tether, chevron,
+  arrival beat and forming Scars rather than being an unmarked trap; a board
+  that fills up settles as a successful extraction carrying `extraction_kind`
+  `saturation`; and settlement no longer depends on the player's tab, because
+  the sweep gained a stranded-terminal driver, takes no head-of-line blocking
+  from one stuck row, and retries on a 24-hour-capped backoff that never gives
+  up.
+
+**Both trains**
+
+- Hosted migrations are aligned 001–068 with no pending plan.
+- The reviewed rollout allowlist now holds five contracts: `genome-v2-initial`,
+  `genome-v2-resume`, `settlement-payload-bounds`, `player-gene-eligibility`
+  and `settlement-sweep-primary`. The last two were proved end to end by these
+  two runs.
+- The cron definition hash
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf` was
+  unchanged at all three checkpoints of each train, and cron owner and every
+  cron host resolve to the current deployment.
+- Canonical health reports the exact release SHA, healthy database, project ref
+  `gmpwyzqafoyowndbvlma`, 22/22 flags, public-surface hash
+  `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, and
+  Genome schema/catalog/Ascendance 2/2/2. Stripe remains in test mode.
 
 ### Settlement-payload, plain-language and engine-hardening production evidence
 
