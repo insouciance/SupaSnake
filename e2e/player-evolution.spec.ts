@@ -17,7 +17,12 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-import { seedConsent, signInAsGuest, releaseHeldBoard } from './helpers';
+import {
+  releaseHeldBoard,
+  seedConsent,
+  signInAsGuest,
+  startRunIfSetupPresent,
+} from './helpers';
 import {
   curriculumAnnotations,
   curriculumArtifactRef,
@@ -161,8 +166,22 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
     await signInAsGuest(page);
 
     await page.goto('/codex', { waitUntil: 'domcontentloaded' });
+    const table = page.getByTestId('workbench-research-table');
     const palette = page.getByTestId('workbench-gene-palette');
     await expect(palette).toBeVisible({ timeout: 60_000 });
+
+    // The Workbench opens with a plan already computed rather than an empty
+    // form, and the rail shows only powers NOT YET TAKEN by that plan
+    // (`genomeV2Workbench.ts:588`). Clearing it puts the whole roster back on
+    // the rail, which is what makes the count below a statement about the
+    // account's vocabulary instead of a statement about the opening plan.
+    const clear = table.getByRole('button', { name: /^clear$/i });
+    if (await clear.isEnabled().catch(() => false)) {
+      await clear.click();
+    }
+    await expect(palette.locator('[data-eligibility]')).toHaveCount(
+      ROSTER.length
+    );
 
     // THE STARTER-POOL DROP. Exactly seven of this Dynasty's Genes may reach a
     // real run's Power Pods, and they are exactly the seven §4.3 tabled — not
@@ -394,10 +413,13 @@ async function playToTerminalResult(
 ): Promise<void> {
   if (!options.replay) {
     await page.goto('/game', { waitUntil: 'domcontentloaded' });
-    const start = page.getByTestId('earn-start');
-    if (await start.isVisible({ timeout: 30_000 }).catch(() => false)) {
-      await start.click({ force: true });
-    }
+    // The house helper, not a hand-rolled equivalent. `locator.isVisible()`
+    // resolves IMMEDIATELY — its `timeout` option is inert — so a hand-rolled
+    // "click START if it is there" reads the DOM one commit before Setup
+    // mounts, skips the click, and then waits out the clock on a held-board
+    // prompt for a run that was never started. `startRunIfSetupPresent` waits
+    // for START properly and uses Setup's disappearance as the signal.
+    await startRunIfSetupPresent(page);
   }
   await expect(page.getByTestId('game-board-viewport')).toBeVisible({
     timeout: 60_000,
