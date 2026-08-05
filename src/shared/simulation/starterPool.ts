@@ -57,6 +57,7 @@ import {
   genomeV2EventId,
   genomeV2SpliceForPair,
   genomeV2StrainPoints,
+  genomeV2TrialOffersConsumed,
   reduceGenomeV2Event,
   rollGenomeV2Offer,
   type GenomeV2Event,
@@ -385,6 +386,19 @@ function choose(
   }
 }
 
+/**
+ * A curriculum trial made live for a traversal (WP-C).
+ *
+ * The harness does not model the guarantee itself — the ENGINE does, from the
+ * stamp — so this is simply the option `createGenomeV2State` receives at run
+ * start. Everything measured below is therefore a measurement of the shipped
+ * roll, including the suppression rules, exactly as the pool numbers are.
+ */
+export interface TrialUnderTest {
+  geneId: GenomeV2ActiveGeneId;
+  offersRemaining: number;
+}
+
 export interface TraversalResult {
   /** Offers the engine actually served before the pool stopped producing two. */
   offersServed: number;
@@ -407,6 +421,19 @@ export interface TraversalResult {
   categoriesOffered: readonly GenomeV2GeneCategory[];
   genesOffered: readonly GenomeV2ActiveGeneId[];
   finalStrainPoints: Readonly<Partial<Record<StrainId, number>>>;
+  /** Served offers whose candidates contained the trial (WP-C). */
+  trialOffers: number;
+  /** Offers in which the trial held the FIRST candidate position. */
+  trialForcedOffers: number;
+  /** Guaranteed appearances the engine actually consumed. Never above three. */
+  trialGuaranteeConsumed: number;
+  /**
+   * Offers containing the trial that also contained an ordinary alternative.
+   * Equal to `trialOffers` or PEO §4.4 has been violated.
+   */
+  trialOffersWithAlternative: number;
+  /** True once the traversal's policy took the trial. */
+  trialAcquired: boolean;
 }
 
 /**
@@ -418,7 +445,8 @@ export function traverseOffers(
   pool: readonly GenomeV2ActiveGeneId[],
   cohort: CohortDefinition,
   policy: OfferPolicy,
-  runSeed: string
+  runSeed: string,
+  trial: TrialUnderTest | null = null
 ): TraversalResult {
   // The deleted signature lock withheld the Signature from `legal` and nothing
   // else, so a cohort that models it simply hands the engine a pool without it.
@@ -431,6 +459,7 @@ export function traverseOffers(
     genePool: traversalPool,
     ftue: cohort.ftue,
     offerTiltStrain: cohort.offerTiltStrain,
+    trial,
   });
 
   let journalIndex = 0;
@@ -456,6 +485,10 @@ export function traverseOffers(
   let spliceOffers = 0;
   let strainOffers = 0;
   let exhaustedAtAcquisitions: number | null = null;
+  let trialOffers = 0;
+  let trialForcedOffers = 0;
+  let trialOffersWithAlternative = 0;
+  let trialAcquired = false;
 
   for (;;) {
     const slot = nextFreeSlot(state);
@@ -483,6 +516,14 @@ export function traverseOffers(
     ) {
       strainOffers += 1;
     }
+    if (trial && (left === trial.geneId || right === trial.geneId)) {
+      trialOffers += 1;
+      if (left === trial.geneId) trialForcedOffers += 1;
+      // PEO §4.4: one ordinary candidate always survives beside the trial.
+      if (left !== trial.geneId || right !== trial.geneId) {
+        trialOffersWithAlternative += 1;
+      }
+    }
 
     const offerId = `sim-offer-${offersServed}`;
     emit({
@@ -507,6 +548,7 @@ export function traverseOffers(
       slot,
       source: 'offer',
     });
+    if (trial && decision === trial.geneId) trialAcquired = true;
     acquisitions += 1;
   }
 
@@ -520,6 +562,14 @@ export function traverseOffers(
     categoriesOffered: Array.from(categories).sort(),
     genesOffered: Array.from(genes).sort(),
     finalStrainPoints: genomeV2StrainPoints(state),
+    trialOffers,
+    trialForcedOffers,
+    // Read off the ENGINE's own field, not recounted here: the harness proves
+    // what the shipped reducer did, and a divergence between the two is
+    // exactly the kind of drift this file exists to catch.
+    trialGuaranteeConsumed: genomeV2TrialOffersConsumed(state),
+    trialOffersWithAlternative,
+    trialAcquired,
   };
 }
 
@@ -560,7 +610,8 @@ export function measurePool(
   dynasty: DynastyName,
   pool: readonly GenomeV2ActiveGeneId[],
   cohort: CohortDefinition,
-  seeds: readonly string[] = simulationSeeds(DEFAULT_SEED_COUNT)
+  seeds: readonly string[] = simulationSeeds(DEFAULT_SEED_COUNT),
+  trial: TrialUnderTest | null = null
 ): PoolHealth {
   let traversals = 0;
   let neverStarved = 0;
@@ -576,7 +627,7 @@ export function measurePool(
 
   for (const policy of OFFER_POLICIES) {
     for (const seed of seeds) {
-      const result = traverseOffers(dynasty, pool, cohort, policy, seed);
+      const result = traverseOffers(dynasty, pool, cohort, policy, seed, trial);
       traversals += 1;
       acquisitionTotal += result.acquisitions;
       offerTotal += result.offersServed;
@@ -618,6 +669,92 @@ export function measurePool(
     spliceCompletionOfferRate: rate(spliceTotal),
     leadingStrainOfferRate: rate(strainTotal),
     categoriesReachable: Array.from(categories).sort(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The trial guarantee (WP-C — PEO §4.4)
+// ---------------------------------------------------------------------------
+
+export interface TrialHealth {
+  dynasty: DynastyName;
+  trialGeneId: GenomeV2ActiveGeneId;
+  cohortId: string;
+  traversals: number;
+  /** Pool health measured WITH the guarantee live. The gate is unchanged. */
+  health: PoolHealth;
+  /** Traversals in which the trial held slot one of the very first offer. */
+  firstOfferRate: number;
+  /** Mean served offers whose candidates contained the trial. */
+  meanTrialOffers: number;
+  /**
+   * THE BOUND. The most guaranteed appearances any traversal consumed. Three
+   * is the ratified maximum and this may never exceed it.
+   */
+  maxGuaranteeConsumed: number;
+  /**
+   * Offers containing the trial in which an ordinary alternative sat beside
+   * it, as a share. Anything below 1 means guidance forced a build.
+   */
+  ordinaryAlternativeRate: number;
+  /** Traversals whose policy actually took the trial. */
+  acquisitionRate: number;
+}
+
+/**
+ * Measure a live trial against the same gates the pools are measured against.
+ *
+ * The question is not "does the trial appear" — the engine guarantees that —
+ * but whether guaranteeing it costs the player anything: a starved run, a
+ * narrower category spread, or an offer with no real alternative in it.
+ */
+export function measureTrial(
+  dynasty: DynastyName,
+  pool: readonly GenomeV2ActiveGeneId[],
+  trialGeneId: GenomeV2ActiveGeneId,
+  cohort: CohortDefinition,
+  seeds: readonly string[] = simulationSeeds(DEFAULT_SEED_COUNT)
+): TrialHealth {
+  const trial = { geneId: trialGeneId, offersRemaining: 3 };
+  let traversals = 0;
+  let firstOffer = 0;
+  let trialOfferTotal = 0;
+  let maxGuaranteeConsumed = 0;
+  let trialOffersWithAlternative = 0;
+  let acquired = 0;
+
+  for (const policy of OFFER_POLICIES) {
+    for (const seed of seeds) {
+      const result = traverseOffers(dynasty, pool, cohort, policy, seed, trial);
+      traversals += 1;
+      if (result.trialForcedOffers > 0) firstOffer += 1;
+      trialOfferTotal += result.trialOffers;
+      trialOffersWithAlternative += result.trialOffersWithAlternative;
+      maxGuaranteeConsumed = Math.max(
+        maxGuaranteeConsumed,
+        result.trialGuaranteeConsumed
+      );
+      if (result.trialAcquired) acquired += 1;
+    }
+  }
+
+  const share = (value: number): number =>
+    Math.round((value / traversals) * 1_000) / 1_000;
+  return {
+    dynasty,
+    trialGeneId,
+    cohortId: cohort.id,
+    traversals,
+    health: measurePool(dynasty, pool, cohort, seeds, trial),
+    firstOfferRate: share(firstOffer),
+    meanTrialOffers: Math.round((trialOfferTotal / traversals) * 100) / 100,
+    maxGuaranteeConsumed,
+    ordinaryAlternativeRate:
+      trialOfferTotal === 0
+        ? 1
+        : Math.round((trialOffersWithAlternative / trialOfferTotal) * 1_000) /
+          1_000,
+    acquisitionRate: share(acquired),
   };
 }
 

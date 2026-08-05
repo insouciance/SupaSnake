@@ -7,7 +7,12 @@
  * instead of quietly invalidating a ratified decision.
  */
 
-import { genomeV2ActivePool } from '@/shared/game/genes';
+import {
+  genomeV2ActivePool,
+  genomeV2PlayableVocabulary,
+  type GenomeV2ActiveGeneId,
+  type GenomeV2Dynasty,
+} from '@/shared/game/genes';
 import {
   GENOME_V2_CONFIG,
   assertGenomeV2OfferMatchesRoll,
@@ -25,6 +30,7 @@ import {
   eligibilityPrefixes,
   measurePool,
   measurePrefixes,
+  measureTrial,
   measureStrainReachability,
   offerCliff,
   reachableSplices,
@@ -342,4 +348,123 @@ describe('full-pool fairness (§4.5)', () => {
       }
     }
   );
+});
+
+// ---------------------------------------------------------------------------
+// The trial guarantee (WP-C — PEO §4.4)
+// ---------------------------------------------------------------------------
+
+/** The first curriculum trial each Dynasty's starter pool leads into. */
+const FIRST_TRIAL: Readonly<Record<DynastyName, GenomeV2ActiveGeneId>> = {
+  CYBER: 'circuit_run',
+  PRIMAL: 'circuit_run',
+  COSMIC: 'live_wire',
+};
+
+/** Starter seven plus the trial: the vocabulary the composer actually builds. */
+function trialPool(dynasty: DynastyName): GenomeV2ActiveGeneId[] {
+  return genomeV2PlayableVocabulary(dynasty as GenomeV2Dynasty, {
+    eligibleGeneIds: [],
+    trialGeneId: FIRST_TRIAL[dynasty],
+    bankedRuns: 2,
+    masteryLevel: 0,
+  });
+}
+
+describe('the trial guarantee costs the player nothing', () => {
+  it.each(DYNASTIES)('%s: guaranteeing a trial never starves a run', (dynasty) => {
+    // The whole point of measuring this: guidance is placed INSIDE the offer
+    // stream, so it could in principle change which builds are reachable. The
+    // gate is the same one the pools themselves pass.
+    for (const entry of COHORTS.filter((c) => !c.signatureLocked)) {
+      const measured = measureTrial(
+        dynasty,
+        trialPool(dynasty),
+        FIRST_TRIAL[dynasty],
+        entry,
+        PREFIX_SEEDS
+      );
+      expect(measured.health.starvedBeforeFullGenomeRate).toBe(0);
+      expect(measured.health.filledAllLociRate).toBe(1);
+      expect(measured.health.categoriesReachable.length)
+        .toBeGreaterThanOrEqual(6);
+    }
+  });
+
+  it.each(DYNASTIES)('%s: every trial offer keeps an ordinary alternative', (dynasty) => {
+    // PEO §4.4: one ordinary candidate plus DECLINE, so guidance narrows the
+    // choice by one and never forces a build.
+    for (const entry of COHORTS.filter((c) => !c.signatureLocked)) {
+      const measured = measureTrial(
+        dynasty,
+        trialPool(dynasty),
+        FIRST_TRIAL[dynasty],
+        entry,
+        PREFIX_SEEDS
+      );
+      expect(measured.ordinaryAlternativeRate).toBe(1);
+      expect(measured.firstOfferRate).toBe(1);
+    }
+  });
+
+  it.each(DYNASTIES)('%s: spends at most the ratified three appearances', (dynasty) => {
+    for (const entry of COHORTS.filter((c) => !c.signatureLocked)) {
+      const measured = measureTrial(
+        dynasty,
+        trialPool(dynasty),
+        FIRST_TRIAL[dynasty],
+        entry,
+        PREFIX_SEEDS
+      );
+      expect(measured.maxGuaranteeConsumed).toBeLessThanOrEqual(3);
+      expect(measured.meanTrialOffers).toBeGreaterThan(0);
+    }
+  });
+
+  it.each(DYNASTIES)('%s: the player may still decline it every time', (dynasty) => {
+    // `decline-alternate` refuses every second offer and the guarantee does
+    // not trap it: a declined trial stays available and costs nothing.
+    for (const seed of PREFIX_SEEDS) {
+      const result = traverseOffers(
+        dynasty,
+        trialPool(dynasty),
+        cohort('bank2'),
+        'decline-alternate',
+        seed,
+        { geneId: FIRST_TRIAL[dynasty], offersRemaining: 3 }
+      );
+      expect(result.trialGuaranteeConsumed).toBeLessThanOrEqual(3);
+      expect(result.trialOffersWithAlternative).toBe(result.trialOffers);
+      expect(result.exhaustedAtAcquisitions).toBeNull();
+    }
+  });
+
+  it('an unteachable trial is suppressed and spends nothing', () => {
+    // Catalog §5: `mirror_wager` reads "portal CONTINUE", which activates at
+    // one validated bank. In a run-one cohort the trial does not enter the
+    // roll and the guarantee is not decremented.
+    for (const dynasty of DYNASTIES) {
+      const pool = genomeV2PlayableVocabulary(dynasty as GenomeV2Dynasty, {
+        eligibleGeneIds: [],
+        trialGeneId: 'mirror_wager',
+        bankedRuns: 0,
+        masteryLevel: 0,
+      });
+      const measured = measureTrial(
+        dynasty,
+        pool,
+        'mirror_wager',
+        cohort('bank0'),
+        PREFIX_SEEDS
+      );
+      expect(measured.maxGuaranteeConsumed).toBe(0);
+      // Suppression is INVISIBLE, not merely harmless: the measured run is the
+      // same run the same pool produces with no trial stamped at all. The Gene
+      // is still in the vocabulary, so the ordinary draw may still offer it —
+      // and those appearances cost the account nothing.
+      expect(measured.health).toEqual(
+        measurePool(dynasty, pool, cohort('bank0'), PREFIX_SEEDS)
+      );
+    }
+  });
 });

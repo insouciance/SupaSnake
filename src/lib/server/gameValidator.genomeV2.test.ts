@@ -244,6 +244,88 @@ describe('Genome v2 server-authoritative settlement', () => {
     ).toEqual(['gold_trail']);
   });
 
+  it('binds the terminal record to the run-start trial (WP-C)', () => {
+    // The record's `trial.offersConsumed` is the ONLY input to consuming
+    // guaranteed appearances against the account, so the trial it claims has
+    // to be the trial the run was stamped with. A record that renames it, or
+    // enlarges the guarantee it started with, would be spending someone
+    // else's guarantee.
+    const { context, input } = fixture();
+    const trialContext: GenomeV2ValidationContext = {
+      ...context,
+      trial: { geneId: 'coilkeeper', offersRemaining: 3 },
+    };
+    const stamped = {
+      geneId: 'coilkeeper',
+      offersRemainingAtStart: 3,
+      offersConsumed: 2,
+    };
+
+    const accepted = validateGameResult(
+      { ...input, genome: { ...(input.genome as object), trial: stamped } },
+      new Date(Date.now() - 30_000),
+      'PRIMAL',
+      [],
+      null,
+      null,
+      trialContext
+    );
+    expect(accepted.valid).toBe(true);
+    expect(
+      (accepted.genome as { trial?: typeof stamped }).trial
+    ).toEqual(stamped);
+
+    for (const trial of [
+      undefined,
+      null,
+      { ...stamped, geneId: 'wall_rush' },
+      { ...stamped, offersRemainingAtStart: 2 },
+      { ...stamped, offersConsumed: 4 },
+      { ...stamped, offersConsumed: -1 },
+      { ...stamped, offersConsumed: 'two' },
+    ]) {
+      expect(() =>
+        validateGameResult(
+          { ...input, genome: { ...(input.genome as object), trial } },
+          new Date(Date.now() - 30_000),
+          'PRIMAL',
+          [],
+          null,
+          null,
+          trialContext
+        )
+      ).toThrow(/run-start trial/);
+    }
+  });
+
+  it('refuses a trial the run was never stamped with (WP-C)', () => {
+    // Flag off, Free Play, or an account with no selected trial: the context
+    // carries none, so a record that claims one is refused rather than
+    // silently spending appearances the account never owed.
+    const { context, input } = fixture();
+    expect(() =>
+      validateGameResult(
+        {
+          ...input,
+          genome: {
+            ...(input.genome as object),
+            trial: {
+              geneId: 'coilkeeper',
+              offersRemainingAtStart: 3,
+              offersConsumed: 3,
+            },
+          },
+        },
+        new Date(Date.now() - 30_000),
+        'PRIMAL',
+        [],
+        null,
+        null,
+        context
+      )
+    ).toThrow(/run-start trial/);
+  });
+
   it('refuses a pre-authored settlement or forged journal identity', () => {
     const { state, context, input } = fixture();
     expect(() =>

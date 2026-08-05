@@ -21,7 +21,10 @@ import {
   GENOME_V2_LEARNING_EVENT_VERSION,
   GENOME_RULES_V2,
 } from '@/shared/game/genomeV2';
-import { sanitizeGenomeCapability } from './genomeCapability';
+import {
+  genomeV2StampedTrial,
+  sanitizeGenomeCapability,
+} from './genomeCapability';
 
 const INPUTS = {
   eligibleGeneIds: ['circuit_run'],
@@ -103,6 +106,81 @@ describe('sanitizeGenomeCapability: the curriculum stamp', () => {
     expect(
       sanitizeGenomeCapability(
         manifest({ eligibilityInputs: { ...INPUTS, masteryLevel: -1 } })
+      )
+    ).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The trial guarantee on the manifest (WP-C)
+// ---------------------------------------------------------------------------
+
+describe('the manifest trial guarantee', () => {
+  it('is read through one function, so every engine host agrees', () => {
+    const sanitized = sanitizeGenomeCapability(
+      manifest({
+        eligibilityInputs: {
+          ...INPUTS,
+          eligibleGeneIds: [...INPUTS.eligibleGeneIds],
+          trialOffersRemaining: 3,
+        },
+      })
+    );
+    expect(sanitized).not.toBeNull();
+    if (!sanitized || sanitized.rulesVersion !== GENOME_RULES_V2) return;
+    expect(sanitized.eligibilityInputs?.trialOffersRemaining).toBe(3);
+    expect(genomeV2StampedTrial(sanitized.eligibilityInputs)).toEqual({
+      geneId: 'loom_anchor',
+      offersRemaining: 3,
+    });
+  });
+
+  it('answers null for every shape that carries no live guarantee', () => {
+    // Live play and the checkpoint comparator both start engines from this
+    // one reading, so "no stamp", "no trial" and "guarantee spent" have to
+    // mean the same thing in all of them.
+    expect(genomeV2StampedTrial(undefined)).toBeNull();
+    expect(genomeV2StampedTrial(null)).toBeNull();
+    expect(genomeV2StampedTrial({ trialGeneId: null })).toBeNull();
+    expect(genomeV2StampedTrial({ trialGeneId: 'loom_anchor' })).toBeNull();
+    expect(
+      genomeV2StampedTrial({
+        trialGeneId: 'loom_anchor',
+        trialOffersRemaining: 0,
+      })
+    ).toBeNull();
+  });
+
+  it('refuses a guarantee the server would never have issued', () => {
+    for (const trialOffersRemaining of [4, 0, -1, 2.5, '3' as unknown as number]) {
+      expect(
+        sanitizeGenomeCapability(
+          manifest({
+            eligibilityInputs: {
+              ...INPUTS,
+              eligibleGeneIds: [...INPUTS.eligibleGeneIds],
+              trialOffersRemaining,
+            },
+          })
+        )
+      ).toBeNull();
+    }
+    // A guarantee with no trial attached fails the same way, even though the
+    // pool it declares still re-derives.
+    expect(
+      sanitizeGenomeCapability(
+        manifest({
+          v2GenePool: genomeV2PlayableVocabulary('COSMIC', {
+            ...INPUTS,
+            trialGeneId: null,
+          }),
+          eligibilityInputs: {
+            ...INPUTS,
+            eligibleGeneIds: [...INPUTS.eligibleGeneIds],
+            trialGeneId: null,
+            trialOffersRemaining: 3,
+          },
+        })
       )
     ).toBeNull();
   });

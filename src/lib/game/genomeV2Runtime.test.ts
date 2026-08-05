@@ -15,7 +15,9 @@ import {
   type GenomeV2State,
 } from '@/shared/game/genomeV2';
 import {
+  GENOME_V2_STARTER_POOLS,
   genomeV2ActivePool,
+  genomeV2PlayableVocabulary,
   type GenomeV2ActiveGeneId,
 } from '@/shared/game/genes';
 import type { DynastyName } from '@/shared/game/rulesets';
@@ -789,5 +791,140 @@ describe('GenomeV2Runtime reducer refusals', () => {
     expect(source).not.toContain('} catch {');
     expect(source.match(/\} catch \(error\) \{/g)).toHaveLength(10);
     expect(source.match(/this\.refuse\(/g)).toHaveLength(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The trial guarantee and the boundary-13 guard (WP-C)
+// ---------------------------------------------------------------------------
+
+describe('GenomeV2Runtime curriculum trial', () => {
+  const TRIAL: GenomeV2ActiveGeneId = 'coilkeeper';
+
+  function options(bankedRuns = 2) {
+    return {
+      runSeed: 'runtime-trial-seed',
+      dynasty: 'PRIMAL' as const,
+      pool: genomeV2PlayableVocabulary('PRIMAL', {
+        eligibleGeneIds: [],
+        trialGeneId: TRIAL,
+        bankedRuns,
+        masteryLevel: 0,
+      }),
+      ftue: deriveGenomeV2Ftue(bankedRuns, 0),
+    };
+  }
+
+  it('serves the stamped trial and spends the appearance on collection', () => {
+    // The offer only opens when the player collects the relic, which is what
+    // makes the guarantee "three collected offers" rather than "three runs".
+    const runtime = new GenomeV2Runtime({
+      ...options(),
+      trial: { geneId: TRIAL, offersRemaining: 3 },
+    });
+    expect(runtime.getState().trial?.offersConsumed).toBe(0);
+    const offer = runtime.openCadenceOffer(1, 4);
+    expect(offer?.candidates[0]).toBe(TRIAL);
+    expect(offer?.candidates[1]).not.toBe(TRIAL);
+    expect(runtime.getState().trial?.offersConsumed).toBe(1);
+  });
+
+  it('refuses a checkpoint that rewrites the trial it was stamped with', () => {
+    // Only `offersConsumed` may have moved on a resumed run. The Gene and the
+    // guarantee it started with are the server's.
+    const base = options();
+    const reducerState = new GenomeV2Runtime({
+      ...base,
+      trial: { geneId: TRIAL, offersRemaining: 3 },
+    }).getState();
+
+    expect(
+      () =>
+        new GenomeV2Runtime({
+          ...base,
+          trial: { geneId: 'wall_rush', offersRemaining: 3 },
+          reducerState,
+        })
+    ).toThrow('trial differs');
+    expect(
+      () =>
+        new GenomeV2Runtime({
+          ...base,
+          trial: { geneId: TRIAL, offersRemaining: 2 },
+          reducerState,
+        })
+    ).toThrow('trial differs');
+    expect(
+      () => new GenomeV2Runtime({ ...base, trial: null, reducerState })
+    ).toThrow('trial differs');
+
+    // A resumed run that has legitimately spent appearances is accepted.
+    const spent = {
+      ...reducerState,
+      trial: { geneId: TRIAL, offersRemainingAtStart: 3, offersConsumed: 2 },
+    };
+    expect(
+      () =>
+        new GenomeV2Runtime({
+          ...base,
+          trial: { geneId: TRIAL, offersRemaining: 3 },
+          reducerState: spent,
+        })
+    ).not.toThrow();
+  });
+});
+
+describe('GenomeV2Runtime pool-health guard', () => {
+  it('records a dead offer stream that left the Genome incomplete', () => {
+    // PEO boundary 13. The composer can no longer produce a vocabulary this
+    // small — `genomeV2VocabularyStarves` refuses it — so this exercises the
+    // guard the way a future pool edit would trip it: the runtime is handed a
+    // two-Gene pool directly.
+    const pool: GenomeV2ActiveGeneId[] = ['gold_trail', 'phoenix'];
+    const runtime = new GenomeV2Runtime({
+      runSeed: 'runtime-starved-seed',
+      dynasty: 'PRIMAL',
+      pool,
+      ftue: deriveGenomeV2Ftue(2, 0),
+    });
+    expect(runtime.poolStarvation()).toBeNull();
+
+    const offer = runtime.openCadenceOffer(1, 4);
+    expect(offer).not.toBeNull();
+    expect(runtime.acquireOfferCandidate(0, 1)).not.toBeNull();
+
+    // One entry left, so the stream can no longer produce two candidates.
+    expect(runtime.openCadenceOffer(2, 12)).toBeNull();
+    expect(runtime.poolStarvation()).toEqual({
+      dynasty: 'PRIMAL',
+      poolSize: 2,
+      seenGeneIds: 1,
+      freeLoci: 5,
+      foodCount: 12,
+    });
+    // And it is permanent: the runtime parks the next opportunity forever.
+    expect(runtime.nextCadenceOpportunityAtFood()).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it('says nothing when a complete Genome simply runs out of Genes', () => {
+    // Six filled loci and a dry pool is the ordinary end of a full build, not
+    // a starved run. Recording it would bury the real signal in noise — and it
+    // is exactly what the ratified starter seven produces: six acquisitions,
+    // then one entry left and nowhere to put it.
+    const runtime = new GenomeV2Runtime({
+      runSeed: 'runtime-complete-seed',
+      dynasty: 'PRIMAL',
+      pool: [...GENOME_V2_STARTER_POOLS.PRIMAL],
+      ftue: deriveGenomeV2Ftue(2, 0),
+    });
+    let food = 4;
+    for (let slot = 0; slot < 6; slot += 1) {
+      const offer = runtime.openCadenceOffer(slot + 1, food);
+      expect(offer).not.toBeNull();
+      expect(runtime.acquireOfferCandidate(0, slot + 1)).not.toBeNull();
+      food += 12;
+    }
+    expect(runtime.openCadenceOffer(9, food)).toBeNull();
+    expect(runtime.poolStarvation()).toBeNull();
   });
 });

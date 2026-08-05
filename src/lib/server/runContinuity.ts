@@ -16,7 +16,10 @@ import { isGeneId } from '@/shared/game/genes';
 import { resolveGrowthProfile } from '@/shared/game/growth';
 import { ladderHoldBase, resolveLadderRung } from '@/shared/game/ladder';
 import { isAnomalyId } from '@/shared/game/anomalies';
-import { sanitizeGenomeCapability } from '@/lib/game/genomeCapability';
+import {
+  genomeV2StampedTrial,
+  sanitizeGenomeCapability,
+} from '@/lib/game/genomeCapability';
 import { GenomeV2Runtime } from '@/lib/game/genomeV2Runtime';
 import { isStrainId, STRAIN_PHYSICS } from '@/shared/game/strains';
 import {
@@ -949,6 +952,11 @@ function validateCheckpointGenome(
           : null,
         interactionVersion: config.genome.interactionVersion,
         cadenceMultiplier: config.traits.includes('patient') ? 2 : 1,
+        // The manifest bind above already proved `config.genome` IS the
+        // server's stamp, so passing the trial through it binds the reducer's
+        // trial to the server too: a checkpoint that renames the trial or
+        // enlarges its guarantee is refused by the runtime constructor.
+        trial: genomeV2StampedTrial(config.genome.eligibilityInputs),
         reducerState: reducer,
         snapshot,
       });

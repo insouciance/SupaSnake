@@ -202,6 +202,7 @@ import {
   shortestGenomeV2Route,
   type GenomeV2RuntimeSnapshot,
 } from './genomeV2Runtime';
+import { genomeV2StampedTrial } from './genomeCapability';
 
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
@@ -655,6 +656,19 @@ export interface GenomeEngineConfig {
   reducerState?: GenomeV2State;
   /** Curated v2 pool. V1 continues to read `genePool` below unchanged. */
   v2GenePool?: GenomeV2ActiveGeneId[];
+  /**
+   * The server's curriculum stamp (WP-B/WP-C). Only `trialGeneId` and
+   * `trialOffersRemaining` are read by the engine, and only to hand the
+   * reducer the trial the run was started with — the vocabulary itself is
+   * already frozen in `v2GenePool`.
+   */
+  eligibilityInputs?: {
+    eligibleGeneIds: GenomeV2ActiveGeneId[];
+    trialGeneId: GenomeV2ActiveGeneId | null;
+    bankedRuns: number;
+    masteryLevel: number;
+    trialOffersRemaining?: number;
+  };
   /** Exact server-authored v2 capability/progress presentation. */
   ftuePresentation?: GenomeV2FtuePresentation;
   /** Starting strain points (heirloom traits + lineage, server-derived). */
@@ -1226,6 +1240,7 @@ export class SnakeGameLogic {
       interactionVersion: this.genomeV2InteractionVersion(),
       cadenceMultiplier:
         this.genomeV2PhysicalRelicActive() && this.hasTrait('patient') ? 2 : 1,
+      trial: genomeV2StampedTrial(this.genome.eligibilityInputs),
       reducerState,
       snapshot,
       onEvent: (event) => this.emit('genomeV2Event', event),

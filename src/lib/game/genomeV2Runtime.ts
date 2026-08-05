@@ -25,6 +25,7 @@ import {
   genomeV2OfferInterval,
   genomeV2PhaseGateAvailable,
   genomeV2PhysicalRelicInterval,
+  genomeV2TrialStamp,
   previewGenomeV2Recode,
   projectGenomeV2NextTarget,
   reduceGenomeV2Event,
@@ -89,9 +90,36 @@ export interface GenomeV2RuntimeOptions {
   interactionVersion?: GenomeV2InteractionVersion;
   /** Patient owns the only supported cadence multiplier. */
   cadenceMultiplier?: 1 | 2;
+  /**
+   * The account's stamped curriculum trial (WP-C), from the run-start manifest
+   * and nowhere else. Absent on every legacy, Free Play and flag-off run.
+   */
+  trial?: { geneId: GenomeV2ActiveGeneId; offersRemaining: number } | null;
   reducerState?: GenomeV2State;
   snapshot?: GenomeV2RuntimeSnapshot;
   onEvent?: (event: GenomeV2Event) => void;
+}
+
+/**
+ * A run whose offer stream died while the Genome still had an empty locus —
+ * PEO boundary 13's failure, observed at the only place it can actually be
+ * observed (WP-C).
+ *
+ * `genomeV2VocabularyStarves` makes this unreachable for every vocabulary the
+ * composer can produce, and the starter-pool simulation pins it at zero across
+ * 1,600 traversals per Dynasty per cohort. This exists because "unreachable"
+ * is a property of today's roster: a future catalog rotation, weighting change
+ * or pool edit that regresses it would otherwise be invisible in production —
+ * relics simply stop, permanently and silently, for the rest of the run.
+ */
+export interface GenomeV2PoolStarvation {
+  dynasty: DynastyName;
+  poolSize: number;
+  /** Genes already consumed from the pool, including Recoded and Ashed ones. */
+  seenGeneIds: number;
+  /** Loci still empty when the stream stopped. Always at least one. */
+  freeLoci: number;
+  foodCount: number;
 }
 
 export interface GenomeV2OfferFacts {
@@ -510,6 +538,12 @@ export class GenomeV2Runtime {
    * that was rejected, so it can never be part of the simulation.
    */
   private lastRefusal: string | null = null;
+  /**
+   * Boundary-13 diagnostic for this run. Like `lastRefusal` it describes a
+   * runtime observation and is deliberately NOT checkpoint state: it is
+   * re-derived by whichever runtime instance actually hits the dead stream.
+   */
+  private poolStarvationDiagnostic: GenomeV2PoolStarvation | null = null;
 
   constructor(options: GenomeV2RuntimeOptions) {
     this.interactionVersion =
@@ -527,6 +561,7 @@ export class GenomeV2Runtime {
           offerTiltStrain: options.offerTiltStrain,
           suppressedStrains: options.suppressedStrains,
           strainThresholdDelta: options.strainThresholdDelta,
+          trial: options.trial,
         });
     if (
       reducerState.v !== GENOME_RULES_V2 ||
@@ -539,6 +574,26 @@ export class GenomeV2Runtime {
       throw new Error(
         'Genome v2 reducer pool differs from its run-start stamp.'
       );
+    }
+    // Only the IMMUTABLE half of the trial is bound to the manifest: a resumed
+    // run has legitimately spent some of its appearances, and `offersConsumed`
+    // is exactly the field that is allowed to have moved. The Gene and the
+    // guarantee it started with are the server's, and a checkpoint that
+    // rewrites either is refused here rather than honoured by the roll.
+    if (options.trial !== undefined) {
+      const expected = genomeV2TrialStamp(
+        reducerState.genePool,
+        options.trial
+      );
+      const carried = reducerState.trial ?? null;
+      if (
+        expected?.geneId !== carried?.geneId ||
+        expected?.offersRemainingAtStart !== carried?.offersRemainingAtStart
+      ) {
+        throw new Error(
+          'Genome v2 reducer trial differs from its run-start stamp.'
+        );
+      }
     }
     if (options.ftue && !sameJson(reducerState.ftue, options.ftue)) {
       throw new Error(
@@ -760,6 +815,49 @@ export class GenomeV2Runtime {
     return { event, bodyGrowthDelta };
   }
 
+  /**
+   * Record a dead offer stream that left the Genome incomplete (WP-C).
+   *
+   * The line below this one is where exhaustion becomes permanent: the next
+   * cadence food is parked at `MAX_SAFE_INTEGER`, so relics never spawn again
+   * and portals open with nothing to MUTATE. Before this, that outcome had no
+   * observable trace at all — the player simply stopped being offered Genes.
+   *
+   * An exhausted stream with every locus already filled is the ordinary end of
+   * a complete Genome and is NOT recorded: there is nothing left to offer and
+   * nothing was lost.
+   */
+  private noteStarvation(foodCount: number): void {
+    const freeLoci = this.state.slots.filter(
+      (slot) => slot.occupant === null
+    ).length;
+    if (freeLoci === 0) return;
+    const seenGeneIds = new Set(
+      Object.values(this.state.instances).map((instance) => instance.geneId)
+    ).size;
+    this.poolStarvationDiagnostic = {
+      dynasty: this.state.dynasty,
+      poolSize: this.state.genePool.length,
+      seenGeneIds,
+      freeLoci,
+      foodCount,
+    };
+    console.error(
+      '[genomeV2Runtime] the offer stream starved with an empty locus: ' +
+        `${this.state.dynasty} pool ${this.state.genePool.length}, ` +
+        `${seenGeneIds} consumed, ${freeLoci} loci still empty`
+    );
+  }
+
+  /**
+   * The starvation this run hit, if any. Retained rather than consumed, so a
+   * host may read it at settlement as well as during play; WP-F routes it to
+   * the curriculum's health telemetry.
+   */
+  poolStarvation(): GenomeV2PoolStarvation | null {
+    return this.poolStarvationDiagnostic;
+  }
+
   private rollOffer(): GenomeV2OfferFacts | null {
     const roll = rollGenomeV2Offer(this.state, this.state.offerCount);
     if (!roll) return null;
@@ -797,6 +895,7 @@ export class GenomeV2Runtime {
     if (!this.cadenceOfferDue(foodCount)) return null;
     const offer = this.rollOffer();
     if (!offer) {
+      this.noteStarvation(foodCount);
       this.nextCadenceOfferAtFood = Number.MAX_SAFE_INTEGER;
       return null;
     }

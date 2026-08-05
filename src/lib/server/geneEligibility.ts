@@ -30,7 +30,10 @@ import {
   isGenomeV2ActiveGeneId,
   type GenomeV2ActiveGeneId,
 } from '@/shared/game/genes';
-import { GENOME_RULES_V2 } from '@/shared/game/genomeV2';
+import {
+  GENOME_RULES_V2,
+  GENOME_V2_TRIAL_OFFER_GUARANTEE,
+} from '@/shared/game/genomeV2';
 
 /** The catalog identity eligibility rows are keyed by. */
 export const GENE_ELIGIBILITY_RULES_VERSION = GENOME_RULES_V2;
@@ -59,7 +62,7 @@ export function isMissingGeneEligibilityInfra(
   ) {
     return true;
   }
-  return /player_gene_eligibility|read_gene_eligibility|grant_starter_eligibility|resolve_learning_event/i.test(
+  return /player_gene_eligibility|read_gene_eligibility|grant_starter_eligibility|resolve_learning_event|select_gene_trial|record_trial_offer/i.test(
     error.message || ''
   );
 }
@@ -75,12 +78,22 @@ export interface GeneEligibilityState {
   eligibleGeneIds: GenomeV2ActiveGeneId[];
   /** The single selected trial, or null. */
   trialGeneId: GenomeV2ActiveGeneId | null;
+  /**
+   * Guaranteed appearances the trial still has (WP-C), `0..3`.
+   *
+   * ZERO WHENEVER IT IS NOT KNOWN, and zero is the safe answer: the trial is
+   * still in the vocabulary and is still drawn ordinarily, which is exactly
+   * the behaviour before the guarantee existed. Over-serving would hand a
+   * player more forced appearances than the ratified three.
+   */
+  trialOffersRemaining: number;
 }
 
 const NO_ELIGIBILITY: GeneEligibilityState = {
   available: false,
   eligibleGeneIds: [],
   trialGeneId: null,
+  trialOffersRemaining: 0,
 };
 
 function report(
@@ -120,6 +133,101 @@ function sanitizeRows(value: unknown): GeneEligibilityState | null {
     available: true,
     eligibleGeneIds: Array.from(eligible).sort(),
     trialGeneId: isGenomeV2ActiveGeneId(trial) ? trial : null,
+    // Filled in by the guarantee read below; the projection RPC answers which
+    // Gene is on trial, not how much of its guarantee is left.
+    trialOffersRemaining: 0,
+  };
+}
+
+/**
+ * Guaranteed appearances left for a trial (WP-C).
+ *
+ * A DIRECT ROW READ, DELIBERATELY. `read_gene_eligibility` answers the
+ * composition question — which Genes may be offered — and the guarantee is not
+ * part of it: it changes which candidate POSITION the trial takes, never which
+ * Genes are eligible. Adding it to that RPC would mean editing a migration
+ * that ships with WP-B, and this package adds none. The table's RLS grants
+ * SELECT to the owning player and migration 036 grants the service role
+ * everything, so this read is legal from the route without a new policy.
+ *
+ * Answers 0 on every failure, which composes to "no guarantee": the trial is
+ * still offered ordinarily and no player is over-served.
+ */
+async function readTrialGuarantee(
+  supabase: SupabaseClient,
+  playerId: string,
+  geneId: GenomeV2ActiveGeneId
+): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from('player_gene_eligibility')
+      .select('trial_offers_seen')
+      .eq('player_id', playerId)
+      .eq('rules_version', GENE_ELIGIBILITY_RULES_VERSION)
+      .eq('gene_id', geneId)
+      .eq('state', 'trial')
+      .maybeSingle();
+    if (error) {
+      report('read_trial_guarantee', error, { playerId, geneId });
+      return 0;
+    }
+    const seen = (data as { trial_offers_seen?: unknown } | null)
+      ?.trial_offers_seen;
+    if (!Number.isSafeInteger(seen) || (seen as number) < 0) return 0;
+    return Math.max(
+      0,
+      GENOME_V2_TRIAL_OFFER_GUARANTEE - Math.min(
+        GENOME_V2_TRIAL_OFFER_GUARANTEE,
+        seen as number
+      )
+    );
+  } catch (error) {
+    report('read_trial_guarantee', { message: String(error) }, {
+      playerId,
+      geneId,
+    });
+    return 0;
+  }
+}
+
+/** What `select_gene_trial` answers: the account's trial after the write. */
+export interface GeneTrialSelection {
+  geneId: GenomeV2ActiveGeneId;
+  /**
+   * `offer_eligible` means the Gene had already graduated past trials and the
+   * selection was a no-op — a double-tap, not an error.
+   */
+  state: 'trial' | 'offer_eligible';
+  /** Guaranteed appearances still owed, `0..3`. */
+  trialOffersRemaining: number;
+  /** False when the row was already what was asked for. */
+  changed: boolean;
+}
+
+function sanitizeSelection(value: unknown): GeneTrialSelection | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const payload = value as Record<string, unknown>;
+  if (!isGenomeV2ActiveGeneId(payload.geneId)) return null;
+  if (payload.state !== 'trial' && payload.state !== 'offer_eligible') {
+    return null;
+  }
+  const seen = payload.trialOffersSeen;
+  const spent = Number.isSafeInteger(seen)
+    ? Math.min(GENOME_V2_TRIAL_OFFER_GUARANTEE, Math.max(0, seen as number))
+    : GENOME_V2_TRIAL_OFFER_GUARANTEE;
+  return {
+    geneId: payload.geneId,
+    state: payload.state,
+    // A row already past trials owes nothing, and an unreadable count is
+    // treated as fully spent for the same reason the run-start read is:
+    // never invent a guarantee the database did not confirm.
+    trialOffersRemaining:
+      payload.state === 'offer_eligible'
+        ? 0
+        : GENOME_V2_TRIAL_OFFER_GUARANTEE - spent,
+    changed: payload.changed === true,
   };
 }
 
@@ -146,10 +254,101 @@ export async function readGeneEligibility(
       );
       return NO_ELIGIBILITY;
     }
-    return sanitized;
+    // Only an account actually on a trial pays for the second round trip.
+    if (!sanitized.trialGeneId) return sanitized;
+    return {
+      ...sanitized,
+      trialOffersRemaining: await readTrialGuarantee(
+        supabase,
+        playerId,
+        sanitized.trialGeneId
+      ),
+    };
   } catch (error) {
     report('read_gene_eligibility', { message: String(error) }, { playerId });
     return NO_ELIGIBILITY;
+  }
+}
+
+/**
+ * Set or switch the account's single selected trial (server contract §2).
+ *
+ * SWITCHING COSTS NOTHING AND LOSES NOTHING (PEO §4.4). The RPC retires the
+ * previous selection only while it is still an unresolved trial, so no earned
+ * eligibility is reachable from here, and a Gene that already became ordinarily
+ * offer-eligible is returned unchanged instead of being demoted to a trial.
+ *
+ * Returns the resulting row, or null when the write could not land — the
+ * caller shows the account's existing state rather than a new one, because the
+ * server's answer is the only authority on which trial is selected.
+ */
+export async function selectGeneTrial(
+  supabase: SupabaseClient,
+  playerId: string,
+  geneId: GenomeV2ActiveGeneId
+): Promise<GeneTrialSelection | null> {
+  try {
+    const { data, error } = await supabase.rpc('select_gene_trial', {
+      p_player_id: playerId,
+      p_rules_version: GENE_ELIGIBILITY_RULES_VERSION,
+      p_gene_id: geneId,
+    });
+    if (error) {
+      report('select_gene_trial', error, { playerId, geneId });
+      return null;
+    }
+    return sanitizeSelection(data);
+  } catch (error) {
+    report('select_gene_trial', { message: String(error) }, {
+      playerId,
+      geneId,
+    });
+    return null;
+  }
+}
+
+/**
+ * Consume ONE guaranteed appearance for a collected offer that contained the
+ * trial (server contract §2.1).
+ *
+ * COUNTED IN OFFERS, NOT IN RUNS. The caller passes the appearances the
+ * validated record actually recorded and calls this once per appearance, so
+ * an Ascetic run, Patient's stretched cadence, an ignored or expired relic,
+ * Free Play, and a run that produced no relic all consume nothing — none of
+ * them puts the trial in a collected offer.
+ *
+ * NEVER BLOCKS SETTLEMENT, for the same reason `resolveLearningEvent` does
+ * not: the run is already paid, and the counter is capped in SQL, so the worst
+ * case of a failure here is one extra guaranteed appearance for the player.
+ *
+ * Returns the appearances still guaranteed, or null when the write could not
+ * land.
+ */
+export async function recordTrialOffer(
+  supabase: SupabaseClient,
+  playerId: string,
+  geneId: GenomeV2ActiveGeneId,
+  sessionId: string
+): Promise<number | null> {
+  try {
+    const { data, error } = await supabase.rpc('record_trial_offer', {
+      p_player_id: playerId,
+      p_rules_version: GENE_ELIGIBILITY_RULES_VERSION,
+      p_gene_id: geneId,
+      p_session_id: sessionId,
+    });
+    if (error) {
+      report('record_trial_offer', error, { playerId, geneId, sessionId });
+      return null;
+    }
+    return Number.isSafeInteger(data) ? (data as number) : null;
+  } catch (error) {
+    report('record_trial_offer', { message: String(error) }, {
+      playerId,
+      geneId,
+      sessionId,
+    });
+    return null;
   }
 }
 
