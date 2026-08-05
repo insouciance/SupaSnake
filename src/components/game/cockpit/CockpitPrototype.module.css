@@ -828,10 +828,6 @@
   backdrop-filter: none !important;
 }
 
-.liveRoot:has(.decisionDock > :global([data-surface='tactical-loom'])) .arenaBay {
-  filter: none;
-}
-
 .decisionDock > :global([role='dialog']) > :global(.panel-elevated),
 .decisionDock > :global([role='dialog']) > :global(.panel-glow),
 .decisionDock > :global([role='alertdialog']) > :global(.panel-elevated),
@@ -870,6 +866,48 @@
   font-size: 12px !important;
 }
 
+/*
+ * THE FOCUS PULL (owner ruling, pass 3).
+ *
+ * When a decision surface is docked, the BOARD AND ITS TRAY go out of focus
+ * and the HUD STAYS SHARP. It is a photographic rack focus: the thing you can
+ * no longer act on softens, the instruments you are reading the decision
+ * against stay crisp and at full brightness.
+ *
+ * THIS DELIBERATELY SUPERSEDES THE CONTINUITY-ERA RULING that the decision
+ * backdrop is "fully transparent and blur-free". That rule was about the
+ * BACKDROP - a glass veil laid over everything, which flattened the HUD along
+ * with the board. What replaced it is selective and the opposite in intent:
+ * nothing is laid over anything, the board layer itself defocuses, and the
+ * HUD is *more* readable than it was under the old blanket dim. Do not
+ * "restore" the blur-free rule; it was overturned on purpose.
+ *
+ * WHY `.arenaBay` IS THE RIGHT ELEMENT. It is the only wrapper that contains
+ * exactly the two things that must blur - `.arenaQuietZone` (the tray) and
+ * `.arenaFrame` (the board and its oversized paint surface) - and no HUD
+ * chrome, which lives in sibling grid areas. So the split is structural and
+ * cheap: one CSS filter on one element, no post-processing pass, and no
+ * per-instrument opt-out to keep in sync.
+ *
+ * It also costs nothing in containing-block terms. `filter` makes an element
+ * a containing block for its absolutely positioned descendants and a stacking
+ * context - but `.arenaBay` is ALREADY both (z-index 20, and `container-type:
+ * size` implies `contain: layout`). The pop-out bleed therefore still resolves
+ * against exactly the box it always did, and the filter cannot become the
+ * thing that boxes the board in. Filters do not clip.
+ *
+ * Layout is untouched: a filter never moves a box, so every rectangle
+ * `verify:cockpit-decisions` measures is unchanged.
+ */
+.liveRoot[data-decision='true'] .arenaBay {
+  filter: blur(7px) saturate(0.78) brightness(0.82);
+}
+
+/*
+ * Input, not appearance. While a decision is open the run is paused, so no
+ * background surface may take a click - but the HUD is no longer dimmed, so
+ * the player can still read every instrument the decision is about.
+ */
 .liveRoot[data-decision='true'] .instrument,
 .liveRoot[data-decision='true'] .statusRail,
 .liveRoot[data-decision='true'] .eventCallout,
@@ -877,7 +915,6 @@
 .liveRoot[data-decision='true'] .controls,
 .liveRoot[data-decision='true'] .arenaBay {
   pointer-events: none;
-  filter: saturate(0.4) brightness(0.62);
 }
 
 .controls button {
@@ -909,51 +946,273 @@
   display: none;
 }
 
+/*
+ * THE POP-OUT (pass 3, owner ruling).
+ *
+ * The owner found this by accident on the review build - twisting the board
+ * made it break over the tray's white line - and asked for it AMPLIFIED: the
+ * board should visibly come out of the screen, over the frame, over the gap,
+ * and over the HUD, but only when the player manipulates the camera. At the
+ * default view nothing overhangs, which is what makes it feel like something
+ * the player caused rather than a layout bug.
+ *
+ * THE Z-SCALE, RE-DERIVED (the previous note here claimed only "the HUD
+ * instruments are at auto", which under-described the ladder). Every element
+ * below is a child of `.composition`, which is not a stacking context, so all
+ * of them are ordered inside the ONE context that `.cockpitShell` opens
+ * (`container-type: size` implies `contain: layout`). One context, one ladder,
+ * no cross-context surprises:
+ *
+ *   z: auto   EVERY `.instrument` - and that is all four trays: the score and
+ *             DNA readouts, the GENOME / gene-slot tray (`.geneRack`), and the
+ *             YIELD tray (`.outcomes`, inside `.systemsRack`). They are
+ *             `position: relative` with no z-index, so they paint in the
+ *             z-auto band, strictly below every numbered layer here.
+ *   z: 2      `.eventCallout`
+ *   z: 6      `.overclockRail`
+ *   z: 10     `.controls`
+ *   z: 20     `.arenaBay`  <- the board and its tray, above the whole HUD
+ *   z: 30     `.decisionDock` - THE DROP, portal, pause, abandon
+ *
+ * So a twisted board paints over EVERY tray, and can still never rise over a
+ * decision surface. The ordering is structural, not a tuned pair of numbers:
+ * 20 is above the entire z-auto band by definition and above every numbered
+ * HUD layer by inspection of the five values above, and 30 is the only value
+ * greater than it.
+ *
+ * WHERE THE BOARD ACTUALLY STOPS IS NOT Z-ORDER. The board can only paint on
+ * its own drawing surface, `.arenaCanvasBleed`, which is the bay grown by a
+ * fixed 9% per side. Anything past that edge is not "behind the tray", it is
+ * off-canvas. See the note on `.arenaCanvasBleed` for why that number cannot
+ * move on its own.
+ */
 .arenaBay {
   position: relative;
-  z-index: 1;
+  z-index: 20;
   grid-area: arena;
   display: grid;
   min-width: 0;
   min-height: 0;
   place-items: center;
+  overflow: visible;
   container-type: size;
+  /* The rack focus. Eased so it reads as a lens pulling, not a state flip. */
+  transition: filter 180ms ease;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  /* The defocus still applies - only the travel to it is removed. */
+  .arenaBay {
+    transition: none;
+  }
+}
+
+/*
+ * THE TRAY, pass 3 (owner ruling).
+ *
+ * Pass 2 deleted the tray outright and the owner agreed with the reason -
+ * "the gameboard really is better without that rather small and
+ * disproportionate tray limiting it" - but not with the result: the board
+ * then had no structure holding it to the rest of the screen. The fix they
+ * called is exact, and it is a proportion fix, not a decoration one:
+ *
+ *   "make a tray for the gameboard, but make it the same width as the HUD,
+ *    then it'd look better, and a more transparent background of the tray,
+ *    so that the cartoon night sky comes through. right now, there actually
+ *    is a shaded area visible that would have the correct dimensions - same
+ *    as the HUD."
+ *
+ * That shaded area was this element: pass 2's radial grade, whose visible
+ * ellipse happened to land near the composition width. It is now the tray
+ * proper, and the width is not approximated - it is STRUCTURAL. `.arenaBay`
+ * is `grid-area: arena`, which spans all five composition columns, so it is
+ * the composition's full width by construction: exactly the width of the
+ * deck above it and the systems row below it. Inset 0 is therefore the HUD
+ * width, and it stays the HUD width at every breakpoint without a single
+ * shared magic number.
+ *
+ * Fill alpha is 0.30 against pass 2's 0.66-at-centre. The night sky is the
+ * point; the tray only has to seat the board, and a tray you can see the sky
+ * through is the difference between a frame and a lid.
+ *
+ * PAPER outline, not ink. This is the system's first real judgement call:
+ * the tray sits on the darkest surface in the product, so a near-black
+ * outline would be invisible against it. The bone line is what makes the
+ * tray an object rather than a slightly lighter patch of night.
+ */
 .arenaQuietZone {
   position: absolute;
-  inset: 3%;
-  border-radius: 16%;
-  background: radial-gradient(ellipse, rgba(0, 3, 6, 0.82), rgba(0, 3, 6, 0.6) 64%, transparent 78%);
-  opacity: 0.72;
+  inset: 0;
+  border: var(--paper-border-3);
+  border-radius: 14px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(11, 17, 24, 0.34),
+      rgba(6, 11, 17, 0.24) 46%,
+      rgba(11, 17, 24, 0.36)
+    );
+  /* The bone line is the drawn edge; this is the ink shadow it casts onto
+     the sky, so the tray reads as sitting IN FRONT of the environment. */
+  box-shadow:
+    0 0 0 1px rgba(11, 17, 24, 0.72),
+    0 10px 26px rgba(0, 0, 0, 0.4);
+  opacity: 0.9;
 }
 
+/*
+ * TRAYLESS BOARD (INK & AMBER concept, owner item 6).
+ *
+ * The arena used to be a square octagonal WELL: a chassis plate, a hard
+ * drop shadow, an opaque fill and a clip-path, all sized to
+ * min(100cqw, 100cqh). Three things followed from that and all three were
+ * defects:
+ *
+ *   1. The canvas was square while the bay is wide, so on desktop roughly
+ *      half the available width was chassis. Zoom and pan ran straight into
+ *      the clip-path and the board was cut off - which is what made both
+ *      controls feel pointless.
+ *   2. The opaque fill hid the environment behind it entirely.
+ *   3. The board's edge was a UI container, not the world - so the walls,
+ *      which ARE the real boundary, had a second competing boundary drawn
+ *      1px outside them.
+ *
+ * The frame now fills the bay, the viewport is transparent and unclipped,
+ * and the board's edge is carried by the walls plus a soft grade. The bay
+ * is `place-items: center`, so the frame's CENTRE is unchanged - which is
+ * what the decision-geometry audit measures the strategic panel against.
+ */
 .arenaFrame {
   position: relative;
-  width: min(100cqw, 100cqh);
-  height: min(100cqw, 100cqh);
-  filter: drop-shadow(0 28px 30px rgba(0, 0, 0, 0.48));
+  width: 100cqw;
+  height: 100cqh;
+  overflow: visible;
 }
 
-.arenaFrame::before {
-  content: '';
-  position: absolute;
-  inset: 1.2%;
-  z-index: -1;
-  clip-path: polygon(4.2% 0, 95.8% 0, 100% 4.2%, 100% 95.8%, 95.8% 100%, 4.2% 100%, 0 95.8%, 0 4.2%);
-  background: color-mix(in srgb, var(--dynasty-primary) 15%, #101923);
-  box-shadow: 0 0 36px color-mix(in srgb, var(--dynasty-primary) 10%, transparent);
-}
-
+/*
+ * THE VIEWPORT IS THE BOARD'S RECTANGLE. THE BLEED IS WHERE IT PAINTS.
+ *
+ * These are two different things and pass 3 is the first time the difference
+ * matters, so they are now two elements.
+ *
+ * `.webglViewport` is the board's rectangle: exactly the bay, exactly the
+ * HUD width, and it is what `data-testid="game-board-viewport"` marks and
+ * what `verify:cockpit-decisions` measures when it proves that no callout,
+ * dock or consent surface overlaps the board. That guarantee is about the
+ * RESTING layout, and it is unchanged - the rectangle it measures is the
+ * same rectangle it measured before the pop-out existed.
+ *
+ * `.arenaCanvasBleed` inside it is the drawing surface, and it is larger.
+ * A canvas cannot paint outside its own element, so "the board breaks over
+ * the frame" cannot be an overflow setting - the surface has to physically
+ * exceed the bay. Hence -9% per side, an 18%-of-frame margin for the 3D
+ * content to spill into when the player twists the camera.
+ *
+ * POINTER EVENTS ARE OFF ON BOTH, AND THAT IS THE HUD GUARANTEE.
+ *
+ * The bleed lies over the gap and part of the decks. If it accepted hits,
+ * every HUD control underneath it would go silently dead. So neither layer
+ * takes the pointer, and input is handed back by `.arenaInputIsland`, which
+ * is the bay rectangle again. The board can paint anywhere; it can only be
+ * grabbed where it actually lives.
+ */
 .webglViewport {
   position: absolute;
+  z-index: 1;
   inset: 0;
-  overflow: hidden;
-  clip-path: polygon(4% 0, 96% 0, 100% 4%, 100% 96%, 96% 100%, 4% 100%, 0 96%, 0 4%);
-  background: rgba(3, 7, 11, 0.72);
-  box-shadow:
-    inset 0 0 0 1px rgba(138, 177, 204, 0.2),
-    0 0 0 1px rgba(0, 0, 0, 0.72);
+  background: transparent;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/*
+ * THE OVERHANG, and the owner's rule that set it.
+ *
+ * "The only real cutoff is the browser window itself."
+ *
+ * A canvas cannot paint outside its own element, so how far the board can
+ * reach is decided HERE and nowhere else. A full clip audit of every ancestor
+ * from the canvas up to <body> found no stray clip to remove - no
+ * border-radius, clip-path, mask, contain: paint or content-visibility, and
+ * the only overflow: hidden ancestors are either exactly this rect or exactly
+ * the window. `container-type: size` on .arenaBay implies contain: layout
+ * style size, which never clips paint. So the side cut the owner saw was not
+ * a clip at all: at the previous 9% the drawing surface simply ENDED ~76px
+ * short of each window edge at 1280x800, and abutted the HUD trays exactly
+ * without ever overlapping them.
+ *
+ * 25% per side. The surface is 1.5x the bay on both axes, which reaches the
+ * window edge at the common desktop and phone shapes and lets a twisted board
+ * paint over every tray rather than stopping at them.
+ *
+ * THE VALUE IS NOT AUTHORED HERE. It comes from `COCKPIT_CANVAS_OVERHANG` in
+ * gameScreenTokens, which is also what `COCKPIT_FIT_SCALE` in CameraRig.tsx is
+ * derived from, so the default view keeps framing the board at the same
+ * on-screen size wholly inside the tray no matter how the overhang is retuned.
+ *
+ * THIS ELEMENT, NOT AN `overflow` SETTING, IS WHERE THE BOARD STOPS. Measured
+ * on the cockpit fixture rather than reasoned about: every ancestor between the
+ * canvas and `<body>` is either `overflow: visible`, or `overflow: hidden` on a
+ * box that is exactly this rectangle (the R3F canvas wrapper and
+ * `[data-testid="cockpit-webgl-board"]`), or the full window (`.liveRoot`, and
+ * the fixed `.cockpit-game-viewport` page shell). No ancestor carries
+ * `border-radius`, `clip-path`, `mask`, `contain: paint` or
+ * `content-visibility`; `container-type: size` on `.arenaBay` and
+ * `.cockpitShell` implies `contain: layout style size`, which never clips.
+ *
+ * Pointer events stay off here and on `.webglViewport`; `.arenaInputIsland`
+ * is what hands input back. That is what lets this much larger surface lie
+ * over HUD controls without any of them going dead.
+ */
+.arenaCanvasBleed {
+  /* Fallback only. The live value is set inline from
+     `COCKPIT_CANVAS_OVERHANG_CSS`, which is the same constant CameraRig's
+     `COCKPIT_FIT_SCALE` is derived from - so the pair cannot drift. Keep this
+     literal equal to that constant so the surface is still correct in the one
+     frame before hydration, and never edit it as a way of changing the
+     overhang. */
+  --arena-overhang: 25%;
+
+  position: absolute;
+  inset: calc(var(--arena-overhang) * -1);
+  pointer-events: none;
+}
+
+/*
+ * The camera's grab surface: the bay rectangle, and nothing outside it.
+ * `CameraRig` finds this by its data attribute and hands it to OrbitControls
+ * as the controls' DOM element, so a drag that starts here rotates the board
+ * even though the canvas itself takes no pointer events. If it is ever
+ * absent, the rig falls back to the canvas and the cockpit behaves exactly
+ * as it did before this existed.
+ */
+.arenaInputIsland {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+/*
+ * A whisper of corner grade inside the tray. Pass 2 ran this to 0.72 alpha
+ * at the rim, which was a second, softer frame drawn just inside the first -
+ * and with the tray now carrying a real drawn edge, that reads as a smudge
+ * around it. Dropped to a third of its weight: enough to stop the board's
+ * far corners from touching the tray line, not enough to be a vignette.
+ */
+.webglViewport::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 78% 86% at 50% 48%,
+    transparent 64%,
+    rgba(4, 8, 13, 0.12) 86%,
+    rgba(4, 8, 13, 0.24) 100%
+  );
 }
 
 .apron {

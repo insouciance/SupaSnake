@@ -25,19 +25,95 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
+import { COCKPIT_CANVAS_OVERHANG } from './screen/gameScreenTokens';
 
 /** Default pitch: 70 degrees down from horizontal = 20 degrees from zenith */
 export const DEFAULT_POLAR = THREE.MathUtils.degToRad(20);
-/** Cockpit pitch: a slightly flatter broadcast view without sacrificing fit. */
-export const COCKPIT_DEFAULT_POLAR = THREE.MathUtils.degToRad(16);
+/**
+ * Cockpit pitch, pass 3.
+ *
+ * The owner asked for a LOWER default so the art gets a stronger 3D read,
+ * with the explicit constraint that every row must stay equally playable -
+ * "when in a first person view, some rows would be much better visible than
+ * others, so we want to keep that top down in general and only go as far as
+ * possible to make it look beautiful."
+ *
+ * That constraint is measurable, so it was measured rather than eyeballed.
+ * At the cockpit fit (fov 44, frame margin 1.175, fit scale 0.94) the on-screen
+ * height of the tallest board row divided by the shortest is:
+ *
+ *   16 deg from zenith (the old default)  1.43 desktop / 1.31 portrait
+ *   24 deg                                1.70 / 1.47
+ *   26 deg  <- chosen                     1.78 / 1.51
+ *   30 deg                                1.95 / 1.58
+ *   34 deg                                2.14 / 1.66
+ *
+ * At 26 the shortest row is still 56% of the tallest on desktop and 66% on a
+ * phone: all twenty rows remain individually resolvable, which is the actual
+ * playability question. What it buys is vertical presence - a one-cell-tall
+ * object rises 0.50 of a row height on screen instead of 0.30, so the snake,
+ * the walls and the terrain all read as standing UP off the board by two
+ * thirds more than they did. That is the "stronger 3D effect" in one number.
+ *
+ * 30 and beyond is where the far rows start to crowd and where a coil crossing
+ * the top of the board begins to occlude the row behind it. This is the far
+ * edge of "as far as possible", not a compromise short of it.
+ *
+ * Manual pitch is unchanged: players may still tilt anywhere in
+ * MIN_POLAR..MAX_POLAR, and 26 sits comfortably inside that range.
+ */
+export const COCKPIT_DEFAULT_POLAR = THREE.MathUtils.degToRad(26);
 /** Exact outer half-overhang of the premium undertray chassis. */
 export const COCKPIT_FRAME_MARGIN = 1.175;
 /**
- * Calibrated against the chassis bounds and the viewport's 4% corner mask.
- * This retains a broadcast-tight board while keeping all four chassis
- * corners visible; the former 0.82 value crossed that mask on reset.
+ * The fit the cockpit framed with before the board could overhang its bay.
+ * Calibrated against the chassis bounds: a broadcast-tight board with all four
+ * corners clear of the viewport edge.
  */
-export const COCKPIT_FIT_SCALE = 0.94;
+export const COCKPIT_BASE_FIT_SCALE = 0.94;
+
+/**
+ * Fit scale, DERIVED from the cockpit's canvas overhang.
+ *
+ * The board canvas is inset by `--arena-overhang` per side
+ * (`.arenaCanvasBleed` in CockpitPrototype.module.css) so that a twisted board
+ * can visibly break out over the tray, the gap and the HUD - the owner's
+ * pop-out. That makes the drawing surface larger than the bay on both axes,
+ * and a fit computed against the canvas would therefore render the board
+ * proportionally larger than the bay and break it out of the tray AT REST,
+ * which is exactly what must not happen.
+ *
+ * The compensation is exact rather than tuned: the board occupies
+ * FIT_MARGIN / fitScale of the canvas, so holding its on-screen size while the
+ * canvas grows by G means multiplying the fit scale by G. Both axes grow by
+ * the same fraction, so the canvas aspect is unchanged and one scalar is the
+ * whole correction.
+ *
+ *     G = 1 + 2 x overhang
+ *     COCKPIT_FIT_SCALE = 0.94 x G
+ *
+ * Owner ruling (pop-out refinement 2): "the only real cutoff is the browser
+ * window itself." At a 9% overhang the drawing surface stopped ~76px short of
+ * each window edge at 1280x800 - the board could not reach the glass no matter
+ * how far it was twisted, because a canvas cannot paint outside its own
+ * element. At the shipped 25% per side:
+ *
+ *     G = 1 + 2 x 0.25 = 1.50
+ *     0.94 x 1.50 = 1.41
+ *
+ * The relationship is EXPRESSED rather than asserted: the overhang is a single
+ * shared constant (`COCKPIT_CANVAS_OVERHANG`) that both this scale and
+ * `.arenaCanvasBleed` are computed from, so the pair cannot drift. Raising the
+ * overhang alone would break the board out of the tray at rest, which is the
+ * one thing the pop-out must never do; it is now arithmetically impossible to
+ * raise it alone.
+ *
+ * One scalar only compensates UNIFORM growth, and window-reach is not a fixed
+ * fraction of the bay, so this buys reach at the common desktop and phone
+ * shapes rather than a guarantee at every aspect.
+ */
+export const COCKPIT_FIT_SCALE =
+  COCKPIT_BASE_FIT_SCALE * (1 + 2 * COCKPIT_CANVAS_OVERHANG);
 /** Small framing bias that protects the near (south) chassis corners. */
 export const COCKPIT_TARGET_Y = -0.3;
 /** Pitch limits (polar angle from zenith) */
@@ -151,6 +227,27 @@ export function CameraRig({
   const [minDistance, setMinDistance] = useState(12);
   const [maxDistance, setMaxDistance] = useState(60);
 
+  /**
+   * The cockpit's pointer island (see `.arenaInputIsland`).
+   *
+   * The board canvas overhangs its bay and is pointer-transparent so it can
+   * never swallow a HUD hit; this element is the bay rectangle and is where
+   * camera drags are actually accepted. Looked up rather than passed: the
+   * live game mounts its Canvas as `children` of a cockpit it does not own,
+   * so threading a ref would mean widening several unrelated signatures for
+   * a purely presentational wire.
+   *
+   * Resolved in an effect (never during render) and kept in state so
+   * OrbitControls re-attaches once it exists. `null` is a first-class value:
+   * drei then falls back to the canvas, which is the pre-pop-out behaviour.
+   */
+  const [inputIsland, setInputIsland] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setInputIsland(
+      document.querySelector<HTMLElement>('[data-arena-input-island]')
+    );
+  }, []);
+
   const target = useMemo(
     () => new THREE.Vector3(gridSize / 2, targetY, gridSize / 2),
     [gridSize, targetY]
@@ -244,6 +341,7 @@ export function CameraRig({
   return (
     <OrbitControls
       ref={controlsRef}
+      domElement={inputIsland ?? undefined}
       target={target}
       enablePan={false}
       minDistance={minDistance}
