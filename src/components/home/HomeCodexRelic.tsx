@@ -37,7 +37,7 @@ export function HomeCodexRelic() {
       aria-label="Genome Research"
       title="Open Genome Workbench"
       data-testid="home-codex-relic"
-      className="group absolute right-[max(0.6rem,env(safe-area-inset-right,0px))] top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cosmic-glow sm:right-5 sm:h-14 sm:w-14"
+      className="pointer-events-auto group absolute right-[max(0.6rem,env(safe-area-inset-right,0px))] top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cosmic-glow sm:right-5 sm:h-14 sm:w-14"
     >
       <span
         aria-hidden="true"

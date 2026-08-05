@@ -68,6 +68,10 @@ import { SETTLED_END_REASON } from '@/lib/session/lifecycle';
 import { SNAKE_RULES_VERSION } from '@/lib/game/SnakeGameLogic';
 import { getLiveIdentityForPlayer, isMissingIdentityInfra } from '@/lib/server/identity';
 import {
+  EMPTY_SNAKE_LOADOUT,
+  parseSnakeLoadout,
+} from '@/lib/cosmetics/snakeCosmetics';
+import {
   composeGenePool,
   deriveFtue,
   deriveHeirloom,
@@ -1197,6 +1201,37 @@ export async function POST(request: NextRequest) {
         (snake.snake_variants as Record<string, unknown> | null) ?? null
       );
 
+      // CHAMBER = GAME LAW (LF-B). What the player equipped in the home
+      // chamber is what renders on the board, and the way that is guaranteed
+      // is that both surfaces read ONE answer: `read_snake_loadout`. The run
+      // takes its copy here, at start, and carries it in the manifest — so a
+      // cosmetic changed mid-run does not repaint the snake underneath the
+      // player, and the board never asks a second authority (doctrine FM-1).
+      //
+      // A failure here is never fatal. Cosmetics are appearance; a run that
+      // cannot read them is a run with a bare snake, not a run that refuses
+      // to start (doctrine principle 1, and principle 6 — it is reported
+      // before it is hidden).
+      let runCosmetics = EMPTY_SNAKE_LOADOUT;
+      const { data: loadoutData, error: loadoutError } = await supabase.rpc(
+        'read_snake_loadout',
+        { p_player_id: player.id }
+      );
+      if (loadoutError) {
+        if (!isMissingIdentityInfra(loadoutError)) {
+          console.error('read_snake_loadout error at run start:', {
+            playerId: player.id,
+            error: loadoutError,
+          });
+          Sentry.captureException(
+            new Error(`Run-start loadout read failed: ${loadoutError.message}`),
+            { extra: { playerId: player.id, code: loadoutError.code } }
+          );
+        }
+      } else {
+        runCosmetics = parseSnakeLoadout(loadoutData);
+      }
+
       // Per-dynasty mastery (section 7.1): the offer pool the engine may
       // draw from. Earning runs get the EARNED pool (base ten + this
       // dynasty's M3/M6/M9 unlocks, recomputed from player_mastery -
@@ -1917,6 +1952,7 @@ export async function POST(request: NextRequest) {
             variantJoin?.rarity ?? 'common',
             snakeGeneration
           ),
+          cosmetics: runCosmetics,
           ...(runLineage ? { lineage: runLineage } : {}),
         },
         simulation: {

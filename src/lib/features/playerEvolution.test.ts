@@ -37,7 +37,7 @@ describe('Player Evolution curriculum rollout flag', () => {
     }
   );
 
-  it('is the 23rd flag of the production public surface (WP-F)', () => {
+  it('is a flag of the production public surface (WP-F)', () => {
     // WP-B shipped this flag absent from the manifest and asserted the
     // absence. WP-F is the rollout package, so the assertion inverts rather
     // than disappears: the manifest is the ONLY place a production-on
@@ -49,7 +49,13 @@ describe('Player Evolution curriculum rollout flag', () => {
       flags: string[];
     };
     expect(manifest.flags).toContain('NEXT_PUBLIC_PLAYER_EVOLUTION_V1');
-    expect(manifest.flags).toHaveLength(23);
+    // The COUNT is deliberately not asserted here any more. It was 23 when
+    // WP-F added this flag, and LF-B's `NEXT_PUBLIC_SNAKE_COSMETICS` made it
+    // 24 — a length pinned in a per-flag test turns every future public
+    // surface into a failure in an unrelated file, which teaches the next
+    // reader to bump the number rather than to read it. The manifest's own
+    // test (`scripts/production-public-surface.test.js`) owns the count, in
+    // one place, on purpose.
   });
 
   it('is required of a production environment and folded into the hash', () => {
@@ -73,8 +79,14 @@ describe('Player Evolution curriculum rollout flag', () => {
 
     expect(PRODUCTION_PUBLIC_FLAGS).toContain('NEXT_PUBLIC_PLAYER_EVOLUTION_V1');
     expect(REQUIRED_VARIABLES).toContain('NEXT_PUBLIC_PLAYER_EVOLUTION_V1');
+    // The literal stays, and is a feature: the hash is a function of the flag
+    // list, so touching the public surface fails here until a human writes the
+    // new value down. That is a reviewed contract change, never a silent
+    // drift. Updated for LF-B (23 flags -> 24, adding
+    // NEXT_PUBLIC_SNAKE_COSMETICS); the previous value was
+    // ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be.
     expect(PRODUCTION_PUBLIC_SURFACE_HASH).toBe(
-      'ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be'
+      'e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017'
     );
   });
 });

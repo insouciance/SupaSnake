@@ -27,9 +27,9 @@ name the same READY production deployment; cron is enabled and its normalized
 definition hash remains
 `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
 Stripe remains in sandbox/test mode. The deploy workflow's reviewed rollout
-allowlist holds five contracts — `genome-v2-initial`, `genome-v2-resume`,
-`settlement-payload-bounds`, `player-gene-eligibility` and
-`settlement-sweep-primary`.
+allowlist holds six contracts — `genome-v2-initial`, `genome-v2-resume`,
+`settlement-payload-bounds`, `player-gene-eligibility`,
+`settlement-sweep-primary` and `snake-cosmetic-loadout`.
 
 The engine rules version is now `snake-rules-2026-08-05.2`, verified in the
 served production chunk `2894-433978b3ede14d00.js`; the previous `.1` string is
@@ -303,6 +303,93 @@ stamped from `players.cohort` server-side, so the dev/QA/fixture accounts that
 still make up most of this database do not reach a curriculum number. A
 dashboard that omits that filter is reading noise, not players.
 
+## Addendum: the LF-B home-chamber cosmetics release
+
+This addendum governs the release that first ships `NEXT_PUBLIC_SNAKE_COSMETICS`
+— the home cosmetics menu, or wardrobe — as a live public surface. **That
+release has not happened yet.** The flag and `069_snake_cosmetic_loadout.sql`
+are checked in; the deployed artifact still serves the 23-flag surface and hash
+`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. Until the
+cutover, every 24-flag statement in this repository describes the checked-in
+contract and never a live fact.
+
+### What changes, and what does not
+
+The manifest goes from 23 flags to 24, so the deterministic public-surface hash
+changes from
+`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be` to
+`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`. Recompute
+rather than copy:
+
+```sh
+node scripts/production-public-surface-cli.mjs hash
+```
+
+**This release does carry a migration**, unlike the WP-F flag-on release: the
+exact single-file plan `069_snake_cosmetic_loadout.sql`, under the reviewed
+rollout contract `snake-cosmetic-loadout` already held in the deploy workflow's
+allowlist. Enter that filename verbatim in `expected_migrations` at dispatch.
+What 069 changes, what it deliberately does not touch, and why it moves no cron
+definition are recorded in step 7 of the Automated sequence above; do not restate
+its scope here.
+
+### No dashboard prerequisite — the manifest is still the source of truth
+
+The rule the WP-F addendum records applies unchanged, and for the same code
+reason. The workflow's "Load exact production public-surface contract" step runs
+`production-public-surface-cli.mjs github-env >> "$GITHUB_ENV"`, writing every
+manifest flag **and** a freshly computed `SUPASNAKE_PUBLIC_SURFACE_HASH` into the
+job environment *before* "Validate production environment contract" runs
+`verify:production-env`; the deployment then receives the same manifest-derived
+values through `production-public-surface-cli.mjs vercel-args`. So **no operator
+has to create `NEXT_PUBLIC_SNAKE_COSMETICS=true` in the Vercel dashboard before
+dispatch, and no operator has to set the new hash there.** Do not reissue the
+instruction that was corrected above for `NEXT_PUBLIC_PLAYER_EVOLUTION_V1`.
+
+One thing does need checking before dispatch, and it is the inverse of that
+instruction. **If a literal `SUPASNAKE_PUBLIC_SURFACE_HASH` or a
+`NEXT_PUBLIC_SNAKE_COSMETICS` value was ever pinned in the Vercel Production
+dashboard, remove it.** `verify-production-env.mjs` builds its environment as
+`{...process.env}` and then overlays the pulled `.vercel/.env.production.local`
+on top, so a pinned dashboard value wins over the freshly computed one: a
+dashboard hash still holding `ac678998…e2be` would fail the exact-match check
+against the new 24-flag hash and stop the release. No such variable was ever
+created for `NEXT_PUBLIC_GENOME_V2` or `NEXT_PUBLIC_PLAYER_EVOLUTION_V1`.
+Confirm the same is true here, and then change nothing.
+
+### Proof after cutover
+
+Canonical `/api/health` must report `publicSurface.status = healthy`,
+`enabledFlagCount = expectedFlagCount = 24`, and `contractHash` equal to
+`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`.
+`/api/release-contract` must report the same hash from the anonymous surface. A
+23/23 count or the old hash *after* cutover means the environment, not the code,
+is wrong — treat it as a failed release health check under "Failure and
+recovery" and do not roll back the application. *Before* cutover, 23/23 and
+`ac678998…e2be` are the correct and expected answers, and neither is a defect.
+
+### Rollback: flag-off is a forward release, and it removes the wardrobe only
+
+`NEXT_PUBLIC_SNAKE_COSMETICS` is a **build-time rollout boundary, not an
+instantaneous kill switch** — the same shape as `NEXT_PUBLIC_GENOME_V2` and
+`NEXT_PUBLIC_PLAYER_EVOLUTION_V1`, and handled the same way. An emergency
+flag-off is one reviewed forward release:
+
+1. Remove the flag from `config/production-public-surface.json`, which returns
+   the manifest to 23 flags and the hash to `ac678998…e2be`.
+2. Remove it from the Vercel Production environment if one was ever set there,
+   or set it to a non-`true` value, and leave the contract hash to the workflow
+   rather than pinning the 23-flag literal.
+3. Build and deploy through the ordinary sequence.
+
+Migration 069 stays applied; it is forward-only and additive, and the flag-off
+artifact does not need it absent. With the flag off, Home renders as it did
+before LF-B and the snake is not a tap target, but the loadout is still read and
+still rendered, because the database is the authority either way. Rolling back
+removes the wardrobe, never the clothes: no owned row in `player_cosmetics` and
+no selection in `player_loadout` is deleted, so re-enabling the flag restores
+every player to exactly the loadout they had.
+
 ## SQL evidence boundary
 
 The release has three deliberately different database gates:
@@ -463,8 +550,9 @@ The workflow performs:
    reviewed rollout push and linked lint. The recognized rollouts are the exact
    062–065 initial/resume suffix, the exact single-file
    `066_settlement_payload_bounds.sql` plan, the exact single-file
-   `067_player_gene_eligibility.sql` plan, and the exact single-file
-   `068_settlement_sweep_primary.sql` plan; each is named explicitly by the
+   `067_player_gene_eligibility.sql` plan, the exact single-file
+   `068_settlement_sweep_primary.sql` plan, and the exact single-file
+   `069_snake_cosmetic_loadout.sql` plan; each is named explicitly by the
    apply and validate steps, and any other plan stops at classification.
    Contracts are written for plans this workflow can actually observe. It
    dry-runs only after `supabase link` against the production project ref, and
@@ -479,6 +567,26 @@ The workflow performs:
    definition** — the settlement sweep keeps its `*/10 * * * *` schedule, so
    `EXPECTED_CRON_DEFINITIONS_SHA` is unaffected and every cron proof in this
    procedure holds unchanged.
+   `069` extends the cosmetic slot vocabulary to `face`, `crown` and
+   `food_skin` (each CHECK dropped by its 022 name and re-added whole, never a
+   second constraint alongside), adds `default_owned` and `supporter_only` to
+   `cosmetic_definitions`, seeds two free snake cosmetics
+   (`face_shades_deadpan`, `crown_braids_amber`), adds the read RPCs
+   `read_snake_loadout` and `read_snake_cosmetic_catalog`, and re-creates
+   `equip_cosmetic` so it serves the new slots, resolves ownership through
+   `default_owned` instead of a hardcoded banner id, and pins `search_path`.
+   It also closes a policy-without-GRANT gap open since 022: `player_cosmetics`
+   and `player_loadout` carried own-row SELECT policies with no matching table
+   grant, so those reads were unreachable; both are revoked and re-granted
+   `SELECT` to `authenticated` only. It moves no value and rewrites no player
+   row: the only UPDATE it performs backfills the catalog flag that replaces
+   the `banner_hatchery_standard` literal, and unequip deletes a selection from
+   `player_loadout` while the owned row in `player_cosmetics` is never touched.
+   **It changes no cron definition** — no schedule is added, removed or
+   retimed, so `EXPECTED_CRON_DEFINITIONS_SHA` is unaffected and every cron
+   proof in this procedure holds unchanged. Release order is deploy the app
+   first, then apply: the app degrades to "no snake cosmetics" while the RPCs
+   are absent, so a deploy that precedes this file is a quiet no-op.
 8. Empty post-push dry-run and hosted read-only migration-ledger/structural probe.
 9. A second proof that canonical alias and cron remain exactly outgoing after
    all schema work.

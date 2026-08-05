@@ -24,7 +24,7 @@
 | Language | Plain-language vocabulary live across the game, with a mounted glossary |
 | Engine rules | `snake-rules-2026-08-05.2` |
 | Player Evolution | **Live.** New players receive the seven-Gene starter curriculum; trials run in THE DROP and unlocks are revealed on Results |
-| Public surface | 23 flags, contract hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`; health reports 23/23 with no disabled flags |
+| Public surface | Live: 23 flags, contract hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`; health reports 23/23 with no disabled flags. Checked in and pending: 24 flags at `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, adding `NEXT_PUBLIC_SNAKE_COSMETICS`; it becomes the live contract only when the LF-B release cuts over |
 | Player-feature baseline | `03d185a5976654c42fa33994ec294b04a381d055` |
 | Current deployment | `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`supasnake-obeb9b2ap-josef-bells-projects.vercel.app`) |
 | Previous deployment | `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`4e51e81`); same schema and 23-flag surface, but serves `snake-rules-2026-08-05.1`, so rolling back is itself a rules change |
@@ -235,14 +235,21 @@ NEXT_PUBLIC_CAREER_SPINE_V1=true  # presentation only; never gates settlement
 NEXT_PUBLIC_RUN_FLOW_V1=true  # cockpit Setup and Victory Lap
 NEXT_PUBLIC_GENOME_V2=true  # new starts use physical-interaction v2; stamped v1 remains supported
 NEXT_PUBLIC_PLAYER_EVOLUTION_V1=true  # the starter curriculum; the 23rd flag
+NEXT_PUBLIC_SNAKE_COSMETICS=true  # the home cosmetics menu; the 24th flag, checked in but not yet deployed
 ```
 
-The complete 23-flag production set is defined only in
+The complete production set is defined only in
 `config/production-public-surface.json`; the list above highlights the
 player-flow flags most relevant to this status summary. The 23rd,
 `NEXT_PUBLIC_PLAYER_EVOLUTION_V1`, was added by WP-F and went live with
-`4e51e817`; the deployed artifact now proves the 23/23 contract and hash
-`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`.
+`4e51e817`; the deployed artifact proves that 23/23 contract and hash
+`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. The
+checked-in manifest has since gone to **24 flags** and hash
+`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, adding
+`NEXT_PUBLIC_SNAKE_COSMETICS` for the LF-B home cosmetics menu — but that flag is
+**not deployed**. It ships with the LF-B release alongside migration 069, and
+until that cutover live health correctly reports 23/23 and the old hash. Never
+write 24/24 as a live fact before then.
 
 ## Known follow-ups
 

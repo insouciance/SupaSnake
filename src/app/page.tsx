@@ -35,6 +35,9 @@ import {
   type HomeCommand,
 } from '@/components/home/HomeCommandRail';
 import { HomeCodexRelic } from '@/components/home/HomeCodexRelic';
+import { CosmeticsMenu } from '@/components/home/CosmeticsMenu';
+import { useSnakeCosmetics } from '@/hooks/useSnakeCosmetics';
+import { SNAKE_COSMETICS_ENABLED } from '@/lib/features/snakeCosmetics';
 import type { ChargeSnapshot } from '@/lib/store/gameStore';
 import { isStrainId } from '@/shared/game/strains';
 import {
@@ -73,6 +76,30 @@ const SpecimenChamber = dynamicImport(
   () => import('@/components/home/SpecimenChamber'),
   { ssr: false, loading: () => null }
 );
+
+/**
+ * SHARED-ELEMENT CONTINUITY — how the wardrobe opens.
+ *
+ * The snake never unmounts, never moves, and never reloads. What changes is
+ * the chrome around it: Home's menus blur and fade back, the cosmetics
+ * selectors fade in where the dock was, and the camera pushes slightly in.
+ * The player should read it as approaching their pet, not as visiting a page.
+ *
+ * `blur` on a wrapper creates a containing block for absolutely positioned
+ * descendants, which is why the chrome wrapper spans `inset-0` instead of
+ * being a bare `<div>`: the header and the codex relic position themselves
+ * against the viewport, and a collapsed static wrapper would move them the
+ * instant the blur turned on. Spanning the same box keeps their coordinates
+ * identical in both states — the transition may change appearance, never
+ * layout.
+ *
+ * The step-back is paired with `inert` at the call site. A faded control that
+ * is still clickable and still in the tab order is a trap, and no amount of
+ * opacity makes it not one.
+ */
+const HOME_CHROME_TRANSITION =
+  'transition-[opacity,filter] duration-300 ease-out motion-reduce:transition-none';
+const HOME_CHROME_BACK = 'pointer-events-none opacity-0 blur-[6px]';
 
 /** Full catalog: 10 variants per MVP dynasty (full data lives in the DB) */
 const TOTAL_VARIANTS = MVP_DYNASTIES.length * 10;
@@ -116,6 +143,18 @@ export default function Home() {
   const [clanIdentity, setClanIdentity] = useState<HomeClanIdentity | null>(null);
   const [chamberReaction, setChamberReaction] = useState<HomeCommand | null>(null);
   const [chamberReady, setChamberReady] = useState(false);
+  /**
+   * The wardrobe is a STATE of this page, never a route.
+   *
+   * Shared-element continuity, stated as a rule: the canvas is mounted once
+   * and the snake never unmounts, never moves, and never reloads. Opening the
+   * cosmetics menu blurs the home chrome out, fades the selectors in, and
+   * pushes the camera slightly toward the specimen. A route would remount the
+   * canvas, and a remounted canvas is a visible page change no amount of
+   * transition styling can hide — the player would watch their pet blink out
+   * and come back.
+   */
+  const [cosmeticsOpen, setCosmeticsOpen] = useState(false);
   const [missionIndex, setMissionIndex] = useState(0);
   const [launchState, dispatchLaunch] = useReducer(
     transitionLaunch,
@@ -129,6 +168,32 @@ export default function Home() {
   const [signalTakeError, setSignalTakeError] = useState<string | null>(null);
 
   const token = session?.access_token;
+
+  // The wardrobe. Read even when the flag is off: the loadout is server-held
+  // and the snake must wear what the database says whether or not this build
+  // can open the menu that changed it. Rolling the flag back removes the
+  // wardrobe, never the clothes.
+  const cosmetics = useSnakeCosmetics(token);
+  const cosmeticsAvailable =
+    SNAKE_COSMETICS_ENABLED && isAuthenticated && cosmetics.catalog.live;
+
+  // A flag flip or a sign-out while the tray is open must close it rather than
+  // leave an orphaned surface over the chamber.
+  useEffect(() => {
+    if (!cosmeticsAvailable && cosmeticsOpen) setCosmeticsOpen(false);
+  }, [cosmeticsAvailable, cosmeticsOpen]);
+
+  // Escape closes the wardrobe. It is not a modal — nothing is trapped and
+  // Home is still fully operable behind it — but Escape is what a player
+  // reaches for to back out of a state, and that expectation is not modal.
+  useEffect(() => {
+    if (!cosmeticsOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCosmeticsOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [cosmeticsOpen]);
 
   // No silent new identity: if a registered account previously used this
   // device and the session is gone, surface "Welcome back" instead of
@@ -635,7 +700,12 @@ export default function Home() {
       {/* The Specimen Chamber - full-viewport scene behind the UI. The
           placeholder holds the atmosphere until WebGL is live, then the
           chamber fades in from black (600ms). */}
-      <div className="absolute inset-0 z-0" aria-hidden="true">
+      {/* Not aria-hidden as a whole: the specimen carries a real, labelled tap
+          target when the wardrobe is available, and a control inside an
+          aria-hidden subtree is a control no assistive technology can reach.
+          The <canvas> itself announces nothing, which is correct — it is the
+          picture, and the button is how the platform is told about it. */}
+      <div className="absolute inset-0 z-0">
         <ChamberPlaceholder />
         <div
           className={`absolute inset-0 transition-opacity duration-[600ms] ease-out ${
@@ -646,6 +716,12 @@ export default function Home() {
             dynasty={dynasty}
             reaction={chamberReaction}
             onReady={() => setChamberReady(true)}
+            loadout={cosmetics.displayLoadout}
+            pushIn={cosmeticsOpen}
+            onSelect={
+              cosmeticsAvailable ? () => setCosmeticsOpen(true) : undefined
+            }
+            selectLabel="Dress up your snake"
           />
         </div>
       </div>
@@ -749,20 +825,57 @@ export default function Home() {
         />
       )}
 
-      <HomeIdentityHud
-        specimen={specimenIdentity}
-        clan={clanIdentity}
-        authenticated={isAuthenticated}
-        dna={stats?.dna ?? null}
-        energy={stats?.charge ?? null}
-      />
-      <HomeCodexRelic />
+      {/* HOME CHROME. It steps back while the wardrobe is open — blurred and
+          faded, not unmounted, so nothing reflows and the return is the same
+          motion reversed. `inert` is what makes "stepped back" true rather
+          than cosmetic: a faded control that is still clickable and still in
+          the tab order is a trap, and blur alone would leave one. */}
+      <div
+        className={`pointer-events-none absolute inset-0 z-10 ${HOME_CHROME_TRANSITION} ${
+          cosmeticsOpen ? HOME_CHROME_BACK : ''
+        }`}
+        data-home-chrome
+        data-stepped-back={cosmeticsOpen}
+        inert={cosmeticsOpen}
+      >
+        <HomeIdentityHud
+          specimen={specimenIdentity}
+          clan={clanIdentity}
+          authenticated={isAuthenticated}
+          dna={stats?.dna ?? null}
+          energy={stats?.charge ?? null}
+        />
+        <HomeCodexRelic />
+      </div>
+
+      {/* The wardrobe takes the dock's place, in the dock's position, so the
+          player's eye does not travel: the controls change, the layout does
+          not. */}
+      {cosmeticsOpen && (
+        <div
+          className="absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-20 flex flex-col items-center gap-3 px-4 animate-fade-up sm:bottom-[calc(1rem+var(--consent-banner-height,0px))]"
+          data-home-cosmetics-dock
+        >
+          <CosmeticsMenu
+            catalog={cosmetics.catalog}
+            busy={cosmetics.busy}
+            error={cosmetics.error}
+            onEquip={cosmetics.equip}
+            onPreview={cosmetics.preview}
+            onClose={() => setCosmeticsOpen(false)}
+          />
+        </div>
+      )}
 
       {/* Context and four equal player destinations. The dock stays clear of
           phone safe areas and the measured desktop consent surface. */}
       <div
-        className="absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-10 flex flex-col items-center gap-3 px-4 sm:bottom-[calc(1rem+var(--consent-banner-height,0px))]"
+        className={`absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-10 flex flex-col items-center gap-3 px-4 sm:bottom-[calc(1rem+var(--consent-banner-height,0px))] ${HOME_CHROME_TRANSITION} ${
+          cosmeticsOpen ? HOME_CHROME_BACK : ''
+        }`}
         data-home-command-dock
+        data-stepped-back={cosmeticsOpen}
+        inert={cosmeticsOpen}
       >
         {/* The World Signal (§7.2) — the ONE daily surface, standing in the
             slot the retired Contracts board occupied (§12.2, §13). The dock is

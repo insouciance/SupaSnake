@@ -6,18 +6,21 @@
  *   Server authority: the equip_cosmetic RPC enforces ownership + slot
  *   match + the badge pick-3 cap; the client never writes
  *   player_loadout. 503 during the pre-migration-022 window.
+ *
+ * Since migration 069 this also serves the snake slots (face / crown /
+ * food_skin), so the home cosmetics menu and the settings Identity panel
+ * write through one route and one RPC rather than two.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isMissingIdentityInfra } from '@/lib/server/identity';
+import { isCosmeticSlot } from '@/shared/game/cosmeticSlots';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
-
-const SLOTS = ['title', 'banner', 'badge', 'trail', 'board_accent', 'emblem'];
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,7 +55,10 @@ export async function POST(request: NextRequest) {
     const cosmeticId =
       typeof body?.cosmeticId === 'string' ? body.cosmeticId : null;
 
-    if (!SLOTS.includes(slot)) {
+    // The slot vocabulary is authored once in `@/shared/game/cosmeticSlots`
+    // and pinned to migration 069's CHECK constraints by
+    // `cosmeticSlots.migration.test.ts`. This route never re-lists it.
+    if (!isCosmeticSlot(slot)) {
       return NextResponse.json({ error: 'invalid_slot' }, { status: 400 });
     }
 

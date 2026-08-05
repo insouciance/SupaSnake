@@ -18,11 +18,24 @@ describe('HomeCommandRail', () => {
     );
 
     const commands = ['Play', 'Lab', 'Compete', 'You'];
+    const sizes = new Set<string>();
     for (const name of commands) {
       const target = screen.getByRole(name === 'Play' ? 'button' : 'link', { name });
-      expect(target).toHaveClass('h-14', 'min-h-[44px]', 'min-w-[44px]');
+      // The premise is EQUAL and TOUCH-SIZED, not one particular size class.
+      // INK & AMBER took the chip 56px -> 64px so four 2.5px keylines read as
+      // four chips rather than one bar; pinning `h-14` pinned the old room's
+      // number, not the contract. The contract is restated here: every command
+      // is the same size, and none is under the 44px touch floor.
+      expect(target).toHaveClass('min-h-[44px]', 'min-w-[44px]');
+      const size = Array.from(target.classList)
+        .filter((name) => /^[hw]-\d+$/.test(name))
+        .sort()
+        .join(' ');
+      expect(size).not.toBe('');
+      sizes.add(size);
       expect(target.querySelector('.sr-only')).toHaveTextContent(name);
     }
+    expect(sizes.size).toBe(1);
     expect(screen.getByTestId('home-command-rail')).toHaveClass('grid-cols-4');
   });
 
