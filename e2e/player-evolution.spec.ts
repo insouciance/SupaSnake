@@ -93,6 +93,21 @@ function curriculumBody(account: CurriculumAccount) {
   };
 }
 
+/**
+ * The transitions that CLOSE an invitation.
+ *
+ * `seen` is deliberately excluded: reading the banner is not declining, so a
+ * surface that marks the row seen must not register as an answer here
+ * (decision 14). Only **Show me** and **Not now** are answers.
+ */
+function terminalTransitions(
+  transitions: Array<{ id: string; transition: string }>
+): string[] {
+  return transitions
+    .map((entry) => entry.transition)
+    .filter((transition) => transition !== 'seen');
+}
+
 /** Serve `/api/genome/curriculum` from one mutable account. */
 async function installCurriculumApi(
   page: Page,
@@ -237,9 +252,7 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
     // this browser, which is what makes a **Not now** on a phone hold on a
     // laptop (boundary 9).
     await expect
-      .poll(() => transitions.map((entry) => entry.transition), {
-        timeout: 15_000,
-      })
+      .poll(() => terminalTransitions(transitions), { timeout: 15_000 })
       .toEqual(['dismissed']);
     await expect(nextAction).not.toHaveAttribute(
       'data-next-action',
@@ -259,9 +272,7 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
     await nextAction.click({ force: true });
     await page.waitForURL(/\/codex/, { timeout: 60_000 });
     await expect
-      .poll(() => transitions.map((entry) => entry.transition), {
-        timeout: 15_000,
-      })
+      .poll(() => terminalTransitions(transitions), { timeout: 15_000 })
       .toEqual(['dismissed', 'resolved']);
 
     // REFERENCE (§5): the destination names the Gene and where to read it,
@@ -455,9 +466,12 @@ function installSettledCurriculumRun(
 
   installReturningPrimalAccount(page, { beat });
   return {
+    // The next settlement offers the identical invitation, because declining
+    // one costs the player nothing and hides nothing. The recorded transitions
+    // accumulate rather than reset, so the second assertion reads the whole
+    // history — `['dismissed', 'resolved']` — and not just the latest answer.
     reopen: () => {
       open = true;
-      transitions.length = Math.min(transitions.length, 1);
     },
   };
 }
