@@ -182,7 +182,11 @@ jobs:
             exit 0
           fi
           if [ "${{ matrix.flags }}" = 'legacy-workbench' ]; then
-            node scripts/production-public-surface-cli.mjs github-env-off $DEFAULTS >> "$GITHUB_ENV"
+            # Excluded from the off list rather than overridden after it, so
+            # this flag is assigned exactly once and the leg does not depend
+            # on which duplicate $GITHUB_ENV line wins.
+            node scripts/production-public-surface-cli.mjs github-env-off \
+              $DEFAULTS NEXT_PUBLIC_WORKBENCH_V1 >> "$GITHUB_ENV"
             echo 'NEXT_PUBLIC_WORKBENCH_V1=true' >> "$GITHUB_ENV"
             echo 'legacy Workbench leg: Genome v2 off, Workbench v1 on'
             echo '  curriculum OFF, career spine OFF; focused Research journey'
