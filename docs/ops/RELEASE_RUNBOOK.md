@@ -1,32 +1,28 @@
 # Production Release Runbook
 
-Current production baseline: the Player Evolution flag-on release
-`4e51e817b7ceb802530c35ffb8399afaa6b2fc3a`, independently verified on
-5 August 2026 by successful production workflow `30992325611` as deployment
-`dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1`
-(`supasnake-ibhhdbou5-josef-bells-projects.vercel.app`). It carried no
-migration; hosted migrations remain aligned through **068** with no pending
-plan.
+Current production baseline: the Wave-1 rules train
+`03d185a5976654c42fa33994ec294b04a381d055`, independently verified on
+5 August 2026 by successful production workflow `31035732323` (dispatched with
+`confirmation=DEPLOY`, `payments_mode=test`, `expected_migrations=none`; verify
+18:39–18:55 UTC, deploy 18:56–19:03 UTC) as deployment
+`dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na`
+(`supasnake-obeb9b2ap-josef-bells-projects.vercel.app`). It also carried the
+previous release record. The outgoing anchor was
+`dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` on `4e51e81`.
 
-**This was the first change to the public-surface contract in the project's
-history.** The manifest went from 22 flags to 23 and the deterministic contract
-hash changed from
-`8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99` to
-`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`, recomputed
-independently before dispatch and matched. Canonical health reports 23/23 with
-an empty `disabledFlags`, the exact release SHA, healthy database, project ref
+**This is a rules-only release.** It carried no migration — the linked plan was
+exactly `none` and the dry run reported “Remote database is up to date”, so
+hosted migrations remain aligned through **068**. The public surface is
+unchanged at 23 flags, with `contractHash` equal to `declaredHash` at
+`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. Canonical
+health reports the exact release SHA, healthy database, project ref
 `gmpwyzqafoyowndbvlma`, and Genome schema/catalog/Ascendance 2/2/2 with eight
-Splices, rules version 2, and neutral 2/3/4 Strain thresholds. The engine rules
-version remains `snake-rules-2026-08-05.1`.
+Splices, rules version 2, and neutral 2/3/4 Strain thresholds. URL sanity: `/`,
+`/game` and `/lab` return 200 and an unauthenticated session start returns 401.
 
-That the curriculum is actually served was proved three independent ways: the
-chunk marker `curriculum_trial_offered` was absent before the cutover and
-present after; `/api/genome/curriculum` answers 401 rather than 404, so the
-route exists and is merely unauthenticated; and `/api/health` carries a per-flag
-runtime check.
-
-The dedicated read-only probe remains `cohesive_release_read_only_v5` at 16
-keys. Canonical alias, cron owner, and every cron host
+The dedicated read-only probe remains `cohesive_release_read_only_v5` and came
+back green on all 16 sentinels, including `settlementBoundsAligned` and
+`geneEligibilityContractValid`. Canonical alias, cron owner, and every cron host
 name the same READY production deployment; cron is enabled and its normalized
 definition hash remains
 `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
@@ -35,26 +31,49 @@ allowlist holds five contracts — `genome-v2-initial`, `genome-v2-resume`,
 `settlement-payload-bounds`, `player-gene-eligibility` and
 `settlement-sweep-primary`.
 
-The rules bump was verified in the served production chunk
-`2894-c16facb0187e24c2.js`, which carries `snake-rules-2026-08-05.1` with the
-old string absent. State the boundary of that proof honestly: canonical health
-was clean, but without hosted queries there is no positive proof that zero runs
-were open across the version change. Treat a rules bump as safe only in the
-sense that the served artifact is exactly the reviewed one.
+The engine rules version is now `snake-rules-2026-08-05.2`, verified in the
+served production chunk `2894-433978b3ede14d00.js`; the previous `.1` string is
+absent from all 40 chunks.
+
+### What a rules bump does to a run in flight
+
+Say this precisely, because the loose phrasing — “active runs replay under the
+old version” — is wrong and would mislead a future operator.
+
+A run whose `start_request_id` is set and whose `simulation_rules_version` no
+longer matches `SNAKE_RULES_VERSION` resolves to phase `incompatible`
+(`src/lib/server/runContinuity.ts`). `incompatible` is neither `prepared` nor
+`active`, so `canContinue` is false and `requiresAbandon` is true: the player is
+routed to recovery rather than silently resumed under rules the checkpoint was
+not derived from. `src/app/api/game/session/route.ts` classifies the same
+condition the same way on the abandon path.
+
+**Earned value is never invalidated by the bump.** The phase resolution puts
+`settling` and `terminal` ahead of the version comparison, so a completed run
+with no terminal timestamp stays `settling` and an already-terminal outcome
+stays `terminal` — and `requiresAbandon` explicitly excludes both. Terminal
+facts remain immutable server truth derived under their own stamped engine
+version, and the settlement sweep from migration 068 settles them unaided,
+without the player's tab.
+
+What is *not* solved is seamless continuation: a player mid-run across a bump
+loses that run's continuation and goes through recovery. That is the open CE-6
+item (FM-12), and it is a known gap rather than a property of this release.
 
 The live interaction-v2 contract uses optional physical Gene relics on a
-deterministic 6 ± 2-food cadence; already-issued or omitted interaction stamps
+deterministic 8 ± 2-food cadence; already-issued or omitted interaction stamps
 retain automatic-offer v1 compatibility. The now-previous deployment
-`dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`28d21f1`) is the artifact-level rollback
-candidate. It shares hosted schema 001–068 and the same rules version, so
-resume and settlement stay safe under it — but it serves the **22-flag** public
-surface and the old contract hash. A rollback to it is therefore a public
-contract change in its own right, and it withdraws the curriculum from every
-player mid-journey; prefer a reviewed forward release. The artifact before it
-(`dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL`, `bf3020c`) additionally predates the rules
-bump, so a run checkpointed under `snake-rules-2026-08-05.1` would be resumed by
-an artifact that does not know that version, and it gives up the Side Door
-treatment, saturation extraction, and the sweep as primary settler. Older
+`dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`4e51e81`) is the artifact-level rollback
+candidate. It shares hosted schema 001–068 and the same 23-flag public surface
+and contract hash, so the public contract is unaffected — but it serves
+`snake-rules-2026-08-05.1`, so rolling back is itself a rules change: runs
+checkpointed under `.2` would resolve as `incompatible` and be routed to
+recovery, exactly as described above, while terminal and settling outcomes stay
+safe. It also gives up the CYBER connectivity guarantee, the 8 ± 2 relic
+cadence, and the food-wave and portal fairness fixes. The artifact before it
+(`dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M`, `28d21f1`) additionally serves the
+**22-flag** surface, so a rollback that far is a public contract change in its
+own right and withdraws the curriculum from every player mid-journey. Older
 artifacts additionally restore the
 stranded-settlement trap that
 hard-blocked two production accounts behind the “Result secured” modal

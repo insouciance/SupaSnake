@@ -22,31 +22,31 @@
 | Tactical Genome | v2 enabled; player-pulled relics, six loci, 13 shared Genes, three signatures, eight Splices, 2/3/4 neutral Strain ladder |
 | Run continuity | Nonblocking save status in the cockpit; only a proven exclusive-lease conflict interrupts play |
 | Language | Plain-language vocabulary live across the game, with a mounted glossary |
-| Engine rules | `snake-rules-2026-08-05.1` |
+| Engine rules | `snake-rules-2026-08-05.2` |
 | Player Evolution | **Live.** New players receive the seven-Gene starter curriculum; trials run in THE DROP and unlocks are revealed on Results |
 | Public surface | 23 flags, contract hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`; health reports 23/23 with no disabled flags |
-| Player-feature baseline | `4e51e817b7ceb802530c35ffb8399afaa6b2fc3a` |
-| Current deployment | `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`supasnake-ibhhdbou5-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`28d21f1`); same schema and rules version, but serves the 22-flag surface, so a rollback is itself a public contract change and withdraws the curriculum mid-journey |
+| Player-feature baseline | `03d185a5976654c42fa33994ec294b04a381d055` |
+| Current deployment | `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`supasnake-obeb9b2ap-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`4e51e81`); same schema and 23-flag surface, but serves `snake-rules-2026-08-05.1`, so rolling back is itself a rules change |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release turned Player Evolution on. PR 83 landed CE-3a value
-protection, PR 84 the WP-D reveal and guidance surfaces, PR 86 the WP-E clan
-handoff together with two account-safety fixes, and PR 85 the WP-F telemetry
-and the manifest entry that made the flag public. It carried no migration: the
-curriculum's tables, RPCs and backfill had already shipped dormant in migration
-067, and this release only changed which artifact the flag is compiled into.
+The current release is the Wave-1 rules train (PR 88), which also carried the
+previous release record. It is **rules-only**: no migration, no schema change,
+and no public-surface change — the linked plan was exactly `none`, the hosted
+schema stays 001–068, and the 23-flag contract hash is unchanged. What moved is
+the engine, to `snake-rules-2026-08-05.2`: the CYBER connectivity guarantee, the
+8 ± 2 relic cadence, and the food-wave and portal fairness fixes.
 
-Every PR passed all ten protected-PR checks, including all four
-isolated-Supabase E2E flag shapes, and each merge's post-main push workflows
-passed on its exact main SHA. The release passed full type checking, lint,
-`verify:constitution`, the production build, the deterministic cockpit
-verifications, local migrations 001–068 from zero, ordinary and two-session SQL
+The release passed all ten protected-PR checks including the four
+isolated-Supabase E2E flag shapes, its post-main push workflows on the exact
+main SHA, full type checking, lint, `verify:constitution`, the production build,
+the deterministic cockpit verifications, the starter-pool simulation gate at
+58/58, local migrations 001–068 from zero, ordinary and two-session SQL
 integration, the production runtime dependency audit, staged and canonical
 health, the 16-key `cohesive_release_read_only_v5` schema probe, exact cron
 ownership, and focused public-production smoke. Production workflow
-`30992325611` deployed it. Detailed evidence is maintained
+`31035732323` deployed it. Detailed evidence is maintained
 in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -61,7 +61,7 @@ in `docs/ops/QA_CHECKLIST.md`.
 - The arena remains centered and clear of routine HUD elements.
 - CYBER and COSMIC keep +1 normal body growth; PRIMAL owns the degressive
   +4/+3/+2/+1 body-pressure curve, while ordinary Genome opportunities use their
-  own deterministic 6 ± 2-food (4–8) clock.
+  own deterministic 8 ± 2-food (6–10) clock.
 - Growth and CYBER speed changes use brief, non-blocking board callouts rather
   than permanent cockpit telemetry.
 - Board pressure now has one shared physical/committed occupancy model across
@@ -77,7 +77,10 @@ in `docs/ops/QA_CHECKLIST.md`.
 - Strategic gene, mutation, portal, infusion, and surge decisions command the
   frozen arena in centered dialogs.
 - Ordinary Genome opportunities place one reachable physical relic for 40
-  resolved movement ticks. Placement and expiry never interrupt play; only
+  resolved movement ticks, on an 8 ± 2-food cadence (6–10 inclusive). Eight
+  leaves room for a pick to matter before the next one lands; the trade, ruled
+  and recorded, is that build opportunities by food 42 fall from seven to five.
+  Placement and expiry never interrupt play; only
   deliberate collection rolls candidates and freezes the arena. The next
   interval begins after collection or expiry, and food eaten while a relic is
   live cannot accelerate it. Patient doubles the sampled interval and Ascetic
@@ -129,6 +132,18 @@ in `docs/ops/QA_CHECKLIST.md`.
   RIDE ON, TRADE UP, GOLDEN HOUR, and GOLD, PULSE, COILS, WARP and RISK. A
   mounted glossary is available wherever the terms appear, so a term is never
   the thing standing between a player and the decision.
+- CYBER's board keeps closing, but it can no longer cut the arena in two. A
+  terrain cell that would split the free field into separate regions is skipped
+  and laid on a later pass once it no longer partitions anything, so cells the
+  player had a route to are never sealed off behind a block. Unlimited inward
+  ring progression is unchanged — it is CYBER's ruled trait.
+- The carry only charges for doors the player was actually shown. A portal that
+  cannot be drawn on a crowded board becomes a debt that is retried until it can
+  be placed, rather than counting as met while never appearing; the debt
+  survives a resume with the checkpoint.
+- The food wave stays alive and the render stays honest: the board no longer
+  keeps drawing a food that has already been consumed, so a long run cannot
+  reach a state where it flies through food that does not register.
 - A new player is taught rather than dropped in. They receive a seven-Gene
   starter curriculum; trials are offered inside THE DROP rather than in a
   separate tutorial mode; unlocks are revealed on Results; the first BANK gets
