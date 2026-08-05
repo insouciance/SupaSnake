@@ -19,6 +19,27 @@ if (command === 'hash') {
   process.stdout.write(
     `SUPASNAKE_PUBLIC_SURFACE_HASH=${PRODUCTION_PUBLIC_SURFACE_HASH}\n`
   );
+} else if (command === 'github-env-off') {
+  /**
+   * The mirror image of `github-env`: every manifest flag pinned to `false`.
+   *
+   * CLAUDE.md's rule is that a rollback path is tested DELIBERATELY and never
+   * inferred from an omitted flag. An omitted flag happens to read as off
+   * today only because every flag is compared with `=== 'true'`; the first
+   * flag written as `!== 'false'` would silently flip a rollback leg to the
+   * ON path and the leg would go green having tested the shipped
+   * configuration twice. Deriving the off state from the same manifest as the
+   * on state also means a new flag arrives on BOTH legs at once, instead of
+   * arriving on the production leg and quietly missing the rollback one.
+   *
+   * Names passed as arguments are omitted from the output, for flags that are
+   * production defaults on every leg and are set elsewhere.
+   */
+  const except = new Set(process.argv.slice(3));
+  for (const name of PRODUCTION_PUBLIC_FLAGS) {
+    if (except.has(name)) continue;
+    process.stdout.write(`${name}=false\n`);
+  }
 } else if (command === 'vercel-args') {
   const values = [
     ...PRODUCTION_PUBLIC_FLAGS.map((name) => `${name}=true`),
@@ -37,6 +58,8 @@ if (command === 'hash') {
     })}\n`
   );
 } else {
-  console.error('Usage: production-public-surface-cli.mjs hash|github-env|vercel-args|json');
+  console.error(
+    'Usage: production-public-surface-cli.mjs hash|github-env|github-env-off [except...]|vercel-args|json'
+  );
   process.exitCode = 2;
 }

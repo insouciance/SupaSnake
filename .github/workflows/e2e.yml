@@ -63,10 +63,13 @@ jobs:
   # their two mixed states run the focused public Research journey. The
   # aggregate job below keeps the branch-protection name `e2e`.
   #
-  # THE CURRICULUM AXIS (WP-F). `NEXT_PUBLIC_PLAYER_EVOLUTION_V1` is the 23rd
-  # manifest flag, so it arrives on the two legs that inject the manifest and
-  # is absent from the two that do not. Both of its states are proved by legs
-  # that run the WHOLE suite, which is why no fifth leg was added:
+  # THE MATRIX. Every leg's flag state comes from ONE source, the checked-in
+  # manifest `config/production-public-surface.json` (24 flags as of LF-B,
+  # which added `NEXT_PUBLIC_SNAKE_COSMETICS`). The production leg arms it as
+  # written; the off legs arm its exact mirror image. Neither list is
+  # maintained here, so a new flag cannot reach the production leg and miss
+  # the rollback one — the drift this table used to invite. Do not add flag
+  # names to this file.
   #
   #   leg                       | curriculum | career spine | genome v2 | specs
   #   --------------------------|------------|--------------|-----------|-------
@@ -74,6 +77,10 @@ jobs:
   #   legacy-workbench          | OFF        | OFF          | OFF       | lexicon
   #   genome-without-workbench  | ON         | ON           | ON        | lexicon
   #   production                | ON         | ON           | ON        | all
+  #
+  # OFF means pinned `=false`, never absent. Both states of every flag are
+  # proved by legs that run the WHOLE suite, which is why no fifth leg was
+  # added for the curriculum axis:
   #
   # The career-spine column is the one PR #84 asked to be written down: every
   # curriculum surface reads synced attention state, which NotificationProvider
@@ -144,13 +151,38 @@ jobs:
       # time, so a flag exported after the build has no effect at all.
       - name: Arm feature flags for this leg
         run: |
+          # EVERY OFF STATE IS PINNED, NEVER OMITTED (CLAUDE.md).
+          #
+          # These legs used to arm nothing and let the absent flag mean "off".
+          # That is only true while every flag is read with `=== 'true'`: the
+          # first one written as `!== 'false'` would flip its rollback leg to
+          # the ON path, and the leg would pass having tested the shipped
+          # configuration a second time. `github-env-off` derives the off
+          # state from the SAME manifest the production leg arms from, so a
+          # new flag cannot land on one leg and miss the other.
+          #
+          # The two production defaults are excluded because the job-level
+          # `env:` already sets them true on every leg.
+          DEFAULTS='NEXT_PUBLIC_FTUE_V2 NEXT_PUBLIC_HUD_COCKPIT_V1'
           if [ "${{ matrix.flags }}" = 'rollback' ]; then
-            echo 'rollback leg: no NEXT_PUBLIC_* armed'
+            node scripts/production-public-surface-cli.mjs github-env-off $DEFAULTS >> "$GITHUB_ENV"
+            echo 'rollback leg: every manifest flag pinned OFF explicitly'
             echo '  curriculum OFF, career spine OFF, Genome v2 OFF; full suite'
             echo '  this is the leg that proves the curriculum rollback path'
+            # The production leg fails loudly when its flags are missing; the
+            # rollback leg deserves the same treatment in the other direction.
+            # A rollback leg that quietly armed a flag ON would prove nothing
+            # and look identical in the log.
+            for required in NEXT_PUBLIC_PLAYER_EVOLUTION_V1 NEXT_PUBLIC_CAREER_SPINE_V1 NEXT_PUBLIC_GENOME_V2; do
+              if ! grep -qx "${required}=false" "$GITHUB_ENV"; then
+                echo "::error::rollback leg is missing ${required}=false; the off path would not be under test"
+                exit 1
+              fi
+            done
             exit 0
           fi
           if [ "${{ matrix.flags }}" = 'legacy-workbench' ]; then
+            node scripts/production-public-surface-cli.mjs github-env-off $DEFAULTS >> "$GITHUB_ENV"
             echo 'NEXT_PUBLIC_WORKBENCH_V1=true' >> "$GITHUB_ENV"
             echo 'legacy Workbench leg: Genome v2 off, Workbench v1 on'
             echo '  curriculum OFF, career spine OFF; focused Research journey'
@@ -160,6 +192,9 @@ jobs:
             node scripts/production-public-surface-cli.mjs github-env \
               | grep -v '^NEXT_PUBLIC_WORKBENCH_V1=' \
               >> "$GITHUB_ENV"
+            # Pinned, not merely dropped: this leg's whole subject is the
+            # Workbench being OFF, so it says so.
+            echo 'NEXT_PUBLIC_WORKBENCH_V1=false' >> "$GITHUB_ENV"
             echo 'Workbench rollback leg: Genome v2 on, Workbench v1 off'
             echo '  curriculum ON, career spine ON; focused Research journey'
             echo '  the curriculum is inert here: that journey is signed out'
