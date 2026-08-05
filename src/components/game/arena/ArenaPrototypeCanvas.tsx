@@ -132,6 +132,9 @@ function StaticSnake({ dynasty }: { dynasty: DynastyId }) {
   );
 }
 
+/** See the note on the live board's `SHADOW_MAP_SIZE`. */
+const SHADOW_MAP_SIZE: [number, number] = [1024, 1024];
+
 function PrototypeScene({
   dynasty,
   state,
@@ -181,7 +184,7 @@ function PrototypeScene({
         color="#fff1dc"
         intensity={1.25}
         castShadow
-        shadow-mapSize={isMobile ? [1024, 1024] : [2048, 2048]}
+        shadow-mapSize={SHADOW_MAP_SIZE}
         shadow-camera-near={6}
         shadow-camera-far={44}
         shadow-camera-left={-15}
@@ -286,7 +289,9 @@ function PrototypeScene({
 
       {!isMobile && effectsEnabled && (
         <EffectComposer>
+          {/* Half resolution - see the note on the live board's Bloom. */}
           <Bloom
+            resolutionScale={0.5}
             luminanceThreshold={0.68}
             luminanceSmoothing={0.88}
             intensity={0.58}

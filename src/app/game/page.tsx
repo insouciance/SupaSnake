@@ -578,6 +578,27 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/**
+ * Shadow map resolution, one value for every device.
+ *
+ * The shadow camera spans 30 world units, so 1024 is ~34 texels per cell over
+ * a board of chunky voxels. It was 2048 on desktop (68 texels/cell), which is
+ * resolution no silhouette on this board can use.
+ *
+ * It is reduced because the shadow pass now has more to draw: every solid
+ * object gained an ink hull, and the coverage fix aimed the frustum at the
+ * whole board instead of a corner, so the pass renders more casters over more
+ * of the map. Measured under CPU throttling, frame cost on this board is
+ * gameplay throughput and not just smoothness - the engine ticks on a
+ * `setInterval`, and a saturated main thread makes the browser DROP interval
+ * callbacks, so the run itself advances fewer ticks per second.
+ *
+ * COVERAGE - which is what was ratified - is unchanged. Only texel density
+ * falls, and it falls to a value still well above what a one-cell voxel can
+ * resolve.
+ */
+const SHADOW_MAP_SIZE: [number, number] = [1024, 1024];
+
 function directionCanRelease(result: SetDirectionResult): boolean {
   return result === 'accepted' || result === 'duplicate';
 }
@@ -7555,7 +7576,7 @@ export default function GamePage() {
           color="#fff1dc"
           intensity={HUD_COCKPIT_V1_ENABLED ? 1.25 : 1.45}
           castShadow
-          shadow-mapSize={isMobile ? [1024, 1024] : [2048, 2048]}
+          shadow-mapSize={SHADOW_MAP_SIZE}
           shadow-camera-near={6}
           shadow-camera-far={44}
           shadow-camera-left={-15}
@@ -7629,7 +7650,34 @@ export default function GamePage() {
             let ordinary lit surfaces bloom. The same set of objects glows. */}
         {!isMobile && (
           <EffectComposer>
+            {/* BLOOM RENDERS AT HALF RESOLUTION, AND THAT IS A CORRECTION
+                THE POP-OUT MADE NECESSARY.
+
+                Bloom is the one pass whose cost scales with the WHOLE canvas,
+                and the pop-out made that canvas 1.5x the bay on both axes -
+                2.25x the area - most of which is empty margin that exists only
+                so a twisted board can spill into it. Paying full-resolution
+                bloom for empty margin is pure waste, and measured under CPU
+                throttling it was the single largest frame cost on the board:
+                disabling the composer entirely moved the fixture from ~2.7fps
+                to ~10.9fps.
+
+                That matters beyond frame rate, because the engine ticks on a
+                `setInterval` rather than on rAF: a saturated main thread does
+                not slow the animation down, it makes the browser DROP interval
+                callbacks, so the run itself advances fewer ticks per second on
+                a weak device. Frame cost here is gameplay throughput.
+
+                Half resolution is a quarter of the pixels, so bloom now costs
+                LESS in absolute terms than it did before the pop-out existed
+                (2.25 x 0.25 = 0.56x), while looking the same: bloom is a
+                blurred copy of the bright parts, i.e. inherently low-frequency,
+                which is why rendering it at half or quarter resolution is
+                standard practice rather than a compromise. The threshold,
+                smoothing and intensity - the things that decide WHAT glows -
+                are untouched. */}
             <Bloom
+              resolutionScale={0.5}
               luminanceThreshold={HUD_COCKPIT_V1_ENABLED ? 0.68 : 0.5}
               luminanceSmoothing={HUD_COCKPIT_V1_ENABLED ? 0.88 : 0.9}
               intensity={HUD_COCKPIT_V1_ENABLED ? 0.58 : 0.75}

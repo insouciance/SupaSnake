@@ -770,10 +770,18 @@ function InstancedSnakeCore({
     // Ink hull: the identical instance set, one typed-array copy rather than a
     // second transform pass. The expansion happens in the vertex shader, so
     // the hull never needs its own matrices computed - only copied.
+    //
+    // Only the LIVE range is copied. The buffer is sized for the whole board
+    // (400 cells), and copying all of it every frame moved 25KB per frame to
+    // describe a five-segment snake. Everything past `count` is never drawn,
+    // so it does not need to be correct - and this runs on the frame loop of a
+    // board whose frame cost is gameplay throughput, because the engine ticks
+    // on a `setInterval` that a saturated main thread simply drops.
     const hull = hullRef.current;
     if (hull) {
+      const live = mesh.count * 16;
       (hull.instanceMatrix.array as Float32Array).set(
-        mesh.instanceMatrix.array as Float32Array
+        (mesh.instanceMatrix.array as Float32Array).subarray(0, live)
       );
       hull.instanceMatrix.needsUpdate = true;
       hull.count = mesh.count;
