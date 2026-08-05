@@ -451,6 +451,19 @@ function seedContinuityTerminalRun(options: {
   phase?: 'active' | 'terminal';
   freePlay?: boolean;
   rulesVersion?: string;
+  /**
+   * CE-3 only. Rewrites the ACCEPTED checkpoint's progress so the held path
+   * has real value to carry. The replay-proven path is not used by the tests
+   * that set this — they deliberately submit a proof the server refuses — so
+   * the checkpoint is a stand-in for "an accepted checkpoint of a run that had
+   * got somewhere", which is the only interesting case for F-02.
+   */
+  acceptedProgress?: {
+    foodEaten: number;
+    score: number;
+    dnaCollected: number;
+    elapsedMs: number;
+  };
 } = {}) {
   const now = Date.now();
   const leaseToken = 'route-terminal-lease-token-with-enough-entropy';
@@ -461,6 +474,12 @@ function seedContinuityTerminalRun(options: {
   });
   game.prepare();
   const opening = game.exportCheckpoint(now - 1_000);
+  if (options.acceptedProgress) {
+    opening.state.foodEaten = options.acceptedProgress.foodEaten;
+    opening.state.score = options.acceptedProgress.score;
+    opening.state.dnaCollected = options.acceptedProgress.dnaCollected;
+    opening.privateState.elapsedMs = options.acceptedProgress.elapsedMs;
+  }
   game.activatePrepared(now - 1_000);
   game.tick();
   game.tick();
@@ -1415,6 +1434,145 @@ describe('players.high_score is written from the recompute (F-1, WP-2.05)', () =
 // `expire_stale_game_sessions` skips continuity rows, and both pending
 // settlement scans require a durable envelope this run never staged. The start
 // path now folds it first, through this route's own audited settlement branch.
+
+/**
+ * CE-3 · audit F-02, at the route.
+ *
+ * The old answer to a terminal proof the server could not replay was 400
+ * `retryable: false`. The run then had no exit: it could not be re-ended, it
+ * could not be resumed, and `expire_stale_game_sessions` closed it as
+ * `expired` three hours later — paying nothing, while the Energy the player
+ * had committed to it stayed spent. That is the value destruction this suite
+ * pins shut.
+ */
+describe('a refused terminal proof settles the held outcome and keeps its Energy', () => {
+  const HELD_PROGRESS = {
+    foodEaten: 4,
+    score: 40,
+    dnaCollected: 20,
+    elapsedMs: 30_000,
+  };
+
+  /** The fixture, with a proof the server cannot replay past the collision. */
+  function refusedTerminalRun() {
+    const fixture = seedContinuityTerminalRun({
+      acceptedProgress: HELD_PROGRESS,
+    });
+    return {
+      ...fixture,
+      request: {
+        ...fixture.request,
+        replay: {
+          ...fixture.request.replay,
+          // Five ticks past a board that has already ended. Every Genome v2
+          // invariant in the audit's section 1a lands in this same position.
+          toTick: fixture.request.replay.toTick + 5,
+        },
+      },
+    };
+  }
+
+  it('settles instead of answering 400, and says the outcome is held', async () => {
+    const fixture = refusedTerminalRun();
+
+    const response = await POST(post(fixture.request));
+    const body = await response.json();
+
+    expect(response.status).not.toBe(400);
+    expect([200, 202]).toContain(response.status);
+    expect(session().end_reason).toBe('completed');
+    // Never the state that used to swallow it.
+    expect(session().end_reason).not.toBe('expired');
+
+    if (response.status === 200) {
+      expect(body.underReview).toMatchObject({ held: true });
+      expect(typeof body.underReview.detail).toBe('string');
+    }
+  });
+
+  it('stages the held facts, so the settlement sweep can finish it alone', async () => {
+    const fixture = refusedTerminalRun();
+
+    await POST(post(fixture.request));
+
+    const staged = rpcCalls.find(
+      (call) => call.fn === 'stage_run_continuity_terminal'
+    );
+    expect(staged).toBeDefined();
+    const facts = (staged?.params as Row).p_terminal_facts as Row;
+    // The row is now phase `terminal` with facts present — precisely the shape
+    // migration 068's `list_stranded_terminal_runs` scans, and the shape
+    // `resolveInternalAbsorbIdentity` requires before it will act as the owner.
+    expect(session().continuity_phase).not.toBe('active');
+    expect(session().continuity_terminal_facts).toBeTruthy();
+    expect(facts.review).toMatchObject({ heldFrom: 'accepted_checkpoint' });
+    // The held value is the server's own accepted progress, not the claim.
+    expect(facts.food_count).toBe(HELD_PROGRESS.foodEaten);
+    expect(facts.extracted).toBe(false);
+  });
+
+  it('carries the run’s committed Energy into settlement rather than forfeiting it', async () => {
+    const fixture = refusedTerminalRun();
+
+    await POST(post(fixture.request));
+
+    // The run was started with a commitment; the settlement fold that runs on
+    // the held path is the same one a proven terminal runs, so the commitment
+    // is still what scales the harvest. Forfeiture would look like the
+    // opposite: `end_reason = 'expired'`, no envelope, and the Energy gone.
+    expect(Number(session().energy_committed ?? 0)).toBe(1);
+    const settlement = rpcCalls.find(
+      (call) => call.fn === 'stage_continuity_game_session_end'
+    );
+    expect(settlement).toBeDefined();
+    const envelope = (settlement?.params as Row).p_envelope as Row;
+    const binding = envelope.binding as Row;
+    const snapshot = envelope.snapshot as Row;
+    expect(binding.energyCommitted).toBe(1);
+    expect(binding.commitmentMultiplierBps).toBe(10_000);
+    expect(snapshot.energyCommitted).toBe(1);
+
+    // And the value genuinely lands: the held run's four accepted foods are
+    // recomputed and credited, through the same fold and the same commitment
+    // multiplier a proven terminal would use.
+    expect(Number(snapshot.dnaCredited)).toBeGreaterThan(0);
+    expect(Number(snapshot.yieldDna)).toBeGreaterThan(0);
+    expect(Number(snapshot.score)).toBeGreaterThan(0);
+  });
+
+  it('lands the held run’s value exactly once, however often it is re-posted', async () => {
+    const fixture = refusedTerminalRun();
+
+    await POST(post(fixture.request));
+    const dnaAfterFirst = Number(player().dna ?? 0);
+    const gamesAfterFirst = Number(player().total_games_played ?? 0);
+    const settlementsAfterFirst = mockSettleSessionReward.mock.calls.length;
+
+    // The player's browser retries; the sweep also drives `action: 'end'`.
+    await POST(post(fixture.request));
+    await POST(post({ action: 'end', sessionId: 'session-1' }));
+
+    expect(mockSettleSessionReward.mock.calls.length).toBe(settlementsAfterFirst);
+    expect(Number(player().dna ?? 0)).toBe(dnaAfterFirst);
+    expect(Number(player().total_games_played ?? 0)).toBe(gamesAfterFirst);
+    expect(
+      db.economy_transactions.filter((row) => row.source_id === 'session-1').length
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it('leaves an ordinary proven terminal completely unmarked', async () => {
+    const fixture = seedContinuityTerminalRun();
+
+    const response = await POST(post(fixture.request));
+    const body = await response.json();
+
+    expect(body.underReview).toBeUndefined();
+    const staged = rpcCalls.find(
+      (call) => call.fn === 'stage_run_continuity_terminal'
+    );
+    expect((staged?.params as Row).p_terminal_facts).not.toHaveProperty('review');
+  });
+});
 
 describe('a start absorbs a stranded terminal run instead of refusing forever', () => {
   const startRequest = (startRequestId: string) =>

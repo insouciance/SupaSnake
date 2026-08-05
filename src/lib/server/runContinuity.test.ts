@@ -10,6 +10,7 @@ import {
   readActiveRun,
   RunContinuityError,
   saveRunCheckpoint,
+  stageContinuityRunEnd,
   stageRunTerminalIntent,
   validateRunCheckpoint,
 } from './runContinuity';
@@ -744,7 +745,10 @@ describe('run continuity server contract', () => {
       actions: terminalTrace.actions.slice(checkpoint.privateState.replay.actions.length),
     };
     const stage = (activeElapsedMs: number) => stageRunTerminalIntent(
-      clientWithRowAndRpc(row, jest.fn()),
+      clientWithRowAndRpc(row, jest.fn().mockResolvedValue({
+        data: { accepted: true, inserted: true },
+        error: null,
+      })),
       {
         playerId: 'player-1',
         sessionId: 'terminal-time-bound',
@@ -755,10 +759,25 @@ describe('run continuity server contract', () => {
       }
     );
 
-    await expect(stage(999)).rejects.toMatchObject({
-      reason: 'invalid_checkpoint',
-    });
-    await expect(stage(12_001)).rejects.toThrow('server time bound');
+    // CE-3: the BOUND still refuses both claims — a rewound clock and a clock
+    // 12 seconds ahead of the server both fail to prove the terminal. What
+    // changed is the consequence. Neither answer is the client's: both settle
+    // the accepted checkpoint's own second, so the inflated claim buys exactly
+    // nothing, and the run is not destroyed for having made it.
+    const rewound = await stage(999);
+    const outrun = await stage(12_001);
+    for (const intent of [rewound, outrun]) {
+      expect(intent.held).toBe(true);
+      expect(intent.facts.review).toMatchObject({
+        reason: 'invalid_checkpoint',
+        heldFrom: 'accepted_checkpoint',
+      });
+      expect(intent.facts.review?.detail).toContain('server time bound');
+      expect(intent.facts.duration_seconds).toBe(
+        Math.floor(checkpoint.privateState.elapsedMs / 1_000)
+      );
+    }
+    expect(outrun.facts.duration_seconds).not.toBe(12);
   });
 
   it('refuses a checkpoint that rewinds accepted progress', () => {
@@ -1077,6 +1096,38 @@ describe('run continuity server contract', () => {
     });
   });
 
+  it('keeps a run with no canonical base fatal — there is nothing to hold', async () => {
+    // The one refusal CE-3 deliberately did NOT degrade. Holding means
+    // "settle what the server proved"; with no accepted checkpoint it proved
+    // nothing, so a hold would close the run at zero — the very voiding this
+    // work package exists to stop. The row stays open for the sweep instead.
+    await expect(stageRunTerminalIntent(clientWithRowAndRpc({
+      id: 'no-base',
+      start_request_id: START_ID,
+      start_manifest: { sessionId: 'no-base' },
+      continuity_phase: 'active',
+      continuity_activated_at: null,
+      continuity_checkpoint: null,
+      continuity_checkpoint_revision: 2,
+      continuity_lease_hash: createHash('sha256')
+        .update('no-base-lease-token-with-sufficient-entropy')
+        .digest('hex'),
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      started_at: new Date().toISOString(),
+      ended_at: null,
+      end_reason: null,
+    }, jest.fn()), {
+      playerId: 'player-1',
+      sessionId: 'no-base',
+      expectedRevision: 2,
+      leaseToken: 'no-base-lease-token-with-sufficient-entropy',
+      replay: { fromTick: 0, toTick: 0, actionOffset: 0, actions: [] },
+    })).rejects.toMatchObject({
+      reason: 'not_prepared',
+      retryable: false,
+    });
+  });
+
   it('classifies a legacy open completed row as settling, not abandonable', async () => {
     await expect(readActiveRun(clientWithRowAndRpc({
       id: 'legacy-pending',
@@ -1097,5 +1148,305 @@ describe('run continuity server contract', () => {
       canContinue: false,
       requiresAbandon: false,
     });
+  });
+});
+
+/**
+ * CE-3 · audit F-02 — "a rejected terminal proof must not destroy an honest
+ * finished run".
+ *
+ * Before this work package, every one of the engine's 57 invariants was also a
+ * settlement veto: `deriveTerminalIntent` bare-caught the server-side replay,
+ * the route answered 400 `retryable: false`, the claim was dropped, the run
+ * sat until `expire_stale_game_sessions` closed it as `expired`, and the
+ * Energy the player had committed to it was gone. The audit measured that as
+ * the amplifier that turned every other finding fatal.
+ */
+describe('CE-3 · a refused terminal proof holds value instead of destroying it', () => {
+  const LEASE = 'held-terminal-lease-token-with-enough-entropy';
+
+  /**
+   * A PRIMAL run that reaches a real collision: one accepted checkpoint after
+   * the first tick, terminal on the second. The board is 4x4 and the run never
+   * turns, so every fact below is deterministic.
+   */
+  function terminalFixture(now: number) {
+    const game = new SnakeGameLogic({
+      gridSize: 4,
+      ruleset: RULESETS.PRIMAL,
+      simulationSeed: 'held-terminal',
+    });
+    game.prepare();
+    game.activatePrepared(now - 2_000);
+    game.tick();
+    const checkpoint = game.exportCheckpoint(now - 1_000);
+    game.tick();
+    expect(game.getState().isGameOver).toBe(true);
+    const trace = game.getReplayTrace();
+    const row = {
+      id: 'held-terminal',
+      start_request_id: START_ID,
+      start_manifest: {
+        sessionId: 'held-terminal',
+        simulation: {
+          seed: 'held-terminal',
+          version: 1,
+          rulesVersion: SNAKE_RULES_VERSION,
+        },
+        runSnake: { dynasty: 'PRIMAL' },
+      },
+      continuity_phase: 'active',
+      continuity_activated_at: new Date(now - 2_000).toISOString(),
+      continuity_checkpoint: checkpoint,
+      continuity_checkpoint_revision: 2,
+      continuity_checkpoint_saved_at: new Date(now - 1_000).toISOString(),
+      continuity_lease_issued_at: new Date(now - 1_000).toISOString(),
+      continuity_lease_hash: createHash('sha256').update(LEASE).digest('hex'),
+      simulation_rules_version: SNAKE_RULES_VERSION,
+      started_at: new Date(now - 3_000).toISOString(),
+      ended_at: null,
+      end_reason: null,
+    };
+    const provenProof = {
+      fromTick: checkpoint.privateState.replay.ticks,
+      toTick: trace.ticks,
+      actionOffset: checkpoint.privateState.replay.actions.length,
+      actions: trace.actions.slice(
+        checkpoint.privateState.replay.actions.length
+      ),
+      activeElapsedMs: 2_000,
+    };
+    return { checkpoint, row, provenProof, terminal: game.getTerminalResult()! };
+  }
+
+  function stage(row: Record<string, unknown>, replay: unknown, now: number) {
+    const rpc = jest.fn().mockResolvedValue({
+      data: { accepted: true, inserted: true },
+      error: null,
+    });
+    return {
+      rpc,
+      result: stageRunTerminalIntent(clientWithRowAndRpc(row, rpc), {
+        playerId: 'player-1',
+        sessionId: 'held-terminal',
+        expectedRevision: 2,
+        leaseToken: LEASE,
+        replay,
+        now,
+      }),
+    };
+  }
+
+  it('settles the accepted checkpoint when the server cannot replay the proof', async () => {
+    const now = Date.UTC(2026, 7, 4, 12, 0, 0);
+    const { checkpoint, row, provenProof } = terminalFixture(now);
+    // An unreplayable suffix: the proof claims five ticks past the collision.
+    // The engine refuses to continue after a terminal state — exactly the
+    // shape of every Genome v2 invariant the audit found in this position,
+    // including the proven F-01 buffered-turn poisoning.
+    const refused = { ...provenProof, toTick: provenProof.toTick + 5 };
+
+    const staged = stage(row, refused, now);
+    const intent = await staged.result;
+
+    // NOT a throw. That single line is the work package.
+    expect(intent.held).toBe(true);
+    expect(intent.facts.score).toBe(checkpoint.state.score);
+    expect(intent.facts.dna_earned).toBe(checkpoint.state.dnaCollected);
+    expect(intent.facts.food_count).toBe(checkpoint.state.foodEaten);
+    expect(intent.facts.extracted).toBe(false);
+    expect(intent.facts.died).toBe(true);
+    expect(intent.facts.death_cause).toBe('timeout');
+    expect(intent.facts.review).toMatchObject({
+      v: 1,
+      heldFrom: 'accepted_checkpoint',
+      checkpointRevision: 2,
+    });
+    // The real validator message survives to the operator, not a placeholder.
+    expect(String(intent.facts.review?.detail).length).toBeGreaterThan(0);
+
+    // And it is DURABLY staged, which is what hands the run to CE-2: the row
+    // becomes phase `terminal` with facts present, the exact state migration
+    // 068's `list_stranded_terminal_runs` scans and the settlement sweep
+    // drives to completion with no browser present.
+    expect(staged.rpc).toHaveBeenCalledWith(
+      'stage_run_continuity_terminal',
+      expect.objectContaining({
+        p_session_id: 'held-terminal',
+        p_expected_revision: 2,
+        p_terminal_facts: expect.objectContaining({
+          review: expect.objectContaining({ heldFrom: 'accepted_checkpoint' }),
+        }),
+      })
+    );
+  });
+
+  it('holds the same outcome however many times the refused proof is re-posted', async () => {
+    const now = Date.UTC(2026, 7, 4, 12, 0, 0);
+    const { row, provenProof } = terminalFixture(now);
+    const refused = { ...provenProof, toTick: provenProof.toTick + 5 };
+
+    const first = await stage(row, refused, now).result;
+    const second = await stage(row, refused, now + 1_000).result;
+
+    // Identical digest and identical facts: a client retrying its refused
+    // proof re-stages the same outcome rather than colliding with
+    // `terminal_intent_conflict`, and the settlement it feeds is idempotent
+    // by session. No path here can pay a run twice.
+    expect(second.digest).toBe(first.digest);
+    expect(second.facts).toEqual(first.facts);
+
+    // A run already terminal answers from its stored facts and stays held —
+    // the marker is durable, so the player's retry, the start-path absorb and
+    // the cron sweep all read the same outcome.
+    const stored = await stageRunTerminalIntent(
+      clientWithRowAndRpc(
+        {
+          ...row,
+          continuity_phase: 'terminal',
+          continuity_terminal_facts: first.facts,
+          continuity_terminal_digest: first.digest,
+        },
+        jest.fn()
+      ),
+      {
+        playerId: 'player-1',
+        sessionId: 'held-terminal',
+        expectedRevision: 2,
+        leaseToken: LEASE,
+        replay: refused,
+        now: now + 2_000,
+      }
+    );
+    expect(stored.held).toBe(true);
+    expect(stored.digest).toBe(first.digest);
+  });
+
+  it('makes forging a terminal strictly worse than proving one', async () => {
+    const now = Date.UTC(2026, 7, 4, 12, 0, 0);
+    const { row, provenProof, terminal } = terminalFixture(now);
+
+    const proven = await stage(row, provenProof, now).result;
+    const forged = await stage(
+      row,
+      // A claim of a longer, richer run than the one that was played.
+      { ...provenProof, toTick: provenProof.toTick + 5, activeElapsedMs: 60_000 },
+      now
+    ).result;
+
+    expect(proven.held).toBe(false);
+    expect(proven.facts.review).toBeUndefined();
+    expect(proven.facts.score).toBe(terminal.score);
+
+    // This is why the degradation may be unconditional: everything a forged
+    // suffix claims is discarded, and what remains is what the server had
+    // already proven for itself. Forgery can only ever LOWER the settled
+    // result, so there is nothing here to deter and no honest run to punish.
+    expect(forged.held).toBe(true);
+    expect(forged.facts.score).toBeLessThanOrEqual(proven.facts.score);
+    expect(forged.facts.duration_seconds).toBeLessThanOrEqual(
+      proven.facts.duration_seconds
+    );
+    expect(forged.facts.duration_seconds).not.toBe(60);
+  });
+
+  it('never carries the refused proof into the held facts', async () => {
+    const now = Date.UTC(2026, 7, 4, 12, 0, 0);
+    const { row, provenProof } = terminalFixture(now);
+    const intent = await stage(
+      row,
+      { ...provenProof, toTick: provenProof.toTick + 5 },
+      now
+    ).result;
+
+    expect(intent.facts).not.toHaveProperty('replay');
+    expect(JSON.stringify(intent.facts)).not.toContain('actionOffset');
+    expect(Buffer.byteLength(JSON.stringify(intent.facts), 'utf8'))
+      .toBeLessThanOrEqual(262_144);
+  });
+});
+
+/**
+ * CE-3 item 2 — the PR #72 lesson, in code.
+ *
+ * `terminalError` used to end in one unconditional fallback that made every
+ * unrecognised database exception a retryable 503. Two deterministic byte
+ * guards then produced a client that re-posted a permanently refused payload
+ * forever, with no message an operator could search for, through a whole
+ * deploy cycle.
+ */
+describe('CE-3 · settlement faults are permanent unless they are known transient', () => {
+  const endInput = {
+    userId: 'user-1',
+    playerId: 'player-1',
+    sessionId: 'session-1',
+    leaseToken: 'settlement-fault-lease-token-with-enough-entropy',
+    envelope: { v: 1 },
+  };
+
+  const failWith = (error: Record<string, unknown>) =>
+    stageContinuityRunEnd(
+      clientWithRpc(jest.fn().mockResolvedValue({ data: null, error })),
+      endInput
+    );
+
+  it('stops retrying the exact rejections that stranded production', async () => {
+    for (const message of [
+      'INVALID_PENDING_GAME_END_ENVELOPE',
+      'invalid_free_run_facts',
+    ]) {
+      const error = await failWith({ code: 'P0001', message }).catch((e) => e);
+      expect(error).toBeInstanceOf(RunContinuityError);
+      expect(error.retryable).toBe(false);
+      // The database's own words reach the caller. A bare "Could not secure
+      // the run outcome" is what made the incident invisible.
+      expect(error.message).toContain(message);
+    }
+  });
+
+  it('treats an unknown database exception as permanent and says what it was', async () => {
+    const error = await failWith({
+      code: '23514',
+      message: 'new row violates check constraint "game_sessions_score_check"',
+    }).catch((e) => e);
+    expect(error.retryable).toBe(false);
+    expect(error.message).toContain('game_sessions_score_check');
+  });
+
+  it('keeps genuinely transient classes retryable', async () => {
+    for (const code of ['40001', '40P01', '55P03', '57014', '53300', '08006']) {
+      const error = await failWith({ code, message: 'transient' })
+        .catch((e) => e);
+      expect(error.retryable).toBe(true);
+      expect(error.reason).toBe('unavailable');
+    }
+  });
+
+  it('keeps a transport failure with no database code retryable', async () => {
+    const error = await failWith({ message: 'fetch failed' }).catch((e) => e);
+    expect(error.retryable).toBe(true);
+  });
+
+  it('still reports a pre-migration schema as retryable', async () => {
+    const error = await failWith({
+      code: '42883',
+      message: 'function stage_continuity_game_session_end does not exist',
+    }).catch((e) => e);
+    expect(error.retryable).toBe(true);
+    expect(error.message).toMatch(/being prepared/);
+  });
+
+  it('leaves every named continuity refusal non-retryable', async () => {
+    for (const [message, reason] of [
+      ['run_lease_conflict', 'lease_conflict'],
+      ['run_not_terminalizable', 'not_prepared'],
+      ['checkpoint_revision_conflict', 'checkpoint_conflict'],
+      ['invalid_terminal_intent', 'invalid_checkpoint'],
+      ['session_not_found', 'not_found'],
+    ] as const) {
+      const error = await failWith({ code: 'P0001', message }).catch((e) => e);
+      expect(error.reason).toBe(reason);
+      expect(error.retryable).toBe(false);
+    }
   });
 });

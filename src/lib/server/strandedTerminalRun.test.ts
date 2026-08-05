@@ -127,6 +127,41 @@ describe('resolveInternalAbsorbIdentity', () => {
     ).resolves.toBeNull();
   });
 
+  it('resolves a HELD terminal run exactly like a proven one (CE-3)', async () => {
+    // A run whose own terminal proof was refused is staged with the value the
+    // server had already proven, marked for review. That marker rides INSIDE
+    // the terminal facts, so the row it produces is the same stranded shape
+    // this resolver and migration 068's scan already recognise — the held run
+    // needs no new state, and the sweep settles it with no player present.
+    db.game_sessions = [
+      strandedRow({
+        continuity_terminal_facts: {
+          score: 40,
+          dna_earned: 20,
+          food_count: 4,
+          extracted: false,
+          died: true,
+          death_cause: 'timeout',
+          review: {
+            v: 1,
+            reason: 'invalid_checkpoint',
+            detail: 'Terminal replay is not physically possible.',
+            heldFrom: 'accepted_checkpoint',
+            checkpointRevision: 7,
+          },
+        },
+      }),
+    ];
+
+    await expect(
+      resolveInternalAbsorbIdentity(fakeSupabase(), SESSION_ID)
+    ).resolves.toEqual({
+      playerId: PLAYER_ID,
+      userId: USER_ID,
+      sessionId: SESSION_ID,
+    });
+  });
+
   it('refuses an unknown session, and any malformed identifier', async () => {
     db.game_sessions = [];
     await expect(

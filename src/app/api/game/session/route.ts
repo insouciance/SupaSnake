@@ -317,6 +317,60 @@ function isMissingRewardProtocolInfra(error: {
   );
 }
 
+/**
+ * The review marker a held terminal carries, or null for a proven one.
+ *
+ * CE-3 / audit F-02. `runContinuity` stamps this inside the immutable terminal
+ * facts when it had to settle a run from its own accepted checkpoint because
+ * the client's terminal proof would not replay. Reading it here is how the
+ * settlement response, the logs and Sentry all describe the same outcome.
+ */
+function reviewMarkerOf(
+  facts: Record<string, unknown>
+): Record<string, unknown> | null {
+  const review = facts.review;
+  return review !== null &&
+    typeof review === 'object' &&
+    !Array.isArray(review)
+    ? (review as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * Fail loud on a degradation. The run still settles and the player still keeps
+ * their value — that is the point — but a validator that disagreed with the
+ * engine on a finished run is exactly the signal the audit found this system
+ * had no way to emit (F-05: `runContinuity` reaches Sentry through nothing).
+ * `warning`, not `error`: this is a handled outcome, not an outage.
+ */
+function reportHeldTerminal(
+  playerId: string,
+  sessionId: string,
+  review: Record<string, unknown> | null
+): void {
+  const reason = typeof review?.reason === 'string' ? review.reason : 'unknown';
+  const detail = typeof review?.detail === 'string' ? review.detail : 'unknown';
+  console.warn('Terminal proof refused; settling the held server outcome:', {
+    playerId,
+    sessionId,
+    reason,
+    detail,
+    checkpointRevision: review?.checkpointRevision ?? null,
+  });
+  Sentry.captureMessage('Terminal proof refused; run settled from held state', {
+    level: 'warning',
+    tags: { progression_stage: 'terminal_proof_held', continuity_reason: reason },
+    fingerprint: ['terminal-proof-held', reason, detail],
+    extra: {
+      playerId,
+      sessionId,
+      reason,
+      detail,
+      checkpointRevision: review?.checkpointRevision ?? null,
+    },
+  });
+}
+
 function checkpointDiagnostic(value: unknown): Record<string, unknown> {
   const record = (candidate: unknown): Record<string, unknown> | null =>
     candidate !== null && typeof candidate === 'object' && !Array.isArray(candidate)
@@ -693,7 +747,7 @@ export async function POST(request: NextRequest) {
             {
               error: error.message,
               reason: error.reason,
-              retryable: status === 503,
+              retryable: error.retryable,
             },
             { status }
           );
@@ -718,7 +772,7 @@ export async function POST(request: NextRequest) {
             {
               error: error.message,
               reason: error.reason,
-              retryable: status === 503,
+              retryable: error.retryable,
             },
             { status }
           );
@@ -773,7 +827,7 @@ export async function POST(request: NextRequest) {
             {
               error: error.message,
               reason: error.reason,
-              retryable: status === 503,
+              retryable: error.retryable,
             },
             { status }
           );
@@ -951,7 +1005,7 @@ export async function POST(request: NextRequest) {
             {
               error: error.message,
               reason: error.reason,
-              retryable: status === 503,
+              retryable: error.retryable,
             },
             { status }
           );
@@ -1647,7 +1701,7 @@ export async function POST(request: NextRequest) {
                 {
                   error: error.message,
                   reason: error.reason,
-                  retryable: status === 503,
+                  retryable: error.retryable,
                 },
                 { status }
               );
@@ -2000,7 +2054,7 @@ export async function POST(request: NextRequest) {
             {
               error: error.message,
               reason: error.reason,
-              retryable: status === 503,
+              retryable: error.retryable,
               ...(status === 503 ? { sessionId: createdSessionId } : {}),
             },
             { status }
@@ -2146,6 +2200,13 @@ export async function POST(request: NextRequest) {
       }
 
       let terminalIntentAccepted = false;
+      // CE-3 / F-02: set when the settled outcome is the server's HELD
+      // fallback — the value it had already proven for itself — because the
+      // client's own terminal proof could not be replayed. The run settles
+      // either way; this is what makes the degradation visible instead of
+      // silent, to the operator now and to the cockpit that reads the
+      // response.
+      let terminalReview: Record<string, unknown> | null = null;
       if (!session.ended_at && continuitySession) {
         const continuityPhase =
           (session as Record<string, unknown>).continuity_phase;
@@ -2161,6 +2222,10 @@ export async function POST(request: NextRequest) {
             });
             terminalFacts = intent.facts;
             terminalIntentAccepted = true;
+            if (intent.held) {
+              terminalReview = reviewMarkerOf(intent.facts);
+              reportHeldTerminal(player.id, sessionId, terminalReview);
+            }
           } catch (error) {
             if (error instanceof RunContinuityError) {
               const status = error.reason === 'not_found' ? 404
@@ -2171,7 +2236,7 @@ export async function POST(request: NextRequest) {
                     ? 409
                     : 503;
               return progressionJson(
-                { error: error.message, reason: error.reason, retryable: status === 503 },
+                { error: error.message, reason: error.reason, retryable: error.retryable },
                 { status }
               );
             }
@@ -2182,6 +2247,12 @@ export async function POST(request: NextRequest) {
             session as Record<string, unknown>
           );
           terminalIntentAccepted = terminalFacts !== null;
+          // The same run reached through `action: 'end'` — a player's re-post,
+          // the start-path absorb, or the settlement sweep. A held outcome is
+          // held on every one of those routes, because the marker is durable.
+          if (terminalFacts) {
+            terminalReview = reviewMarkerOf(terminalFacts);
+          }
         } else {
           // Every continuity row is replay-authoritative. A later rules bump
           // makes an unfinished row incompatible; it must never downgrade to
@@ -3063,7 +3134,7 @@ export async function POST(request: NextRequest) {
                   ? 409
                   : 503;
               return progressionJson(
-                { error: error.message, reason: error.reason, retryable: status === 503 },
+                { error: error.message, reason: error.reason, retryable: error.retryable },
                 { status }
               );
             }
@@ -3108,7 +3179,7 @@ export async function POST(request: NextRequest) {
                   ? 409
                   : 503;
               return progressionJson(
-                { error: error.message, reason: error.reason, retryable: status === 503 },
+                { error: error.message, reason: error.reason, retryable: error.retryable },
                 { status }
               );
             }
@@ -3609,6 +3680,19 @@ export async function POST(request: NextRequest) {
         ...(takeSlot?.firstRunOfDay ? { dailyTake: takeSlot } : {}),
         ...(validation.genome ? { genome: validation.genome } : {}),
         ...(codex ? { codex } : {}),
+        // CE-3 / F-02. Present ONLY when this run settled from the server's
+        // held state instead of its own terminal proof. The run paid; this
+        // says the last unproven moments of it did not, and why. Absent on
+        // every ordinary settlement, so a normal response is unchanged.
+        ...(terminalReview
+          ? {
+              underReview: {
+                held: true,
+                reason: terminalReview.reason ?? null,
+                detail: terminalReview.detail ?? null,
+              },
+            }
+          : {}),
         impact,
       });
     }
@@ -3697,7 +3781,7 @@ export async function POST(request: NextRequest) {
                 ? 409
                 : 503;
             return progressionJson(
-              { error: error.message, reason: error.reason, retryable: status === 503 },
+              { error: error.message, reason: error.reason, retryable: error.retryable },
               { status }
             );
           }
