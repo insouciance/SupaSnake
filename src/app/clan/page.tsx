@@ -187,11 +187,14 @@ function StandingsPreview({ view }: { view: ClanFullView }) {
 
 function FoundClanPanel({
   accessToken,
+  isAnonymous,
   view,
   onChanged,
   setStatus,
 }: {
   accessToken?: string;
+  /** Guest account: may join a clan, may not own one (PEO §6). */
+  isAnonymous: boolean;
   view: ClanFullView;
   onChanged: () => void;
   setStatus: (value: string | null, error?: boolean) => void;
@@ -243,6 +246,37 @@ function FoundClanPanel({
 
   return (
     <div className="space-y-4" data-testid="found-clan-panel">
+      {/*
+        A guest is told BEFORE the form, not after the spend (PEO §6). Being
+        refused at the end of naming a clan, choosing heraldry and confirming a
+        DNA cost would be the same server rule delivered as a trap, so the
+        founding form is replaced by the reason and the one action that fixes
+        it. Joining, below, is untouched: a guest's runs are real runs, and
+        only ownership permanence is the hazard.
+      */}
+      {isAnonymous ? (
+        <section className="panel-elevated p-5" data-testid="found-clan-account-required">
+          <h2 className="heading-display text-2xl text-bone-white">Save your account first</h2>
+          <p className="mt-1 text-sm font-body text-beige/65">
+            A clan outlives the run that made it, and it needs a Leader who can sign back
+            in. You are playing as a guest, so this device is the only key to this account.
+          </p>
+          <p className="mt-2 text-sm font-body text-beige/65">
+            Add a sign-in and the founding form opens here — your DNA, snakes and records
+            come with you.
+          </p>
+          <Link
+            href="/signup"
+            data-testid="found-clan-save-account"
+            className="btn-go mt-4 inline-flex min-h-[44px] items-center px-6"
+          >
+            Save your account
+          </Link>
+          <p className="mt-3 text-xs font-body text-beige/50">
+            You can still join a clan below, and your runs count for it either way.
+          </p>
+        </section>
+      ) : (
       <section className="panel-elevated p-5">
         <h2 className="heading-display text-2xl text-bone-white">Found your clan</h2>
         <p className="mt-1 text-sm font-body text-beige/65">Choose a name and standard. You become Leader immediately.</p>
@@ -275,6 +309,7 @@ function FoundClanPanel({
           <button type="submit" disabled={busy || typeof cost !== 'number'} className="btn-go min-h-[44px] w-full px-6">Review founding</button>
         </form>
       </section>
+      )}
 
       <section className="panel p-5">
         <h2 className="heading-display text-xl text-bone-white">Have an invite?</h2>
@@ -304,7 +339,7 @@ function FoundClanPanel({
 
 export default function ClanPage() {
   if (!GAME_CONFIG.features.clans) redirect('/');
-  const { user, session, isAuthenticated } = useAuth();
+  const { user, session, isAuthenticated, isAnonymous } = useAuth();
   const { view, loading, error: viewError, refresh } = useClanFull(session?.access_token);
   const [filters, setFilters] = useState<ClanDirectoryFilters>({ query: '', policy: 'all', hasSpace: true });
   const directory = useClanDirectory(filters);
@@ -482,7 +517,7 @@ export default function ClanPage() {
                   onRequestMembership={(clan) => void requestMembership(clan)}
                 />
               ) : (
-                <FoundClanPanel accessToken={session?.access_token} view={view} onChanged={() => void refreshAll()} setStatus={status} />
+                <FoundClanPanel accessToken={session?.access_token} isAnonymous={isAnonymous} view={view} onChanged={() => void refreshAll()} setStatus={status} />
               )}
             </div>
           </div>

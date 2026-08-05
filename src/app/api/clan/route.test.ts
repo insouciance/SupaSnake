@@ -5,9 +5,14 @@ var mockFrom: jest.Mock;
 var mockRpc: jest.Mock;
 var mockCapture: jest.Mock;
 
+var mockGetUserById: jest.Mock;
+
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
-    auth: { getUser: (...args: unknown[]) => mockAuth(...args) },
+    auth: {
+      getUser: (...args: unknown[]) => mockAuth(...args),
+      admin: { getUserById: (...args: unknown[]) => mockGetUserById(...args) },
+    },
     from: (...args: unknown[]) => mockFrom(...args),
     rpc: (...args: unknown[]) => mockRpc(...args),
   }),
@@ -48,6 +53,9 @@ beforeEach(() => {
   mockFrom = jest.fn();
   mockRpc = jest.fn().mockResolvedValue({ data: {}, error: null });
   mockCapture = jest.fn();
+  mockGetUserById = jest
+    .fn()
+    .mockResolvedValue({ data: { user: { id: 'user-2' } }, error: null });
 });
 
 describe('founding economy', () => {
@@ -322,5 +330,111 @@ describe('failure and auth boundaries', () => {
     mockAuth.mockResolvedValue({ data: { user: null }, error: { message: 'bad token' } });
     expect((await POST(post({ action: 'leave' }))).status).toBe(401);
     expect(mockCapture).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Guest accounts: contribute freely, own nothing (PEO §6; WP-E)
+// ---------------------------------------------------------------------------
+describe('anonymous accounts and clan ownership', () => {
+  const anonymous = (extra: Record<string, unknown> = {}) =>
+    mockAuth.mockResolvedValue({
+      data: { user: { id: 'user-1', is_anonymous: true, ...extra } },
+      error: null,
+    });
+
+  const confirmedFounding = {
+    action: 'found',
+    name: 'Elite Snakes',
+    confirmedFoundingDnaCost: CLAN_ECONOMY_CONFIG.foundingDnaCost,
+  };
+
+  it('refuses founding to a guest, before any DNA is quoted or spent', async () => {
+    anonymous();
+    const response = await POST(post(confirmedFounding));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: 'account_required' });
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('recognises the legacy anonymous provider marker too', async () => {
+    mockAuth.mockResolvedValue({
+      data: { user: { id: 'user-1', app_metadata: { provider: 'anonymous' } } },
+      error: null,
+    });
+    expect((await POST(post(confirmedFounding))).status).toBe(403);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('tells a blocked guest what to do, not merely that they may not', async () => {
+    anonymous();
+    const body = await (await POST(post(confirmedFounding))).json();
+    expect(body.error).toMatch(/save your account/i);
+    expect(body.error).not.toMatch(/forbidden|denied|not authorized/i);
+  });
+
+  it('still lets a guest found nothing but join everything', async () => {
+    anonymous();
+    // Their runs are real runs; only ownership permanence is the hazard.
+    for (const body of [
+      { action: 'apply', clanId: 'clan-1' },
+      { action: 'join_by_code', code: 'ABCDEFGH' },
+      { action: 'respond_invite', inviteId: 'invite-1', accept: true },
+      { action: 'leave' },
+    ]) {
+      mockRpc.mockClear();
+      const response = await POST(post(body));
+      expect(response.status).not.toBe(403);
+      expect(mockRpc).toHaveBeenCalled();
+    }
+  });
+
+  it('lets a saved account found exactly as before', async () => {
+    mockRpc.mockResolvedValue({
+      data: {
+        clan_id: 'clan-1', name: 'Elite Snakes', tag: 'ES',
+        member_count: 1, max_members: 12, join_policy: 'open',
+        invite_code: 'ABCDEFGH', founding_dna_cost: 500, dna_balance: 725,
+      },
+      error: null,
+    });
+    expect((await POST(post(confirmedFounding))).status).toBe(200);
+    expect(mockRpc).toHaveBeenCalledWith('found_clan', expect.anything());
+  });
+
+  it('treats an unknown user shape as a real account', async () => {
+    // A field that disappears must never lock every player out of founding.
+    mockAuth.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    mockRpc.mockResolvedValue({ data: { clan_id: 'clan-1' }, error: null });
+    expect((await POST(post(confirmedFounding))).status).toBe(200);
+  });
+
+  it('refuses to hand a clan to a guest', async () => {
+    mockGetUserById.mockResolvedValue({
+      data: { user: { id: 'user-2', is_anonymous: true } },
+      error: null,
+    });
+    const response = await POST(post({ action: 'transfer_ownership', targetUserId: 'user-2' }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: 'target_account_required' });
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('keeps the current owner when the target cannot be verified', async () => {
+    mockGetUserById.mockResolvedValue({ data: null, error: { message: 'unavailable' } });
+    const response = await POST(post({ action: 'transfer_ownership', targetUserId: 'user-2' }));
+    expect(response.status).toBe(503);
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockCapture).toHaveBeenCalled();
+  });
+
+  it('transfers to a saved account exactly as before', async () => {
+    mockRpc.mockResolvedValue({ data: { success: true }, error: null });
+    const response = await POST(post({ action: 'transfer_ownership', targetUserId: 'user-2' }));
+    expect(response.status).toBe(200);
+    expect(mockRpc).toHaveBeenCalledWith('transfer_clan_ownership', {
+      p_user_id: 'user-1',
+      p_target_user_id: 'user-2',
+    });
   });
 });
