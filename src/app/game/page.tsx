@@ -75,6 +75,8 @@ import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
 import { createLightTarget } from '@/components/game/screen/inkAmber';
+import { useRenderQuality } from '@/components/game/screen/useRenderQuality';
+import type { RenderQuality } from '@/components/game/screen/renderQuality';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 import { RunCockpit } from '@/components/game/cockpit/RunCockpit';
 import type { RunCockpitModel } from '@/components/game/cockpit/types';
@@ -2403,6 +2405,24 @@ export default function GamePage() {
     () => createLightTarget(boardCenter, 0, boardCenter),
     [boardCenter]
   );
+  /*
+   * ADAPTIVE QUALITY. The governor samples how many of its own interval
+   * callbacks the browser is still firing and steps the board's cost down when
+   * that number falls - because the engine ticks on a `setInterval` too, so a
+   * saturated main thread does not just look worse, it makes the RUN advance
+   * more slowly. Render-side only: it reads no engine state and consumes no
+   * randomness, so the rules and the replay contract are identical at every
+   * tier.
+   *
+   * It samples only while a run is live (there is nothing to protect on a
+   * menu), and it may step DOWN but not up while a decision surface is open -
+   * a downgrade there is hidden by the focus blur, an upgrade would pop the
+   * board's lighting back in under something the player is reading.
+   */
+  const renderQuality = useRenderQuality({
+    active: isPlaying,
+    allowStepUp: !blockingOverlayActive,
+  });
 
   // Initialize game logic
   useEffect(() => {
@@ -7575,7 +7595,7 @@ export default function GamePage() {
           target={keyLightTarget}
           color="#fff1dc"
           intensity={HUD_COCKPIT_V1_ENABLED ? 1.25 : 1.45}
-          castShadow
+          castShadow={renderQuality.shadowsEnabled}
           shadow-mapSize={SHADOW_MAP_SIZE}
           shadow-camera-near={6}
           shadow-camera-far={44}
@@ -7597,6 +7617,7 @@ export default function GamePage() {
 
         <Suspense fallback={null}>
           <GameBoard
+            quality={renderQuality}
             dynasty={selectedDynasty}
             bufferRef={interpBufferRef}
             isMobile={isMobile}
@@ -7648,10 +7669,10 @@ export default function GamePage() {
             raised from 0.55/0.35 with the tone-mapping change: without the ACES
             shoulder the mid-tones sit higher, so the old threshold would have
             let ordinary lit surfaces bloom. The same set of objects glows. */}
-        {!isMobile && (
+        {!isMobile && renderQuality.bloomResolutionScale !== null && (
           <EffectComposer>
-            {/* BLOOM RENDERS AT HALF RESOLUTION, AND THAT IS A CORRECTION
-                THE POP-OUT MADE NECESSARY.
+            {/* BLOOM'S RESOLUTION IS THE GOVERNOR'S FIRST LEVER, AND HALVING
+                IT AT REST IS A CORRECTION THE POP-OUT MADE NECESSARY.
 
                 Bloom is the one pass whose cost scales with the WHOLE canvas,
                 and the pop-out made that canvas 1.5x the bay on both axes -
@@ -7668,16 +7689,19 @@ export default function GamePage() {
                 callbacks, so the run itself advances fewer ticks per second on
                 a weak device. Frame cost here is gameplay throughput.
 
-                Half resolution is a quarter of the pixels, so bloom now costs
-                LESS in absolute terms than it did before the pop-out existed
-                (2.25 x 0.25 = 0.56x), while looking the same: bloom is a
-                blurred copy of the bright parts, i.e. inherently low-frequency,
-                which is why rendering it at half or quarter resolution is
-                standard practice rather than a compromise. The threshold,
-                smoothing and intensity - the things that decide WHAT glows -
-                are untouched. */}
+                Half resolution is a quarter of the pixels, so bloom at rest
+                costs LESS in absolute terms than it did before the pop-out
+                existed (2.25 x 0.25 = 0.56x), while looking the same: bloom is
+                a blurred copy of the bright parts, i.e. inherently
+                low-frequency, which is why rendering it at half or quarter
+                resolution is standard practice rather than a compromise.
+
+                Because it is cheap to spend and hard to see, it is also what
+                the governor spends FIRST: quarter resolution at tier 1, and the
+                whole composer at tier 3. The threshold, smoothing and intensity
+                - the things that decide WHAT glows - never change. */}
             <Bloom
-              resolutionScale={0.5}
+              resolutionScale={renderQuality.bloomResolutionScale}
               luminanceThreshold={HUD_COCKPIT_V1_ENABLED ? 0.68 : 0.5}
               luminanceSmoothing={HUD_COCKPIT_V1_ENABLED ? 0.88 : 0.9}
               intensity={HUD_COCKPIT_V1_ENABLED ? 0.58 : 0.75}
@@ -7733,6 +7757,8 @@ interface GameBoardProps {
   deathPos: [number, number, number] | null;
   showDeathExplosion: boolean;
   cameraShake: [number, number, number];
+  /** Adaptive-quality tier, resolved by the governor on the page. */
+  quality: RenderQuality;
 }
 
 function GameBoard({
@@ -7758,6 +7784,7 @@ function GameBoard({
   direction,
   queuedDirections,
   aimSystem,
+  quality,
   particlePos,
   particleTrigger,
   deathPos,
@@ -7867,7 +7894,7 @@ function GameBoard({
       />
 
       <GenomeBoardEffects gildedCells={gildedCells} genomeV2={genomeV2Board} />
-      <TerrainBlocks terrain={terrain} />
+      <TerrainBlocks terrain={terrain} castShadow={quality.terrainCastsShadow} />
 
       {/* Snake - one instanced body draw + a head mesh with eyes, both
           reading tick-alpha interpolated positions from the buffer every

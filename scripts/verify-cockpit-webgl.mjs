@@ -85,6 +85,7 @@ async function measure(testCase, arena, density = 'standard') {
       ?.getBoundingClientRect();
     return {
       bay: bay ? { width: bay.width, height: bay.height } : null,
+      renderTier: element.getAttribute('data-render-tier'),
       drawCalls: Number(element.getAttribute('data-draw-calls')),
       triangles: Number(element.getAttribute('data-triangles')),
       density: element.getAttribute('data-fixture-density'),
@@ -149,6 +150,27 @@ try {
     invariant(callDelta <= 8, `${label}: cockpit adds ${callDelta} draw calls (budget 8)`);
     invariant(callDelta >= 0, `${label}: invalid negative draw-call comparison (${callDelta})`);
     invariant(cockpit.triangles > 0, `${label}: triangle telemetry missing`);
+
+    /*
+     * THE TIER TABLE IS HONOURED.
+     *
+     * The adaptive-quality governor resolves a tier from
+     * `RENDER_QUALITY_TIERS`; this proves the board is rendering a real entry
+     * from that table rather than an undefined quality object that happens to
+     * read as "everything off". Which tier a runner settles at is its own
+     * business - a headless software rasteriser is not a player device - so
+     * this pins the CONTRACT (a valid tier, always published) and not a value.
+     */
+    for (const [tierLabel, measured] of [
+      [`${label} released`, released],
+      [`${label} cockpit`, cockpit],
+    ]) {
+      const tier = Number(measured.renderTier);
+      invariant(
+        measured.renderTier !== null && Number.isInteger(tier) && tier >= 0 && tier <= 3,
+        `${tierLabel}: render tier is "${measured.renderTier}", not a tier from the table`
+      );
+    }
     invariant(cockpit.screenshotBytes > 5_000, `${label}: rendered image payload is empty`);
     baselines.set(`${testCase.width}x${testCase.height}:${testCase.dynasty}`, cockpit);
 

@@ -116,9 +116,18 @@ function markUpdated(mesh: THREE.InstancedMesh): void {
 
 export interface TerrainBlocksProps {
   terrain: readonly TerrainBlock[];
+  /**
+   * Whether solid blocks contribute to the shadow map.
+   *
+   * Render-only, and driven by the adaptive-quality governor (tier 2 drops it
+   * on a device that is losing engine ticks). Blocks still RECEIVE shadows at
+   * every tier, so the board keeps its depth; what goes is up to 400 instanced
+   * casters in the shadow pass.
+   */
+  castShadow?: boolean;
 }
 
-export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
+export function TerrainBlocks({ terrain, castShadow = true }: TerrainBlocksProps) {
   const formingRef = useRef<THREE.InstancedMesh>(null);
   const solidRef = useRef<THREE.InstancedMesh>(null);
   const solidHullRef = useRef<THREE.InstancedMesh>(null);
@@ -295,7 +304,7 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
         args={[solidGeometry, solidMaterial, MAX_BLOCKS]}
         frustumCulled={false}
         receiveShadow
-        castShadow
+        castShadow={castShadow}
       />
       <instancedMesh
         ref={signatureRef}

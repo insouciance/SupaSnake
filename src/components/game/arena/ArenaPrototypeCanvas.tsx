@@ -20,6 +20,7 @@ import {
 import { DynamicLights } from '@/components/game/DynamicLights';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { createLightTarget } from '@/components/game/screen/inkAmber';
+import { useRenderQuality } from '@/components/game/screen/useRenderQuality';
 import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { ExitPortal } from '@/components/game/ExitPortal';
 import {
@@ -153,6 +154,21 @@ function PrototypeScene({
     () => createLightTarget(GRID / 2, 0, GRID / 2),
     []
   );
+  /*
+   * The fixture runs the same governor as the live board, so the cockpit
+   * verifiers exercise the shipped code path rather than a quality tier that
+   * only exists in production. There is no decision surface here, so a step up
+   * is always allowed.
+   */
+  const quality = useRenderQuality({ active: true, allowStepUp: true });
+  // Published for `verify:cockpit-webgl`, which asserts the governor resolved a
+  // real tier from the table rather than silently rendering an undefined one.
+  useEffect(() => {
+    const host = document.querySelector<HTMLElement>(
+      '[data-testid="cockpit-webgl-board"]'
+    );
+    if (host) host.dataset.renderTier = String(quality.tier);
+  }, [quality.tier]);
   const interpolation = useMemo(() => {
     if (density !== 'extreme') return null;
     const buffer = createInterpolationBuffer(DENSE_SNAKE.length);
@@ -183,7 +199,7 @@ function PrototypeScene({
         target={keyLightTarget}
         color="#fff1dc"
         intensity={1.25}
-        castShadow
+        castShadow={quality.shadowsEnabled}
         shadow-mapSize={SHADOW_MAP_SIZE}
         shadow-camera-near={6}
         shadow-camera-far={44}
@@ -257,7 +273,12 @@ function PrototypeScene({
       ) : (
         <StaticSnake dynasty={dynasty} />
       )}
-      {density === 'extreme' ? <TerrainBlocks terrain={DENSE_TERRAIN} /> : null}
+      {density === 'extreme' ? (
+        <TerrainBlocks
+          terrain={DENSE_TERRAIN}
+          castShadow={quality.terrainCastsShadow}
+        />
+      ) : null}
       <FoodBeacon
         position={[FOOD.x + 0.5, 0, FOOD.z + 0.5]}
         color={GAME_SCREEN_COLORS.systemCyan}
@@ -287,11 +308,11 @@ function PrototypeScene({
         targetY={COCKPIT_TARGET_Y}
       />
 
-      {!isMobile && effectsEnabled && (
+      {!isMobile && effectsEnabled && quality.bloomResolutionScale !== null && (
         <EffectComposer>
-          {/* Half resolution - see the note on the live board's Bloom. */}
+          {/* Governor-driven - see the note on the live board's Bloom. */}
           <Bloom
-            resolutionScale={0.5}
+            resolutionScale={quality.bloomResolutionScale}
             luminanceThreshold={0.68}
             luminanceSmoothing={0.88}
             intensity={0.58}
