@@ -681,7 +681,9 @@ function sanitizeMutations(
   }
 
   // Cadence count bound: the k-th mutation food cannot exist before food
-  // minFoodsPerPick x k (4k normally, 8k under the Patient trait).
+  // minFoodsPerPick x k (4k normally, 8k under the Patient trait). The floor is
+  // the minimum any live cadence can produce, not the universal roll's own
+  // lower bound - see `GENE_OFFER_CADENCE.minFoodsPerPick`.
   const maxPicks = Math.floor(foodCount / minFoodsPerPick);
   if (picks.length > maxPicks) {
     errors.push(

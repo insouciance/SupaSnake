@@ -8,11 +8,30 @@
  */
 
 export const GENE_OFFER_CADENCE = {
-  /** Mean foods between offers. */
-  intervalBase: 6,
-  /** Uniform half-width: offers arrive every 4-8 foods. */
+  /**
+   * Mean foods between offers.
+   *
+   * 6 -> 8 (owner ruling, 2026-08-05). At six the relic arrived while the last
+   * decision was still being played out, so the run read as a queue of offers
+   * rather than a build with consequences between them. Eight leaves room for
+   * the pick to matter before the next one lands, and it is the RELIC cadence
+   * only: the portal schedule is untouched, because the carry gamble is core
+   * design and its spacing is not a pacing dial.
+   */
+  intervalBase: 8,
+  /** Uniform half-width: offers arrive every 6-10 foods. */
   intervalJitter: 2,
-  /** Exact lower roll and validator bound. */
+  /**
+   * Validator floor: the smallest food gap any LIVE cadence can produce.
+   *
+   * Deliberately NOT the universal roll's lower bound any more. The auto-offer
+   * interaction (`GENOME_V2_GENE_OFFER_CADENCE`, still the rollback path for a
+   * run started with the relic flag off) opens its first two offers after FOUR
+   * foods, so a floor of six would reject a legal run's first pick. The bound
+   * exists against forgery, and the honest reading of it is the minimum across
+   * every cadence a run may have played under - which is four, and stays four
+   * until the auto-offer path is retired.
+   */
   minFoodsPerPick: 4,
 } as const;
 

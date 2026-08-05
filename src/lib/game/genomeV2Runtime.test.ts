@@ -225,7 +225,7 @@ describe('GenomeV2Runtime deterministic decisions', () => {
     expect(portalId).toContain('portal:');
   });
 
-  it('runs physical relic opportunities on a deterministic 4-8 food clock', () => {
+  it('runs physical relic opportunities on a deterministic 6-10 food clock', () => {
     const options = {
       runSeed: 'runtime-physical-relic-seed',
       dynasty: 'PRIMAL' as const,
@@ -235,8 +235,8 @@ describe('GenomeV2Runtime deterministic decisions', () => {
     };
     const runtime = new GenomeV2Runtime(options);
     const firstAt = runtime.nextCadenceOpportunityAtFood();
-    expect(firstAt).toBeGreaterThanOrEqual(4);
-    expect(firstAt).toBeLessThanOrEqual(8);
+    expect(firstAt).toBeGreaterThanOrEqual(6);
+    expect(firstAt).toBeLessThanOrEqual(10);
     expect(runtime.openCadenceOffer(1, firstAt - 1)).toBeNull();
 
     // The relic may remain visible while ordinary food is collected. The
@@ -248,8 +248,8 @@ describe('GenomeV2Runtime deterministic decisions', () => {
     expect(runtime.getState().offerCount).toBe(1);
     expect(runtime.declineOffer(3)).toBe(true);
     const secondAt = runtime.nextCadenceOpportunityAtFood();
-    expect(secondAt - collectedAt).toBeGreaterThanOrEqual(4);
-    expect(secondAt - collectedAt).toBeLessThanOrEqual(8);
+    expect(secondAt - collectedAt).toBeGreaterThanOrEqual(6);
+    expect(secondAt - collectedAt).toBeLessThanOrEqual(10);
   });
 
   it('expires an ignored relic without rolling, revealing, or declining an offer', () => {
@@ -296,8 +296,8 @@ describe('GenomeV2Runtime deterministic decisions', () => {
     const expiredAt = afterCollection + 2;
     expect(runtime.expireCadenceRelic(expiredAt)).toBe(true);
     const afterExpiry = runtime.nextCadenceOpportunityAtFood();
-    expect(afterExpiry - expiredAt).toBeGreaterThanOrEqual(8);
-    expect(afterExpiry - expiredAt).toBeLessThanOrEqual(16);
+    expect(afterExpiry - expiredAt).toBeGreaterThanOrEqual(12);
+    expect(afterExpiry - expiredAt).toBeLessThanOrEqual(20);
   });
 
   it('expires a physical portal without consuming an offer roll', () => {

@@ -6638,7 +6638,7 @@ export class SnakeGameLogic {
 
   /**
    * Genome cadence roll incl. the Patient trait cost: spawn rate -50%
-   * means the universal 4-8-food interval doubles to 8-16.
+   * means the universal 6-10-food interval doubles to 12-20.
    */
   private rollNextMutationInterval(): number {
     const interval = rollGeneOfferInterval(this.rng);

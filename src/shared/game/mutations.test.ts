@@ -71,23 +71,23 @@ describe('the Launch Ten', () => {
 });
 
 describe('spawn cadence', () => {
-  it('spawns once per 6 +/- 2 foods with a 40-tick despawn, cap 4 held', () => {
-    expect(MUTATION_SPAWN.intervalBase).toBe(6);
+  it('spawns once per 8 +/- 2 foods with a 40-tick despawn, cap 4 held', () => {
+    expect(MUTATION_SPAWN.intervalBase).toBe(8);
     expect(MUTATION_SPAWN.intervalJitter).toBe(2);
     expect(MUTATION_SPAWN.despawnTicks).toBe(40);
     expect(MUTATION_SPAWN.maxHeld).toBe(4);
   });
 
-  it('rollMutationInterval spans [4, 8] inclusive under the injected rng', () => {
-    expect(rollMutationInterval(() => 0)).toBe(4);
-    expect(rollMutationInterval(() => 0.999999)).toBe(8);
-    expect(rollMutationInterval(() => 0.5)).toBe(6);
+  it('rollMutationInterval spans [6, 10] inclusive under the injected rng', () => {
+    expect(rollMutationInterval(() => 0)).toBe(6);
+    expect(rollMutationInterval(() => 0.999999)).toBe(10);
+    expect(rollMutationInterval(() => 0.5)).toBe(8);
 
     const seen = new Set<number>();
     for (let i = 0; i < 1000; i++) {
       const value = rollMutationInterval(() => i / 1000);
-      expect(value).toBeGreaterThanOrEqual(4);
-      expect(value).toBeLessThanOrEqual(8);
+      expect(value).toBeGreaterThanOrEqual(6);
+      expect(value).toBeLessThanOrEqual(10);
       seen.add(value);
     }
     expect(seen.size).toBe(5);

@@ -302,8 +302,8 @@ export const MUTATION_SPAWN = {
 } as const;
 
 /**
- * Compatibility name for the universal Genome-offer roll: 6 +/- 2, uniform,
- * inclusive (so the first spawn is eligible at food 4-8). rng is
+ * Compatibility name for the universal Genome-offer roll: 8 +/- 2, uniform,
+ * inclusive (so the first spawn is eligible at food 6-10). rng is
  * injectable for deterministic tests; affects spawn timing only.
  */
 export function rollMutationInterval(rng: () => number = Math.random): number {

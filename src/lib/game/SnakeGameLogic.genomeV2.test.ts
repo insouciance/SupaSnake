@@ -343,8 +343,8 @@ describe('SnakeGameLogic Genome v2 authority boundary', () => {
       foods: [{ x: 6, y: 0, z: 5 }],
     });
     const dueAt = game.getState().nextMutationAtFood;
-    expect(dueAt).toBeGreaterThanOrEqual(4);
-    expect(dueAt).toBeLessThanOrEqual(8);
+    expect(dueAt).toBeGreaterThanOrEqual(6);
+    expect(dueAt).toBeLessThanOrEqual(10);
     for (let eaten = 0; eaten < dueAt; eaten += 1) eatStraightAhead(game);
 
     expect(game.getState().mutationTile).not.toBeNull();
@@ -464,8 +464,8 @@ describe('SnakeGameLogic Genome v2 authority boundary', () => {
       genome: physicalRelicConfig('PRIMAL'),
     });
     patient.start();
-    expect(patient.getState().nextMutationAtFood).toBeGreaterThanOrEqual(8);
-    expect(patient.getState().nextMutationAtFood).toBeLessThanOrEqual(16);
+    expect(patient.getState().nextMutationAtFood).toBeGreaterThanOrEqual(12);
+    expect(patient.getState().nextMutationAtFood).toBeLessThanOrEqual(20);
 
     const ascetic = new SnakeGameLogic({
       gridSize: 40,
