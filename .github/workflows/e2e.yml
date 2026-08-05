@@ -62,6 +62,31 @@ jobs:
   # environment. Workbench and Genome have independent rollback switches, so
   # their two mixed states run the focused public Research journey. The
   # aggregate job below keeps the branch-protection name `e2e`.
+  #
+  # THE CURRICULUM AXIS (WP-F). `NEXT_PUBLIC_PLAYER_EVOLUTION_V1` is the 23rd
+  # manifest flag, so it arrives on the two legs that inject the manifest and
+  # is absent from the two that do not. Both of its states are proved by legs
+  # that run the WHOLE suite, which is why no fifth leg was added:
+  #
+  #   leg                       | curriculum | career spine | genome v2 | specs
+  #   --------------------------|------------|--------------|-----------|-------
+  #   rollback                  | OFF        | OFF          | OFF       | all
+  #   legacy-workbench          | OFF        | OFF          | OFF       | lexicon
+  #   genome-without-workbench  | ON         | ON           | ON        | lexicon
+  #   production                | ON         | ON           | ON        | all
+  #
+  # The career-spine column is the one PR #84 asked to be written down: every
+  # curriculum surface reads synced attention state, which NotificationProvider
+  # does not fetch with `NEXT_PUBLIC_CAREER_SPINE_V1` off — so a curriculum-on
+  # leg without it would be a green no-op. Both come from the same manifest on
+  # both ON legs, so they cannot drift apart.
+  #
+  # The handoff's §6c sketch of "curriculum on/off x Genome v2 on/off" is NOT
+  # implemented as four literal legs, because two of its cells do not exist:
+  # the whole eligibility composition is nested inside `if (GENOME_V2_ENABLED)`
+  # (`session/route.ts:1297`), so "curriculum on, Genome v2 off" is definitionally
+  # inert and a leg for it would prove nothing at a cost of ~30 CI minutes.
+  # The two states that reach a player are covered, each by a full-suite leg.
   e2e-matrix:
     name: e2e (${{ matrix.flags }})
     runs-on: ubuntu-latest
@@ -120,12 +145,15 @@ jobs:
       - name: Arm feature flags for this leg
         run: |
           if [ "${{ matrix.flags }}" = 'rollback' ]; then
-            echo 'rollback leg: no NEXT_PUBLIC_* armed, flag-off paths covered'
+            echo 'rollback leg: no NEXT_PUBLIC_* armed'
+            echo '  curriculum OFF, career spine OFF, Genome v2 OFF; full suite'
+            echo '  this is the leg that proves the curriculum rollback path'
             exit 0
           fi
           if [ "${{ matrix.flags }}" = 'legacy-workbench' ]; then
             echo 'NEXT_PUBLIC_WORKBENCH_V1=true' >> "$GITHUB_ENV"
             echo 'legacy Workbench leg: Genome v2 off, Workbench v1 on'
+            echo '  curriculum OFF, career spine OFF; focused Research journey'
             exit 0
           fi
           if [ "${{ matrix.flags }}" = 'genome-without-workbench' ]; then
@@ -133,6 +161,8 @@ jobs:
               | grep -v '^NEXT_PUBLIC_WORKBENCH_V1=' \
               >> "$GITHUB_ENV"
             echo 'Workbench rollback leg: Genome v2 on, Workbench v1 off'
+            echo '  curriculum ON, career spine ON; focused Research journey'
+            echo '  the curriculum is inert here: that journey is signed out'
             exit 0
           fi
           # This is the same checked-in contract the release workflow injects
@@ -141,6 +171,17 @@ jobs:
           # silently drifting CI from the artifact players receive.
           node scripts/production-public-surface-cli.mjs github-env >> "$GITHUB_ENV"
           echo 'production leg: exact checked-in public-surface contract armed'
+          echo '  curriculum ON, career spine ON, Genome v2 ON; full suite'
+          echo '  this is the leg that proves the curriculum flag-ON path'
+          # Fail loudly rather than pass quietly. A curriculum-on leg with the
+          # Career Spine off renders none of these surfaces and would go green
+          # having tested nothing (PR #84's warning made mechanical).
+          for required in NEXT_PUBLIC_PLAYER_EVOLUTION_V1 NEXT_PUBLIC_CAREER_SPINE_V1 NEXT_PUBLIC_GENOME_V2; do
+            if ! grep -qx "${required}=true" "$GITHUB_ENV"; then
+              echo "::error::production leg is missing ${required}=true; the curriculum journey would be a silent no-op"
+              exit 1
+            fi
+          done
 
       - name: Install dependencies
         run: npm ci
