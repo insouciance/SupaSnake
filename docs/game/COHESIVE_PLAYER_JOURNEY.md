@@ -197,7 +197,7 @@ simulation tick.
 ### 3.3 Play — the protected core
 
 Normal play remains continuous and unobstructed. An ordinary Genome cadence
-opportunity begins as a physical board relic after a deterministic 6 ± 2 foods
+opportunity begins as a physical board relic after a deterministic 8 ± 2 foods
 and remains live for 40 resolved movement ticks. Its appearance or expiry never
 creates an offer or stops movement. Only deliberate collection creates the offer,
 rolls its candidates, and owns a frozen decision; an explicit portal MUTATE,
@@ -777,7 +777,7 @@ Do not advertise active-run recovery until verified checkpoints are live end to 
       monotonicity, and lease validation.
 - [ ] A due ordinary Genome opportunity places a 40-tick physical relic without
       opening an offer or pausing play; only collection rolls candidates, while
-      collection/expiry starts the next 6 ± 2 interval and excludes foods eaten
+      collection/expiry starts the next 8 ± 2 interval and excludes foods eaten
       during the prior relic lifetime.
 - [ ] The collected-relic Loom starts neutral and simple; selection reveals
       trigger/gain/risk, and per-offer UNFOLD DETAILS alone exposes the complete

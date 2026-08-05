@@ -38,7 +38,7 @@ reloads, reconnects, and duplicate completion attempts without storing progress
 or recovery work in browser storage.
 
 Tactical Genome v2 preserves uninterrupted Snake flow by placing an optional
-physical Gene relic every deterministic 6 ± 2 foods. Only deliberate collection
+physical Gene relic every deterministic 8 ± 2 foods. Only deliberate collection
 opens the compact Tactical Loom; six loci then combine shared Genes, Dynasty
 signatures, 2/3/4 Strain reactions, and eight Splices. Deeper build research
 lives in one free responsive Genome Workbench rather than a parallel in-run

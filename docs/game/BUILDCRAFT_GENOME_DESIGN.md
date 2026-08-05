@@ -61,9 +61,9 @@ Five cross-dynasty tag families. Every gene carries 1 tag (9 launch genes carry 
 
 The in-run gene gates are the load-bearing balance rule: spawn momentum (heirlooms + lineage, capped at **2 points per strain**, §8) can save you exactly one pick toward an Expression, never two, and can never substitute for Apex commitment. Expressions/Apexes activate at the food index where the threshold was crossed (`atFood` semantics identical to `MutationPick`), and their [E] effects apply to foods after that index — same discipline as `foodValueModifier`.
 
-Gene cap: **6 held** (up from 4). Offer cadence is **6 ± 2 foods (4–8)**,
+Gene cap: **6 held** (up from 4). Offer cadence is **8 ± 2 foods (6–10)**,
 independent of dynasty growth; Patient doubles each sampled interval. A
-representative 42-food run therefore sees about seven cadence offers, enough to
+representative 42-food run therefore sees about five cadence offers, enough to
 decline an imperfect gene and still reach Expression/Apex or assemble a setup.
 The cap of 6 plus splice fusion (2 slots → 1) preserves slot pressure, while
 the 40-tick despawn preserves execution pressure after an offer appears.

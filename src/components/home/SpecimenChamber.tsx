@@ -23,16 +23,9 @@
  *   (frameloop 'demand', no drift, no undulation).
  */
 
-import {
-  Component,
-  Suspense,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { AssetGate } from '@/components/game/AssetGate';
 import { useGLTF, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
@@ -933,66 +926,24 @@ const contactGeometry = new THREE.PlaneGeometry(1, 1);
  * lines are energy AROUND the subject and the subject reads against a hole.
  * That is why this can be loud at the rim and still legible at the centre.
  */
-/**
- * Renders its children, or nothing at all if they throw.
- *
- * Deliberately silent and deliberately narrow: it wraps decoration only, and
- * "the paper texture 404'd" is not an incident a player should be told about.
- * It is still reported — `componentDidCatch` logs, so the failure is visible
- * to us in the console and to Sentry's console integration, which is the
- * difference between degrading and swallowing (doctrine FM-2).
- *
- * Do NOT widen this around the specimen itself. A snake that fails to render
- * is a chamber with no subject, and that IS worth surfacing.
+/*
+ * The two boundary classes that used to live here — one failing to `null`
+ * for decoration, one failing to the primitive specimen — are now
+ * `AssetGate` in `@/components/game/AssetGate`, because the trap they close
+ * is not specific to this chamber. LF-D found five more unprotected loader
+ * sites, the run screen among them. Behaviour here is unchanged; the
+ * duplicated Suspense/error fallback pair is gone.
  */
-class DecorationBoundary extends Component<
-  { children: ReactNode },
-  { failed: boolean }
-> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  componentDidCatch(error: unknown) {
-    console.error('Chamber decoration failed to load; continuing without it:', error);
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
-}
-
-/**
- * Renders its children, or `fallback` if they throw.
- *
- * Used for the specimen, where "nothing" is not an acceptable degradation —
- * the fallback is the primitive creature, so the chamber always has a subject.
- */
-class SpecimenFallbackBoundary extends Component<
-  { children: ReactNode; fallback: ReactNode },
-  { failed: boolean }
-> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  componentDidCatch(error: unknown) {
-    console.error('Specimen model failed to load; drawing the primitive:', error);
-  }
-
-  render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
-  }
-}
 
 function ChamberAtmosphere({ animate }: { animate: boolean }) {
+  // WebP derivatives of the owner's plates, produced by
+  // `scripts/optimize-textures.mjs` straight from the authored PNGs rather
+  // than from the JPEGs that shipped first, so there is no generation loss.
+  // Both are downscaled to 512: one is an alphaMap at 0.2 and the other a
+  // map at 0.07, and neither renders a pixel of the detail it was carrying.
   const [speed, paper] = useTexture([
-    '/textures/speed-lines.jpg',
-    '/textures/paper-fiber.jpg',
+    '/textures/speed-lines.webp',
+    '/textures/paper-fiber.webp',
   ]);
   const speedRef = useRef<THREE.Mesh>(null);
 
@@ -1259,43 +1210,34 @@ export function SpecimenChamber({
           the one that renders "Something went wrong" over the whole of Home.
           Two decorative JPEGs could black out the front page.
 
-          So the boundary is explicit and it fails to `null`: no speed lines,
-          no paper tooth, a chamber that is otherwise exactly itself. This is
-          doctrine principle 1 in the smallest possible form — a supporting
-          piece may fail without the player finding out.
+          Failing to `null` is the whole point here: no speed lines, no paper
+          tooth, a chamber that is otherwise exactly itself. This is doctrine
+          principle 1 in the smallest possible form — a supporting piece may
+          fail without the player finding out.
         */}
-        <DecorationBoundary>
-          <Suspense fallback={null}>
-            <ChamberAtmosphere animate={animate} />
-          </Suspense>
-        </DecorationBoundary>
+        <AssetGate label="the chamber decoration" fallback={null}>
+          <ChamberAtmosphere animate={animate} />
+        </AssetGate>
         {/*
           THE SAME TRAP, ONE LEVEL UP, AND IT MUST NOT BE LEFT OPEN.
 
-          `Suspense` here covers the GLB STREAMING and draws the primitive
-          specimen meanwhile. It does not cover the GLB FAILING: a 404 or a
-          malformed model throws out of `useGLTF`, past this boundary, and
-          takes Home down exactly the way two missing JPEGs just did.
-
-          The fallback for a failure is therefore the SAME primitive specimen
-          the fallback for slowness is — rounded boxes, no model file, every
-          cosmetic still mounted at its anchor. A player whose model failed to
-          load sees a slightly simpler snake and nothing else. There is no
-          state in which the chamber has no creature in it.
+          A 404 or a malformed model throws out of `useGLTF` exactly the way
+          two missing JPEGs did. The fallback for a failure is therefore the
+          SAME primitive specimen the fallback for slowness is — rounded
+          boxes, no model file, every cosmetic still mounted at its anchor. A
+          player whose model failed to load sees a slightly simpler snake and
+          nothing else. There is no state in which the chamber has no
+          creature in it, and with `AssetGate` there is no way to write one:
+          the single `fallback` covers both cases by construction.
         */}
-        <SpecimenFallbackBoundary
+        <AssetGate
+          label="the specimen model"
           fallback={
             <SpecimenBody dynasty={dynasty} animate={animate} loadout={loadout} />
           }
         >
-          <Suspense
-            fallback={
-              <SpecimenBody dynasty={dynasty} animate={animate} loadout={loadout} />
-            }
-          >
-            <VoxelSpecimen dynasty={dynasty} animate={animate} loadout={loadout} />
-          </Suspense>
-        </SpecimenFallbackBoundary>
+          <VoxelSpecimen dynasty={dynasty} animate={animate} loadout={loadout} />
+        </AssetGate>
       </Canvas>
     </div>
   );

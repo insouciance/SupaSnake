@@ -79,7 +79,7 @@ game until every applicable box is checked. Owner: the monitored legal mailbox.
 - [ ] Results presents no more than three meaningful Career recognition beats;
       destination-specific acknowledgement clears server-backed attention
       without bell-open or route-open shortcuts
-- [ ] An ordinary 6 ± 2-food opportunity places one 40-tick physical Gene relic;
+- [ ] An ordinary 8 ± 2-food opportunity places one 40-tick physical Gene relic;
       placement/expiry never pauses or creates an offer, only deliberate
       collection rolls candidates, and the next interval begins on
       collection/expiry without counting foods eaten during the relic lifetime;

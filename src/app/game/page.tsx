@@ -65,6 +65,7 @@ import type { PlayerIdentity } from '@/lib/identity/types';
 import Link from 'next/link';
 import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
 import { InstancedSnake, InstancedSnakeFallback } from '@/components/game/InstancedSnake';
+import { AssetGate } from '@/components/game/AssetGate';
 import type { CosmeticLoadout } from '@/components/home/SnakeCosmetics';
 import {
   EMPTY_SNAKE_LOADOUT,
@@ -6278,7 +6279,8 @@ export default function GamePage() {
             <div
               className="absolute inset-0 pointer-events-none"
               style={{
-                backgroundImage: 'url(/textures/minimalistic_background_texture_of_space_1.png)',
+                backgroundImage:
+                  'url(/textures/minimalistic_background_texture_of_space_1.webp)',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 opacity: 0.12,
@@ -7962,7 +7964,13 @@ function GameBoard({
           packing neighbours. Left reading a deleted phase this would have
           defaulted to false and quietly paid the player for coiling along a
           seam that costs them nothing. */}
-      <Suspense
+      {/* The GLB streams, so it needs a fallback; the GLB can also 404, and
+          that throws past Suspense and takes the RUN SCREEN to the global
+          error page mid-run. `AssetGate` covers both with the same primitive
+          snake, so the worst case is a slightly simpler creature and a run
+          that keeps going. See FM-13. */}
+      <AssetGate
+        label="the snake model"
         fallback={
           <InstancedSnakeFallback
             bufferRef={bufferRef}
@@ -7986,7 +7994,7 @@ function GameBoard({
           revivePhaseActive={revivePhaseTicksRemaining > 0}
           loadout={cosmetics}
         />
-      </Suspense>
+      </AssetGate>
 
       {/* Food - clean voxel block; COSMIC tints the whole wave with its
           constellation hue, so the wave reads as one object */}

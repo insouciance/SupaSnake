@@ -7,7 +7,7 @@ and rollout instructions are no longer current product behavior.
 **Ruling.** Normal CYBER and COSMIC runs use classic **+1 growth throughout**.
 PRIMAL owns degressive body pressure: +4 below modelled length 75, +3 below 96,
 +2 below 120, then +1. Gene offers were separated from growth and moved to a
-universal 6 ± 2-food clock (4–8; Patient doubles it). The server still stamps a
+universal 8 ± 2-food clock (6–10; Patient doubles it). The server still stamps a
 profile for deterministic replay, but new normal runs receive `dynasty`; the
 Growth Lab selector and `NEXT_PUBLIC_GROWTH_LAB_V1` code path are retired.
 

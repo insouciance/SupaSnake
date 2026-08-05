@@ -43,6 +43,7 @@ import { RunCockpit } from '@/components/game/cockpit/RunCockpit';
 import type { RunCockpitModel } from '@/components/game/cockpit/types';
 import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
 import { InstancedSnake, InstancedSnakeFallback } from '@/components/game/InstancedSnake';
+import { AssetGate } from '@/components/game/AssetGate';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import {
@@ -153,7 +154,10 @@ function TrainingBoard({
           head={snapshot.state.snake[0] ?? null}
           ghost={ghost}
         />
-        <Suspense
+        {/* A missing GLB throws past Suspense; the drill keeps its snake
+            either way. See FM-13. */}
+        <AssetGate
+          label="the snake model"
           fallback={
             <InstancedSnakeFallback
               bufferRef={bufferRef}
@@ -167,7 +171,7 @@ function TrainingBoard({
             dynasty={scenario.dynasty}
             direction={snapshot.state.direction}
           />
-        </Suspense>
+        </AssetGate>
         {target && (
           <FoodBeacon
             position={[target.x + 0.5, 0, target.z + 0.5]}

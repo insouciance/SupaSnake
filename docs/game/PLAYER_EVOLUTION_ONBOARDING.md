@@ -132,7 +132,7 @@ The earlier "banks 10–25" row was a drafting inconsistency and is retired.
 - Arrival reaches deliberate movement before a menu tour.
 - The first run teaches movement, food, danger, a portal, and BANK.
 - The first Genome opportunity is the ordinary **physical relic**: deterministic
-  at 6 ± 2 foods, present for 40 resolved movement ticks, and opening the
+  at 8 ± 2 foods, present for 40 resolved movement ticks, and opening the
   Tactical Loom only when the snake deliberately collects it. Ignoring or
   outlasting a relic reveals nothing, consumes no candidate, and mints no Bond.
   Guidance may not convert it into a pushed prompt.

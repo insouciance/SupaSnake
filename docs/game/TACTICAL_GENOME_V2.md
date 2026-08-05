@@ -229,8 +229,8 @@ may earn its configured one-time v2 reward. World-first records and Weaver
 completion are likewise version-scoped; the Weaver cosmetic grant itself remains
 account-idempotent.
 
-Ordinary cadence opportunities use a deterministic **6 ± 2-food interval
-(4–8)** independent of Dynasty and body growth. Patient doubles the sampled
+Ordinary cadence opportunities use a deterministic **8 ± 2-food interval
+(6–10)** independent of Dynasty and body growth. Patient doubles the sampled
 interval; Ascetic receives no ordinary relic. A due opportunity places one
 physical relic on a reachable, survivable free cell for **40 resolved movement
 ticks**. If no honest cell exists, placement retries after later food rather

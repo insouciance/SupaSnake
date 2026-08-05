@@ -31,6 +31,7 @@ import {
   SnakeModel,
   SnakeSegmentFallback,
 } from '@/components/game/SnakeModel';
+import { AssetGate } from '@/components/game/AssetGate';
 import { TerrainBlocks } from '@/components/game/TerrainBlocks';
 import type { TerrainBlock, TerrainSource } from '@/shared/game/terrain';
 import { AimRenderer } from '@/components/game/AimRenderer';
@@ -121,12 +122,13 @@ function StaticSnake({ dynasty }: { dynasty: DynastyId }) {
           dynasty,
         };
         return (
-          <Suspense
+          <AssetGate
             key={`${segment.x}-${segment.z}`}
+            label="a snake segment model"
             fallback={<SnakeSegmentFallback {...props} />}
           >
             <SnakeModel {...props} />
-          </Suspense>
+          </AssetGate>
         );
       })}
     </>
@@ -251,7 +253,8 @@ function PrototypeScene({
         laneColor={theme.primary}
       />
       {density === 'extreme' ? (
-        <Suspense
+        <AssetGate
+          label="the snake model"
           fallback={
             <InstancedSnakeFallback
               bufferRef={bufferRef}
@@ -269,7 +272,7 @@ function PrototypeScene({
             terrain={DENSE_TERRAIN}
             wrapActive={dynasty === 'COSMIC'}
           />
-        </Suspense>
+        </AssetGate>
       ) : (
         <StaticSnake dynasty={dynasty} />
       )}

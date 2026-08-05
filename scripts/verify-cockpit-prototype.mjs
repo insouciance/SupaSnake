@@ -195,7 +195,11 @@ try {
       invariant(metrics.smallText.length === 0, `${prefix}: text below 14px: ${JSON.stringify(metrics.smallText)}`);
       invariant(metrics.scrollWidth === width, `${prefix}: horizontal overflow ${metrics.scrollWidth}px`);
       invariant(metrics.scrollHeight === height, `${prefix}: vertical overflow ${metrics.scrollHeight}px`);
-      invariant(metrics.backgroundImage.includes('minimalistic_background_texture_of_space_1.png'), `${prefix}: canonical background missing`);
+      // Extension-agnostic on purpose: the contract is that the CANONICAL
+      // authored plate is the backdrop, not which delivery format it is
+      // served in. Pinning `.png` here would have made the WebP derivation a
+      // verifier failure rather than the 91% saving it is.
+      invariant(metrics.backgroundImage.includes('minimalistic_background_texture_of_space_1.'), `${prefix}: canonical background missing`);
       invariant(metrics.board.width >= Math.min(270, width * 0.82), `${prefix}: board is too small (${metrics.board.width}px)`);
       invariant(metrics.buttons.every(({ width: w, height: h }) => w >= 44 - EPSILON && h >= 44 - EPSILON), `${prefix}: control below 44px touch target`);
       invariant(

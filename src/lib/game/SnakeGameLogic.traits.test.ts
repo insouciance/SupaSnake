@@ -111,9 +111,9 @@ describe('Patient: mutation cadence doubled', () => {
     expect(patientAt).toBe(
       plainAt * TRAIT_PHYSICS.patientMutationIntervalMultiplier
     );
-    // Doubled universal 6 +/- 2 window: 8..16.
-    expect(patientAt).toBeGreaterThanOrEqual(8);
-    expect(patientAt).toBeLessThanOrEqual(16);
+    // Doubled universal 8 +/- 2 window: 12..20.
+    expect(patientAt).toBeGreaterThanOrEqual(12);
+    expect(patientAt).toBeLessThanOrEqual(20);
   });
 
   it('no spawn happens before Patient\'s doubled minimum', () => {
