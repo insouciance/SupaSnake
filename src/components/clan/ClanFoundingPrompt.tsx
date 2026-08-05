@@ -20,14 +20,26 @@
  *   memory-only because a durable browser marker would reveal that the player
  *   crossed the banked-run ramp; player progress has no browser ledger.
  *
- * WHY IT IS NOT ON RESULTS
+ * WHY THIS PROMPT IS NOT ON RESULTS — AND WHAT SUPERSEDED THE ARGUMENT
  *
- *   §12.2 caps Results at three layers with exactly one recommended action, and
- *   WP-1.06 spends all three. A prompt for a different system landing there
- *   would be a fourth thing competing with that one action. It lives on the two
- *   surfaces it is about — the clan page and the Serpent battle — where a player
- *   arrives by navigation and Rule 7's "never by interruption" is satisfied by
- *   construction.
+ *   The original argument was: §12.2 caps Results at three layers with exactly
+ *   one recommended action, and WP-1.06 spends all three, so a prompt for a
+ *   different system landing there would be a fourth thing competing with that
+ *   one action.
+ *
+ *   **Owner ruling 2, 4 August 2026** (PEO §6 step 1, §13 row 2) supersedes it
+ *   for exactly one case: the eight-bank reveal may BE the fold-chosen single
+ *   recommended action, as a pointer to `/clan`. That spends no new layer and
+ *   adds no second prompt — it fills the slot Results already had, and it wins
+ *   a settlement it shares with a Gene unlock (§13 row 12).
+ *
+ *   The cap is therefore intact and the argument still holds for THIS
+ *   component: a prompt is a prompt, and this one is not offered on Results.
+ *   It is mounted on exactly one surface — the clan page
+ *   (`src/app/clan/page.tsx`) — where a player arrives by navigation and Rule
+ *   7's "never by interruption" is satisfied by construction. (An earlier
+ *   version of this comment claimed two mounts, naming the Serpent battle as
+ *   the second; no such mount has ever existed.)
  */
 
 import { useCallback, useEffect, useState } from 'react';

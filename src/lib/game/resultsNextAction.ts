@@ -17,7 +17,8 @@
  *      it is the only recommendation whose absence is destructive.
  *   2. A player still wearing a generated name is offered the claim, but only
  *      after a banked run, because that is the moment §5 calls the ceremony.
- *   3. WP-E's clan reveal (slot reserved, see below).
+ *   3. The eight-bank clan reveal — the rarer, larger event, so it takes a
+ *      settlement it shares with a Gene unlock (§13 row 12).
  *   4. A curriculum reveal — the run's actual news — above the standing Lab
  *      invitation, per §13 row 11.
  *   5. A player's first completed run meets the Lab.
@@ -56,12 +57,12 @@ export type ResultsNextActionId =
  * expressed as data so the policy is readable and re-orderable in one place
  * rather than inferred from the shape of an if-chain.
  *
- * `clan-reveal` is WP-E's slot and is deliberately RESERVED here rather than
- * implemented: WP-D owns only the collision rule that decides between it and
- * the curriculum reveal (§13 row 12 — the clan reveal wins, the Gene defers to
- * the next settlement, because boundary 5 allows one major lesson per
- * Results). `chooseNextAction` never returns `clan-reveal` today; WP-E adds
- * the branch and populates `clanRevealPending`.
+ * `clan-reveal` is filled by WP-E. It sits below `claim-handle` — account
+ * safety outranks every lesson (§5) — and above `curriculum-reveal`, which is
+ * §13 row 12's collision rule expressed as position rather than as a special
+ * case: the clan reveal is the rarer and larger event, so it takes the
+ * settlement and the Gene defers to the next one (boundary 5, one major lesson
+ * per Results).
  */
 export const RESULTS_NEXT_ACTION_PRIORITY: readonly ResultsNextActionId[] = [
   'save-progress',
@@ -126,12 +127,28 @@ export interface ResultsNextActionContext {
     attentionId: string;
   } | null;
   /**
-   * WP-E's eight-bank clan reveal is due on this settlement.
+   * An OPEN eight-bank clan reveal held by the server (WP-E, PEO §6).
    *
-   * WP-D implements only the deferral it forces: §13 row 12 gives the clan
-   * reveal the settlement and sends the Gene reveal to the next one, because
-   * the clan reveal is the rarer and larger event. Until WP-E lands, nothing
-   * sets this and the fold behaves exactly as it does today.
+   * Read from `/api/progression/attention` exactly as the curriculum
+   * invitation is, so a **Not now** on one device is respected on every other
+   * one. Its presence is also what defers a same-settlement Gene reveal:
+   * §13 row 12 gives this the settlement, and the Gene's own row stays open
+   * for the next one, so deferring costs the player nothing.
+   */
+  clanReveal?: {
+    label: string;
+    description: string;
+    href: string;
+    declineLabel: string;
+    attentionId: string;
+  } | null;
+  /**
+   * The clan reveal owns this settlement.
+   *
+   * Set by WP-D as the deferral switch and kept because it is the honest name
+   * for the condition: it is normally `Boolean(clanReveal)`, and the two are
+   * separate only so the fold can be tested against a pending reveal it was
+   * not given the copy for.
    */
   clanRevealPending?: boolean;
 }
@@ -179,8 +196,23 @@ export function chooseNextAction(
       href: null,
     };
   }
+  // The eight-bank clan reveal (owner ruling 2): the single recommended
+  // action becomes a POINTER to `/clan`, where the founding flow already
+  // lives. Not `/leaderboard` — the Compete nav item points there, and a
+  // first clan reveal that opened a leaderboard would teach the wrong thing
+  // (§6 step 2). Practice pays nothing and therefore reveals nothing.
+  if (context.clanReveal && !context.practice) {
+    return {
+      id: 'clan-reveal',
+      label: context.clanReveal.label,
+      description: context.clanReveal.description,
+      href: context.clanReveal.href,
+      attentionId: context.clanReveal.attentionId,
+      declineLabel: context.clanReveal.declineLabel,
+    };
+  }
   // The run's actual news outranks the standing Lab invitation (§13 row 11),
-  // and defers whole to WP-E's clan reveal when both land at once (row 12).
+  // and defers whole to the clan reveal when both land at once (row 12).
   // Deferring costs the player nothing: the attention row stays open, so the
   // next settlement offers the identical invitation.
   if (context.curriculumReveal && !context.clanRevealPending && !context.practice) {

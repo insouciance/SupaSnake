@@ -156,6 +156,7 @@ import {
   transitionServerNotification,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
+import { openClanRevealInvitation } from '@/lib/game/clanRevealAttention';
 import { openCurriculumInvitation } from '@/lib/game/curriculumAttention';
 import { PLAYER_EVOLUTION_ENABLED } from '@/lib/features/playerEvolution';
 import {
@@ -5139,6 +5140,16 @@ export default function GamePage() {
         : null,
     [serverNotifications]
   );
+  // The eight-bank CLAN REVEAL (WP-E, PEO §6), read from the same synced
+  // store and gated by the same flags, so the two invitations can never
+  // disagree about which one this settlement belongs to.
+  const clanReveal = useMemo(
+    () =>
+      PLAYER_EVOLUTION_ENABLED && CAREER_SPINE_V1_ENABLED
+        ? openClanRevealInvitation(serverNotifications)
+        : null,
+    [serverNotifications]
+  );
 
   // Layer 3's single recommended next action, when it opens a modal rather
   // than navigating.
@@ -5155,8 +5166,11 @@ export default function GamePage() {
           ? runImpact?.recommendedAction ?? null
           : null,
         curriculumReveal: curriculumInvite,
+        clanReveal,
+        clanRevealPending: clanReveal !== null,
       }),
     [
+      clanReveal,
       codexDiscoveries.length,
       curriculumInvite,
       endReason,
@@ -5182,18 +5196,22 @@ export default function GamePage() {
    * Move a server-owned invitation to a terminal state.
    *
    * `resolved` is **Show me** taken (the player is on their way to the
-   * Workbench) and `dismissed` is **Not now**. Both are PATCHes to
+   * destination) and `dismissed` is **Not now**. Both are PATCHes to
    * `/api/progression/attention`; a failure leaves the row open, which is the
    * safe direction — the invitation reappears rather than vanishing unheard.
+   *
+   * It reads the attention id off the CHOSEN action rather than off either
+   * invitation, so the fold's decision is the only thing that decides which
+   * row a tap closes. The Gene that deferred to a clan reveal is not touched.
    */
-  const transitionCurriculumInvite = useCallback(
+  const transitionResultsInvitation = useCallback(
     (transition: 'resolved' | 'dismissed') => {
       const token = sessionRef.current?.access_token;
       const attentionId = resultsNextAction.attentionId;
       if (!token || !attentionId) return;
       void transitionServerNotification(attentionId, transition, token).catch(
         (error) =>
-          console.error('Curriculum invitation transition failed:', error)
+          console.error('Results invitation transition failed:', error)
       );
     },
     [resultsNextAction.attentionId]
@@ -5202,14 +5220,17 @@ export default function GamePage() {
   const handleResultsNextAction = useCallback(() => {
     if (resultsNextAction.id === 'save-progress') setShowSaveProgress(true);
     if (resultsNextAction.id === 'claim-handle') setShowHandleClaim(true);
-    if (resultsNextAction.id === 'curriculum-reveal') {
-      transitionCurriculumInvite('resolved');
+    if (
+      resultsNextAction.id === 'curriculum-reveal' ||
+      resultsNextAction.id === 'clan-reveal'
+    ) {
+      transitionResultsInvitation('resolved');
     }
-  }, [resultsNextAction.id, transitionCurriculumInvite]);
+  }, [resultsNextAction.id, transitionResultsInvitation]);
 
   const handleDeclineResultsNextAction = useCallback(() => {
-    transitionCurriculumInvite('dismissed');
-  }, [transitionCurriculumInvite]);
+    transitionResultsInvitation('dismissed');
+  }, [transitionResultsInvitation]);
 
   // ---------------------------------------------------------------------
   // EVENT-ONLY RUN RATES.
