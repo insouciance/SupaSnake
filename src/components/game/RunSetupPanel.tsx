@@ -13,10 +13,25 @@ import {
   IconSnake,
 } from '@/components/ui/icons';
 import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
+import { InfoPopover } from '@/components/ui/InfoPopover';
+import { describe as describeLexiconEntry } from '@/shared/game/lexicon';
 import {
   SETUP_DYNASTIES,
   type SetupDynasty,
 } from '@/components/game/SnakePickerSheet';
+
+/**
+ * The three portal verbs, read from the one lexicon the Codex and the
+ * Workbench read. Composed at module scope because the entries are pure
+ * config-derived constants — the values move when the carry config moves, and
+ * never because a component re-rendered.
+ */
+const PORTAL_RAIL_MECHANICS = (
+  ['extraction_bank', 'extraction_pass', 'extraction_infuse'] as const
+).flatMap((id) => {
+  const entry = describeLexiconEntry('mechanic', id);
+  return entry ? [entry] : [];
+});
 
 export interface RunSetupSnake {
   id?: string;
@@ -463,6 +478,31 @@ export function RunSetupPanel({
             {ladderNote ? <div className="mt-1 [&>*]:text-xs">{ladderNote}</div> : null}
             <p className="mt-1 font-body text-[10px] text-beige/45">
               BANK at a portal pays +25% · crash and you keep 60%
+            </p>
+            {/*
+              The portal rail, before the run rather than during it (WP-D).
+              The headline sentence above is untouched — `e2e/game.spec.ts`
+              reads it and the legacy pre-game screen carries the same words —
+              and each verb gains an `InfoPopover` reading the SAME lexicon
+              entry the Workbench and the Codex read, so the full rule and its
+              cost reach a touch device, which a `title` attribute never did.
+              R1 holds by placement: this is Run Setup, so nothing here can
+              render between first input and run end.
+            */}
+            <p className="mt-1 flex flex-wrap items-center gap-x-1 font-body text-[10px] text-beige/45" data-testid="setup-portal-rail">
+              {PORTAL_RAIL_MECHANICS.map((entry) => (
+                <InfoPopover
+                  key={entry.id}
+                  title={entry.name}
+                  effect={entry.effect}
+                  cost={entry.cost}
+                  label={`${entry.name}: what it does`}
+                  testId={`portal-rail-${entry.id}`}
+                  className="min-h-[44px] px-1 font-display text-[11px] text-cosmic-glow underline decoration-dotted underline-offset-2"
+                >
+                  {entry.name}
+                </InfoPopover>
+              ))}
             </p>
           </section>
 

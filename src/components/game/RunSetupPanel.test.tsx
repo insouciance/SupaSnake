@@ -6,7 +6,7 @@
  * demanded." These assertions hold that line.
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { RunSetupPanel, type RunSetupPanelProps } from './RunSetupPanel';
 
 jest.mock('next/link', () => ({
@@ -228,5 +228,26 @@ describe('RunSetupPanel', () => {
     expect(energy.compareDocumentPosition(heirloom) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByTestId('earn-start')).toHaveClass('whitespace-nowrap');
     expect(screen.getByRole('link', { name: 'Snake Lab' })).toHaveClass('whitespace-nowrap');
+  });
+});
+
+describe('portal rail explanations (WP-D)', () => {
+  it('lets a touch player pull the full rule for each portal verb', () => {
+    render(<RunSetupPanel {...props()} />);
+    const rail = screen.getByTestId('setup-portal-rail');
+    for (const verb of ['BANK', 'RIDE ON', 'TRADE UP']) {
+      expect(within(rail).getByText(verb)).toBeInTheDocument();
+    }
+    // The words are the lexicon's, so a rules change moves this surface too.
+    expect(
+      screen.getByTestId('info-popover-portal-rail-extraction_bank')
+    ).toHaveAttribute('aria-label', 'BANK: what it does');
+  });
+
+  it('keeps the shipped headline sentence exactly as it was', () => {
+    render(<RunSetupPanel {...props()} />);
+    expect(
+      screen.getByText(/BANK at a portal pays \+25% · crash and you keep 60%/)
+    ).toBeInTheDocument();
   });
 });
