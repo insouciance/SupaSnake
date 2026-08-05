@@ -853,6 +853,7 @@ export interface SnakeCheckpointV1 {
     speed: number;
     portalIndex: number;
     portalsMet: number;
+    portalDrawDebt: number;
     fusedView: FusedView;
     activations: StrainActivations | null;
     lengthTrace: LengthTrace;
@@ -947,11 +948,19 @@ export class SnakeGameLogic {
   private spacedScratch: Uint8Array | null = null;
   /**
    * How far the seeded portal schedule has been walked, and how many doors it
-   * has produced. They differ only in the theoretical merge case documented on
-   * `advancePortalSchedule`; `portalsMet` is what the carry reads.
+   * has produced. `portalIndex` is the food-indexed cursor the settlement also
+   * walks; `portalsMet` counts the doors that actually appeared on the board,
+   * and is what the carry reads.
    */
   private portalIndex = 0;
   private portalsMet = 0;
+  /**
+   * Scheduled doors the board could not hold yet, waiting to be drawn.
+   *
+   * Part of the run's private state and therefore checkpointed: a resumed run
+   * still owes the player the door it never showed them.
+   */
+  private portalDrawDebt = 0;
   private traits: TraitId[];
   private mutationPool: MutationId[];
   private anomaly: AnomalyId | null;
@@ -1712,6 +1721,7 @@ export class SnakeGameLogic {
     this.offerIndex = 0;
     this.portalIndex = 0;
     this.portalsMet = 0;
+    this.portalDrawDebt = 0;
     this.offerTrace = [];
     this.recentOffers = [];
     this.ticksSinceAnyEat = 1_000_000;
@@ -1973,6 +1983,7 @@ export class SnakeGameLogic {
         speed: this.speed,
         portalIndex: this.portalIndex,
         portalsMet: this.portalsMet,
+        portalDrawDebt: this.portalDrawDebt,
         fusedView: checkpointClone(this.fusedView),
         activations: this.activations
           ? checkpointClone(this.activations)
@@ -2127,6 +2138,10 @@ export class SnakeGameLogic {
     this.portalsMet = checkpointInteger(
       checkpoint.privateState.portalsMet,
       'portalsMet'
+    );
+    this.portalDrawDebt = checkpointInteger(
+      checkpoint.privateState.portalDrawDebt,
+      'portalDrawDebt'
     );
     this.fusedView = checkpointClone(checkpoint.privateState.fusedView);
     this.activations = checkpoint.privateState.activations
@@ -5832,16 +5847,19 @@ export class SnakeGameLogic {
    * the destination must also sit in a free region large enough for the live
    * body to manoeuvre. The seeded rng still owns which valid cell is chosen.
    */
-  private spawnExit(): void {
-    const position = this.sampleExitCell(null);
+  private spawnExit(relaxEscape = false): boolean {
+    const position = this.sampleExitCell(null, relaxEscape);
     // A completely partitioned late board may have no honest portal cell.
-    // Not drawing a choice is better than drawing one the player cannot take;
-    // the cadence walker will retry or advance according to its existing rule.
-    if (!position) return;
+    // Not drawing a choice is better than drawing one the player cannot take -
+    // but the caller has to KNOW, because a door that was never drawn is a door
+    // the player never met. `advancePortalSchedule` holds the debt and retries.
+    if (!position) return false;
     this.state.exitTile = position;
     // Twin Exits (anomaly): portals spawn as a pair sharing one window
     this.state.exitTile2 =
-      this.anomaly === 'twin_exits' ? this.sampleExitCell(position) : null;
+      this.anomaly === 'twin_exits'
+        ? this.sampleExitCell(position, relaxEscape)
+        : null;
     this.state.exitTicksRemaining = this.effectiveExitDespawnTicks();
     this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'spawn' });
     this.emit('exitSpawned', {
@@ -5851,6 +5869,7 @@ export class SnakeGameLogic {
         : {}),
       ticksRemaining: this.state.exitTicksRemaining,
     });
+    return true;
   }
 
   /**
@@ -5858,7 +5877,20 @@ export class SnakeGameLogic {
    * rejection sampler, this never returns its last illegal guess after an
    * arbitrary attempt limit.
    */
-  private sampleExitCell(exclude: Position | null): Position | null {
+  private sampleExitCell(
+    exclude: Position | null,
+    /**
+     * Drop the escape-pocket requirement.
+     *
+     * Only the RETRY passes this. The first attempt keeps the strict rule -
+     * an optional objective must not be a cul-de-sac the body cannot leave -
+     * but a door the schedule already owes has failed that test at least once,
+     * and by then the alternative is not "a safer door" but NO door, on a
+     * decision the settlement is charging for either way. A reachable door the
+     * player may decline beats a door they never saw.
+     */
+    relaxEscape = false
+  ): Position | null {
     const head = this.state.snake[0];
     if (!head) return null;
     const cell = chooseSurvivableTargetCell(
@@ -5866,7 +5898,7 @@ export class SnakeGameLogic {
       head,
       this.opportunityBlockedGrid(exclude),
       this.rng,
-      this.state.snake.length
+      relaxEscape ? 0 : this.state.snake.length
     );
     return cell ? { ...cell, y: 0 } : null;
   }
@@ -6367,17 +6399,34 @@ export class SnakeGameLogic {
    * whenever the last door resolved" — that was a tick-timing fact the server
    * could not reconstruct, and the carry cannot be a client claim.
    *
-   * A door is COUNTED whether or not it is drawn. If one is somehow still open
-   * when the next comes due, the new one merges into it rather than stacking a
-   * second portal on the board — but the index still advances, so the engine
-   * and the settlement agree on how many doors the run met. (At the shipped
-   * cadence this cannot happen: an 18-second window against an 8-16 food
-   * interval leaves no overlap. It is defined because "cannot happen" is not
-   * the same as "is undefined".)
+   * A door that is ALREADY OPEN when the next comes due merges into it rather
+   * than stacking a second portal on the board, and still counts: the player is
+   * looking at a door. (At the shipped cadence this cannot happen — an
+   * 18-second window against an 8-16 food interval leaves no overlap. It is
+   * defined because "cannot happen" is not the same as "is undefined".)
+   *
+   * A DOOR THAT NEVER MATERIALIZED IS NOT MET (owner ruling, 2026-08-05).
+   * `spawnExit` declines when the late board offers no reachable, escape-capable
+   * cell — correctly, because a portal you cannot survive reaching is worse than
+   * no portal. What was wrong is what happened next: the schedule counted it
+   * anyway, so the carry's stake climbed and salvage decayed for a decision the
+   * player was never shown. The door is now held as a DEBT and retried on every
+   * resolved tick until it draws; `portalsMet` moves when a door is actually on
+   * the board.
+   *
+   * THE SCHEDULE CURSOR IS DELIBERATELY UNTOUCHED. `portalIndex` and
+   * `nextExitAtFood` still advance on the food-indexed recurrence, because the
+   * settlement walks the identical recurrence from `(runSeed, foodCount, taxes)`
+   * and cannot see the board. Deferring the cursor would fork the two schedules
+   * and turn a fairness fix into a payout disagreement. What the retry buys is
+   * that the two sets coincide: every scheduled door is shown, so counting shown
+   * doors and counting scheduled doors give the same number.
    */
   private advancePortalSchedule(n: number): void {
     if (!this.portalScheduleActive()) {
-      // Legacy path, unchanged.
+      // Legacy path, unchanged: with no seeded cursor, an undrawn door is
+      // simply re-attempted after the next eat, because `nextExitAtFood` has
+      // not moved.
       if (!this.state.exitTile && n >= this.state.nextExitAtFood) {
         this.spawnExit();
       }
@@ -6388,8 +6437,12 @@ export class SnakeGameLogic {
       n >= this.state.nextExitAtFood &&
       this.portalIndex < PORTAL_SCHEDULE_LIMIT
     ) {
-      this.portalsMet += 1;
-      if (!this.state.exitTile) this.spawnExit();
+      if (this.state.exitTile !== null || this.spawnExit()) {
+        this.portalsMet += 1 + this.portalDrawDebt;
+        this.portalDrawDebt = 0;
+      } else {
+        this.portalDrawDebt += 1;
+      }
       const interval =
         rollExitInterval(
           this.exitCadence(),
@@ -6398,6 +6451,25 @@ export class SnakeGameLogic {
       this.state.nextExitAtFood += Math.max(1, interval);
       this.portalIndex += 1;
     }
+  }
+
+  /**
+   * Draw a door the schedule owes but the board could not hold.
+   *
+   * Runs once per resolved tick. The body moves a cell every tick, so the
+   * geometry that refused the portal is a transient fact and the door arrives
+   * within a few ticks - the player meets every door the settlement charges
+   * them for. Nothing is drawn while one is already open: that door IS the
+   * pending decision, and the debt is credited when it resolves into the next
+   * scheduled draw.
+   */
+  private drawOwedPortal(): void {
+    if (this.portalDrawDebt <= 0) return;
+    if (!this.portalScheduleActive()) return;
+    if (this.state.exitTile !== null) return;
+    if (!this.spawnExit(true)) return;
+    this.portalsMet += this.portalDrawDebt;
+    this.portalDrawDebt = 0;
   }
 
   /**
