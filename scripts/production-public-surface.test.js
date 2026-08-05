@@ -17,7 +17,7 @@ describe('production public-surface contract', () => {
   }
 
   it('has one stable exact contract covering every production-on surface', () => {
-    expect(PRODUCTION_PUBLIC_FLAGS).toHaveLength(22);
+    expect(PRODUCTION_PUBLIC_FLAGS).toHaveLength(23);
     expect(PRODUCTION_PUBLIC_FLAGS).toEqual(
       [...PRODUCTION_PUBLIC_FLAGS].sort()
     );
@@ -32,6 +32,7 @@ describe('production public-surface contract', () => {
         'NEXT_PUBLIC_RUN_FLOW_V1',
         'NEXT_PUBLIC_CAREER_SPINE_V1',
         'NEXT_PUBLIC_LADDER_V1',
+        'NEXT_PUBLIC_PLAYER_EVOLUTION_V1',
       ])
     );
     expect(PRODUCTION_PUBLIC_SURFACE_HASH).toMatch(/^[0-9a-f]{64}$/);
