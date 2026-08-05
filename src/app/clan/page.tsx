@@ -321,8 +321,8 @@ function FoundClanPanel({
       </section>
 
       {confirming && typeof cost === 'number' && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="alertdialog" aria-modal="true" aria-labelledby="found-confirm-title" aria-describedby="found-confirm-description">
-          <div className="panel-elevated w-full max-w-sm p-6">
+        <div className="modal-scrim fixed inset-0 z-[80] flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-labelledby="found-confirm-title" aria-describedby="found-confirm-description">
+          <div className="panel-elevated modal-frame modal-tray-narrow p-6">
             <p className="label-arcade text-venom-orange">Founding commitment</p>
             <h3 id="found-confirm-title" className="mt-1 heading-display text-2xl text-bone-white">Found {name.trim()}?</h3>
             <p id="found-confirm-description" className="mt-2 text-sm font-body text-beige/70">Creating this clan spends {formatAmount(cost)} DNA. You become Leader and can set recruitment, appoint Co-leaders, and recognize Glory Members.</p>
@@ -524,8 +524,8 @@ export default function ClanPage() {
         ) : null}
 
         {leaveConfirm && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="alertdialog" aria-modal="true" aria-labelledby="leave-title" aria-describedby="leave-description">
-            <div className="panel-elevated w-full max-w-sm p-6">
+          <div className="modal-scrim fixed inset-0 z-[80] flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-labelledby="leave-title" aria-describedby="leave-description">
+            <div className="panel-elevated modal-frame modal-tray-narrow p-6">
               <h2 id="leave-title" className="heading-display text-2xl text-bone-white">Leave this clan?</h2>
               <p id="leave-description" className="mt-2 text-sm font-body text-beige/70">Your earned clan history remains. Active run eligibility keeps its immutable start snapshot; future runs will not contribute here.</p>
               <div className="mt-5 grid grid-cols-2 gap-3">

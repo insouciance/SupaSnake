@@ -214,8 +214,8 @@ export function ClanGloryPanel({
       {message && <p className="mt-3 text-sm font-body text-beige" role="status">{message}</p>}
 
       {confirming && selected && chosenSeat && terms && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4" role="alertdialog" aria-modal="true" aria-labelledby="glory-confirm-title" aria-describedby="glory-confirm-description" data-testid="glory-confirmation">
-          <div className="panel-elevated w-full max-w-md p-6">
+        <div className="modal-scrim fixed inset-0 z-[80] flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-labelledby="glory-confirm-title" aria-describedby="glory-confirm-description" data-testid="glory-confirmation">
+          <div className="panel-elevated modal-frame modal-tray-narrow p-6">
             <p className="label-arcade text-amber-300">Glory Seat {chosenSeat}</p>
             <h3 id="glory-confirm-title" className="mt-1 heading-display text-2xl text-bone-white">Recognize {candidateName(selected)}?</h3>
             <p id="glory-confirm-description" className="mt-2 text-sm font-body text-beige/75">

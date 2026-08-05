@@ -75,11 +75,11 @@ export function MutationChoiceOverlay({
       aria-modal="true"
       aria-labelledby="mutation-choice-title"
       tabIndex={-1}
-      className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 backdrop-blur-sm p-4"
+      className="modal-scrim absolute inset-0 z-30 flex items-center justify-center p-4"
       data-testid="mutation-choice-overlay"
     >
       <div
-        className="panel-elevated p-6 w-full max-w-md animate-pop-in"
+        className="panel-elevated modal-frame modal-tray-narrow p-6 animate-pop-in"
         style={{ '--glow': MUTATION_COLOR } as CSSProperties}
       >
         <h2

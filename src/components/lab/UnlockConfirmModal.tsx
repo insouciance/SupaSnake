@@ -149,7 +149,7 @@ export function UnlockConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-void-deep/85 sm:items-center sm:p-4"
+      className="modal-scrim fixed inset-0 z-50 flex items-end justify-center p-2 sm:items-center sm:p-4"
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -157,11 +157,7 @@ export function UnlockConfirmModal({
       data-testid="unlock-confirm-modal"
     >
       <div
-        className="animate-pop-in relative w-full max-w-md overflow-hidden rounded-t-[26px] border bg-void shadow-2xl sm:rounded-[26px]"
-        style={{
-          borderColor: hexToRgba(theme.glow, 0.55),
-          boxShadow: `0 22px 70px rgba(0,0,0,.7), 0 0 32px -16px ${hexToRgba(theme.glow, 0.7)}`,
-        }}
+        className="modal-frame modal-tray-narrow animate-pop-in relative overflow-hidden border bg-void"
       >
         {/* Title */}
         <div

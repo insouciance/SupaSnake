@@ -133,7 +133,7 @@ export function AccountChip({ className = '' }: AccountChipProps) {
             onClose={() => setMenuOpen(false)}
             ariaLabelledBy="account-auth-dialog-title"
             ariaDescribedBy="account-auth-dialog-description"
-            panelClassName="panel-elevated max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto p-4 animate-pop-in"
+            panelClassName="panel-elevated modal-frame modal-tray-narrow max-h-[calc(100dvh-2rem)] overflow-y-auto p-4 animate-pop-in"
           >
             <div className="mb-3 flex items-center justify-between gap-4">
               <h2 id="account-auth-dialog-title" className="label-arcade text-bone-white">

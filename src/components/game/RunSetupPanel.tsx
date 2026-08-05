@@ -328,10 +328,10 @@ export function RunSetupPanel({
    */
   return (
     <section
-      className="relative isolate mx-auto w-full max-w-[46rem] overflow-hidden bg-[radial-gradient(circle_at_50%_7%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_8%_48%,rgba(139,92,246,0.14),transparent_25%),radial-gradient(circle_at_92%_84%,rgba(251,191,36,0.09),transparent_24%)] p-2.5 text-center sm:p-5"
+      className="relative isolate mx-auto w-full overflow-hidden bg-[radial-gradient(circle_at_50%_7%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_8%_48%,rgba(139,92,246,0.14),transparent_25%),radial-gradient(circle_at_92%_84%,rgba(251,191,36,0.09),transparent_24%)] p-2.5 text-center sm:p-5"
       data-testid="run-setup"
     >
-      <header className="relative mx-auto max-w-xl">
+      <header className="relative mx-auto">
         <p className="label-arcade text-pulse">Run cockpit</p>
         <h2 className="heading-display text-xl text-bone-white sm:mt-1 sm:text-3xl">
           Ready to launch
@@ -344,7 +344,7 @@ export function RunSetupPanel({
       {snake ? (
         <>
           <section
-            className={`relative mx-auto mt-2 max-w-2xl overflow-hidden rounded-[20px] border ${visual.border} bg-[radial-gradient(circle_at_50%_35%,rgba(230,237,243,0.05),transparent_42%),linear-gradient(180deg,rgba(22,32,43,0.55),rgba(6,9,13,0.9))] shadow-glow-lg sm:mt-4 sm:rounded-[24px] ${visual.shadow}`}
+            className="relative mx-auto mt-2 overflow-hidden rounded-[20px] bg-[radial-gradient(circle_at_50%_35%,rgba(230,237,243,0.05),transparent_42%),linear-gradient(180deg,rgba(22,32,43,0.55),rgba(6,9,13,0.9))] sm:mt-4 sm:rounded-[24px]"
             aria-label="Selected snake launch chamber"
           >
             <div className="absolute left-3 top-3 z-10 hidden max-w-[calc(100%-1.5rem)] items-center gap-1.5 sm:flex">
@@ -405,7 +405,7 @@ export function RunSetupPanel({
 
           {modeToggle ? (
             <section
-              className="mx-auto mt-2 max-w-2xl rounded-[18px] border border-cosmic/25 bg-cosmic/5 px-2 py-1 [&_.label-arcade]:text-[8px] [&_button]:rounded-full [&_button]:whitespace-nowrap sm:py-1.5"
+              className="mx-auto mt-2 rounded-[18px] bg-cosmic/8 px-2 py-1 [&_.label-arcade]:text-[8px] [&_button]:rounded-full [&_button]:whitespace-nowrap sm:py-1.5"
               aria-label="Choose run mode"
               data-testid="run-setup-mode-control"
             >
@@ -417,7 +417,7 @@ export function RunSetupPanel({
 
           {challengeNote && (
             <p
-              className="mx-auto mt-2 max-w-xl rounded-[16px] border border-cosmic/40 bg-cosmic/10 px-3 py-1.5 font-body text-xs text-cosmic-glow sm:mt-3 sm:px-4 sm:py-2 sm:text-sm"
+              className="mx-auto mt-2 rounded-[16px] bg-cosmic/12 px-3 py-1.5 font-body text-xs text-cosmic-glow sm:mt-3 sm:px-4 sm:py-2 sm:text-sm"
               data-testid="challenge-note"
             >
               {challengeNote}
@@ -425,12 +425,12 @@ export function RunSetupPanel({
           )}
 
           {startError && (
-            <div className="mx-auto mt-2 max-w-xl animate-fade-up rounded-[16px] border border-strike-red/70 bg-strike-red/15 px-4 py-2" role="alert">
+            <div className="mx-auto mt-2 animate-fade-up rounded-[16px] bg-strike-red/20 px-4 py-2" role="alert">
               <p className="font-body text-strike-red">{startError}</p>
             </div>
           )}
 
-          <div className="mx-auto mt-2 max-w-2xl rounded-[18px] border border-cyber/30 bg-void-deep/60 p-1.5 sm:mt-3 sm:p-2.5">
+          <div className="mx-auto mt-2 rounded-[18px] bg-void-deep/60 p-1.5 sm:mt-3 sm:p-2.5">
             <button
               type="button"
               onClick={onStart}
@@ -445,7 +445,7 @@ export function RunSetupPanel({
             </button>
           </div>
 
-          <section className="mx-auto mt-3 max-w-2xl" aria-labelledby="run-favorites-title">
+          <section className="mx-auto mt-3" aria-labelledby="run-favorites-title">
             <div className="mb-2 flex items-center justify-center gap-2">
               <IconCrown size={14} className="text-rarity-legendary" />
               <p id="run-favorites-title" className="label-arcade text-[9px] text-beige/55">
@@ -473,12 +473,12 @@ export function RunSetupPanel({
             </div>
           </section>
 
-          <section className="mx-auto mt-3 grid max-w-2xl grid-cols-2 gap-2" aria-label="Run configuration">
+          <section className="mx-auto mt-3 grid grid-cols-2 gap-2" aria-label="Run configuration">
             <MissionReadout icon={<IconDna size={17} />} label="Run mode" value={modeLabel} />
             <MissionReadout icon={<IconBolt size={17} />} label="Aim system" value={aimLabel} />
           </section>
 
-          <section className="mx-auto mt-2 max-w-2xl rounded-[16px] border border-scale-blue-light/35 bg-void-deep/55 px-3 py-2.5">
+          <section className="mx-auto mt-2 rounded-[16px] bg-void-deep/55 px-3 py-2.5">
             <p className="font-body text-xs leading-snug text-beige/75" data-testid="ruleset-explainer">
               {rulesetExplainer}
             </p>
@@ -522,20 +522,20 @@ export function RunSetupPanel({
           {heirloom ? <div className="mt-3">{heirloom}</div> : null}
         </>
       ) : noSnakeAvailable ? (
-        <div className="mx-auto mt-5 max-w-md rounded-[20px] border border-strike-red/45 bg-strike-red/10 p-5">
+        <div className="mx-auto mt-5 rounded-[20px] bg-strike-red/15 p-5">
           <p className="font-body text-beige">
             We couldn&apos;t prepare your snake. Return Home and retry.
           </p>
         </div>
       ) : (
-        <div className="mx-auto mt-5 max-w-md rounded-[20px] border border-cyber/30 bg-cyber/5 p-5">
+        <div className="mx-auto mt-5 rounded-[20px] bg-cyber/8 p-5">
           <p className="font-body text-beige/70">Preparing your snake…</p>
         </div>
       )}
 
       {!snake && challengeNote && (
         <p
-          className="mx-auto mt-3 max-w-xl rounded-[16px] border border-cosmic/40 bg-cosmic/10 px-4 py-2 font-body text-sm text-cosmic-glow"
+          className="mx-auto mt-3 rounded-[16px] bg-cosmic/12 px-4 py-2 font-body text-sm text-cosmic-glow"
           data-testid="challenge-note"
         >
           {challengeNote}
@@ -543,12 +543,12 @@ export function RunSetupPanel({
       )}
 
       {!snake && startError && (
-        <div className="mx-auto mt-3 max-w-xl animate-fade-up rounded-[16px] border border-strike-red/70 bg-strike-red/15 px-4 py-2" role="alert">
+        <div className="mx-auto mt-3 animate-fade-up rounded-[16px] bg-strike-red/20 px-4 py-2" role="alert">
           <p className="font-body text-strike-red">{startError}</p>
         </div>
       )}
 
-      {!snake && <div className="mx-auto mt-3 max-w-2xl rounded-[18px] border border-cyber/30 bg-void-deep/60 p-2.5">
+      {!snake && <div className="mx-auto mt-3 rounded-[18px] bg-void-deep/60 p-2.5">
         {noSnakeAvailable ? (
           <Link
             href="/"
@@ -576,7 +576,7 @@ export function RunSetupPanel({
 
       {!noSnakeAvailable && hasAdjustables && (
         <details
-          className="mx-auto mt-3 max-w-2xl rounded-[18px] border border-scale-blue-light/35 bg-void-deep/55 p-3 text-left"
+          className="mx-auto mt-3 rounded-[18px] bg-void-deep/55 p-3 text-left"
           data-testid="run-setup-adjust"
         >
           <summary className="cursor-pointer text-center font-display text-xs uppercase text-cosmic-glow whitespace-nowrap">

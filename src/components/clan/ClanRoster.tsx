@@ -57,14 +57,14 @@ function ConfirmRosterAction({
   const transfer = pending.kind === 'transfer';
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4"
+      className="modal-scrim fixed inset-0 z-[80] flex items-center justify-center p-4"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="roster-confirm-title"
       aria-describedby="roster-confirm-description"
       data-testid="roster-confirmation"
     >
-      <div className="panel-elevated w-full max-w-sm p-6">
+      <div className="panel-elevated modal-frame modal-tray-narrow p-6">
         <h3 id="roster-confirm-title" className="heading-display text-2xl text-bone-white">
           {transfer ? `Make ${name} Leader?` : `Remove ${name}?`}
         </h3>

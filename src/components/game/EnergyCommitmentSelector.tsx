@@ -50,7 +50,7 @@ export function EnergyCommitmentSelector({
   if (!energy) {
     return (
       <section
-        className="mx-auto w-full max-w-xl rounded-[20px] border border-rarity-legendary/25 bg-void/65 p-4"
+        className="mx-auto w-full rounded-[20px] bg-void/70 p-4"
         data-testid="energy-commitment"
       >
         <p className="font-body text-sm text-beige/60">Checking recovered Energy…</p>
@@ -74,7 +74,7 @@ export function EnergyCommitmentSelector({
 
   return (
     <section
-      className="relative mx-auto w-full max-w-xl overflow-hidden rounded-[22px] border border-rarity-legendary/40 bg-[radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.16),transparent_45%),linear-gradient(180deg,rgba(22,32,43,0.94),rgba(6,9,13,0.98))] p-2.5 shadow-glow shadow-rarity-legendary/15 sm:p-4"
+      className="relative mx-auto w-full overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.16),transparent_45%),linear-gradient(180deg,rgba(22,32,43,0.94),rgba(6,9,13,0.98))] p-2.5 sm:p-4"
       data-testid="energy-commitment"
       aria-label="Energy Commitment"
     >
@@ -255,7 +255,7 @@ export function EnergyCommitmentSelector({
           ariaLabelledBy="energy-max-title"
           ariaDescribedBy="energy-max-description"
           testId="energy-max-confirmation"
-          panelClassName="max-w-sm overflow-hidden rounded-[24px] border-2 border-rarity-legendary/65 bg-[radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.22),transparent_48%),linear-gradient(180deg,#16202b,#06090d)] p-5 text-center shadow-glow-lg shadow-rarity-legendary/30"
+          panelClassName="modal-frame modal-tray-narrow overflow-hidden border bg-[radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.22),transparent_48%),linear-gradient(180deg,#16202b,#06090d)] p-5 text-center"
         >
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-2 border-rarity-legendary bg-rarity-legendary/10 text-rarity-legendary shadow-glow shadow-rarity-legendary/45 motion-safe:animate-glow-pulse motion-reduce:animate-none">
             <IconBolt size={38} />

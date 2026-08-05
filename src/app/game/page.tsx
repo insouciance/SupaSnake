@@ -5215,9 +5215,22 @@ export default function GamePage() {
 
   // SETUP: reopen the setup page over the finished run. The run's numbers
   // stay settled; only the surface changes.
+  //
+  // THE COMMITMENT COMES WITH IT (ruling D3). REPLAY is capped at 1 Energy by
+  // Constitution §5 - "REPLAY never silently repeats a multi-Energy
+  // commitment: it uses 1 Energy when available, otherwise lean" - so a player
+  // who just staked more than one has exactly one route back to that stake,
+  // and it is this button. Arriving at a setup page reset to the default would
+  // make them re-choose a commitment they had already chosen, including the
+  // deliberate two-step for all six. It is preselected, never re-armed: the
+  // page still shows it, still lets them change it, and nothing is committed
+  // until they press the launch action. The clamp against server-held stock
+  // lives in `EnergyCommitmentSelector`, so a stale figure cannot outlive the
+  // Energy that backs it.
   const handleOpenSetup = useCallback(() => {
+    if (activeEnergyCommitted > 0) setEnergyCommitment(activeEnergyCommitted);
     setSetupReopened(true);
-  }, []);
+  }, [activeEnergyCommitted]);
 
   // The game's ONE sanctioned collect (§7.2). WP-1.04 owns the endpoint; its
   // absence resolves to a quiet `unavailable`, never an error state.
@@ -5773,8 +5786,14 @@ export default function GamePage() {
     overclock: genomeV2Overclock,
     bankDna: genomeRulesVersion === 2 ? 0 : previewOutcome(true, activeAnomalyId),
     crashDna: genomeRulesVersion === 2 ? 0 : previewOutcome(false, activeAnomalyId),
-    bankOutcomeLabel: genomeV2LiveOutcome?.bank.replace(' Yield', 'Y'),
-    crashOutcomeLabel: genomeV2LiveOutcome?.crash.replace(' Yield', 'Y'),
+    // BARE NUMBERS IN THE HUD (owner ruling). These two lines used to strip a
+    // legacy unit string that the rename to "Payout" had already removed, so
+    // both were no-ops and the tightest tray on the screen rendered the full
+    // "42.75 Payout" in a cell measured for "42.75P". The unit is not shrunk
+    // or clipped here, it MOVES: `outcomeUnitLabel` below is the tray's
+    // `title` and each figure's `aria-label` still says it in full.
+    bankOutcomeLabel: genomeV2LiveOutcome?.bankBare,
+    crashOutcomeLabel: genomeV2LiveOutcome?.crashBare,
     outcomeUnitLabel: genomeV2LiveOutcome?.label,
     constellation:
       isPlaying && constellationWindowTicks > 0
@@ -5818,8 +5837,8 @@ export default function GamePage() {
           snakeLength={snake.length}
           bankDna={0}
           crashDna={0}
-          bankOutcomeLabel={genomeV2PortalPresentation.outcomeProjection.bank}
-          crashOutcomeLabel={genomeV2PortalPresentation.outcomeProjection.crash}
+          bankOutcomeLabel={genomeV2PortalPresentation.outcomeProjection.bankBare}
+          crashOutcomeLabel={genomeV2PortalPresentation.outcomeProjection.crashBare}
           outcomeUnitLabel={genomeV2PortalPresentation.outcomeProjection.label}
           doorsPassed={genomeV2State?.carryPasses ?? 0}
           cadence={activeLadderCadence}
@@ -5846,7 +5865,7 @@ export default function GamePage() {
     : runEngineFault && isPlaying && !isGameOver
       ? (
           <div
-            className="mx-auto w-full max-w-md space-y-3 rounded-arcade border border-venom-orange/70 bg-[linear-gradient(145deg,rgba(10,18,35,0.98),rgba(48,20,31,0.98))] p-4 text-center shadow-[0_0_34px_rgba(255,159,67,0.2)]"
+            className="modal-frame modal-tray-narrow mx-auto space-y-3 border bg-[linear-gradient(145deg,rgba(10,18,35,0.98),rgba(48,20,31,0.98))] p-4 text-center"
             role="alert"
             data-testid="engine-recovery"
           >
@@ -5868,7 +5887,7 @@ export default function GamePage() {
     : terminalRecoveryState !== 'idle' && isPlaying && !isGameOver
       ? (
           <div
-            className="mx-auto w-full max-w-md space-y-3 rounded-arcade border border-scale-blue-light/70 bg-[linear-gradient(145deg,rgba(10,18,35,0.98),rgba(33,18,61,0.98))] p-4 text-center shadow-[0_0_34px_rgba(82,190,255,0.22)]"
+            className="modal-frame modal-tray-narrow mx-auto space-y-3 border bg-[linear-gradient(145deg,rgba(10,18,35,0.98),rgba(33,18,61,0.98))] p-4 text-center"
             role="status"
             aria-live="polite"
             data-testid="terminal-recovery"
@@ -5899,7 +5918,7 @@ export default function GamePage() {
     : continuitySafetyHold === 'stale' && isPlaying && !isGameOver
       ? (
           <div
-            className="mx-auto max-w-md space-y-3 rounded-arcade border border-venom-orange/70 bg-void-deep/95 p-4 text-center shadow-[0_0_30px_rgba(245,158,11,0.2)]"
+            className="modal-frame modal-tray-narrow mx-auto space-y-3 border bg-void-deep/95 p-4 text-center"
             role="alert"
             data-testid="continuity-safety-hold"
           >
@@ -6325,18 +6344,22 @@ export default function GamePage() {
           {isPlaying && dnaCollected > 0 && (
             <div
               data-testid="bank-chip"
+              title={genomeV2LiveOutcome?.label}
               className={`flex h-7 shrink-0 items-center gap-1 px-2 rounded-arcade border bg-void/80 backdrop-blur-md transition-colors ${
                 exitTile
                   ? 'border-[#7df9ff]/80 animate-pulse'
                   : 'border-scale-blue-light/50'
               }`}
             >
+              {/* Bare figures, same ruling as the cockpit outcome pair: this
+                  chip is 28px tall with `overflow-hidden`, so the unit is
+                  named by the chip's own title rather than inside it. */}
               <span className="text-[#7df9ff] font-bold">
-                <span className="hidden sm:inline">BANK </span>{genomeV2LiveOutcome?.bank.replace(' Yield', 'Y') ?? previewOutcome(true, activeAnomalyId)}
+                <span className="hidden sm:inline">BANK </span>{genomeV2LiveOutcome?.bankBare ?? previewOutcome(true, activeAnomalyId)}
               </span>
               <span className="text-beige/40">·</span>
               <span className="text-beige/60">
-                <span className="hidden sm:inline">crash </span>{genomeV2LiveOutcome?.crash.replace(' Yield', 'Y') ?? previewOutcome(false, activeAnomalyId)}
+                <span className="hidden sm:inline">crash </span>{genomeV2LiveOutcome?.crashBare ?? previewOutcome(false, activeAnomalyId)}
               </span>
             </div>
           )}
@@ -6601,13 +6624,13 @@ export default function GamePage() {
 
       {/* Game Over / Start Screen */}
       {!isPlaying && (
-        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto bg-ink/86 p-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] backdrop-blur-sm sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
+        <div className="modal-scrim absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
           {/* ONE tray, ONE outline (owner ruling). This element is the tray for
               every state of the overlay - Run Setup, Results, recovery - so the
               single bold frame lives here and nothing inside it may draw a
               second one. See `.modal-frame` in globals.css. */}
           <div
-            className={`panel-elevated modal-frame my-auto min-w-0 w-full max-w-3xl space-y-6 p-2 text-center animate-pop-in sm:p-8 ${
+            className={`panel-elevated modal-frame modal-tray my-auto min-w-0 space-y-6 p-2 text-center animate-pop-in sm:p-8 ${
               isGameOver
                 ? endReason === 'extracted'
                   ? '[--glow:#f2a03f]'
@@ -7380,7 +7403,7 @@ export default function GamePage() {
       {!HUD_COCKPIT_V1_ENABLED && runEngineFault && isPlaying && !isGameOver && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-transparent p-4">
           <div
-            className="max-w-sm space-y-3 rounded-arcade border border-venom-orange/70 bg-[linear-gradient(145deg,rgba(10,18,35,0.98),rgba(48,20,31,0.98))] p-5 text-center shadow-[0_0_34px_rgba(255,159,67,0.2)]"
+            className="modal-frame modal-tray-narrow space-y-3 border bg-[linear-gradient(145deg,rgba(10,18,35,0.98),rgba(48,20,31,0.98))] p-5 text-center"
             role="alert"
             data-testid="engine-recovery"
           >
@@ -7402,7 +7425,7 @@ export default function GamePage() {
       {!HUD_COCKPIT_V1_ENABLED && terminalRecoveryState !== 'idle' && isPlaying && !isGameOver && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-transparent p-4">
           <div
-            className="max-w-sm space-y-3 rounded-arcade border border-scale-blue-light/70 bg-[linear-gradient(145deg,rgba(10,18,35,0.98),rgba(33,18,61,0.98))] p-5 text-center shadow-[0_0_34px_rgba(82,190,255,0.22)]"
+            className="modal-frame modal-tray-narrow space-y-3 border bg-[linear-gradient(145deg,rgba(10,18,35,0.98),rgba(33,18,61,0.98))] p-5 text-center"
             role="status"
             data-testid="terminal-recovery"
           >
@@ -7427,7 +7450,7 @@ export default function GamePage() {
 
       {!HUD_COCKPIT_V1_ENABLED && terminalRecoveryState === 'idle' && continuitySafetyHold === 'stale' && isPlaying && !isGameOver && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-void-deep/70 p-4 backdrop-blur-sm">
-          <div className="max-w-sm space-y-3 rounded-arcade border border-venom-orange/70 bg-void-deep p-5 text-center">
+          <div className="modal-frame modal-tray-narrow space-y-3 border bg-void-deep p-5 text-center">
             <p className="font-display text-venom-orange">Run held safely</p>
             <p className="font-body text-sm text-beige/80">
               This run continued in another window.
