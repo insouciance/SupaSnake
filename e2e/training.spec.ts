@@ -77,8 +77,19 @@ test.describe('Training Lab', () => {
       await page.setViewportSize(viewport);
       const layout = await readTrainingLayout(page);
       expect(layout).not.toBeNull();
-      expect(Math.abs(layout!.board.width - layout!.board.height)).toBeLessThanOrEqual(1);
+      /*
+       * Training mounts the same `RunCockpit`, so it inherits the trayless
+       * board: the square-well premise this line used to assert is gone on
+       * purpose. See the long note in `cockpit.spec.ts` for the argument. The
+       * contract kept here is the same one: non-degenerate, fills its bay, and
+       * clipped only by the browser viewport.
+       */
       expect(layout!.board.width).toBeGreaterThanOrEqual(180);
+      expect(layout!.board.height).toBeGreaterThanOrEqual(180);
+      expect(layout!.board.x).toBeGreaterThanOrEqual(-0.5);
+      expect(layout!.board.y).toBeGreaterThanOrEqual(-0.5);
+      expect(layout!.board.x + layout!.board.width).toBeLessThanOrEqual(viewport.width + 0.5);
+      expect(layout!.board.y + layout!.board.height).toBeLessThanOrEqual(viewport.height + 0.5);
       for (const zone of layout!.zones) {
         expect(rectanglesOverlap(layout!.board, zone)).toBe(false);
       }

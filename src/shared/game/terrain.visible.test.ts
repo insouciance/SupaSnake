@@ -247,8 +247,38 @@ describe('the forming phase can be drawn as progress', () => {
       /MAX_BLOCKS = GAME_CONFIG\.board\.gridSize \* GAME_CONFIG\.board\.gridSize/
     );
     expect(renderer).not.toContain('useFrame');
-    // One forming mesh, one solid mesh, one source-relief mesh. Source
-    // distinction must not consume a mesh/material per cause.
-    expect(renderer.match(/<instancedMesh/g)).toHaveLength(3);
+
+    /*
+     * ONE MESH PER ROLE, NEVER ONE PER CAUSE.
+     *
+     * That is the rule this assertion has always enforced; the number is only
+     * how it was written down. It was 3 - forming, solid, source relief - and
+     * INK & AMBER adds a FOURTH ROLE rather than a fourth cause: the ink hull,
+     * which is the board's single outline mechanism and is shared by every
+     * terrain block regardless of what placed it. Solid terrain is a lit board
+     * object, and under the ratified direction every lit board object carries
+     * that line; a terrain block without one would be the only unoutlined
+     * solid on the board.
+     *
+     * The hull is instanced and copies the solid mesh's matrices, so it is one
+     * draw for the whole set - the same "+1 draw for the whole object, not one
+     * per instance" property the snake trail and the slab rely on.
+     *
+     * The invariant is therefore restated so it cannot rot into a bare number
+     * again: the mesh count is FIXED, and it stays fixed while the number of
+     * terrain causes grows.
+     */
+    const meshes = renderer.match(/<instancedMesh/g);
+    expect(meshes).toHaveLength(4);
+    for (const ref of ['formingRef', 'solidHullRef', 'solidRef', 'signatureRef']) {
+      expect(renderer).toContain(`ref={${ref}}`);
+    }
+    // Source distinction must not consume a mesh per cause: there are strictly
+    // more causes than meshes, and adding a cause must not change that.
+    const causes = renderer
+      .slice(renderer.indexOf('TERRAIN_RUNE_STRAIN: Record<TerrainSource, StrainId> = {'))
+      .split('};')[0]
+      .match(/^\s+\w+: '/gm);
+    expect(causes!.length).toBeGreaterThanOrEqual(meshes!.length);
   });
 });

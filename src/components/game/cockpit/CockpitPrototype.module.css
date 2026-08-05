@@ -1164,6 +1164,43 @@
  * is what hands input back. That is what lets this much larger surface lie
  * over HUD controls without any of them going dead.
  */
+/*
+ * THE HUD GUARANTEE, ENFORCED RATHER THAN INHERITED.
+ *
+ * `.arenaCanvasBleed` below sets `pointer-events: none`, and `pointer-events`
+ * inherits - so in principle the canvas inside it is already inert. It is not,
+ * and this rule is why the pop-out has to state the guarantee instead of
+ * assuming it.
+ *
+ * `@react-three/fiber`'s `<Canvas>` writes `pointerEvents: 'auto'` as an
+ * INLINE style on its wrapper div (react-three-fiber.cjs.dev.js: "When the
+ * event source is not this div, we need to set pointer-events to none / Or
+ * else the canvas will block events from reaching the event source"). An
+ * inline declaration beats every selector that is not `!important`, so the
+ * wrapper re-enabled hit-testing across the whole surface - and that surface
+ * is 1.5x the bay, lying over `.controls` at z-index 10 while `.arenaBay`
+ * paints at 20. The measured symptom was exactly the failure mode this design
+ * must never have: a click on "Abandon run" landing on the canvas instead.
+ *
+ * THE RULING IS VISUAL STACKING, NOT INPUT CAPTURE. "The gameboard must be on
+ * top of it all" is about what the player SEES. Nothing inside the paint
+ * surface is ever a hit target; `.arenaInputIsland` - the bay rectangle, a
+ * SIBLING of this subtree - is where board input is handed back, and it is
+ * also what `CameraRig` gives OrbitControls as its `domElement`. So blocking
+ * the whole subtree costs the board nothing: it can paint anywhere, and it can
+ * only be grabbed where it actually lives.
+ *
+ * The rule is deliberately blanket rather than a list of R3F's wrapper
+ * elements. Anything mounted in here lies over HUD controls by construction,
+ * so "it takes no pointer" is the contract of the surface, not a property of
+ * whichever library happens to be drawing on it. An element that genuinely
+ * needs input does not belong in the bleed - it belongs in the bay.
+ */
+.arenaCanvasBleed,
+.arenaCanvasBleed * {
+  pointer-events: none !important;
+}
+
 .arenaCanvasBleed {
   /* Fallback only. The live value is set inline from
      `COCKPIT_CANVAS_OVERHANG_CSS`, which is the same constant CameraRig's

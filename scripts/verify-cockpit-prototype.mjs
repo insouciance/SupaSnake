@@ -89,6 +89,50 @@ async function readMetrics(page) {
       }));
 
     const buttons = [...root.querySelectorAll('button')].map(rect);
+
+    /*
+     * THE HUD GUARANTEE: the board may paint over any tray, but it may never
+     * take a tray's click.
+     *
+     * The pop-out gives the board canvas a drawing surface 1.5x its bay,
+     * sitting over the HUD at a higher z-index. That ruling is about what the
+     * player SEES; it must never become input capture. It did once:
+     * `@react-three/fiber` writes `pointerEvents: 'auto'` as an INLINE style on
+     * its canvas wrapper, which beat the surface's inherited
+     * `pointer-events: none` and swallowed the click on "Abandon run".
+     *
+     * `elementFromPoint` at each control's own centre is the same question the
+     * browser asks when a player taps, so this catches any future bleed,
+     * overlay or stacking change that reintroduces the capture.
+     *
+     * SCOPED TO THE BOARD'S SUBTREE, DELIBERATELY. A control covered by an
+     * OPEN DECISION SURFACE is not a defect - it is the point: while an
+     * abandon confirmation is up, the dock's scrim covers the HUD and the run
+     * is paused. This asserts the narrower and actually-ratified rule: the
+     * thing on top of a HUD control is never the board.
+     */
+    const arenaBay = document.querySelector('[data-testid="cockpit-arena-bay"]');
+    const blockedControls = [...document.querySelectorAll('button')]
+      .map((element) => {
+        const box = element.getBoundingClientRect();
+        if (box.width < 1 || box.height < 1) return null;
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') return null;
+        const top = document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2
+        );
+        if (top === element || element.contains(top)) return null;
+        // Only the BOARD taking the click is a defect.
+        if (!top || !arenaBay || !arenaBay.contains(top)) return null;
+        const label =
+          element.getAttribute('aria-label') ??
+          element.textContent?.trim().slice(0, 24) ??
+          'button';
+        return `${label} <- ${top.tagName.toLowerCase()}`;
+      })
+      .filter(Boolean);
+
     const environment = root.querySelector('[data-testid="game-environment"]');
     const background = environment?.firstElementChild
       ? getComputedStyle(environment.firstElementChild)
@@ -99,6 +143,7 @@ async function readMetrics(page) {
       board,
       frame,
       overlaps,
+      blockedControls,
       smallText: leafText.filter(({ fontSize }) => fontSize < 14),
       buttons,
       scrollWidth: document.documentElement.scrollWidth,
@@ -153,6 +198,10 @@ try {
       invariant(metrics.backgroundImage.includes('minimalistic_background_texture_of_space_1.png'), `${prefix}: canonical background missing`);
       invariant(metrics.board.width >= Math.min(270, width * 0.82), `${prefix}: board is too small (${metrics.board.width}px)`);
       invariant(metrics.buttons.every(({ width: w, height: h }) => w >= 44 - EPSILON && h >= 44 - EPSILON), `${prefix}: control below 44px touch target`);
+      invariant(
+        metrics.blockedControls.length === 0,
+        `${prefix}: board surface intercepts HUD controls: ${metrics.blockedControls.join('; ')}`
+      );
 
       const centerX = metrics.board.x + metrics.board.width / 2;
       const centerY = metrics.board.y + metrics.board.height / 2;
