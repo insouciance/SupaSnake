@@ -11,20 +11,26 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
-        // Arcade palette v2 - cyberpunk accents over blue-grey depths.
-        // Token NAMES are kept for compatibility; values remapped:
-        // venom-orange* now carries the electric-cyan primary accent,
-        // strike-red the neon-rose danger accent.
+        // INK & AMBER - the styleguide palette, recovered.
+        // venom-orange carries Venom Orange again (styleguide/styleguide.md
+        // v1.0, warmed to the terrain amber the board already draws). Amber
+        // is the product's one semantic warm: "this is yours now" - banked
+        // yield, calcified ground, the primary call to action. Cyan is
+        // released back to CYBER and means dynasty, never accent.
         'scale-blue': '#16202b',
-        'venom-orange': '#22d3ee',
-        'strike-red': '#f43f5e',
-        'bone-white': '#e6edf3',
+        'venom-orange': '#f2a03f',
+        'strike-red': '#a3324a',
+        'bone-white': '#eef3f7',
         'beige': '#94a3b8',
         // Lighter/darker variants for borders
         'scale-blue-light': '#2b3b4d',
         'scale-blue-dark': '#0e141c',
-        'venom-orange-light': '#67e8f9',
-        'venom-orange-dark': '#0ea5be',
+        'venom-orange-light': '#ffc247',
+        'venom-orange-dark': '#b4661c',
+        // Ink: the outline colour, shared by the board hull pass and the
+        // comic text-stroke grammar. Deeper than void-deep on purpose.
+        'ink': '#0b1118',
+        'slate-deep': '#1c2836',
         // Secondary accent for select highlights (violet pulse)
         'pulse': '#8b5cf6',
         // Void: the game scene's near-black backdrop, now the app backdrop
@@ -63,8 +69,8 @@ const config: Config = {
       },
       backgroundImage: {
         'panel-gradient': 'linear-gradient(160deg, rgba(43,59,77,0.35) 0%, rgba(14,20,28,0.9) 55%, rgba(10,16,23,0.95) 100%)',
-        'cta-gradient': 'linear-gradient(180deg, #67e8f9 0%, #22d3ee 55%, #0ea5be 100%)',
-        'danger-gradient': 'linear-gradient(180deg, #fb7185 0%, #f43f5e 60%, #9f1239 100%)',
+        'cta-gradient': 'linear-gradient(180deg, #ffc247 0%, #f2a03f 55%, #b4661c 100%)',
+        'danger-gradient': 'linear-gradient(180deg, #c9455e 0%, #a3324a 60%, #5d1a29 100%)',
         'shimmer': 'linear-gradient(110deg, transparent 30%, rgba(230,237,243,0.12) 50%, transparent 70%)',
       },
       keyframes: {
