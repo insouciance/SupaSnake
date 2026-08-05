@@ -4,7 +4,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
 import type { StrainId } from '@/shared/game/strains';
-import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 import { genomeRuneEngravingStrokes } from '@/components/game/screen/gameRuneStrokes';
 
@@ -13,8 +12,6 @@ interface ArenaUndertrayProps {
   dynasty: DynastyId;
 }
 
-const unitBox = new THREE.BoxGeometry(1, 1, 1);
-const cornerGeometry = new THREE.BoxGeometry(1, 1, 1);
 const orientationGeometry = new THREE.BoxGeometry(1, 1, 1);
 const MAX_ORIENTATION_STROKES = 5;
 
@@ -55,68 +52,45 @@ export function arenaOrientationRuneLayout(
 }
 
 /**
- * Low-cost physical chassis beneath the exact playable board.
+ * What is under and around the slab.
  *
- * Seven added draws: base, four shared-material outer rails, one instanced set
- * of corner nodes, and one instanced north rune. The rune replaces the generic
- * notch with the dynasty's already-learned Genome mark, using it for actual
- * orientation rather than wallpaper. No lights or per-frame work; all geometry
- * stays outside the 20×20 gameplay bounds.
+ * PASS 4. THE CHASSIS LIVED HERE, AND IT IS DELETED. A 22.35-wide graphite
+ * base plate, four outer lips and their ink hulls - eleven draw calls that
+ * described a machine frame around the board. The owner's board is "a fine
+ * slab of stone, like a large tile", one object, so the frame is not restyled,
+ * it is removed: the slab itself now occupies exactly that footprint (its
+ * apron is `SLAB_APRON.cockpit`, which is the camera's frame margin), and what
+ * used to be chassis is simply more stone.
+ *
+ * ONE draw remains, and it does work no other object does:
+ *
+ *   RUNE   the north mark. One instanced Genome engraving on the slab's apron,
+ *          which is unambiguous orientation in a way the four deleted corner
+ *          diamonds never were - one mark tells you which way you are facing,
+ *          four identical ones tell you nothing.
+ *
+ * The float halo lived here too and has moved to `ArenaFloor`. It is a
+ * property of the SLAB - the cue that says the tile is floating - and this
+ * component is mounted only by the cockpit assembly, so hosting it here left
+ * the released rollback path drawing a tile with nothing under it. It also had
+ * to hardcode `SLAB_APRON.cockpit` to guess a span it did not own.
+ *
+ * No lights, no per-frame work; all geometry stays outside the 20x20 bounds.
  */
 export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
-  const cornersRef = useRef<THREE.InstancedMesh>(null);
   const orientationRef = useRef<THREE.InstancedMesh>(null);
   const profile = getGameMaterialProfile(dynasty);
-  const center = gridSize / 2;
 
-  const materials = useMemo(() => {
-    const base = new THREE.MeshStandardMaterial({
-      color: GAME_SCREEN_COLORS.graphiteDeep,
-      metalness: 0.42,
-      roughness: 0.68,
-    });
-    const rail = new THREE.MeshStandardMaterial({
-      color: GAME_SCREEN_COLORS.graphiteLifted,
-      emissive: profile.arena.undertrayRailColor,
-      emissiveIntensity: 0.06,
-      metalness: 0.5,
-      roughness: 0.52,
-    });
-    const corner = new THREE.MeshStandardMaterial({
-      color: GAME_SCREEN_COLORS.graphiteEdge,
-      emissive: profile.arena.undertrayCornerColor,
-      emissiveIntensity: 0.22,
-      metalness: 0.58,
-      roughness: 0.4,
-    });
-    const orientation = new THREE.MeshBasicMaterial({
-      color: profile.arena.undertrayCornerColor,
-      transparent: true,
-      opacity: 0.78,
-    });
-    return { base, rail, corner, orientation };
-  }, [profile.arena.undertrayCornerColor, profile.arena.undertrayRailColor]);
-
-  useLayoutEffect(() => {
-    const mesh = cornersRef.current;
-    if (!mesh) return;
-    const transform = new THREE.Matrix4();
-    const rotation = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(0, Math.PI / 4, 0)
-    );
-    const scale = new THREE.Vector3(0.42, 0.18, 0.42);
-    const positions = [
-      [-0.76, 0.06, -0.76],
-      [gridSize + 0.76, 0.06, -0.76],
-      [-0.76, 0.06, gridSize + 0.76],
-      [gridSize + 0.76, 0.06, gridSize + 0.76],
-    ] as const;
-    positions.forEach(([x, y, z], index) => {
-      transform.compose(new THREE.Vector3(x, y, z), rotation, scale);
-      mesh.setMatrixAt(index, transform);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-  }, [gridSize]);
+  const orientationMaterial = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: profile.arena.undertrayCornerColor,
+        transparent: true,
+        opacity: 0.72,
+        toneMapped: false,
+      }),
+    [profile.arena.undertrayCornerColor]
+  );
 
   useLayoutEffect(() => {
     const mesh = orientationRef.current;
@@ -130,7 +104,9 @@ export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
 
     rune.forEach((stroke, index) => {
       rotation.setFromAxisAngle(yAxis, stroke.yaw);
-      position.set(stroke.x, 0.125, stroke.z);
+      // The apron is at y = 0, so the mark sits ON the stone rather than on a
+      // lip that no longer exists.
+      position.set(stroke.x, 0.018, stroke.z);
       scale.set(stroke.length, 0.025, stroke.width);
       transform.compose(position, rotation, scale);
       mesh.setMatrixAt(index, transform);
@@ -141,62 +117,17 @@ export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
 
   useEffect(() => {
     return () => {
-      materials.base.dispose();
-      materials.rail.dispose();
-      materials.corner.dispose();
-      materials.orientation.dispose();
+      orientationMaterial.dispose();
     };
-  }, [materials]);
-
-  const outerSpan = gridSize + 1.8;
-  const railOffset = 0.73;
+  }, [orientationMaterial]);
 
   return (
     <group>
-      <mesh
-        geometry={unitBox}
-        material={materials.base}
-        position={[center, -0.22, center]}
-        scale={[gridSize + 2.35, 0.34, gridSize + 2.35]}
-        receiveShadow
-      />
-
-      <mesh
-        geometry={unitBox}
-        material={materials.rail}
-        position={[center, 0.01, -railOffset]}
-        scale={[outerSpan, 0.18, 0.28]}
-      />
-      <mesh
-        geometry={unitBox}
-        material={materials.rail}
-        position={[center, 0.01, gridSize + railOffset]}
-        scale={[outerSpan, 0.18, 0.28]}
-      />
-      <mesh
-        geometry={unitBox}
-        material={materials.rail}
-        position={[-railOffset, 0.01, center]}
-        scale={[0.28, 0.18, outerSpan]}
-      />
-      <mesh
-        geometry={unitBox}
-        material={materials.rail}
-        position={[gridSize + railOffset, 0.01, center]}
-        scale={[0.28, 0.18, outerSpan]}
-      />
-
-      <instancedMesh
-        ref={cornersRef}
-        args={[cornerGeometry, materials.corner, 4]}
-        frustumCulled={false}
-      />
-
       <instancedMesh
         ref={orientationRef}
         args={[
           orientationGeometry,
-          materials.orientation,
+          orientationMaterial,
           MAX_ORIENTATION_STROKES,
         ]}
         frustumCulled={false}

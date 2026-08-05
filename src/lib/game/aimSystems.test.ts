@@ -34,13 +34,25 @@ describe('aim system registry', () => {
     expect(DEFAULT_AIM_SYSTEM).toBe('deadeye');
   });
 
-  it('describes deadeye as a heading-relative board-edge guide with a cell cue', () => {
+  /**
+   * RE-RATIFIED with THE LEAD (INK & AMBER). The previous pin required the
+   * words "t guide" and "board edges", which described the crosshair the
+   * owner removed outright - a selector that still promised a board-spanning
+   * guide would be advertising a system the game no longer draws.
+   *
+   * What the pin protects is unchanged and is the reason it exists: the copy
+   * must name the FORWARD guide and the CURRENT-CELL cue, because Deadeye is
+   * the only system that gives both, and it must never drift back toward the
+   * two treatments that were rejected before it.
+   */
+  it('describes deadeye as a short forward lead with a current-cell cue', () => {
     const description = getAimSystem('deadeye').description.toLowerCase();
-    expect(description).toContain('heading-relative');
-    expect(description).toContain('t guide');
-    expect(description).toContain('board edges');
+    expect(description).toContain('three cells ahead');
     expect(description).toContain('highlighted tile');
     expect(description).toContain('current cell');
+    // The rejected treatments, by name.
+    expect(description).not.toContain('t guide');
+    expect(description).not.toContain('board edges');
     expect(description).not.toContain('centered crosshair');
     expect(description).not.toContain('target lock');
   });

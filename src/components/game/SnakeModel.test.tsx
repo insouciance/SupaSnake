@@ -37,6 +37,7 @@ import {
   getTrailBreathe,
 } from './SnakeModel';
 import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
+import { getToonGradientMap } from './screen/inkAmber';
 
 jest.mock('@react-three/drei', () => ({
   useGLTF: Object.assign(jest.fn(), { preload: jest.fn() }),
@@ -419,18 +420,44 @@ describe('getSnakeSegmentMaterial', () => {
     expect(head.emissiveIntensity).toBeGreaterThan(body.emissiveIntensity);
   });
 
-  it('keeps the body matte (no traveling specular sparkle) - eye comfort', () => {
+  /**
+   * RE-EXPRESSED FOR INK & AMBER. This rule used to be enforced by pinning
+   * metalness at or below 0.25 and roughness at or above 0.5 - i.e. by
+   * choosing PBR numbers that made the specular lobe too broad and too dim
+   * to read as a moving highlight. That was always a defence against a
+   * capability the material HAD.
+   *
+   * The toon material does not have it. There is no specular term for a
+   * moving light to race down a 400-cell coil, so "no travelling sparkle" is
+   * now structural rather than tuned, and the honest assertion is that the
+   * capability is absent - not that its parameters are set conservatively.
+   */
+  it('cannot sparkle: the body carries no specular response at all', () => {
     for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
       const head = getSnakeSegmentMaterial(dynasty, true);
       const body = getSnakeSegmentMaterial(dynasty, false);
-      const profile = getGameMaterialProfile(dynasty).snake;
-      expect(body.metalness).toBe(profile.bodyMetalness);
-      expect(body.metalness).toBeLessThanOrEqual(0.25);
-      expect(body.roughness).toBe(profile.bodyRoughness);
-      expect(body.roughness).toBeGreaterThanOrEqual(0.5);
-      expect(head.metalness).toBe(profile.headMetalness);
-      expect(head.roughness).toBe(profile.headRoughness);
+
+      for (const material of [head, body]) {
+        expect(material).toBeInstanceOf(THREE.MeshToonMaterial);
+        // The PBR channels the old pin defended are not merely low, they do
+        // not exist on this material.
+        expect('metalness' in material).toBe(false);
+        expect('roughness' in material).toBe(false);
+      }
     }
+  });
+
+  it('bands with the board\'s shared three-step ramp, not its own', () => {
+    // One gradient map for every drawn object on the board: a per-material
+    // ramp would let the snake step at different values than the tile it
+    // stands on, which is exactly what an ink-and-toon direction cannot have.
+    const ramp = getToonGradientMap();
+    for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
+      expect(getSnakeSegmentMaterial(dynasty, true).gradientMap).toBe(ramp);
+      expect(getSnakeSegmentMaterial(dynasty, false).gradientMap).toBe(ramp);
+    }
+    expect(ramp.image.width).toBe(3);
+    expect(ramp.magFilter).toBe(THREE.NearestFilter);
   });
 });
 
@@ -447,10 +474,26 @@ describe('SnakeModel', () => {
     );
 
     expect(mockUseGLTF).toHaveBeenCalledWith(SNAKE_MODEL_URL);
-    const meshes = container.querySelectorAll('mesh');
-    expect(meshes).toHaveLength(2);
-    expect(meshes[0].getAttribute('scale')).toBe(String(HEAD_SIZE));
-    expect(meshes[1].getAttribute('scale')).toBe(String(BODY_SIZE));
+
+    // RE-EXPRESSED FOR INK & AMBER: each segment is now a fill mesh wearing
+    // exactly ONE ink-hull child, so a flat `mesh` count of 2 no longer
+    // describes the tree. Asserting the STRUCTURE rather than the total is
+    // also the stronger check - it catches a hull that went missing and a
+    // second hull that crept in, neither of which a count of 4 would.
+    const segments = container.querySelectorAll(':scope > mesh');
+    expect(segments).toHaveLength(2);
+    expect(segments[0].getAttribute('scale')).toBe(String(HEAD_SIZE));
+    expect(segments[1].getAttribute('scale')).toBe(String(BODY_SIZE));
+    for (const segment of segments) {
+      const hulls = segment.querySelectorAll('mesh');
+      expect(hulls).toHaveLength(1);
+      // The hull is drawn before the fill it sits behind.
+      expect(hulls[0].getAttribute('renderorder')).toBe('-1');
+      // Same geometry, so the silhouette it expands is the segment's own.
+      expect(hulls[0].getAttribute('geometry')).toBe(
+        segment.getAttribute('geometry')
+      );
+    }
   });
 
   it('never mutates the shared GLTF cache (materials and geometry untouched)', () => {
@@ -481,7 +524,9 @@ describe('SnakeModel', () => {
       <SnakeModel position={[0.5, 0.5, 0.5]} isHead dynasty="PRIMAL" />
     );
 
-    expect(container.querySelectorAll('mesh')).toHaveLength(1);
+    const segments = container.querySelectorAll(':scope > mesh');
+    expect(segments).toHaveLength(1);
+    expect(segments[0].querySelectorAll('mesh')).toHaveLength(1);
   });
 });
 
@@ -496,8 +541,11 @@ describe('SnakeSegmentFallback', () => {
     );
 
     expect(mockUseGLTF).not.toHaveBeenCalled();
-    const mesh = container.querySelector('mesh');
+    const mesh = container.querySelector(':scope > mesh');
     expect(mesh).not.toBeNull();
     expect(mesh!.getAttribute('scale')).toBe(String(BODY_SIZE));
+    // The stand-in wears the same single ink hull as the GLB segment, so the
+    // Suspense swap never changes the creature's line.
+    expect(mesh!.querySelectorAll('mesh')).toHaveLength(1);
   });
 });

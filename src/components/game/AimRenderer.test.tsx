@@ -1,9 +1,27 @@
 /**
  * Deadeye visual-contract tests.
  *
- * The WebGL scene itself is covered by the cockpit renderer gate. These
- * focused tests pin the component structure and the smooth-head/snapped-cell
- * split without involving movement or engine state.
+ * RE-EXPRESSED FOR THE LEAD (INK & AMBER). This suite used to pin the T
+ * guide's layout maths - `getDeadeyeGuideLayout`, `writeDeadeyeGuideTransforms`
+ * and `updateDeadeyeVisualTransforms`, and the crossbar/stem meshes they
+ * positioned. The owner removed that guide outright ("completely wrong - take
+ * it away and replace it with a different one"), so those exports and this
+ * half of the suite retire TOGETHER, in one re-ratification, rather than an
+ * exported API being quietly deleted while a test still imports it.
+ *
+ * What replaces them pins THE LEAD's actual contract, which is the same kind
+ * of promise the old suite made about the T:
+ *
+ *   1. Structure - three chips and their ink hulls, in two instanced draws,
+ *      plus the one snapped cell tile. Nothing else.
+ *   2. The taper - length recedes with distance while WIDTH is constant,
+ *      because width carries the ink edge.
+ *   3. Wall truncation, and its torus exception.
+ *   4. The glide binding - the mark rides the interpolated head while the
+ *      tile snaps to the authoritative cell (the split Gridlock also uses).
+ *
+ * The WebGL scene itself is covered by the cockpit renderer gate; these
+ * focused tests involve no movement or engine state.
  */
 
 import { render } from '@testing-library/react';
@@ -14,8 +32,9 @@ import {
 } from '@/lib/game/interpolationBuffer';
 import {
   AimRenderer,
-  getDeadeyeGuideLayout,
-  updateDeadeyeVisualTransforms,
+  countLeadCells,
+  readLeadHeadSample,
+  writeLeadInstances,
 } from './AimRenderer';
 
 jest.mock('@react-three/fiber', () => ({
@@ -45,8 +64,41 @@ function expectVectorClose(actual: number[], expected: number[]): void {
   });
 }
 
-describe('Deadeye reticle', () => {
-  it('renders only a board-wide crossbar and forward stem as a clean T', () => {
+/**
+ * Read the authored lead matrices the way the component does: an instanced
+ * mesh at the module's capacity, filled by the shared writer.
+ *
+ * `InstancedMesh` stores matrices in a Float32Array, so every value round-trips
+ * through single precision. Assertions below are held to 6 decimals rather
+ * than 10 for that reason and no other - these are authored constants, not
+ * accumulated arithmetic.
+ */
+function authoredLead(): THREE.Matrix4[] {
+  const mesh = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshBasicMaterial(),
+    3
+  );
+  writeLeadInstances(mesh);
+  return [0, 1, 2].map((index) => {
+    const matrix = new THREE.Matrix4();
+    mesh.getMatrixAt(index, matrix);
+    return matrix;
+  });
+}
+
+function decompose(matrix: THREE.Matrix4): {
+  position: THREE.Vector3;
+  scale: THREE.Vector3;
+} {
+  const position = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+  matrix.decompose(position, new THREE.Quaternion(), scale);
+  return { position, scale };
+}
+
+describe('THE LEAD', () => {
+  it('draws three chips, their ink hulls, and the snapped cell tile - nothing else', () => {
     const { container } = render(
       <AimRenderer
         headPosition={head}
@@ -58,29 +110,51 @@ describe('Deadeye reticle', () => {
       />
     );
 
-    const crosshair = container.querySelector('group[name="deadeye-crosshair"]');
-    const crossbar = container.querySelector(
-      'mesh[name="deadeye-crosshair-crossbar"]'
+    const lead = container.querySelector('group[name="deadeye-lead"]');
+    const chips = container.querySelector(
+      'instancedmesh[name="deadeye-lead-chips"]'
     );
-    const stem = container.querySelector(
-      'mesh[name="deadeye-crosshair-stem"]'
+    const ink = container.querySelector(
+      'instancedmesh[name="deadeye-lead-ink"]'
     );
 
-    expect(crosshair).not.toBeNull();
-    expect(crossbar).not.toBeNull();
-    expect(stem).not.toBeNull();
-    expectVectorClose(vectorAttribute(crossbar!, 'position'), [4.5, 0.06, 10]);
-    expectVectorClose(vectorAttribute(crossbar!, 'scale'), [0.06, 20, 1]);
-    expectVectorClose(vectorAttribute(stem!, 'position'), [2.25, 0.06, 6.5]);
-    expectVectorClose(vectorAttribute(stem!, 'scale'), [4.5, 0.06, 1]);
+    expect(lead).not.toBeNull();
+    expect(chips).not.toBeNull();
+    expect(ink).not.toBeNull();
 
-    // One floor tile plus the two clean T-guide lines: no beam ticks,
-    // lock brackets, center dot, or distant idle ornament remains.
-    expect(container.querySelectorAll('mesh')).toHaveLength(3);
-    expect(container.querySelector('instancedmesh')).toBeNull();
+    // The guide is TWO instanced draws, not one mesh per dash, and the only
+    // plain mesh left in the system is the snapped cell tile. No beam ticks,
+    // lock brackets, centre dot, crossbar or stem survive.
+    expect(container.querySelectorAll('instancedmesh')).toHaveLength(2);
+    expect(container.querySelectorAll('mesh')).toHaveLength(1);
+    expect(
+      container.querySelector('mesh[name="deadeye-head-cell-highlight"]')
+    ).not.toBeNull();
   });
 
-  it('places the existing cell-sized highlight beneath the head cell', () => {
+  it('yaws the whole mark instead of re-authoring it per heading', () => {
+    // A turn must cost a single declarative rotation: the chips live in the
+    // group's local space with the heading along -Z, exactly the convention
+    // DIRECTION_YAW maps the Pathline chevron by.
+    const yaws = (['UP', 'DOWN', 'LEFT', 'RIGHT'] as const).map((direction) => {
+      const { container } = render(
+        <AimRenderer
+          headPosition={head}
+          direction={direction}
+          gridSize={20}
+          aimSystem="deadeye"
+          color="#22d3ee"
+        />
+      );
+      return container
+        .querySelector('group[name="deadeye-lead"]')!
+        .getAttribute('rotation-y');
+    });
+
+    expect(new Set(yaws).size).toBe(4);
+  });
+
+  it('places the cell-sized highlight beneath the head cell', () => {
     const { container } = render(
       <AimRenderer headPosition={head} aimSystem="deadeye" color="#22d3ee" />
     );
@@ -93,112 +167,100 @@ describe('Deadeye reticle', () => {
   });
 });
 
-describe('getDeadeyeGuideLayout', () => {
-  it('rotates the T through all four headings and reaches each relevant board edge', () => {
-    const up = getDeadeyeGuideLayout(head, 'UP', 20);
-    const down = getDeadeyeGuideLayout(head, 'DOWN', 20);
-    const left = getDeadeyeGuideLayout(head, 'LEFT', 20);
-    const right = getDeadeyeGuideLayout(head, 'RIGHT', 20);
+describe('writeLeadInstances', () => {
+  it('puts one chip on the centre of each of the next three cells', () => {
+    const matrices = authoredLead();
 
-    expect(up.crossbar).toEqual({
-      position: [10, 0.06, 6.5],
-      scale: [20, 0.06, 1],
-    });
-    expect(up.stem).toEqual({
-      position: [4.5, 0.06, 3.25],
-      scale: [0.06, 6.5, 1],
-    });
-    expect(down.crossbar).toEqual(up.crossbar);
-    expect(down.stem).toEqual({
-      position: [4.5, 0.06, 13.25],
-      scale: [0.06, 13.5, 1],
-    });
-    expect(left.crossbar).toEqual({
-      position: [4.5, 0.06, 10],
-      scale: [0.06, 20, 1],
-    });
-    expect(left.stem).toEqual({
-      position: [2.25, 0.06, 6.5],
-      scale: [4.5, 0.06, 1],
-    });
-    expect(right.crossbar).toEqual(left.crossbar);
-    expect(right.stem).toEqual({
-      position: [12.25, 0.06, 6.5],
-      scale: [15.5, 0.06, 1],
+    matrices.forEach((matrix, index) => {
+      const { position } = decompose(matrix);
+      // Local space: the heading runs along -Z, one cell per dash.
+      expect(position.x).toBeCloseTo(0, 6);
+      expect(position.z).toBeCloseTo(-(index + 1), 6);
     });
   });
 
-  it('keeps a half-cell stem at the outward board-edge cells', () => {
-    const left = getDeadeyeGuideLayout(segment(0, 8), 'LEFT', 20);
-    const right = getDeadeyeGuideLayout(segment(19, 8), 'RIGHT', 20);
-    const up = getDeadeyeGuideLayout(segment(8, 0), 'UP', 20);
-    const down = getDeadeyeGuideLayout(segment(8, 19), 'DOWN', 20);
+  it('rests every chip on the aim plane rather than sinking it into the board', () => {
+    const AIM_Y = 0.05;
+    for (const matrix of authoredLead()) {
+      const { position, scale } = decompose(matrix);
+      expect(position.y - scale.y / 2).toBeCloseTo(AIM_Y, 6);
+    }
+  });
 
-    expect(left.stem.position[0] - left.stem.scale[0] / 2).toBe(0);
-    expect(right.stem.position[0] + right.stem.scale[0] / 2).toBe(20);
-    expect(up.stem.position[2] - up.stem.scale[1] / 2).toBe(0);
-    expect(down.stem.position[2] + down.stem.scale[1] / 2).toBe(20);
-    expect(left.stem.scale[0]).toBe(0.5);
-    expect(right.stem.scale[0]).toBe(0.5);
-    expect(up.stem.scale[1]).toBe(0.5);
-    expect(down.stem.scale[1]).toBe(0.5);
+  it('tapers in LENGTH only - width is constant so the ink edge never eats the core', () => {
+    const scales = authoredLead().map((matrix) => decompose(matrix).scale);
+
+    // Length recedes, monotonically.
+    expect(scales[0].z).toBeGreaterThan(scales[1].z);
+    expect(scales[1].z).toBeGreaterThan(scales[2].z);
+    // Height recedes with it - a mild recede, the mark stays board-flat.
+    expect(scales[0].y).toBeGreaterThan(scales[2].y);
+    // Width does NOT. A narrower dash would be eaten by its own outline.
+    expect(scales[1].x).toBeCloseTo(scales[0].x, 6);
+    expect(scales[2].x).toBeCloseTo(scales[0].x, 6);
+    // The furthest dash still reads as pointing, not sitting: the shallowest
+    // length:width ratio in the taper stays at or above 1.5:1.
+    expect(scales[2].z / scales[2].x).toBeGreaterThanOrEqual(1.5 - 1e-6);
+    // And no dash ever crowds a turn by spilling out of its own cell.
+    for (const scale of scales) {
+      expect(scale.z).toBeLessThan(1);
+      expect(scale.x).toBeLessThan(1);
+    }
   });
 });
 
-describe('updateDeadeyeVisualTransforms', () => {
-  it('keeps the T fluid while the floor tile snaps to the current cell', () => {
+describe('countLeadCells', () => {
+  it('shows the full lead with clear board ahead', () => {
+    expect(countLeadCells(head, 'RIGHT', 20, false)).toBe(3);
+  });
+
+  it('truncates at the wall rather than marking cells off the board', () => {
+    expect(countLeadCells(segment(17, 8), 'RIGHT', 20, false)).toBe(2);
+    expect(countLeadCells(segment(19, 8), 'RIGHT', 20, false)).toBe(0);
+    expect(countLeadCells(segment(1, 8), 'LEFT', 20, false)).toBe(1);
+    expect(countLeadCells(segment(8, 0), 'UP', 20, false)).toBe(0);
+    expect(countLeadCells(segment(8, 18), 'DOWN', 20, false)).toBe(1);
+  });
+
+  it('carries the whole lead over a seam on a torus - there is no wall to stop at', () => {
+    // WP-3.13: on COSMIC the edges wrap, so the three cells the guide marks
+    // are exactly the three cells the snake will occupy. A truncated lead
+    // there would be an omission at the one place the player most needs it.
+    expect(countLeadCells(segment(19, 8), 'RIGHT', 20, true)).toBe(3);
+    expect(countLeadCells(segment(0, 0), 'LEFT', 20, true)).toBe(3);
+    expect(countLeadCells(segment(8, 19), 'DOWN', 20, true)).toBe(3);
+  });
+});
+
+describe('the glide binding', () => {
+  it('rides the interpolated head while the tile snaps to the current cell', () => {
     const buffer = createInterpolationBuffer(4);
     recordTick(buffer, [segment(4, 6)], 200, 1000);
     recordTick(buffer, [segment(5, 6)], 200, 1200);
     const previousBefore = Array.from(buffer.prev);
     const currentBefore = Array.from(buffer.curr);
-    const crossbar = new THREE.Object3D();
-    const stem = new THREE.Object3D();
-    const highlightPosition = new THREE.Vector3();
 
-    updateDeadeyeVisualTransforms(
-      segment(5, 6),
-      'RIGHT',
-      20,
-      buffer,
-      1300,
-      crossbar,
-      stem,
-      highlightPosition
-    );
+    const sample = readLeadHeadSample(segment(5, 6), buffer, 1300);
 
-    // Halfway from grid x=4 to x=5, plus the half-cell world offset. The
-    // perpendicular bar follows that smooth center while still spanning Z.
-    expect(crossbar.position.toArray()).toEqual([5, 0.06, 10]);
-    expect(crossbar.scale.toArray()).toEqual([0.06, 20, 1]);
-    expect(stem.position.toArray()).toEqual([12.5, 0.06, 6.5]);
-    expect(stem.scale.toArray()).toEqual([15, 0.06, 1]);
-    // The visual tile stays on the authoritative current grid cell.
-    expect(highlightPosition.toArray()).toEqual([5.5, 0.04, 6.5]);
+    // Halfway from grid x=4 to x=5: the mark and the head move as one rigid
+    // body, so the guide never has to be re-acquired by the eye.
+    expect(sample.smoothX).toBeCloseTo(4.5, 10);
+    expect(sample.smoothZ).toBeCloseTo(6, 10);
+    // The tile stays on the authoritative grid cell - the snapped answer to
+    // "which cell am I in", which is what a gliding mark cannot give.
+    expect(sample.snapX).toBe(5);
+    expect(sample.snapZ).toBe(6);
+    // Reading the buffer must never disturb it.
     expect(Array.from(buffer.prev)).toEqual(previousBefore);
     expect(Array.from(buffer.curr)).toEqual(currentBefore);
   });
 
   it('falls back to the supplied head cell before interpolation is available', () => {
-    const crossbar = new THREE.Object3D();
-    const stem = new THREE.Object3D();
-    const highlightPosition = new THREE.Vector3();
+    const sample = readLeadHeadSample(head, null, 0);
 
-    updateDeadeyeVisualTransforms(
-      head,
-      'UP',
-      20,
-      null,
-      0,
-      crossbar,
-      stem,
-      highlightPosition
-    );
-
-    expect(crossbar.position.toArray()).toEqual([10, 0.06, 6.5]);
-    expect(crossbar.scale.toArray()).toEqual([20, 0.06, 1]);
-    expect(stem.position.toArray()).toEqual([4.5, 0.06, 3.25]);
-    expect(stem.scale.toArray()).toEqual([0.06, 6.5, 1]);
-    expect(highlightPosition.toArray()).toEqual([4.5, 0.04, 6.5]);
+    expect(sample.smoothX).toBe(head.x);
+    expect(sample.smoothZ).toBe(head.z);
+    expect(sample.snapX).toBe(head.x);
+    expect(sample.snapZ).toBe(head.z);
   });
 });

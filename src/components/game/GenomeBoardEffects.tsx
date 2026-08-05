@@ -96,7 +96,7 @@ const MAX_GENOME_FORMING_INSTANCES = MAX_GENOME_TERRAIN_CELLS * 5;
 
 export const GENOME_TARGET_COLORS: Record<GenomeV2BoardTarget['kind'], string> = {
   crown_future: '#f0abfc',
-  gold_trail: '#f5c542',
+  gold_trail: '#ffc247',
   live_wire: '#67e8f9',
   circuit_run: '#a78bfa',
   coilkeeper: '#a3e635',
@@ -617,7 +617,7 @@ export function GenomeBoardEffects({
       position.set(cell.x + 0.5, 0.035, cell.z + 0.5);
       gildedMatrix.compose(position, identity, scale.set(1, 1, 1));
       mesh.setMatrixAt(index, gildedMatrix);
-      color.set('#f5c542').multiplyScalar(0.7 + Math.min(0.3, cell.ticks / 1000));
+      color.set('#ffc247').multiplyScalar(0.7 + Math.min(0.3, cell.ticks / 1000));
       mesh.setColorAt(index, color);
     }
     mesh.count = count;

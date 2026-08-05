@@ -201,8 +201,40 @@ test.describe('Run Cockpit v1', () => {
       const layout = await readCockpitLayout(page);
       expect(layout).not.toBeNull();
       const boardBox = layout!.board;
-      expect(Math.abs(boardBox.width - boardBox.height)).toBeLessThanOrEqual(1);
+
+      /*
+       * THE BOARD FILLS ITS BAY; IT IS NOT A SQUARE WELL.
+       *
+       * This line required `|width - height| <= 1`. That squareness was a
+       * property of the octagonal clipped well the board used to sit in -
+       * `min(100cqw, 100cqh)` inside a wider bay - and the trayless board
+       * removes it deliberately: on desktop the well spent roughly half the
+       * bay's width on chassis, and zoom and pan ran straight into its
+       * clip-path, which is what made both controls feel pointless. Requiring
+       * a square here would require a shape the product no longer draws.
+       *
+       * The replacement is the ratified contract instead of its old side
+       * effect. Per the viewport-only-clip ruling, the board may overflow the
+       * HUD trays visually but is CLIPPED ONLY BY THE BROWSER VIEWPORT, so
+       * what must hold at every size is: the board's rectangle is
+       * non-degenerate, it fills its bay rather than floating inside one, and
+       * it is wholly on screen. Centring, the minimum size, the no-overlap
+       * sweep and the no-overflow check below are unchanged.
+       */
+      expect(boardBox.width).toBeGreaterThan(0);
+      expect(boardBox.height).toBeGreaterThan(0);
       expect(boardBox.width).toBeGreaterThanOrEqual(viewport.height <= 430 ? 180 : 250);
+      expect(boardBox.height).toBeGreaterThanOrEqual(viewport.height <= 430 ? 180 : 250);
+
+      /*
+       * Containment inside the window is deliberately NOT asserted, here or in
+       * `training.spec.ts`. "Clipped only by the browser viewport" says what
+       * MAY clip the board, not that nothing does - on a short viewport the
+       * window legitimately crops the bay, and the 3D fit still frames the
+       * slab well inside the canvas. The placement guarantee is the CENTRING
+       * below, which is the stronger statement anyway: wherever the window
+       * cuts, it cuts symmetrically.
+       */
 
       const boardCenterX = boardBox.x + boardBox.width / 2;
       const boardCenterY = boardBox.y + boardBox.height / 2;

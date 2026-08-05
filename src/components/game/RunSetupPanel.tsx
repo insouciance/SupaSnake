@@ -313,9 +313,22 @@ export function RunSetupPanel({
   const selectedDynasty = snake ? setupDynasty(snake.dynasty) : null;
   const visual = selectedDynasty ? DYNASTY_VISUALS[selectedDynasty] : DYNASTY_VISUALS.CYBER;
 
+  /*
+   * ONE TRAY, ONE OUTLINE (owner ruling).
+   *
+   * This section used to be a second tray inside the overlay's panel: its own
+   * 30px radius, its own cyan border and its own outer glow, nested inside a
+   * sharp-cornered rectangle that already was the tray. Two trays and two
+   * outlines for one surface.
+   *
+   * The overlay's panel is the tray and carries `.modal-frame`; this is now a
+   * REGION inside it. It keeps the radial dynasty washes, because those are
+   * atmosphere rather than a frame, and gives up the border, the rounding and
+   * the glow shadow entirely.
+   */
   return (
     <section
-      className="relative isolate mx-auto w-full max-w-[46rem] overflow-hidden rounded-[30px] border border-cyber/35 bg-[radial-gradient(circle_at_50%_7%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_8%_48%,rgba(139,92,246,0.14),transparent_25%),radial-gradient(circle_at_92%_84%,rgba(251,191,36,0.09),transparent_24%),linear-gradient(180deg,rgba(22,32,43,0.96),rgba(6,9,13,0.99))] p-2.5 text-center shadow-glow-lg shadow-cyber/15 sm:p-5"
+      className="relative isolate mx-auto w-full max-w-[46rem] overflow-hidden bg-[radial-gradient(circle_at_50%_7%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_8%_48%,rgba(139,92,246,0.14),transparent_25%),radial-gradient(circle_at_92%_84%,rgba(251,191,36,0.09),transparent_24%)] p-2.5 text-center sm:p-5"
       data-testid="run-setup"
     >
       <header className="relative mx-auto max-w-xl">

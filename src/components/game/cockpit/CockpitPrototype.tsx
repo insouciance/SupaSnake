@@ -3,7 +3,10 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import type { GeneId } from '@/shared/game/genes';
-import { getDynastyScreenTokens } from '@/components/game/screen/gameScreenTokens';
+import {
+  ARENA_BLEED_STYLE,
+  getDynastyScreenTokens,
+} from '@/components/game/screen/gameScreenTokens';
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { ArenaPrototypeCanvas } from '@/components/game/arena/ArenaPrototypeCanvas';
 import { GeneGlyph as CatalogGeneGlyph } from './CockpitGlyphs';
@@ -214,15 +217,28 @@ function ArenaPreview({
       <div className={styles.arenaQuietZone} aria-hidden="true" />
       <div className={styles.arenaFrame} data-testid="cockpit-arena-frame">
         {renderer === 'webgl' ? (
-          <div className={styles.webglViewport} data-testid="cockpit-board">
-            <ArenaPrototypeCanvas
-              dynasty={dynasty}
-              state={state}
-              arenaVariant={arenaVariant}
-              effectsEnabled={arenaEffects}
-              density={arenaDensity}
+          <>
+            <div className={styles.webglViewport} data-testid="cockpit-board">
+              <div
+                className={styles.arenaCanvasBleed}
+                style={ARENA_BLEED_STYLE}
+              >
+                <ArenaPrototypeCanvas
+                  dynasty={dynasty}
+                  state={state}
+                  arenaVariant={arenaVariant}
+                  effectsEnabled={arenaEffects}
+                  density={arenaDensity}
+                />
+              </div>
+            </div>
+            {/* Camera grab surface - see `.arenaInputIsland`. */}
+            <div
+              className={styles.arenaInputIsland}
+              data-arena-input-island=""
+              aria-hidden="true"
             />
-          </div>
+          </>
         ) : (
         <div className={styles.apron}>
           <span className={`${styles.cornerNode} ${styles.cornerNorthWest}`} />

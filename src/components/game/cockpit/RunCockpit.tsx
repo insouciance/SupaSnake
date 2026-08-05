@@ -1,7 +1,10 @@
 'use client';
 
 import type { CSSProperties, ReactNode } from 'react';
-import { getDynastyScreenTokens } from '@/components/game/screen/gameScreenTokens';
+import {
+  ARENA_BLEED_STYLE,
+  getDynastyScreenTokens,
+} from '@/components/game/screen/gameScreenTokens';
 import {
   AbandonGlyph,
   DnaGlyph,
@@ -463,8 +466,25 @@ export function RunCockpit({
             <div className={styles.arenaQuietZone} aria-hidden="true" />
             <div className={styles.arenaFrame} data-testid="cockpit-arena-frame">
               <div className={styles.webglViewport} data-testid="game-board-viewport">
-                {children}
+                {/* The oversized paint surface. The rectangle above stays the
+                    bay; this is the margin the board may spill into when the
+                    player twists the camera. */}
+                <div
+                  className={styles.arenaCanvasBleed}
+                  style={ARENA_BLEED_STYLE}
+                >
+                  {children}
+                </div>
               </div>
+              {/* The camera's grab surface. It is the bay rectangle exactly,
+                  so the oversized canvas above can paint over the frame, the
+                  gap and the HUD without ever stealing a HUD hit. See
+                  `.arenaInputIsland` and CameraRig's domElement lookup. */}
+              <div
+                className={styles.arenaInputIsland}
+                data-arena-input-island=""
+                aria-hidden="true"
+              />
             </div>
           </div>
         </div>

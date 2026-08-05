@@ -8,7 +8,10 @@ import * as THREE from 'three';
 export const SNAKE_ROUNDING_SEGMENTS = 1;
 export const SNAKE_HEAD_RADIUS = 0.12;
 export const SNAKE_BODY_RADIUS = 0.085;
-export const TERRAIN_CELL_RADIUS = 0.045;
+// INK & AMBER: terrain carries a heavier chamfer than the snake so its edge
+// catches a full band of the toon ramp - a wall should read as a machined
+// block, not as a body segment that stopped moving.
+export const TERRAIN_CELL_RADIUS = 0.08;
 
 /**
  * Exact-unit rounded box geometry without a runtime dependency on Three's

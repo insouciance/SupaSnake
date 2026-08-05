@@ -77,8 +77,29 @@ test.describe('Training Lab', () => {
       await page.setViewportSize(viewport);
       const layout = await readTrainingLayout(page);
       expect(layout).not.toBeNull();
-      expect(Math.abs(layout!.board.width - layout!.board.height)).toBeLessThanOrEqual(1);
+      /*
+       * Training mounts the same `RunCockpit`, so it inherits the trayless
+       * board and the square-well premise this line used to assert is gone on
+       * purpose. See the long note in `cockpit.spec.ts` for that argument.
+       *
+       * WHAT IS DELIBERATELY *NOT* ASSERTED: that the board's rectangle lies
+       * inside the window. A first pass at this re-expression did assert it,
+       * and it was wrong on its own terms - the ratified ruling is that the
+       * board is CLIPPED ONLY BY THE BROWSER VIEWPORT, which is a statement
+       * about what may clip it, not a promise that nothing does. Measured on
+       * the training route the bay runs taller than a short viewport and the
+       * window crops it, which is exactly the permitted case; the 3D fit
+       * frames the slab well inside the canvas, so the play surface itself is
+       * not cut. Requiring containment here would have made this suite
+       * stricter than the design it is guarding.
+       *
+       * The board's placement is guarded where the guarantee actually lives:
+       * `cockpit.spec.ts` pins its centring to within 9-10px, the zone sweep
+       * below pins that no HUD region overlaps it, and `horizontalOverflow`
+       * pins that none of this produces a scrollbar.
+       */
       expect(layout!.board.width).toBeGreaterThanOrEqual(180);
+      expect(layout!.board.height).toBeGreaterThanOrEqual(180);
       for (const zone of layout!.zones) {
         expect(rectanglesOverlap(layout!.board, zone)).toBe(false);
       }

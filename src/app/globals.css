@@ -10,19 +10,167 @@
   --background: #0a1017;
   --foreground: #e6edf3;
 
-  /* Arcade palette v2 - cyberpunk accents over blue-grey depths.
-     Names kept for compatibility: venom-orange* = electric cyan accent,
-     strike-red = neon rose danger. */
+  /* INK & AMBER - the styleguide palette, recovered. venom-orange is Venom
+     Orange again; amber is the single semantic warm ("this is yours now").
+     Cyan is released back to CYBER and no longer acts as a global accent. */
   --scale-blue: #16202b;
   --scale-blue-light: #2b3b4d;
   --scale-blue-dark: #0e141c;
-  --venom-orange: #22d3ee;
-  --venom-orange-light: #67e8f9;
-  --venom-orange-dark: #0ea5be;
-  --strike-red: #f43f5e;
-  --bone-white: #e6edf3;
+  --venom-orange: #f2a03f;
+  --venom-orange-light: #ffc247;
+  --venom-orange-dark: #b4661c;
+  --strike-red: #a3324a;
+  --bone-white: #eef3f7;
   --beige: #94a3b8;
   --pulse: #8b5cf6;
+  /* Ink: the outline colour shared by the 3D hull pass and the comic
+     text-stroke grammar. */
+  --ink: #0b1118;
+
+  /* ---------------------------------------------------------------------
+     THE OUTLINE SYSTEM
+     ---------------------------------------------------------------------
+     The bold outline is not a snake detail, it is the product's line. It
+     applies to every drawn element - modals, panels, trays, buttons, chips -
+     and it comes in TWO colours, chosen by what the element sits on:
+
+       INK    near-black. Use on light, warm, or saturated surfaces - the
+              amber decision panels, gold chips, the paper backdrop, any
+              filled button. This is the default; if you are unsure, it is
+              this one.
+       PAPER  bone white. Use where the element sits on DARK or rich
+              context and an ink outline would simply vanish into it -
+              a glass chip over the night sky, an outline button on the
+              void, the arena tray. Here the white line is what separates
+              the element from the room.
+
+     Three weights, one scale, no one-offs. The tier is chosen by the
+     element's ROLE, not its size, so a small modal still outranks a large
+     button:
+
+       --ink-w-1  chips, tags, inline controls, small meters
+       --ink-w-2  buttons, cards, list rows, HUD instruments
+       --ink-w-3  modals, panels, trays, anything the player must treat as
+                  a surface that arrived on top of the game
+
+     Weights are in px on purpose. An outline is a DRAWN line: it should be
+     the same weight on a phone and a monitor, exactly like the 3D hull,
+     whose shader divides its offset by world scale for the same reason.
+     Scaling the line with the element makes big things look bold and small
+     things look unfinished.
+
+     The 3D side of the same system is `INK` / `INK_HULL_WIDTH` in
+     `src/components/game/screen/inkAmber.ts`.
+     --------------------------------------------------------------------- */
+  --ink-stroke: #0b1118;
+  --paper-stroke: #eef3f7;
+
+  --ink-w-1: 1.5px;
+  --ink-w-2: 2.5px;
+  --ink-w-3: 3.5px;
+
+  --ink-border-1: var(--ink-w-1) solid var(--ink-stroke);
+  --ink-border-2: var(--ink-w-2) solid var(--ink-stroke);
+  --ink-border-3: var(--ink-w-3) solid var(--ink-stroke);
+
+  --paper-border-1: var(--ink-w-1) solid var(--paper-stroke);
+  --paper-border-2: var(--ink-w-2) solid var(--paper-stroke);
+  --paper-border-3: var(--ink-w-3) solid var(--paper-stroke);
+
+  /* ---------------------------------------------------------------------
+     THE DRAWN SHADE - the paper variant's companion line.
+
+     A bold white frame with a single hard edge on both sides is a UI
+     KEYLINE: it reads as a border property, because nothing a hand draws
+     has two identical edges. Every paper frame therefore carries a thin
+     grey line immediately outside it, which is the shaded side of the
+     stroke - the same reason the ink hull exists on the board, expressed in
+     CSS.
+
+     OUTSIDE, not inside, and that is measured rather than taste: these
+     frames sit on the near-void backdrop (#06090d..#0b1118), so a grey
+     companion inside the white would be a third value stacked between two
+     lights and read as a double border. Outside, the grey is the value
+     BETWEEN the white line and the room, which is exactly what the shaded
+     edge of a drawn stroke is.
+
+     It is deliberately one flat pixel at every tier. The shade is not a
+     second weight in the system - scaling it with the tier would turn a
+     modal's frame into a two-tone band - so tier 1, 2 and 3 all wear the
+     same hairline and only the white core steps.
+
+     Composition, not a variant: `--paper-shade-ring` sits OUTSIDE a
+     border-drawn paper outline, while `--paper-ring-*` draws the whole
+     stroke (white core plus shade) as spread rings for the surfaces that
+     may not change their border-width. Those surfaces are pixel-invariance
+     protected and `box-sizing: border-box` means a heavier border would
+     shrink the content box and move every child inside it.
+     --------------------------------------------------------------------- */
+  --paper-shade: #93a6b6;
+  --paper-shade-w: 1px;
+  --paper-shade-ring: 0 0 0 var(--paper-shade-w) var(--paper-shade);
+
+  --paper-ring-1:
+    0 0 0 var(--ink-w-1) var(--paper-stroke),
+    0 0 0 calc(var(--ink-w-1) + var(--paper-shade-w)) var(--paper-shade);
+  --paper-ring-2:
+    0 0 0 var(--ink-w-2) var(--paper-stroke),
+    0 0 0 calc(var(--ink-w-2) + var(--paper-shade-w)) var(--paper-shade);
+  --paper-ring-3:
+    0 0 0 var(--ink-w-3) var(--paper-stroke),
+    0 0 0 calc(var(--ink-w-3) + var(--paper-shade-w)) var(--paper-shade);
+
+  /* The hard offset drop under a drawn card. No blur: a soft shadow is a
+     lighting effect and this is a printed object. Comic cards get their
+     weight from a flat displaced block, and so do ours. */
+  --ink-drop-2: 3px 3px 0 var(--ink-stroke);
+  --ink-drop-3: 5px 5px 0 var(--ink-stroke);
+}
+
+/* -----------------------------------------------------------------------
+   Outline utilities. Every element that carries the product line uses one
+   of these, so the whole system can be reweighted from the tokens above.
+   The paper tiers carry the drawn shade; the ink tiers do not, because ink
+   IS the shade - a near-black line on a light surface already has the
+   darkest value in the composition.
+   ----------------------------------------------------------------------- */
+.ink-outline-1 { border: var(--ink-border-1); }
+.ink-outline-2 { border: var(--ink-border-2); }
+.ink-outline-3 { border: var(--ink-border-3); }
+.paper-outline-1 { border: var(--paper-border-1); box-shadow: var(--paper-shade-ring); }
+.paper-outline-2 { border: var(--paper-border-2); box-shadow: var(--paper-shade-ring); }
+.paper-outline-3 { border: var(--paper-border-3); box-shadow: var(--paper-shade-ring); }
+
+/* Card presence: the outline plus the flat displaced block beneath it. */
+.ink-card { border: var(--ink-border-2); box-shadow: var(--ink-drop-2); }
+.ink-card-heavy { border: var(--ink-border-3); box-shadow: var(--ink-drop-3); }
+
+/* -----------------------------------------------------------------------
+   THE MODAL FRAME - one tray, one bold outline. (Owner ruling.)
+
+   A modal is ONE tray wearing ONE outline. Whichever element is the tray
+   takes this class; everything inside it becomes a region, with fills and
+   spacing but no second border, no second radius and no second glow.
+
+   PAPER, not ink, and that follows the adaptive rule rather than taste:
+   these panels are filled with the near-void gradient, whose dark stop is
+   #06090d - within a couple of values of --ink-stroke itself. An ink line
+   on that is a black line on black. Same call the arena tray makes.
+
+   --ink-w-3 because the tier is chosen by ROLE, and tier 3 is literally
+   "modals, panels, trays".
+
+   Drawn as spread RINGS and a border-COLOUR change, never a border-width
+   change: several of these surfaces are pixel-invariance protected, and
+   altering border-width would move every child inside them.
+   ----------------------------------------------------------------------- */
+.modal-frame {
+  /* Keeps the element's existing 1px box - only the line disappears. */
+  border-color: transparent;
+  border-radius: 26px;
+  box-shadow:
+    var(--paper-ring-3),
+    0 18px 48px rgba(0, 0, 0, 0.55);
 }
 
 * {
@@ -167,7 +315,7 @@ canvas {
   .app-bg {
     background:
       radial-gradient(ellipse 120% 80% at 50% -20%, rgba(43, 59, 77, 0.4) 0%, transparent 60%),
-      radial-gradient(ellipse 100% 60% at 50% 110%, rgba(34, 211, 238, 0.06) 0%, transparent 55%),
+      radial-gradient(ellipse 100% 60% at 50% 110%, rgba(242, 160, 63, 0.07) 0%, transparent 55%),
       linear-gradient(180deg, #121a24 0%, #0a1017 45%, #06090d 100%);
     min-height: 100dvh;
   }
@@ -188,9 +336,9 @@ canvas {
   /* Dynasty-glow panel: set --glow via utility (e.g. [--glow:#00FFFF]) */
   .panel-glow {
     @apply panel;
-    border-color: color-mix(in srgb, var(--glow, #22d3ee) 45%, transparent);
+    border-color: color-mix(in srgb, var(--glow, #f2a03f) 45%, transparent);
     box-shadow:
-      0 0 18px -6px var(--glow, #22d3ee),
+      0 0 18px -6px var(--glow, #f2a03f),
       inset 0 1px 0 rgba(230, 237, 243, 0.06),
       0 4px 24px rgba(0, 0, 0, 0.5);
   }
@@ -215,11 +363,11 @@ canvas {
 
   /* GO: primary action */
   .btn-go {
-    @apply btn-arcade bg-cta-gradient text-void-deep border-venom-orange-light;
-    text-shadow: 0 1px 0 rgba(230, 237, 243, 0.25);
-    box-shadow: 0 0 14px -4px #22d3ee;
+    @apply btn-arcade bg-cta-gradient text-ink border-venom-orange-light;
+    text-shadow: 0 1px 0 rgba(255, 233, 200, 0.3);
+    box-shadow: 0 0 14px -4px #f2a03f;
   }
-  .btn-go:hover { box-shadow: 0 0 22px -2px #22d3ee; }
+  .btn-go:hover { box-shadow: 0 0 22px -2px #ffc247; }
   .btn-go:disabled {
     @apply opacity-40 cursor-not-allowed;
     box-shadow: none;
@@ -229,7 +377,7 @@ canvas {
   /* STOP: destructive/exit */
   .btn-stop {
     @apply btn-arcade bg-danger-gradient text-bone-white border-strike-red;
-    box-shadow: 0 0 12px -5px #f43f5e;
+    box-shadow: 0 0 12px -5px #a3324a;
   }
 
   /* NEUTRAL: secondary */
@@ -251,11 +399,22 @@ canvas {
     letter-spacing: -0.02em;
   }
 
-  /* Accent glow. .text-glow-orange keeps its legacy name (now glows cyan);
+  /* Accent glow. .text-glow-orange carries Venom Orange again;
      .text-glow-accent is the forward-looking alias. */
   .text-glow-orange,
-  .text-glow-accent { text-shadow: 0 0 18px rgba(34, 211, 238, 0.55); }
+  .text-glow-accent { text-shadow: 0 0 18px rgba(242, 160, 63, 0.55); }
   .text-glow { text-shadow: 0 0 16px var(--glow, rgba(230, 237, 243, 0.4)); }
+
+  /* INK & AMBER: the comic grammar `RunRateCallout.module.css` already ships -
+     ink stroke, paint-order stroke-under-fill, a hard offset shadow with no
+     blur - promoted from one in-run callout to the product's whole
+     raise-your-voice treatment. A hard edge is a decision; a blur is an
+     accident. Pair with .heading-display on headings that announce a result. */
+  .heading-ink {
+    -webkit-text-stroke: var(--ink-w-1) var(--ink);
+    paint-order: stroke fill;
+    text-shadow: 2px 2px 0 var(--ink);
+  }
 
   /* Section label: small, wide-tracked, dimmed */
   .label-arcade {
@@ -266,7 +425,7 @@ canvas {
   /* Divider that fades out at the edges */
   .divider-glow {
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.5), transparent);
+    background: linear-gradient(90deg, transparent, rgba(242, 160, 63, 0.5), transparent);
   }
 
   /* Shimmer sweep for celebratory highlights (pair with animate-shimmer) */

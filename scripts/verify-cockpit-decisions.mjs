@@ -128,7 +128,52 @@ async function openCase({ kind, viewport, consent }) {
       : [];
     const dialog = dock?.querySelector('[role="dialog"], [role="alertdialog"]');
     const panel = dialog?.firstElementChild;
+
+    /*
+     * THE HUD GUARANTEE: the board may paint over any tray, but it may never
+     * take a tray's click.
+     *
+     * The pop-out gives the board canvas a drawing surface 1.5x its bay,
+     * sitting over the HUD at a higher z-index. That ruling is about what the
+     * player SEES; it must never become input capture. It did once:
+     * `@react-three/fiber` writes `pointerEvents: 'auto'` as an INLINE style on
+     * its canvas wrapper, which beat the surface's inherited
+     * `pointer-events: none` and swallowed the click on "Abandon run".
+     *
+     * `elementFromPoint` at each control's own centre is the same question the
+     * browser asks when a player taps, so this catches any future bleed,
+     * overlay or stacking change that reintroduces the capture.
+     *
+     * SCOPED TO THE BOARD'S SUBTREE, DELIBERATELY. A control covered by an
+     * OPEN DECISION SURFACE is not a defect - it is the point: while an
+     * abandon confirmation is up, the dock's scrim covers the HUD and the run
+     * is paused. This asserts the narrower and actually-ratified rule: the
+     * thing on top of a HUD control is never the board.
+     */
+    const arenaBay = document.querySelector('[data-testid="cockpit-arena-bay"]');
+    const blockedControls = [...document.querySelectorAll('button')]
+      .map((element) => {
+        const box = element.getBoundingClientRect();
+        if (box.width < 1 || box.height < 1) return null;
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') return null;
+        const top = document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2
+        );
+        if (top === element || element.contains(top)) return null;
+        // Only the BOARD taking the click is a defect.
+        if (!top || !arenaBay || !arenaBay.contains(top)) return null;
+        const label =
+          element.getAttribute('aria-label') ??
+          element.textContent?.trim().slice(0, 24) ??
+          'button';
+        return `${label} <- ${top.tagName.toLowerCase()}`;
+      })
+      .filter(Boolean);
+
     return {
+      blockedControls,
       kind,
       consent,
       root: rect(root),
@@ -218,6 +263,10 @@ async function openCase({ kind, viewport, consent }) {
       `${kind}/${viewport.name}: ${label.size}px text “${label.text}”`
     );
   }
+  invariant(
+    metrics.blockedControls.length === 0,
+    `${kind}/${viewport.name}: board surface intercepts controls: ${metrics.blockedControls.join('; ')}`
+  );
   invariant(!metrics.horizontalOverflow, `${kind}/${viewport.name}: horizontal overflow`);
   invariant(!metrics.verticalOverflow, `${kind}/${viewport.name}: vertical overflow`);
   invariant(metrics.footerVisibility === 'hidden', `${kind}/${viewport.name}: footer is visible`);

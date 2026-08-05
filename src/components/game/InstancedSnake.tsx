@@ -88,6 +88,7 @@ import {
 } from '@/lib/game/trailCells';
 import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 import { getSnakeRoundedGeometry } from './screen/gameRenderGeometry';
+import { createInkHullMaterial } from './screen/inkAmber';
 import { centerYFromBase, FLOOR_CLEARANCE } from './ArenaFloor';
 import {
   HEAD_SIZE,
@@ -224,11 +225,11 @@ const TRAIL_INSTANCE_CAPACITY = GRID_SIZE * GRID_SIZE;
  *    BOTH albedo and glow. The trunk itself is otherwise perfectly steady:
  *    no time-varying material writes on body segments, ever.
  */
-const instancedBodyMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
+const instancedBodyMaterialCache = new Map<string, THREE.MeshToonMaterial>();
 
 export function getInstancedBodyMaterial(
   dynasty: DynastyId
-): THREE.MeshStandardMaterial {
+): THREE.MeshToonMaterial {
   let material = instancedBodyMaterialCache.get(dynasty);
   if (!material) {
     const surface = getGameMaterialProfile(dynasty).snake;
@@ -281,6 +282,20 @@ const revivePhaseMaterial = new THREE.MeshBasicMaterial({
   wireframe: true,
   depthWrite: false,
 });
+/**
+ * INK & AMBER: the outline pass. One material for the 400-instance trail and
+ * one for the head - both push the same geometry out by a constant WORLD-space
+ * width (the hull shader divides by the object's own scale), so the line does
+ * not thin on a vacancy voxel or thicken on the head.
+ *
+ * Two materials rather than one because the hull is bound to a mesh's
+ * geometry, not to a colour: sharing a single instance across the instanced
+ * trail (which compiles with USE_INSTANCING) and the plain head mesh (which
+ * does not) would force three to keep re-resolving one material against two
+ * program variants every frame.
+ */
+const trailHullMaterial = createInkHullMaterial();
+const headHullMaterial = createInkHullMaterial();
 const REVIVE_PHASE_HEAD_SCALE = HEAD_SIZE * 1.14;
 const REVIVE_PHASE_HEAD_Y = (REVIVE_PHASE_HEAD_SCALE - HEAD_SIZE) / 2;
 
@@ -658,6 +673,7 @@ function InstancedSnakeCore({
   bodyGeometry,
 }: InstancedSnakeCoreProps) {
   const instancedRef = useRef<THREE.InstancedMesh>(null);
+  const hullRef = useRef<THREE.InstancedMesh>(null);
   const sealRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.Group>(null);
   const yawRef = useRef(HEAD_FACE_YAW[direction]);
@@ -692,6 +708,11 @@ function InstancedSnakeCore({
     seal.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
     seal.count = 0;
+    const hull = hullRef.current;
+    if (hull) {
+      hull.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      hull.count = 0;
+    }
   }, [bodyGeometry]);
 
   useFrame((_, delta) => {
@@ -745,6 +766,27 @@ function InstancedSnakeCore({
     if (mesh.instanceColor) {
       mesh.instanceColor.needsUpdate = true;
     }
+
+    // Ink hull: the identical instance set, one typed-array copy rather than a
+    // second transform pass. The expansion happens in the vertex shader, so
+    // the hull never needs its own matrices computed - only copied.
+    //
+    // Only the LIVE range is copied. The buffer is sized for the whole board
+    // (400 cells), and copying all of it every frame moved 25KB per frame to
+    // describe a five-segment snake. Everything past `count` is never drawn,
+    // so it does not need to be correct - and this runs on the frame loop of a
+    // board whose frame cost is gameplay throughput, because the engine ticks
+    // on a `setInterval` that a saturated main thread simply drops.
+    const hull = hullRef.current;
+    if (hull) {
+      const live = mesh.count * 16;
+      (hull.instanceMatrix.array as Float32Array).set(
+        (mesh.instanceMatrix.array as Float32Array).subarray(0, live)
+      );
+      hull.instanceMatrix.needsUpdate = true;
+      hull.count = mesh.count;
+    }
+
     seal.count = writeCoilSealInstances(
       seal,
       buffer,
@@ -778,6 +820,12 @@ function InstancedSnakeCore({
   return (
     <group>
       <instancedMesh
+        ref={hullRef}
+        args={[bodyGeometry, trailHullMaterial, TRAIL_INSTANCE_CAPACITY]}
+        frustumCulled={false}
+        renderOrder={-1}
+      />
+      <instancedMesh
         ref={instancedRef}
         args={[bodyGeometry, bodyMaterial, TRAIL_INSTANCE_CAPACITY]}
         frustumCulled={false}
@@ -800,6 +848,12 @@ function InstancedSnakeCore({
           scale={REVIVE_PHASE_HEAD_SCALE}
           position={[0, REVIVE_PHASE_HEAD_Y, 0]}
           visible={revivePhaseActive}
+        />
+        <mesh
+          geometry={headGeometry}
+          material={headHullMaterial}
+          scale={HEAD_SIZE}
+          renderOrder={-1}
         />
         <mesh
           geometry={headGeometry}

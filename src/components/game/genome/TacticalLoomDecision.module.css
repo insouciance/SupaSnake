@@ -36,17 +36,52 @@
   flex: 0 1 36rem;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
-  border: 1px solid rgb(168 85 247 / 35%);
-  border-radius: 20px;
+  /* INK & AMBER. Violet stays: it is the universal mutation/gene hue and
+     THE DROP is a gene decision. What changes is everything around it - the
+     4px arcade radius instead of a 20px capsule, an ink edge under the violet,
+     the base fill moved into the slate/ink family the board is drawn in, and
+     the incidental cyan wash replaced by amber, because the thing being
+     offered is value about to become yours. Colour only: every dimension in
+     this rule is load-bearing for `verify:cockpit-decisions` pixel-invariance
+     and is untouched. */
+  border: 1px solid rgb(168 85 247 / 42%);
+  border-radius: 4px;
   background:
     radial-gradient(circle at 50% -12%, rgb(168 85 247 / 24%), transparent 31%),
-    radial-gradient(circle at 104% 55%, rgb(34 211 238 / 9%), transparent 34%),
-    linear-gradient(165deg, rgb(8 13 27), rgb(3 7 18));
+    radial-gradient(circle at 104% 55%, rgb(242 160 63 / 11%), transparent 34%),
+    linear-gradient(165deg, rgb(28 40 54), rgb(11 17 24));
   padding: 12px;
+  /*
+   * THE MODAL FRAME.
+   *
+   * THE DROP is not a collectible card; it is a modal that arrived on top of
+   * the game. So this is one stroke from the outline system and nothing else.
+   *
+   * WEIGHT: `--ink-w-3`. The system's tiers are chosen by ROLE, not size, and
+   * tier 3 is explicitly "modals, panels, trays" - the surfaces the player
+   * must read as sitting above the game.
+   *
+   * COLOUR: PAPER, not ink, plus its drawn shade. The adaptive rule in
+   * globals.css says ink on light/warm/saturated surfaces and paper on dark
+   * ones, and this panel's own fill ends at rgb(11 17 24) - byte-identical to
+   * `--ink-stroke`. An ink stroke here would be a black line on black,
+   * invisible against both the panel it edges and the night-sky board it
+   * floats over. Bone is the only colour that separates this surface from the
+   * room, exactly as it is for the arena tray.
+   *
+   * GEOMETRY: the stroke is a box-shadow RING, never `border-width`.
+   * `verify:cockpit-decisions` holds this panel pixel-invariant and
+   * `box-sizing: border-box` means a heavier border would shrink the content
+   * box and move every child inside it. A spread ring paints entirely outside
+   * the layout box: it changes what the panel LOOKS like and nothing about
+   * what it MEASURES. The panel's `border`, `padding` and `border-radius` are
+   * untouched.
+   */
   box-shadow:
     inset 0 1px 0 rgb(196 181 253 / 13%),
-    0 18px 70px rgb(0 0 0 / 42%),
-    0 0 42px rgb(168 85 247 / 10%);
+    var(--paper-ring-3),
+    0 18px 70px rgb(0 0 0 / 52%),
+    0 0 42px rgb(168 85 247 / 12%);
   transform: none;
   animation: loom-shell-reveal 180ms ease-out both;
 }
@@ -83,7 +118,7 @@
     90deg,
     transparent,
     rgb(168 85 247 / 48%) 14%,
-    rgb(34 211 238 / 36%) 50%,
+    rgb(242 160 63 / 38%) 50%,
     rgb(168 85 247 / 48%) 86%,
     transparent
   );

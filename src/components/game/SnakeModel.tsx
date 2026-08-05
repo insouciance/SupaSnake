@@ -27,6 +27,7 @@ import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
 import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 import { getSnakeRoundedGeometry } from './screen/gameRenderGeometry';
+import { createInkHullMaterial, getToonGradientMap } from './screen/inkAmber';
 
 export const SNAKE_MODEL_URL = '/assets/3D/snake_voxel.glb';
 
@@ -296,26 +297,32 @@ export function getSnakeGeometries(scene: THREE.Object3D): {
  * Per-dynasty materials, shared across all segments. Dynasty theme colors
  * are static, so module-level memoization is safe.
  */
-const materialCache = new Map<string, THREE.MeshStandardMaterial>();
+const materialCache = new Map<string, THREE.MeshToonMaterial>();
 
 export function getSnakeSegmentMaterial(
   dynasty: DynastyId,
   isHead: boolean
-): THREE.MeshStandardMaterial {
+): THREE.MeshToonMaterial {
   const key = `${dynasty}:${isHead ? 'head' : 'body'}`;
   let material = materialCache.get(key);
   if (!material) {
     const surface = getGameMaterialProfile(dynasty).snake;
-    material = new THREE.MeshStandardMaterial({
+    // INK & AMBER: three-band toon in place of the PBR standard material.
+    // The body reads as a flat drawn fill that holds its hue, where the
+    // standard material's specular response washed the dynasty colour out at
+    // the shipping camera angle. The dynasty separation that used to ride on
+    // metalness/roughness now rides entirely on baseColor + emissive
+    // intensity, which were already two of its three channels; the "body
+    // stays calmer than its head" rule survives in the emissive split below,
+    // and the no-travelling-sparkle rule is now STRUCTURAL - a toon material
+    // has no specular term for a moving light to race down a 400-cell coil.
+    material = new THREE.MeshToonMaterial({
       color: surface.baseColor,
       emissive: surface.emissiveColor,
       emissiveIntensity: isHead
         ? surface.headEmissiveIntensity
         : surface.bodyEmissiveIntensity,
-      // Physical response distinguishes dynasties. Every body stays calmer
-      // than its head so a moving light never races down a 400-cell coil.
-      metalness: isHead ? surface.headMetalness : surface.bodyMetalness,
-      roughness: isHead ? surface.headRoughness : surface.bodyRoughness,
+      gradientMap: getToonGradientMap(),
       transparent: false,
       opacity: 1,
       depthWrite: true,
@@ -324,6 +331,9 @@ export function getSnakeSegmentMaterial(
   }
   return material;
 }
+
+/** INK & AMBER: the outline pass for the non-instanced segment paths. */
+const segmentHullMaterial = createInkHullMaterial();
 
 /** Rounded procedural stand-ins used while (or if) the GLB is unavailable. */
 const fallbackHeadGeometry = getSnakeRoundedGeometry('head');
@@ -360,7 +370,13 @@ export function SnakeModel({
       geometry={geometry}
       material={material}
       castShadow
-    />
+    >
+      {/* The ink hull: the same geometry, back faces, pushed out along its own
+          normals. A CHILD rather than a sibling so it inherits the segment's
+          transform for free - and `renderOrder={-1}` so the hull is drawn
+          before the fill it sits behind. */}
+      <mesh geometry={geometry} material={segmentHullMaterial} renderOrder={-1} />
+    </mesh>
   );
 }
 
@@ -387,7 +403,13 @@ export function SnakeSegmentFallback({
       geometry={isHead ? fallbackHeadGeometry : fallbackBodyGeometry}
       material={material}
       castShadow
-    />
+    >
+      <mesh
+        geometry={isHead ? fallbackHeadGeometry : fallbackBodyGeometry}
+        material={segmentHullMaterial}
+        renderOrder={-1}
+      />
+    </mesh>
   );
 }
 

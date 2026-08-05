@@ -43,6 +43,37 @@ function props(overrides: Partial<RunSetupPanelProps> = {}): RunSetupPanelProps 
 }
 
 describe('RunSetupPanel', () => {
+  /**
+   * GENERATION IS PLAYER-MEANINGFUL IDENTITY, AND `game.spec.ts` PINS IT.
+   *
+   * The pre-game screen must always say which generation the equipped snake
+   * is; `e2e/game.spec.ts` asserts `/gen \d+/i` on it. That e2e leg needs
+   * auth and an isolated database, so it cannot run in a focused suite - and
+   * an assertion that can only be checked in the slowest gate is one that
+   * breaks late. This pins the same fact where a styling change is actually
+   * made, so a restyle that drops the label fails in seconds rather than in a
+   * 30-minute e2e leg.
+   *
+   * Both breakpoint variants are asserted because only one of them is ever
+   * displayed: the launch-chamber badge above `sm`, the inline lineage line
+   * below it. A change that keeps one and drops the other would still fail
+   * the e2e locator on half the viewports.
+   */
+  it('always names the equipped snake\'s generation, at both breakpoints', () => {
+    render(<RunSetupPanel {...props({
+      snake: { id: 'primal-active', name: 'Moss', generation: 7, dynasty: 'PRIMAL' },
+    })} />);
+
+    const labels = screen.getAllByText(/gen 7/i);
+    expect(labels.length).toBeGreaterThanOrEqual(2);
+    // The wide badge and the compact lineage line are different elements, and
+    // neither may be the only one that survives a restyle.
+    expect(labels.some((node) => node.textContent?.trim() === 'Gen 7')).toBe(true);
+    expect(
+      labels.some((node) => /PRIMAL\s*·\s*Gen 7/.test(node.textContent ?? ''))
+    ).toBe(true);
+  });
+
   it('is one consolidated surface with one primary action', () => {
     const { container } = render(<RunSetupPanel {...props()} />);
     expect(screen.getByTestId('run-setup')).toBeInTheDocument();

@@ -2,6 +2,7 @@
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
+import { NoToneMapping } from 'three';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import type { Position } from '@/lib/game/SnakeGameLogic';
@@ -18,6 +19,8 @@ import {
 } from '@/components/game/CameraRig';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
+import { createLightTarget } from '@/components/game/screen/inkAmber';
+import { useRenderQuality } from '@/components/game/screen/useRenderQuality';
 import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { ExitPortal } from '@/components/game/ExitPortal';
 import {
@@ -130,6 +133,9 @@ function StaticSnake({ dynasty }: { dynasty: DynastyId }) {
   );
 }
 
+/** See the note on the live board's `SHADOW_MAP_SIZE`. */
+const SHADOW_MAP_SIZE: [number, number] = [1024, 1024];
+
 function PrototypeScene({
   dynasty,
   state,
@@ -140,6 +146,29 @@ function PrototypeScene({
 }: ArenaPrototypeCanvasProps & { isMobile: boolean }) {
   const theme = getDynastyScreenTokens(dynasty);
   const snake = density === 'extreme' ? DENSE_SNAKE : STATIC_SNAKE;
+  // Same defect, same fix as the live board: three's default light target is
+  // the world origin, which is a corner of a 0..20 board, so the orthographic
+  // shadow frustum was centred off the arena and the light sat on the exact
+  // x=z diagonal. See src/app/game/page.tsx for the projected numbers.
+  const keyLightTarget = useMemo(
+    () => createLightTarget(GRID / 2, 0, GRID / 2),
+    []
+  );
+  /*
+   * The fixture runs the same governor as the live board, so the cockpit
+   * verifiers exercise the shipped code path rather than a quality tier that
+   * only exists in production. There is no decision surface here, so a step up
+   * is always allowed.
+   */
+  const quality = useRenderQuality({ active: true, allowStepUp: true });
+  // Published for `verify:cockpit-webgl`, which asserts the governor resolved a
+  // real tier from the table rather than silently rendering an undefined one.
+  useEffect(() => {
+    const host = document.querySelector<HTMLElement>(
+      '[data-testid="cockpit-webgl-board"]'
+    );
+    if (host) host.dataset.renderTier = String(quality.tier);
+  }, [quality.tier]);
   const interpolation = useMemo(() => {
     if (density !== 'extreme') return null;
     const buffer = createInterpolationBuffer(DENSE_SNAKE.length);
@@ -164,18 +193,22 @@ function PrototypeScene({
       <fog attach="fog" args={[GAME_SCREEN_COLORS.void, 39, 72]} />
       <hemisphereLight args={['#a9c3d5', GAME_SCREEN_COLORS.graphiteDeep, 0.42]} />
       <ambientLight intensity={0.12} />
+      <primitive object={keyLightTarget} />
       <directionalLight
-        position={[9, 20, 11]}
-        intensity={0.92}
-        castShadow
-        shadow-mapSize={isMobile ? [1024, 1024] : [2048, 2048]}
-        shadow-camera-near={1}
-        shadow-camera-far={50}
+        position={[24, 18, 2]}
+        target={keyLightTarget}
+        color="#fff1dc"
+        intensity={1.25}
+        castShadow={quality.shadowsEnabled}
+        shadow-mapSize={SHADOW_MAP_SIZE}
+        shadow-camera-near={6}
+        shadow-camera-far={44}
         shadow-camera-left={-15}
         shadow-camera-right={15}
         shadow-camera-top={15}
         shadow-camera-bottom={-15}
         shadow-bias={-0.0001}
+        shadow-normalBias={0.02}
       />
       <DynamicLights
         dynasty={dynasty}
@@ -196,15 +229,11 @@ function PrototypeScene({
         <>
           <ArenaFloor
             gridSize={GRID}
-            floorColor="#101722"
-            gridColor="#3b5266"
-            majorGridColor="#7fb2d9"
             accentColor={theme.primary}
           />
           <ArenaBorder
             gridSize={GRID}
             color={theme.secondary}
-            accentColor={GAME_SCREEN_COLORS.systemCyan}
             emissiveIntensity={0.5}
           />
         </>
@@ -244,7 +273,12 @@ function PrototypeScene({
       ) : (
         <StaticSnake dynasty={dynasty} />
       )}
-      {density === 'extreme' ? <TerrainBlocks terrain={DENSE_TERRAIN} /> : null}
+      {density === 'extreme' ? (
+        <TerrainBlocks
+          terrain={DENSE_TERRAIN}
+          castShadow={quality.terrainCastsShadow}
+        />
+      ) : null}
       <FoodBeacon
         position={[FOOD.x + 0.5, 0, FOOD.z + 0.5]}
         color={GAME_SCREEN_COLORS.systemCyan}
@@ -274,10 +308,12 @@ function PrototypeScene({
         targetY={COCKPIT_TARGET_Y}
       />
 
-      {!isMobile && effectsEnabled && (
+      {!isMobile && effectsEnabled && quality.bloomResolutionScale !== null && (
         <EffectComposer>
+          {/* Governor-driven - see the note on the live board's Bloom. */}
           <Bloom
-            luminanceThreshold={0.55}
+            resolutionScale={quality.bloomResolutionScale}
+            luminanceThreshold={0.68}
             luminanceSmoothing={0.88}
             intensity={0.58}
             mipmapBlur
@@ -335,7 +371,8 @@ export function ArenaPrototypeCanvas({
         }}
         shadows
         dpr={isMobile ? [1, 1.5] : [1, 2]}
-        gl={{ alpha: true, antialias: true }}
+        // INK & AMBER: match the live board - no ACES shoulder over flat toon fills.
+        gl={{ alpha: true, antialias: true, toneMapping: NoToneMapping }}
         onCreated={({ gl, camera }) => {
           gl.setClearColor(0x000000, 0);
           camera.lookAt(center, 0, center);
