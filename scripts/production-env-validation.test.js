@@ -301,6 +301,11 @@ describe('production environment validation', () => {
     expect(localHarness).toContain(
       'supabase/tests/067_player_gene_eligibility.sql'
     );
+    // LF-B: 069's ACL and refusal contracts are provable only against real
+    // SQL — a text-reading unit test cannot show that Postgres agrees.
+    expect(localHarness).toContain(
+      'supabase/tests/069_snake_cosmetic_loadout.sql'
+    );
     expect(localHarness).toContain(
       'supabase/tests/064_atomic_dynasty_favorites_concurrency.sql'
     );

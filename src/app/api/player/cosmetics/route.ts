@@ -81,7 +81,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(parseSnakeCosmeticCatalog(data));
+    // `data ?? {}` on purpose: `live` means "the RPC answered", not "the
+    // answer had rows in it". A null payload from an existing function is an
+    // empty wardrobe, and reporting that as not-live would make it
+    // indistinguishable from the pre-migration window.
+    return NextResponse.json(parseSnakeCosmeticCatalog(data ?? {}));
   } catch (err) {
     console.error('Snake cosmetics API error:', err);
     Sentry.captureException(err);
