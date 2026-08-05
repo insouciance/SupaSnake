@@ -6131,6 +6131,13 @@ export class SnakeGameLogic {
    * Food-indexed, so a replay hardens the arena identically. Blocks may form
    * UNDER the snake - that is the interesting case, and `tickTerrain` keeps it
    * fair - but never on food or the exit portal, which would bury them.
+   *
+   * The SOLID set handed to the selector is deliberately narrower than the
+   * blocked set: only permanent terrain walls the field. Food, portals and
+   * relics are cells the head crosses freely, so counting them as walls would
+   * make the connectivity guard refuse placements that partition nothing - and
+   * would make the arena's shape depend on where the food happened to sit,
+   * which is not a fact the schedule is allowed to read.
    */
   private placeDueTerrain(): void {
     const schedule = this.ruleset.arena;
@@ -6139,7 +6146,11 @@ export class SnakeGameLogic {
     const missing = due - this.state.terrain.length;
     if (missing <= 0) return;
 
-    const blocked = new Set(this.state.terrain.map((b) => cellKey(b.x, b.z)));
+    const solid = new Set(this.state.terrain.map((b) => cellKey(b.x, b.z)));
+    for (const fact of this.state.genomeV2?.permanentTerrain ?? []) {
+      for (const cell of fact.cells) solid.add(cellKey(cell.x, cell.z));
+    }
+    const blocked = new Set(solid);
     for (const food of this.state.foods) blocked.add(cellKey(food.x, food.z));
     if (this.state.exitTile) {
       blocked.add(cellKey(this.state.exitTile.x, this.state.exitTile.z));
@@ -6157,7 +6168,10 @@ export class SnakeGameLogic {
     }
 
     this.placeTerrainAt(
-      nextTerrainCells(this.gridSize, blocked, missing, this.rng),
+      nextTerrainCells(this.gridSize, blocked, missing, this.rng, {
+        solid,
+        wrap: this.ruleset.torus === true,
+      }),
       schedule.formingSeconds,
       schedule.source
     );
