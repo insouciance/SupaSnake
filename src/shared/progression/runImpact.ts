@@ -34,34 +34,51 @@ export type ProgressionDestination =
 
 export type RunOutcome = 'extracted' | 'crashed' | 'completed';
 
-export type RunImpactKind =
-  | 'mastery_xp'
-  | 'mastery_level'
-  | 'personal_best'
-  | 'lineage_run'
-  | 'record_value'
-  | 'record_tier'
-  | 'ladder_record'
-  | 'codex_discovery'
-  | 'codex_milestone'
-  | 'signal_progress'
-  | 'signal_completion'
-  | 'signal_milestone'
-  | 'clan_contribution'
-  | 'clan_top_five'
+/**
+ * Every beat kind a settlement may emit — as DATA, not only as a type (WP-F).
+ *
+ * The client parser needs this list at runtime to decide whether an envelope
+ * is well formed, and it used to keep its own hand-written copy. The two
+ * drifted the moment WP-D added two kinds: `parseRunImpactEnvelope` rejects an
+ * envelope containing ANY impact it cannot parse, so the first BANK and the
+ * first Gene unlock — the two beats PEO §3.1 and §5 care most about — each
+ * discarded the player's whole Victory Lap. It never fired in production only
+ * because both beats are unreachable until the curriculum flag is armed.
+ *
+ * So the list is exported and the union is derived from it. Adding a kind is
+ * now one edit, and the parser learns it in the same commit.
+ */
+export const RUN_IMPACT_KINDS = [
+  'mastery_xp',
+  'mastery_level',
+  'personal_best',
+  'lineage_run',
+  'record_value',
+  'record_tier',
+  'ladder_record',
+  'codex_discovery',
+  'codex_milestone',
+  'signal_progress',
+  'signal_completion',
+  'signal_milestone',
+  'clan_contribution',
+  'clan_top_five',
   /**
    * The first validated BANK on an account (PEO §3.1: the primary activation
    * hypothesis). Recognition only — it carries no destination, because the
    * next thing this player needs is the next run, not a screen.
    */
-  | 'first_extraction'
+  'first_extraction',
   /**
    * A curriculum Gene whose learning event resolved in authoritative play
    * (PEO §4.4, WP-D). Also destination-less: the REVEAL is the beat, and the
    * INVITATION is a separate dismissible attention row, so one unlock can
    * never produce two competing pointers at the same lesson.
    */
-  | 'gene_unlocked';
+  'gene_unlocked',
+] as const;
+
+export type RunImpactKind = (typeof RUN_IMPACT_KINDS)[number];
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
