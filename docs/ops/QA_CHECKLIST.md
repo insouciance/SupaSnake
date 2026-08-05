@@ -27,18 +27,20 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `28d21f1c83f335ad48257fdc0a4966062007b479` — Side Door treatment, saturation extraction, sweep-primary settlement with migration 068, and the `snake-rules-2026-08-05.1` rules bump |
-| Current deployment | `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`supasnake-1ic69o9sk-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL` (`bf3020c`); schema-safe under forward-only 067/068, but serves the previous rules version and loses the Side Door, saturation extraction, and the primary sweep |
+| Production behavior commit | `4e51e817b7ceb802530c35ffb8399afaa6b2fc3a` — Player Evolution flag-on: the starter curriculum, WP-D reveals, WP-E clan handoff and account-safety fixes, and WP-F telemetry |
+| Current deployment | `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`supasnake-ibhhdbou5-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`28d21f1`); same schema and rules version, but serves the 22-flag surface, so rolling back is itself a contract change and withdraws the curriculum mid-journey |
 | Engine rules version | `snake-rules-2026-08-05.1` |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–068 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
-| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 22/22 manifest flags enabled |
+| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 23/23 manifest flags enabled |
+| Player Evolution flag | `NEXT_PUBLIC_PLAYER_EVOLUTION_V1=true`; the 23rd flag, live since `4e51e81` |
+| Public surface | 23 flags, hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be` |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `28d21f1c83f335ad48257fdc0a4966062007b479` |
+| Canonical source | `main`; canonical health reports exact SHA `4e51e817b7ceb802530c35ffb8399afaa6b2fc3a` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
@@ -79,6 +81,55 @@ retired pre-v2 application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Player Evolution flag-on production evidence
+
+- Exact main SHA `4e51e817b7ceb802530c35ffb8399afaa6b2fc3a`, carrying PR 83
+  (CE-3a value protection), PR 84 (WP-D reveal and guidance surfaces), PR 86
+  (WP-E clan handoff plus two account-safety fixes) and PR 85 (WP-F telemetry
+  and the manifest entry). Production workflow `30992325611` deployed it as
+  `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1`
+  (`supasnake-ibhhdbou5-josef-bells-projects.vercel.app`); the outgoing
+  deployment was `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M`.
+- **First public-surface contract change in the project's history.** The
+  manifest went 22 → 23 flags and the hash changed from
+  `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99` to
+  `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. The new
+  hash was recomputed independently before dispatch and matched.
+- Canonical health reports 23/23 with `disabledFlags` empty, the exact release
+  SHA, healthy database, Genome schema/catalog/Ascendance 2/2/2, cron hash
+  unchanged `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`,
+  and hosted schema 001–068 with plan `none`. No migration in this release: the
+  curriculum's tables, RPCs and backfill shipped dormant in 067.
+- **The curriculum is provably served, three independent ways.** The chunk
+  marker `curriculum_trial_offered` was absent before the cutover and present
+  after; `/api/genome/curriculum` answers 401 rather than 404, so the route
+  exists and is merely unauthenticated; and `/api/health` carries a per-flag
+  runtime check. Any one of these alone would be weak evidence; together they
+  distinguish "deployed" from "actually reaching players".
+- Player-visible behavior to QA: a new player receives the seven-Gene starter
+  curriculum; trials are offered inside THE DROP rather than in a separate
+  tutorial; unlocks are revealed on Results; the first BANK has its own beat;
+  and the clan handoff is revealed at eight banked runs. Anonymous accounts can
+  no longer found a clan, and an OAuth change can no longer orphan one.
+- **Noteworthy judgment on this release.** The WP-F runbook addendum instructed
+  the operator to create `NEXT_PUBLIC_PLAYER_EVOLUTION_V1` and a literal
+  `SUPASNAKE_PUBLIC_SURFACE_HASH` in the Vercel dashboard before dispatching.
+  The deploy agent refused that instruction and proved it wrong rather than
+  following it: the workflow loads `production-public-surface-cli.mjs
+  github-env` into the job environment *before* the validation step runs, and
+  passes the same manifest-derived values to the deployment as
+  `--build-env`/`--env` pairs, so the dashboard is not consulted for either.
+  Corroborating evidence: no dashboard variable ever existed for
+  `NEXT_PUBLIC_GENOME_V2`, which has shipped this way through five releases. A
+  pinned literal hash would additionally have been a stale-hash trap on the next
+  manifest change. The addendum has been corrected in this same record; the
+  release proceeded with no dashboard mutation and health came back 23/23.
+- Two SQL follow-ups are queued for the next Track-A migration and are recorded
+  as decisions rather than omissions: the clan RPC-layer anonymous guard
+  (defence in depth behind the route-level guard WP-E ships) and a narrowing of
+  the expire-race continuity predicate. Neither is reachable from the curriculum
+  flag.
 
 ### Side Door, saturation and sweep-primary production evidence
 
