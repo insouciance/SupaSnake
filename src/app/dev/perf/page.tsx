@@ -324,15 +324,11 @@ export default function PerfHarnessPage() {
         />
         <ArenaFloor
           gridSize={GRID}
-          floorColor="#101722"
-          gridColor="#3b5266"
-          majorGridColor="#7fb2d9"
           accentColor={theme.primary}
         />
         <ArenaBorder
           gridSize={GRID}
           color={theme.secondary}
-          accentColor="#22d3ee"
           emissiveIntensity={0.5}
         />
         <TerrainBlocks terrain={terrain} />

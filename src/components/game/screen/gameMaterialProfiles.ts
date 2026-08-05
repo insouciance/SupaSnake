@@ -30,13 +30,10 @@ export interface SnakeSurfaceProfile {
 export interface ArenaSurfaceProfile {
   readonly atmosphereColor: string;
   readonly rimColor: string;
-  readonly cornerColor: string;
-  readonly undertrayRailColor: string;
   readonly undertrayCornerColor: string;
   readonly edgeWashStrength: number;
   readonly restingEmissiveIntensity: number;
   readonly restingPulseAmplitude: number;
-  readonly pylonEmissiveIntensity: number;
 }
 
 export interface LightingProfile {
@@ -75,13 +72,10 @@ export const GAME_MATERIAL_PROFILES: Record<DynastyId, GameMaterialProfile> = {
     arena: {
       atmosphereColor: cyber.primary,
       rimColor: ELECTRIC_BLUE,
-      cornerColor: GAME_SCREEN_COLORS.systemCyan,
-      undertrayRailColor: ELECTRIC_BLUE,
       undertrayCornerColor: cyber.primary,
       edgeWashStrength: 0.28,
       restingEmissiveIntensity: 0.42,
       restingPulseAmplitude: 0.045,
-      pylonEmissiveIntensity: 0.5,
     },
     lighting: {
       keyColor: cyber.primary,
@@ -104,13 +98,10 @@ export const GAME_MATERIAL_PROFILES: Record<DynastyId, GameMaterialProfile> = {
     arena: {
       atmosphereColor: primal.primary,
       rimColor: primal.secondary,
-      cornerColor: GAME_SCREEN_COLORS.systemCyan,
-      undertrayRailColor: primal.primary,
       undertrayCornerColor: primal.secondary,
       edgeWashStrength: 0.24,
       restingEmissiveIntensity: 0.34,
       restingPulseAmplitude: 0.035,
-      pylonEmissiveIntensity: 0.4,
     },
     lighting: {
       keyColor: primal.primary,
@@ -133,13 +124,10 @@ export const GAME_MATERIAL_PROFILES: Record<DynastyId, GameMaterialProfile> = {
     arena: {
       atmosphereColor: cosmic.primary,
       rimColor: cosmic.secondary,
-      cornerColor: cosmic.secondary,
-      undertrayRailColor: cosmic.primary,
       undertrayCornerColor: cosmic.secondary,
       edgeWashStrength: 0.26,
       restingEmissiveIntensity: 0.14,
       restingPulseAmplitude: 0.03,
-      pylonEmissiveIntensity: 0.38,
     },
     lighting: {
       keyColor: cosmic.primary,
