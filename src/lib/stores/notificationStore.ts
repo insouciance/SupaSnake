@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { progressionArtifactHref } from '@/shared/progression/destinations';
+import { CURRICULUM_SOURCE_TYPE } from '@/shared/game/curriculum';
 
 /**
  * Attention is an unresolved action. Recognition is an unseen earned moment.
@@ -120,6 +121,12 @@ export interface GameNotification extends NotificationBase {
   serverStatus?: 'unseen' | 'seen';
   /** Exact server-owned artifact that must be rendered before recognition clears. */
   artifactRef?: string;
+  /**
+   * The server row's `source_type`, kept so a surface can recognise the item
+   * it owns without re-fetching. `'curriculum'` is WP-D's guided-reveal
+   * invitation; everything else is `'run'` or `'clan_battle'`.
+   */
+  sourceType?: string;
 }
 
 export type NotificationInput =
@@ -248,7 +255,17 @@ function notificationFromServerItem(item: ServerAttentionItem): GameNotification
     href,
     ...('action' in target && target.action ? { action: target.action } : {}),
     notificationClass: item.kind === 'action' ? 'attention' : 'recognition',
-    badgeKind: item.kind === 'action' ? 'exclamation' : 'dot',
+    // Optional learning gets a destination DOT, never a pulsing exclamation
+    // (PEO §5, presentation constraints). It is an `action` row because only
+    // an action can carry the terminal states a **Not now** needs — the badge
+    // is a presentation choice, not a change to what the row is.
+    badgeKind:
+      item.kind !== 'action'
+        ? 'dot'
+        : item.source.type === CURRICULUM_SOURCE_TYPE
+          ? 'dot'
+          : 'exclamation',
+    sourceType: item.source.type,
     attentionReason:
       item.kind === 'action' ? 'action-required' : 'progression-opportunity',
     serverManaged: true,

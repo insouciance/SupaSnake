@@ -570,3 +570,53 @@ describe('Layer 3 recognition', () => {
     expect(screen.getByTestId('results-setup')).toHaveClass('whitespace-nowrap');
   });
 });
+
+describe('the curriculum invitation on Results (WP-D)', () => {
+  const invitation = {
+    id: 'curriculum-reveal' as const,
+    label: 'Show me Loop Trap',
+    description: 'Read what it changes and what it commits before your next run.',
+    href: '/codex',
+    attentionId: 'attention-1',
+    declineLabel: 'Not now',
+  };
+
+  it('offers Show me and Not now, and nothing else new', () => {
+    const onNextAction = jest.fn();
+    const onDeclineNextAction = jest.fn();
+    render(
+      <RunResults
+        {...props({ nextAction: invitation, onNextAction, onDeclineNextAction })}
+      />
+    );
+    const action = screen.getByTestId('results-next-action');
+    expect(action).toHaveAttribute('data-next-action', 'curriculum-reveal');
+    expect(action).toHaveTextContent('Show me Loop Trap');
+    expect(action).toHaveAttribute('href', '/codex');
+
+    const decline = screen.getByTestId('results-next-action-decline');
+    expect(decline).toHaveTextContent('Not now');
+    expect(decline).not.toHaveTextContent(/later/i);
+    fireEvent.click(decline);
+    expect(onDeclineNextAction).toHaveBeenCalledTimes(1);
+    expect(onNextAction).not.toHaveBeenCalled();
+  });
+
+  it('keeps Replay and Setup immediately available beside it', () => {
+    render(<RunResults {...props({ nextAction: invitation, onDeclineNextAction: jest.fn() })} />);
+    expect(screen.getByTestId('results-replay')).toBeEnabled();
+    expect(screen.getByTestId('results-setup')).toBeEnabled();
+  });
+
+  it('records taking the invitation as well as declining it', () => {
+    const onNextAction = jest.fn();
+    render(<RunResults {...props({ nextAction: invitation, onNextAction, onDeclineNextAction: jest.fn() })} />);
+    fireEvent.click(screen.getByTestId('results-next-action'));
+    expect(onNextAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no decline control for any ordinary next action', () => {
+    render(<RunResults {...props({ onDeclineNextAction: jest.fn() })} />);
+    expect(screen.queryByTestId('results-next-action-decline')).toBeNull();
+  });
+});
