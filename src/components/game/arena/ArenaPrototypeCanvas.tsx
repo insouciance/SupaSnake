@@ -2,6 +2,7 @@
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
+import { NoToneMapping } from 'three';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import type { Position } from '@/lib/game/SnakeGameLogic';
@@ -18,6 +19,7 @@ import {
 } from '@/components/game/CameraRig';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
+import { createLightTarget } from '@/components/game/screen/inkAmber';
 import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { ExitPortal } from '@/components/game/ExitPortal';
 import {
@@ -140,6 +142,14 @@ function PrototypeScene({
 }: ArenaPrototypeCanvasProps & { isMobile: boolean }) {
   const theme = getDynastyScreenTokens(dynasty);
   const snake = density === 'extreme' ? DENSE_SNAKE : STATIC_SNAKE;
+  // Same defect, same fix as the live board: three's default light target is
+  // the world origin, which is a corner of a 0..20 board, so the orthographic
+  // shadow frustum was centred off the arena and the light sat on the exact
+  // x=z diagonal. See src/app/game/page.tsx for the projected numbers.
+  const keyLightTarget = useMemo(
+    () => createLightTarget(GRID / 2, 0, GRID / 2),
+    []
+  );
   const interpolation = useMemo(() => {
     if (density !== 'extreme') return null;
     const buffer = createInterpolationBuffer(DENSE_SNAKE.length);
@@ -164,18 +174,22 @@ function PrototypeScene({
       <fog attach="fog" args={[GAME_SCREEN_COLORS.void, 39, 72]} />
       <hemisphereLight args={['#a9c3d5', GAME_SCREEN_COLORS.graphiteDeep, 0.42]} />
       <ambientLight intensity={0.12} />
+      <primitive object={keyLightTarget} />
       <directionalLight
-        position={[9, 20, 11]}
-        intensity={0.92}
+        position={[24, 18, 2]}
+        target={keyLightTarget}
+        color="#fff1dc"
+        intensity={1.25}
         castShadow
         shadow-mapSize={isMobile ? [1024, 1024] : [2048, 2048]}
-        shadow-camera-near={1}
-        shadow-camera-far={50}
+        shadow-camera-near={6}
+        shadow-camera-far={44}
         shadow-camera-left={-15}
         shadow-camera-right={15}
         shadow-camera-top={15}
         shadow-camera-bottom={-15}
         shadow-bias={-0.0001}
+        shadow-normalBias={0.02}
       />
       <DynamicLights
         dynasty={dynasty}
@@ -196,15 +210,11 @@ function PrototypeScene({
         <>
           <ArenaFloor
             gridSize={GRID}
-            floorColor="#101722"
-            gridColor="#3b5266"
-            majorGridColor="#7fb2d9"
             accentColor={theme.primary}
           />
           <ArenaBorder
             gridSize={GRID}
             color={theme.secondary}
-            accentColor={GAME_SCREEN_COLORS.systemCyan}
             emissiveIntensity={0.5}
           />
         </>
@@ -277,7 +287,7 @@ function PrototypeScene({
       {!isMobile && effectsEnabled && (
         <EffectComposer>
           <Bloom
-            luminanceThreshold={0.55}
+            luminanceThreshold={0.68}
             luminanceSmoothing={0.88}
             intensity={0.58}
             mipmapBlur
@@ -335,7 +345,8 @@ export function ArenaPrototypeCanvas({
         }}
         shadows
         dpr={isMobile ? [1, 1.5] : [1, 2]}
-        gl={{ alpha: true, antialias: true }}
+        // INK & AMBER: match the live board - no ACES shoulder over flat toon fills.
+        gl={{ alpha: true, antialias: true, toneMapping: NoToneMapping }}
         onCreated={({ gl, camera }) => {
           gl.setClearColor(0x000000, 0);
           camera.lookAt(center, 0, center);

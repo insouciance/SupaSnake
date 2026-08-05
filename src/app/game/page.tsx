@@ -2,6 +2,7 @@
 
 import { Canvas } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
+import { NoToneMapping } from 'three';
 import { useEffect, useRef, useCallback, useMemo, useState, Suspense, type ReactNode } from 'react';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import {
@@ -73,6 +74,7 @@ import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
+import { createLightTarget } from '@/components/game/screen/inkAmber';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 import { RunCockpit } from '@/components/game/cockpit/RunCockpit';
 import type { RunCockpitModel } from '@/components/game/cockpit/types';
@@ -2373,6 +2375,13 @@ export default function GamePage() {
 
   // Calculate board center for camera
   const boardCenter = GAME_CONFIG.board.gridSize / 2;
+  // The key light's explicit aim point. Three's DirectionalLight defaults its
+  // target to an unparented Object3D at the world origin - which on a board
+  // spanning 0..20 is a CORNER, not the middle. See the light below.
+  const keyLightTarget = useMemo(
+    () => createLightTarget(boardCenter, 0, boardCenter),
+    [boardCenter]
+  );
 
   // Initialize game logic
   useEffect(() => {
@@ -7493,6 +7502,10 @@ export default function GamePage() {
         // Fluidity: cap devicePixelRatio - uncapped retina dpr (3x) was the
         // single largest silent GPU cost on the board
         dpr={isMobile ? [1, 1.5] : [1, 2]}
+        // INK & AMBER: R3F defaults to ACES Filmic, whose shoulder desaturates
+        // exactly the flat toon fills this direction is built on. The board is
+        // authored in sRGB and should ship what it was authored as.
+        gl={{ toneMapping: NoToneMapping }}
       >
         {/* Fog in the void family so the arena's far edge melts into the
             page backdrop instead of cutting out against it - lifted and
@@ -7511,19 +7524,42 @@ export default function GamePage() {
             : ['#bcd6e8', '#0b1016', 0.5]}
         />
         <ambientLight intensity={HUD_COCKPIT_V1_ENABLED ? 0.12 : 0.18} />
-        {/* Key light - the single shadow caster */}
+        {/* Key light - the single shadow caster, and the single warm lamp the
+            whole direction is lit by.
+
+            It used to sit at [10, 20, 10] with three's default target, i.e.
+            aimed at the world origin. Two consequences, both measured:
+
+            1. The board spans 0..20, so the orthographic shadow camera - which
+               is built around the TARGET - was centred on a corner. Projecting
+               all 441 grid points into that frustum puts 120 of them (27.2%)
+               outside the +/-15 bound, with the far corner (20, 20) landing at
+               cam-y -23.09. Better than a quarter of the board had no shadow
+               map at all, on a 2048^2 buffer the game was already paying for.
+            2. The light direction was the exact x=z diagonal at 54.7 deg
+               elevation, so every shadow fell along a grid diagonal and read
+               as a rendering artefact rather than as a lamp.
+
+            Now: an explicit target at board centre, and a position off the
+            diagonal at 48.2 deg elevation. Every grid point projects inside
+            +/-13.65 x +/-10.17 with headroom for object height, and a 0.58-high
+            trunk voxel throws a 0.52-cell shadow. */}
+        <primitive object={keyLightTarget} />
         <directionalLight
-          position={[10, 20, 10]}
-          intensity={HUD_COCKPIT_V1_ENABLED ? 0.92 : 1.1}
+          position={[24, 18, 2]}
+          target={keyLightTarget}
+          color="#fff1dc"
+          intensity={HUD_COCKPIT_V1_ENABLED ? 1.25 : 1.45}
           castShadow
           shadow-mapSize={isMobile ? [1024, 1024] : [2048, 2048]}
-          shadow-camera-near={1}
-          shadow-camera-far={50}
+          shadow-camera-near={6}
+          shadow-camera-far={44}
           shadow-camera-left={-15}
           shadow-camera-right={15}
           shadow-camera-top={15}
           shadow-camera-bottom={-15}
           shadow-bias={-0.0001}
+          shadow-normalBias={0.02}
         />
         <DynamicLights
           dynasty={selectedDynasty}
@@ -7582,12 +7618,15 @@ export default function GamePage() {
         {perfEnabled && <PerfHUD />}
 
         {/* Bloom postprocessing - desktop only, to protect mobile framerate.
-            Threshold 0.35 keeps the lifted floor/grid out of the bloom while
-            the emissive identities (snake, food core, portal beam) glow. */}
+            The threshold keeps the lifted floor/grid out of the bloom while
+            the emissive identities (snake, food core, portal beam) glow. It is
+            raised from 0.55/0.35 with the tone-mapping change: without the ACES
+            shoulder the mid-tones sit higher, so the old threshold would have
+            let ordinary lit surfaces bloom. The same set of objects glows. */}
         {!isMobile && (
           <EffectComposer>
             <Bloom
-              luminanceThreshold={HUD_COCKPIT_V1_ENABLED ? 0.55 : 0.35}
+              luminanceThreshold={HUD_COCKPIT_V1_ENABLED ? 0.68 : 0.5}
               luminanceSmoothing={HUD_COCKPIT_V1_ENABLED ? 0.88 : 0.9}
               intensity={HUD_COCKPIT_V1_ENABLED ? 0.58 : 0.75}
               mipmapBlur
@@ -7738,15 +7777,11 @@ function GameBoard({
         <>
           <ArenaFloor
             gridSize={GAME_CONFIG.board.gridSize}
-            floorColor="#101722"
-            gridColor="#3b5266"
-            majorGridColor="#7fb2d9"
             accentColor={theme.primary}
           />
           <ArenaBorder
             gridSize={GAME_CONFIG.board.gridSize}
             color={theme.secondary}
-            accentColor="#22d3ee"
             emissiveIntensity={0.5}
             torus={torus}
           />
