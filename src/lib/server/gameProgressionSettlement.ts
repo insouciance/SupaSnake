@@ -10,11 +10,23 @@ import type { ClanContributionResult } from '@/lib/server/clanEnergyBattle';
 import { settleSignalAttemptForSession } from '@/lib/server/signal';
 import {
   buildRunImpactEnvelope,
+  insertCurriculumAttention,
   isMissingRunImpactInfra,
   loadRunImpactEnvelope,
   persistRunImpactEnvelope,
 } from '@/lib/server/runImpact';
-import type { MasteryImpactInput, SignalImpactInput } from '@/lib/server/runImpact';
+import type {
+  CurriculumImpactInput,
+  MasteryImpactInput,
+  SignalImpactInput,
+} from '@/lib/server/runImpact';
+import { resolveLearningEvent } from '@/lib/server/geneEligibility';
+import { parseRunStartContext } from '@/lib/server/runContext';
+import {
+  GENOME_RULES_V2,
+  GENOME_V2_LEARNING_EVENT_VERSION,
+} from '@/shared/game/genomeV2';
+import { isGenomeV2ActiveGeneId } from '@/shared/game/genes';
 
 type Row = Record<string, unknown>;
 
@@ -229,6 +241,69 @@ function parseCore(data: unknown) {
 }
 
 /**
+ * The curriculum facts this settlement can prove, read from the run's own
+ * START STAMP rather than from live eligibility.
+ *
+ * WHY THE STAMP. A Gene unlocked between this run's start and its settlement
+ * did not teach this run anything, and vocabulary is never recomputed at
+ * settlement (server contract §3.3). The stamp is also what makes the whole
+ * feature flag-safe: a run started with the curriculum off carries no
+ * eligibility block, so both facts below are null and this settlement writes
+ * exactly the bytes it wrote before WP-D existed.
+ *
+ * `learningEventsResolved` survives the settlement projection —
+ * `projectGenomeForSettlement` drops only `targets` and narrows the journal —
+ * and it is written by the pure reducer, so it is identical under live play
+ * and replay and survives journal compaction (server contract §4.1).
+ */
+interface CurriculumSettlementFacts {
+  bankedRunsBefore: number | null;
+  /** The Gene this run's stamped trial resolved, before promotion. */
+  resolvedTrialGeneId: CurriculumImpactInput['geneId'] | null;
+  learningEventVersion: number;
+}
+
+const NO_CURRICULUM_FACTS: CurriculumSettlementFacts = {
+  bankedRunsBefore: null,
+  resolvedTrialGeneId: null,
+  learningEventVersion: GENOME_V2_LEARNING_EVENT_VERSION,
+};
+
+function readCurriculumFacts(
+  runContextRaw: unknown,
+  snapshot: Row,
+  validated: boolean
+): CurriculumSettlementFacts {
+  const parsed = parseRunStartContext(runContextRaw);
+  if (!parsed.ok) return NO_CURRICULUM_FACTS;
+  const genome = parsed.context.genome;
+  if (!genome || genome.rulesVersion !== GENOME_RULES_V2) {
+    return NO_CURRICULUM_FACTS;
+  }
+  const inputs = genome.eligibilityInputs;
+  if (!inputs) return NO_CURRICULUM_FACTS;
+  const learningEventVersion =
+    typeof genome.learningEventVersion === 'number'
+      ? genome.learningEventVersion
+      : GENOME_V2_LEARNING_EVENT_VERSION;
+  const trialGeneId = inputs.trialGeneId;
+  const settledGenome = row(snapshot.genome);
+  const resolvedRaw = settledGenome?.learningEventsResolved;
+  const resolved =
+    validated &&
+    trialGeneId !== null &&
+    Array.isArray(resolvedRaw) &&
+    resolvedRaw.some(
+      (geneId) => isGenomeV2ActiveGeneId(geneId) && geneId === trialGeneId
+    );
+  return {
+    bankedRunsBefore: inputs.bankedRuns,
+    resolvedTrialGeneId: resolved ? trialGeneId : null,
+    learningEventVersion,
+  };
+}
+
+/**
  * Resume every server-owned stage from the immutable session snapshot and
  * persist one canonical receipt. Safe to call concurrently and after reload;
  * no original request body or browser queue is required.
@@ -398,6 +473,55 @@ export async function settleDurableRunProgression(
       return { ok: false, error };
     }
 
+    // ---------------------------------------------------------------------
+    // Curriculum promotion, BEFORE the receipt is built (WP-D, PEO §5).
+    // ---------------------------------------------------------------------
+    // The REVEAL may only state what already happened, so the beat is gated
+    // on the promotion RPC actually succeeding. Doing it here rather than in
+    // the route also means a run settled by the recovery sweep — with no
+    // browser and no request — promotes its trial exactly like a live one.
+    //
+    // `resolve_learning_event` is idempotent on `resolved_session_id`, which
+    // is what lets the route keep its own call: a replayed settlement, a
+    // sweep, and the request path all promote the same Gene exactly once.
+    // NEVER FATAL: a false here leaves the Gene a trial and the run paid.
+    const runContextRow = await supabase
+      .from('game_sessions')
+      .select('run_context')
+      .eq('id', sessionId)
+      .eq('player_id', playerId)
+      .maybeSingle();
+    if (runContextRow.error) {
+      // A curriculum beat is presentation; a settlement is money. Report and
+      // continue with no curriculum facts rather than stalling the receipt.
+      reportProgressionError(
+        'curriculum_context',
+        runContextRow.error,
+        playerId,
+        sessionId
+      );
+    }
+    const curriculumFacts = runContextRow.error
+      ? NO_CURRICULUM_FACTS
+      : readCurriculumFacts(
+          (runContextRow.data as Row | null)?.run_context,
+          parsed.snapshot,
+          bool(parsed.snapshot.validated)
+        );
+    let curriculum: CurriculumImpactInput | null = null;
+    if (curriculumFacts.resolvedTrialGeneId) {
+      const promoted = await resolveLearningEvent(
+        supabase,
+        playerId,
+        curriculumFacts.resolvedTrialGeneId,
+        sessionId,
+        curriculumFacts.learningEventVersion
+      );
+      if (promoted) {
+        curriculum = { geneId: curriculumFacts.resolvedTrialGeneId };
+      }
+    }
+
     const impact = buildRunImpactEnvelope({
       sessionId,
       settledAt,
@@ -405,6 +529,8 @@ export async function settleDurableRunProgression(
       extracted: bool(parsed.snapshot.extracted),
       died: bool(parsed.snapshot.died),
       validated: bool(parsed.snapshot.validated),
+      bankedRunsBefore: curriculumFacts.bankedRunsBefore,
+      curriculum,
       score: int(parsed.snapshot.score),
       yieldDna: int(parsed.snapshot.yieldDna),
       dnaCredited: int(parsed.snapshot.dnaCredited),
@@ -441,6 +567,18 @@ export async function settleDurableRunProgression(
         extra: { playerId, sessionId },
       });
       return { ok: false, error: persisted.error };
+    }
+
+    // The INVITATION, after the receipt exists so a failed persist cannot
+    // leave an invitation pointing at a run with no record. Its own failure is
+    // never fatal — the Gene is already the player's.
+    if (curriculum) {
+      await insertCurriculumAttention(
+        supabase,
+        playerId,
+        sessionId,
+        curriculum.geneId
+      );
     }
 
     return {

@@ -48,7 +48,20 @@ export type RunImpactKind =
   | 'signal_completion'
   | 'signal_milestone'
   | 'clan_contribution'
-  | 'clan_top_five';
+  | 'clan_top_five'
+  /**
+   * The first validated BANK on an account (PEO §3.1: the primary activation
+   * hypothesis). Recognition only — it carries no destination, because the
+   * next thing this player needs is the next run, not a screen.
+   */
+  | 'first_extraction'
+  /**
+   * A curriculum Gene whose learning event resolved in authoritative play
+   * (PEO §4.4, WP-D). Also destination-less: the REVEAL is the beat, and the
+   * INVITATION is a separate dismissible attention row, so one unlock can
+   * never produce two competing pointers at the same lesson.
+   */
+  | 'gene_unlocked';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =

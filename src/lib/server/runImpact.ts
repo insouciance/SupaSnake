@@ -9,6 +9,13 @@ import {
   type RunImpact,
   type RunImpactEnvelope,
 } from '@/shared/progression/runImpact';
+import {
+  CURRICULUM_SOURCE_TYPE,
+  curriculumArtifactRef,
+  curriculumInvitation,
+  curriculumUnlockBeat,
+} from '@/shared/game/curriculum';
+import type { GenomeV2ActiveGeneId } from '@/shared/game/genes';
 import { formatAmount } from '@/shared/format/amount';
 
 type Dynasty = RunImpactEnvelope['dynasty'];
@@ -35,6 +42,16 @@ export interface SignalImpactInput {
   newMilestones: number;
 }
 
+/**
+ * The curriculum unlock this settlement PROMOTED, never one it predicts.
+ *
+ * The caller sets it only after `resolve_learning_event` returned successfully,
+ * because §5's REVEAL may state a fact and must never grant or anticipate one.
+ */
+export interface CurriculumImpactInput {
+  geneId: GenomeV2ActiveGeneId;
+}
+
 export interface BuildRunImpactInput {
   sessionId: string;
   settledAt: string;
@@ -42,6 +59,15 @@ export interface BuildRunImpactInput {
   extracted: boolean;
   died: boolean;
   validated: boolean;
+  /**
+   * Validated banked runs the account held BEFORE this run, or null when the
+   * run carries no curriculum stamp (flag off, pre-migration, or Genome v1).
+   * Null suppresses the first-BANK beat entirely — a beat this server cannot
+   * prove is a beat it does not play.
+   */
+  bankedRunsBefore: number | null;
+  /** A Gene promoted to offer-eligible by this settlement, or null. */
+  curriculum: CurriculumImpactInput | null;
   score: number;
   yieldDna: number;
   dnaCredited: number;
@@ -80,6 +106,45 @@ export function buildRunImpactEnvelope(
   input: BuildRunImpactInput
 ): RunImpactEnvelope {
   const impacts: RunImpact[] = [];
+
+  // ---------------------------------------------------------------------
+  // The first BANK (PEO §3.1) and the curriculum unlock (§4.4, §5).
+  //
+  // BOTH ARE DELIBERATELY DESTINATION-LESS. `persist_run_impact_envelope`
+  // turns any milestone carrying a destination AND an artifactRef into a
+  // `recognition` attention row, and `recognition_never_action_terminal`
+  // (061:311) forbids the terminal states a **Not now** needs — so a
+  // recognition row here would be an invitation the player could never
+  // decline (decision 14). The beat therefore stays a beat: it reaches the
+  // Victory Lap and `progression_moments` on the existing rails, while the
+  // INVITATION is written separately as an `action` row by
+  // `insertCurriculumAttention` below.
+  //
+  // They are also first in the fold, so `featuredImpactKeys` cannot let three
+  // routine record ticks crowd out the one thing the run actually taught.
+  if (input.extracted && input.validated && input.bankedRunsBefore === 0) {
+    impacts.push({
+      key: `first-extraction:${input.sessionId}`,
+      pillar: 'mastery',
+      kind: 'first_extraction',
+      significance: 'milestone',
+      headline: 'First BANK secured',
+      detail: 'You left with the run instead of losing it. That is the whole game.',
+    });
+  }
+
+  if (input.curriculum) {
+    const beat = curriculumUnlockBeat(input.curriculum.geneId);
+    impacts.push({
+      key: `curriculum:gene:${input.curriculum.geneId}`,
+      pillar: 'discovery',
+      kind: 'gene_unlocked',
+      significance: 'milestone',
+      headline: beat.headline,
+      detail: beat.detail,
+      metadata: { geneId: input.curriculum.geneId },
+    });
+  }
 
   if (input.validated && input.snakeId) {
     impacts.push({
@@ -371,6 +436,83 @@ function isRunImpactEnvelope(value: unknown): value is RunImpactEnvelope {
     personalBest.improved ===
       (personalBest.eligible && personalBest.after > personalBest.before)
   );
+}
+
+/**
+ * The curriculum INVITATION, as a dismissible attention row (decision 14).
+ *
+ * WHY THIS IS A DIRECT INSERT AND NOT AN RPC. `persist_run_impact_envelope`
+ * is the only other author of `player_attention_items`, and every row it
+ * writes is `recognition` — which `recognition_never_action_terminal`
+ * (061:310-312) forbids from ever reaching `resolved` or `dismissed`. A
+ * **Not now** needs exactly those states, so this row must be `attention_kind
+ * = 'action'`. The table has no INSERT policy at all, so this write is only
+ * possible for the service role (036 grants it, and RLS does not apply) and a
+ * client can neither create nor forge one. `destination = 'codex'` is honest:
+ * the Workbench lives there.
+ *
+ * NEVER FATAL. The unlock is already persisted by `resolve_learning_event`;
+ * this row is how the player is invited to read about it. If the write fails,
+ * the Victory Lap beat and the Chronicle moment still land — the player keeps
+ * the Gene and loses only the invitation.
+ *
+ * Idempotent on `(player_id, source_type, source_id, attention_key)`, so a
+ * replayed settlement re-invites nobody.
+ */
+export async function insertCurriculumAttention(
+  supabase: SupabaseClient,
+  playerId: string,
+  sessionId: string,
+  geneId: GenomeV2ActiveGeneId
+): Promise<boolean> {
+  const beat = curriculumUnlockBeat(geneId);
+  const invitation = curriculumInvitation(geneId);
+  try {
+    const { error } = await supabase.from('player_attention_items').insert({
+      player_id: playerId,
+      source_type: CURRICULUM_SOURCE_TYPE,
+      source_id: sessionId,
+      attention_key: `gene:${geneId}`,
+      attention_kind: 'action',
+      destination: 'codex',
+      headline: beat.headline,
+      detail: invitation.description,
+      artifact_ref: curriculumArtifactRef(geneId),
+    });
+    if (error) {
+      // 23505 is the same row from a replayed settlement: the invitation is
+      // already open, which is the outcome this function wanted.
+      if (error.code === '23505') return true;
+      if (!isMissingRunImpactInfra(error)) {
+        console.error('Curriculum attention insert failed:', {
+          playerId,
+          sessionId,
+          geneId,
+          error,
+        });
+        Sentry.captureException(
+          new Error(
+            `curriculum attention insert failed: ${error.message ?? error.code ?? 'unknown'}`
+          ),
+          { extra: { playerId, sessionId, geneId }, tags: { wp: 'wp-pe-d' } }
+        );
+      }
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Curriculum attention insert threw:', {
+      playerId,
+      sessionId,
+      geneId,
+      error,
+    });
+    Sentry.captureException(error, {
+      extra: { playerId, sessionId, geneId },
+      tags: { wp: 'wp-pe-d' },
+    });
+    return false;
+  }
 }
 
 export type RunImpactPersistResult =

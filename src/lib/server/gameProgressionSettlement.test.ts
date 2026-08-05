@@ -8,6 +8,8 @@ const mockBuildImpact = jest.fn((input: Record<string, unknown>) => ({
   ...input,
 }));
 const mockSettleSignal = jest.fn();
+const mockInsertAttention = jest.fn();
+const mockResolveLearningEvent = jest.fn();
 
 jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -17,12 +19,16 @@ jest.mock('@/lib/server/runImpact', () => ({
   persistRunImpactEnvelope: (...args: unknown[]) => mockPersistImpact(...args),
   buildRunImpactEnvelope: (...args: [Record<string, unknown>]) =>
     mockBuildImpact(...args),
+  insertCurriculumAttention: (...args: unknown[]) => mockInsertAttention(...args),
   isMissingRunImpactInfra: (error: { code?: string; message?: string } | null) =>
     Boolean(
       error &&
         (['42P01', 'PGRST205'].includes(error.code ?? '') ||
           /run_impact_receipts/i.test(error.message ?? ''))
     ),
+}));
+jest.mock('@/lib/server/geneEligibility', () => ({
+  resolveLearningEvent: (...args: unknown[]) => mockResolveLearningEvent(...args),
 }));
 jest.mock('@/lib/server/signal', () => ({
   settleSignalAttemptForSession: (...args: unknown[]) => mockSettleSignal(...args),
@@ -33,6 +39,15 @@ import {
   resumeOrRecoverRunImpact,
   settleDurableRunProgression,
 } from './gameProgressionSettlement';
+import {
+  deriveGenomeV2Ftue,
+  deriveGenomeV2FtuePresentation,
+} from '@/shared/game/genomeV2';
+import {
+  genomeV2ActivePool,
+  genomeV2PlayableVocabulary,
+} from '@/shared/game/genes';
+import type { RunStartEligibilityInputs } from '@/lib/server/runContext';
 
 type RpcResult = { data: unknown; error: null | { code?: string; message: string } };
 
@@ -95,13 +110,61 @@ function successResult(fn: string): RpcResult {
   return { data: null, error: null };
 }
 
+/**
+ * A REAL curriculum-stamped run context.
+ *
+ * Deliberately composed with the shipped derivation functions rather than
+ * hand-written: `parseRunStartContext` re-derives both the FTUE presentation
+ * and the composed vocabulary from the stamp's own inputs and rejects anything
+ * that does not follow from them, so a hand-built fixture would only prove the
+ * parser rejects fixtures.
+ */
+function runContext(eligibility: RunStartEligibilityInputs | null) {
+  const genePool = eligibility
+    ? genomeV2PlayableVocabulary('CYBER', eligibility)
+    : genomeV2ActivePool('CYBER');
+  const bankedRuns = eligibility?.bankedRuns ?? 0;
+  const masteryLevel = eligibility?.masteryLevel ?? 0;
+  return {
+    v: eligibility ? 2 : 1,
+    snake: { id: 'snake-1', generation: 3 },
+    mutationPool: [],
+    freePlay: false,
+    genome: {
+      rulesVersion: 2,
+      genePool,
+      heirloom: {},
+      lineage: null,
+      tierCap: 1,
+      suppressedStrains: [],
+      splicesUnlocked: deriveGenomeV2Ftue(bankedRuns, masteryLevel)
+        .splicesUnlocked,
+      prevRunDied: false,
+      externalSecondLife: null,
+      ftuePresentation: deriveGenomeV2FtuePresentation(bankedRuns, masteryLevel),
+      ...(eligibility
+        ? {
+            eligibilityContractVersion: 1,
+            learningEventVersion: 1,
+            eligibilityInputs: eligibility,
+          }
+        : {}),
+    },
+  };
+}
+
 function client(
-  overrides: Partial<Record<string, RpcResult>> = {}
+  overrides: Partial<Record<string, RpcResult>> = {},
+  sessionRow: { data: unknown; error: unknown } = { data: { run_context: null }, error: null }
 ) {
   const rpc = jest.fn(async (fn: string) => overrides[fn] ?? successResult(fn));
-  return { rpc } as unknown as Parameters<typeof settleDurableRunProgression>[0] & {
-    rpc: jest.Mock;
-  };
+  const chain: Record<string, unknown> = {};
+  for (const method of ['select', 'eq']) chain[method] = jest.fn(() => chain);
+  chain.maybeSingle = jest.fn(async () => sessionRow);
+  const from = jest.fn(() => chain);
+  return { rpc, from } as unknown as Parameters<
+    typeof settleDurableRunProgression
+  >[0] & { rpc: jest.Mock; from: jest.Mock };
 }
 
 beforeEach(() => {
@@ -112,6 +175,8 @@ beforeEach(() => {
     impact,
   }));
   mockSettleSignal.mockResolvedValue(null);
+  mockInsertAttention.mockResolvedValue(true);
+  mockResolveLearningEvent.mockResolvedValue(true);
 });
 
 describe('durable run progression orchestration', () => {
@@ -364,5 +429,149 @@ describe('store-before-adopt recovery', () => {
       'list_pending_game_session_ends',
       expect.anything()
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WP-D — curriculum promotion and the beats it authorises (PEO §4.4, §5)
+// ---------------------------------------------------------------------------
+
+describe('curriculum settlement', () => {
+  const stamped = (
+    eligibility: RunStartEligibilityInputs,
+    resolved: string[] | undefined = ['coilkeeper']
+  ) => {
+    const core = successResult('settle_game_session_progression_core') as {
+      data: { snapshot: Record<string, unknown> };
+      error: null;
+    };
+    return client(
+      {
+        settle_game_session_progression_core: {
+          data: {
+            ...(core.data as Record<string, unknown>),
+            snapshot: {
+              ...core.data.snapshot,
+              ...(resolved
+                ? { genome: { v: 2, learningEventsResolved: resolved } }
+                : {}),
+            },
+          },
+          error: null,
+        },
+      },
+      { data: { run_context: runContext(eligibility) }, error: null }
+    );
+  };
+
+  const inputs: RunStartEligibilityInputs = {
+    eligibleGeneIds: ['gold_trail'],
+    trialGeneId: 'coilkeeper',
+    bankedRuns: 0,
+    masteryLevel: 0,
+  };
+
+  it('promotes the stamped trial, then celebrates it', async () => {
+    const supabase = stamped(inputs);
+    const result = await settleDurableRunProgression(supabase, 'player-1', 'session-1');
+    expect(result.ok).toBe(true);
+    expect(mockResolveLearningEvent).toHaveBeenCalledWith(
+      supabase,
+      'player-1',
+      'coilkeeper',
+      'session-1',
+      1
+    );
+    expect(mockBuildImpact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        curriculum: { geneId: 'coilkeeper' },
+        bankedRunsBefore: 0,
+      })
+    );
+    expect(mockInsertAttention).toHaveBeenCalledWith(
+      supabase,
+      'player-1',
+      'session-1',
+      'coilkeeper'
+    );
+  });
+
+  it('celebrates nothing when the promotion did not take', async () => {
+    mockResolveLearningEvent.mockResolvedValue(false);
+    const result = await settleDurableRunProgression(
+      stamped(inputs),
+      'player-1',
+      'session-1'
+    );
+    expect(result.ok).toBe(true);
+    expect(mockBuildImpact).toHaveBeenCalledWith(
+      expect.objectContaining({ curriculum: null })
+    );
+    expect(mockInsertAttention).not.toHaveBeenCalled();
+  });
+
+  it('promotes nothing when the run resolved no learning event', async () => {
+    await settleDurableRunProgression(
+      stamped(inputs, ['gold_trail']),
+      'player-1',
+      'session-1'
+    );
+    expect(mockResolveLearningEvent).not.toHaveBeenCalled();
+    expect(mockBuildImpact).toHaveBeenCalledWith(
+      expect.objectContaining({ curriculum: null, bankedRunsBefore: 0 })
+    );
+  });
+
+  it('promotes nothing on an unvalidated run', async () => {
+    const core = successResult('settle_game_session_progression_core') as {
+      data: { snapshot: Record<string, unknown> };
+      error: null;
+    };
+    const supabase = client(
+      {
+        settle_game_session_progression_core: {
+          data: {
+            ...(core.data as Record<string, unknown>),
+            snapshot: {
+              ...core.data.snapshot,
+              validated: false,
+              genome: { v: 2, learningEventsResolved: ['coilkeeper'] },
+            },
+          },
+          error: null,
+        },
+      },
+      { data: { run_context: runContext(inputs) }, error: null }
+    );
+    await settleDurableRunProgression(supabase, 'player-1', 'session-1');
+    expect(mockResolveLearningEvent).not.toHaveBeenCalled();
+  });
+
+  it('reads no curriculum from a run started with the flag off', async () => {
+    const supabase = client(
+      {},
+      { data: { run_context: runContext(null) }, error: null }
+    );
+    const result = await settleDurableRunProgression(supabase, 'player-1', 'session-1');
+    expect(result.ok).toBe(true);
+    expect(mockResolveLearningEvent).not.toHaveBeenCalled();
+    expect(mockInsertAttention).not.toHaveBeenCalled();
+    expect(mockBuildImpact).toHaveBeenCalledWith(
+      expect.objectContaining({ curriculum: null, bankedRunsBefore: null })
+    );
+  });
+
+  it('settles normally when the run context cannot be read', async () => {
+    const supabase = client(
+      {},
+      { data: null, error: { code: '08006', message: 'connection failure' } }
+    );
+    const result = await settleDurableRunProgression(supabase, 'player-1', 'session-1');
+    // A missing beat never costs a player their settled run.
+    expect(result.ok).toBe(true);
+    expect(mockBuildImpact).toHaveBeenCalledWith(
+      expect.objectContaining({ curriculum: null, bankedRunsBefore: null })
+    );
+    expect(mockCaptureException).toHaveBeenCalled();
   });
 });
