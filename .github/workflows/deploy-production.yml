@@ -210,6 +210,8 @@ jobs:
             rollout=settlement-payload-bounds
           elif [ "$actual" = '067_player_gene_eligibility.sql' ]; then
             rollout=player-gene-eligibility
+          elif [ "$actual" = '068_settlement_sweep_primary.sql' ]; then
+            rollout=settlement-sweep-primary
           else
             echo "::error::This release workflow rejects migrations without an explicit reviewed rollout contract: $actual"
             exit 1
@@ -395,24 +397,26 @@ jobs:
       # Both steps name every reviewed rollout explicitly. The push mutates
       # exactly the plan the step above re-proved: it is the same
       # `--include-all` set the dry-run classified, whether that is the
-      # 062-065 Genome v2 bridge, the single 066 settlement-bounds file or the
-      # single 067 curriculum file.
+      # 062-065 Genome v2 bridge, the single 066 settlement-bounds file, the
+      # single 067 curriculum file or the single 068 sweep-primary file.
       # `db lint` is not Genome-specific — it is the linked plpgsql check, and
-      # both 066 and 067 define SECURITY DEFINER functions, so it applies
+      # 066, 067 and 068 all define SECURITY DEFINER functions, so it applies
       # unchanged.
       - name: Apply the reviewed migration rollout
         if: >-
           ${{ steps.migration_plan.outputs.rollout == 'genome-v2-initial'
           || steps.migration_plan.outputs.rollout == 'genome-v2-resume'
           || steps.migration_plan.outputs.rollout == 'settlement-payload-bounds'
-          || steps.migration_plan.outputs.rollout == 'player-gene-eligibility' }}
+          || steps.migration_plan.outputs.rollout == 'player-gene-eligibility'
+          || steps.migration_plan.outputs.rollout == 'settlement-sweep-primary' }}
         run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
       - name: Validate the reviewed migration rollout schema
         if: >-
           ${{ steps.migration_plan.outputs.rollout == 'genome-v2-initial'
           || steps.migration_plan.outputs.rollout == 'genome-v2-resume'
           || steps.migration_plan.outputs.rollout == 'settlement-payload-bounds'
-          || steps.migration_plan.outputs.rollout == 'player-gene-eligibility' }}
+          || steps.migration_plan.outputs.rollout == 'player-gene-eligibility'
+          || steps.migration_plan.outputs.rollout == 'settlement-sweep-primary' }}
         run: supabase db lint --linked --level warning --fail-on error
 
       - name: Prove the linked migration plan is empty after the reviewed push

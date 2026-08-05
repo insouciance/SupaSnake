@@ -131,6 +131,14 @@ describe('production environment validation', () => {
     expect(
       rolloutApplyBlock.match(/rollout == 'player-gene-eligibility'/g)?.length
     ).toBe(2);
+    // CE-2: migration 068 makes the settlement sweep the primary settler.
+    // Same closed-allowlist contract as 066 and 067 — one exact plan, and both
+    // the apply and the validate step name it.
+    expect(workflow).toContain("\"$actual\" = '068_settlement_sweep_primary.sql'");
+    expect(workflow).toContain('rollout=settlement-sweep-primary');
+    expect(
+      rolloutApplyBlock.match(/rollout == 'settlement-sweep-primary'/g)?.length
+    ).toBe(2);
 
     const snapshotAt = workflow.indexOf('name: Snapshot exact outgoing cron state');
     const previewAt = workflow.indexOf('name: Build isolated Preview artifact');

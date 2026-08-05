@@ -288,14 +288,23 @@ The workflow performs:
 7. Immediate current-main, exact-SHA CI, and pending-plan revalidation; the
    reviewed rollout push and linked lint. The recognized rollouts are the exact
    062–065 initial/resume suffix, the exact single-file
-   `066_settlement_payload_bounds.sql` plan, and the exact single-file
-   `067_player_gene_eligibility.sql` plan; each is named explicitly by the
+   `066_settlement_payload_bounds.sql` plan, the exact single-file
+   `067_player_gene_eligibility.sql` plan, and the exact single-file
+   `068_settlement_sweep_primary.sql` plan; each is named explicitly by the
    apply and validate steps, and any other plan stops at classification.
    Contracts are written for plans this workflow can actually observe. It
    dry-runs only after `supabase link` against the production project ref, and
    refuses any other ref before linking, so a combined plan that exists solely
    in a fresh replay of the whole migration set is not a rollout contract and
    is deliberately absent from the allowlist.
+   `068` redefines `list_pending_game_progression_sessions` (dropped and
+   recreated, because its return type gains the attempt count), adds
+   `list_stranded_terminal_runs` and `settlement_recovery_backoff`, and adds
+   one partial index. It moves no value and rewrites no row: the only UPDATE
+   it performs stamps a recovery attempt and counts up. **It changes no cron
+   definition** — the settlement sweep keeps its `*/10 * * * *` schedule, so
+   `EXPECTED_CRON_DEFINITIONS_SHA` is unaffected and every cron proof in this
+   procedure holds unchanged.
 8. Empty post-push dry-run and hosted read-only migration-ledger/structural probe.
 9. A second proof that canonical alias and cron remain exactly outgoing after
    all schema work.

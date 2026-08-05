@@ -464,10 +464,35 @@ export async function settleDurableRunProgression(
   }
 }
 
+/**
+ * A row the server has tried this many times is not given up on — nothing is
+ * ever given up on — but it stops being a silent statistic and is named in the
+ * sweep's response, which is the operator's cue that it needs a human.
+ *
+ * Lives here rather than beside the sweep because a Next.js route module may
+ * only export route fields; `export const` on a threshold there fails the
+ * production build.
+ */
+export const RECOVERY_ATTENTION_THRESHOLD = 8;
+
+export interface PendingRunProgressionCandidate {
+  playerId: string;
+  sessionId: string;
+  protocol: string | null;
+  /**
+   * How many times the server has already tried to settle this run,
+   * including the claim that returned it. Migration 068 added the column to
+   * the scan's result; during the application-first deploy window the older
+   * three-column function is still installed and this reads 0, which simply
+   * means "no attention threshold crossed yet".
+   */
+  recoveryAttempts: number;
+}
+
 export async function listPendingRunProgression(
   supabase: SupabaseClient,
   limit = 20
-): Promise<Array<{ playerId: string; sessionId: string; protocol: string | null }> | null> {
+): Promise<PendingRunProgressionCandidate[] | null> {
   const { data, error } = await supabase.rpc('list_pending_game_progression_sessions', {
     p_limit: limit,
   });
@@ -504,6 +529,69 @@ export async function listPendingRunProgression(
       protocol: typeof entryRow.reward_protocol === 'string'
         ? entryRow.reward_protocol
         : null,
+      recoveryAttempts: int(entryRow.recovery_attempts),
+    }];
+  });
+}
+
+export interface StrandedTerminalRunCandidate {
+  playerId: string;
+  userId: string;
+  sessionId: string;
+  recoveryAttempts: number;
+}
+
+/**
+ * Claim a batch of runs the server terminalized but never settled (CE-2).
+ *
+ * This is the state that had no server driver at all: `continuity_phase =
+ * 'terminal'` with `ended_at IS NULL` is invisible to the expiry sweeper, to
+ * the pending-end scan, and to the progression scan, so its value could not
+ * settle unless the player came back and their browser re-posted the end.
+ */
+export async function listStrandedTerminalRuns(
+  supabase: SupabaseClient,
+  limit = 20
+): Promise<StrandedTerminalRunCandidate[] | null> {
+  const { data, error } = await supabase.rpc('list_stranded_terminal_runs', {
+    p_limit: limit,
+  });
+  if (
+    error &&
+    ['42883', 'PGRST202'].includes(error.code ?? '') &&
+    /list_stranded_terminal_runs/i.test(error.message ?? '')
+  ) {
+    // Expected only during the bounded application-first 067→068 cutover.
+    // Every other sweep stage still runs; the first post-migration cron
+    // drains the stranded terminal rows.
+    return [];
+  }
+  if (error || !Array.isArray(data)) {
+    const cause = error ?? new Error('invalid stranded terminal scan response');
+    console.error('Stranded terminal scan failed:', {
+      stage: 'stranded_terminal_scan',
+      error: cause,
+    });
+    Sentry.captureException(cause, {
+      tags: { progression_stage: 'stranded_terminal_scan' },
+      extra: { limit },
+    });
+    return null;
+  }
+  return data.flatMap((entry) => {
+    const entryRow = row(entry);
+    if (
+      typeof entryRow?.player_id !== 'string' ||
+      typeof entryRow.user_id !== 'string' ||
+      typeof entryRow.session_id !== 'string'
+    ) {
+      return [];
+    }
+    return [{
+      playerId: entryRow.player_id,
+      userId: entryRow.user_id,
+      sessionId: entryRow.session_id,
+      recoveryAttempts: int(entryRow.recovery_attempts),
     }];
   });
 }
