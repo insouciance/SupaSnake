@@ -893,6 +893,16 @@ export function RunResults({
   const clanThresholdBefore = serverNumber(clanBattle?.thresholdBefore);
   const clanFifthBest = serverNumber(clanBattle?.fifthBest);
   const clanDelta = serverNumber(clanBattle?.scoreDelta);
+  const clanTotal = serverNumber(clanBattle?.clanTotal);
+  /**
+   * ENTERED an empty slot, or REPLACED a weaker result (PEO §6 step 5).
+   *
+   * The two were previously one sentence — "Entered your five" — with the
+   * replacement mentioned separately underneath, which reads as though a sixth
+   * slot appeared. A player has five slots; the honest question on a
+   * contributing run is which of the two things just happened to them.
+   */
+  const clanReplaced = Boolean(clanBattle?.replacedSessionId);
   const scoreNeeded = clanThresholdBefore !== null && clanThresholdBefore > 0
     ? clanThresholdBefore + 1
     : null;
@@ -1027,12 +1037,27 @@ export function RunResults({
         {!settlementPending && clanBattle?.eligible && (
           <div className="panel-glow [--glow:#7df9ff] mx-auto max-w-lg space-y-2 px-4 py-3 text-left" data-testid="results-clan-battle">
             <p className="label-arcade text-[#7df9ff]">Clan Energy Battle</p>
-            <p className="font-body text-sm text-bone-white">
+            {/*
+              What happened to the player's five, and what it did to the clan's
+              total (PEO §6 step 5). The first contributing run of an account is
+              the first time this block renders at all, so it is the one that
+              has to explain itself; every later one repeats the same two facts
+              rather than assuming the player remembers them.
+            */}
+            <p className="font-body text-sm text-bone-white" data-testid="results-clan-placement">
               {clanBattle.enteredTopFive
-                ? `Entered your five${clanDelta !== null && clanDelta > 0 ? ` · +${formatAmount(clanDelta)} Clan Depth` : ''}.`
+                ? `${clanReplaced ? 'Replaced your weakest counted result' : 'Entered your five'}${clanDelta !== null && clanDelta > 0 ? ` · +${formatAmount(clanDelta)} Clan Depth` : ''}.`
                 : 'Valid battle result · outside your five.'}
             </p>
-            {clanBattle.replacedSessionId ? <p className="font-body text-xs text-beige/65">Replaced a weaker result.</p> : null}
+            {clanBattle.enteredTopFive && clanTotal !== null && clanTotal > 0 ? (
+              <p className="font-body text-xs text-beige/65" data-testid="results-clan-total">
+                Your clan now stands at {formatAmount(clanTotal)} Clan Depth
+                {clanDelta !== null && clanDelta > 0
+                  ? `, ${formatAmount(clanDelta)} of it from this run`
+                  : ''}
+                .
+              </p>
+            ) : null}
             {clanBattle.enteredTopFive && clanFifthBest !== null && clanFifthBest > 0 ? (
               <p className="font-body text-xs text-beige/65">
                 Your fifth-best now stands at {formatAmount(clanFifthBest)} Clan Depth.

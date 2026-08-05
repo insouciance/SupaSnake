@@ -189,21 +189,95 @@ async function callClanRpc(
   return mapRpcResult(data);
 }
 
+/**
+ * Is this a guest account — one nobody can sign back into?
+ *
+ * A Supabase anonymous user authenticates with the ordinary `authenticated`
+ * role and is distinguished only by `is_anonymous` on the user record; the
+ * `anon` ROLE is a different thing entirely and says nothing about this. The
+ * `app_metadata.provider` half is the same belt-and-braces check the purchase
+ * path uses (`src/app/api/checkout/route.ts`), so the two agree by
+ * construction. An unknown shape reads as NOT anonymous, which keeps every
+ * real account able to found a clan if the field ever disappears.
+ */
+function isAnonymousUser(user: {
+  is_anonymous?: boolean;
+  app_metadata?: { provider?: string };
+}): boolean {
+  return (
+    user.is_anonymous === true || user.app_metadata?.provider === 'anonymous'
+  );
+}
+
+/**
+ * Guest accounts may PLAY for a clan; they may not OWN one.
+ *
+ * A clan is an institution with other people's records in it, and an anonymous
+ * account is one cleared browser away from being unrecoverable — so founding
+ * or being handed ownership would create an orphan nobody can administer,
+ * disband or transfer. PEO §6: "Anonymous accounts may not found or own a
+ * clan."
+ *
+ * JOINING, APPLYING AND CONTRIBUTING STAY OPEN. A guest's runs are real runs
+ * and their Depth is real Depth; only permanence is the hazard, and the
+ * remedy for a guest who wants to found is to save the account, not to be
+ * turned away from clans.
+ */
+const ACCOUNT_REQUIRED_FOR_OWNERSHIP = {
+  error: 'Save your account first — a clan needs an owner who can sign back in.',
+  code: 'account_required',
+} as const;
+
 async function authenticatedUser(request: NextRequest): Promise<
-  | { userId: string; error: null }
-  | { userId: null; error: NextResponse }
+  | { userId: string; isAnonymous: boolean; error: null }
+  | { userId: null; isAnonymous: false; error: NextResponse }
 > {
   const authHeader = request.headers.get('authorization');
   if (!authHeader) {
-    return { userId: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+    return {
+      userId: null,
+      isAnonymous: false,
+      error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    };
   }
   const token = authHeader.replace('Bearer ', '');
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error) reportError('authentication', error);
   if (error || !user) {
-    return { userId: null, error: NextResponse.json({ error: 'Invalid token' }, { status: 401 }) };
+    return {
+      userId: null,
+      isAnonymous: false,
+      error: NextResponse.json({ error: 'Invalid token' }, { status: 401 }),
+    };
   }
-  return { userId: user.id, error: null };
+  return { userId: user.id, isAnonymous: isAnonymousUser(user), error: null };
+}
+
+/**
+ * Is the player being handed a clan a guest?
+ *
+ * Ownership transfer is the second way an anonymous account can end up owning
+ * an institution, and the actor's own token says nothing about the target — so
+ * this reads the target's auth record directly through the service role. A
+ * lookup that FAILS blocks the transfer: an unreadable target is not evidence
+ * of a recoverable one, and the clan keeps the owner it already has.
+ */
+async function transferTargetIsAnonymous(
+  targetUserId: string
+): Promise<boolean | 'unknown'> {
+  try {
+    const { data, error } = await supabase.auth.admin.getUserById(targetUserId);
+    if (error || !data?.user) {
+      reportError('transfer target lookup', error ?? new Error('target user missing'), {
+        targetUserId,
+      });
+      return 'unknown';
+    }
+    return isAnonymousUser(data.user);
+  } catch (error) {
+    reportError('transfer target lookup', error, { targetUserId });
+    return 'unknown';
+  }
 }
 
 async function fullClanView(userId: string): Promise<NextResponse> {
@@ -616,6 +690,11 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'found': {
+        // Before any validation, and before any DNA is quoted or spent: a
+        // guest cannot own the thing they are about to pay for.
+        if (auth.isAnonymous) {
+          return NextResponse.json(ACCOUNT_REQUIRED_FOR_OWNERSHIP, { status: 403 });
+        }
         const name = requiredString(body.name);
         const tag = typeof body.tag === 'string' ? body.tag.trim().toUpperCase() : '';
         if (!name || !isValidClanName(name)) {
@@ -799,6 +878,19 @@ export async function POST(request: NextRequest) {
       case 'transfer_ownership': {
         const targetUserId = requiredString(body.targetUserId);
         if (!targetUserId) return NextResponse.json({ error: 'targetUserId is required' }, { status: 400 });
+        const targetAnonymous = await transferTargetIsAnonymous(targetUserId);
+        if (targetAnonymous !== false) {
+          return NextResponse.json(
+            targetAnonymous === 'unknown'
+              ? { error: 'Could not verify that account', code: 'target_unverified' }
+              : {
+                  error:
+                    'That player is signed in as a guest. They need to save their account before they can lead the clan.',
+                  code: 'target_account_required',
+                },
+            { status: targetAnonymous === 'unknown' ? 503 : 403 }
+          );
+        }
         return callClanRpc(
           'transfer_clan_ownership',
           { p_user_id: userId, p_target_user_id: targetUserId },

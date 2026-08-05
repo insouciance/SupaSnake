@@ -324,9 +324,61 @@ describe('Layer 2', () => {
       },
     })} />);
     expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('+12,400 Clan Depth');
-    expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('Replaced a weaker result');
+    expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('Replaced your weakest counted result');
     expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('fifth-best now stands at 19,820');
     expect(screen.queryByText('999,999 Yield')).toBeNull();
+  });
+
+  // PEO §6 step 5: the contributing settlement states which of the two things
+  // happened to the player's five, and what it did to the clan's total.
+  it('distinguishes entering an empty slot from replacing a counted result', () => {
+    const { unmount } = render(<RunResults {...props({
+      clanBattle: {
+        eligible: true,
+        enteredTopFive: true,
+        scoreDelta: 8_000,
+        replacedSessionId: null,
+        clanTotal: 61_000,
+      },
+    })} />);
+    const entered = screen.getByTestId('results-clan-placement');
+    expect(entered).toHaveTextContent('Entered your five');
+    expect(entered).not.toHaveTextContent('Replaced');
+    unmount();
+
+    render(<RunResults {...props({
+      clanBattle: {
+        eligible: true,
+        enteredTopFive: true,
+        scoreDelta: 8_000,
+        replacedSessionId: 'older-run',
+        clanTotal: 61_000,
+      },
+    })} />);
+    const replaced = screen.getByTestId('results-clan-placement');
+    expect(replaced).toHaveTextContent('Replaced your weakest counted result');
+    expect(replaced).not.toHaveTextContent('Entered your five');
+  });
+
+  it('states the exact clan total and this run’s share of it', () => {
+    render(<RunResults {...props({
+      clanBattle: {
+        eligible: true,
+        enteredTopFive: true,
+        scoreDelta: 12_400,
+        clanTotal: 61_000,
+      },
+    })} />);
+    const total = screen.getByTestId('results-clan-total');
+    expect(total).toHaveTextContent('Your clan now stands at 61,000 Clan Depth');
+    expect(total).toHaveTextContent('12,400 of it from this run');
+  });
+
+  it('states no clan total the server did not send', () => {
+    render(<RunResults {...props({
+      clanBattle: { eligible: true, enteredTopFive: true, scoreDelta: 12_400 },
+    })} />);
+    expect(screen.queryByTestId('results-clan-total')).toBeNull();
   });
 
   it('shows an exact shortfall only when the server supplied the comparable threshold', () => {

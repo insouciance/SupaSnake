@@ -23,7 +23,7 @@ import { NotificationCenter } from '@/components/ui/NotificationCenter';
 import {
   attentionBadge,
   destinationBadge,
-  recognitionHref,
+  markedDestinationHref,
   useNotificationStore,
   type NotificationDestination,
 } from '@/lib/stores/notificationStore';
@@ -110,9 +110,14 @@ export function Navigation() {
             const badge = notificationDestination
               ? destinationBadge(notifications, notificationDestination)
               : { kind: 'hidden' as const };
+            // A quiet dot redirects the node at whatever it marks — an open
+            // `action` first, then recognition (WP-E, PEO §6 step 2). Compete
+            // is the case that forces it: it is the clan family's nav slot but
+            // links to `/leaderboard`, so before this a clan mark sent the
+            // player to a leaderboard. An exclamation badge is untouched.
             const recognitionTarget =
               notificationDestination && badge.kind === 'dot'
-                ? recognitionHref(notifications, notificationDestination)
+                ? markedDestinationHref(notifications, notificationDestination)
                 : null;
 
             return (

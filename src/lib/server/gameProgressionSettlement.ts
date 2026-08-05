@@ -20,6 +20,10 @@ import type {
   MasteryImpactInput,
   SignalImpactInput,
 } from '@/lib/server/runImpact';
+import {
+  clanRevealDue,
+  insertClanRevealAttention,
+} from '@/lib/server/clanReveal';
 import { resolveLearningEvent } from '@/lib/server/geneEligibility';
 import { parseRunStartContext } from '@/lib/server/runContext';
 import {
@@ -485,9 +489,14 @@ export async function settleDurableRunProgression(
     // is what lets the route keep its own call: a replayed settlement, a
     // sweep, and the request path all promote the same Gene exactly once.
     // NEVER FATAL: a false here leaves the Gene a trial and the run paid.
+    //
+    // WP-E rides the same read for `is_free_play`, which the snapshot does not
+    // carry: Free Play is rewardless practice and is excluded from the banked
+    // count the clan reveal is measured against, so the reveal must be able to
+    // see it without paying for a second round trip.
     const runContextRow = await supabase
       .from('game_sessions')
-      .select('run_context')
+      .select('run_context, is_free_play')
       .eq('id', sessionId)
       .eq('player_id', playerId)
       .maybeSingle();
@@ -579,6 +588,35 @@ export async function settleDurableRunProgression(
         sessionId,
         curriculum.geneId
       );
+    }
+
+    // ---------------------------------------------------------------------
+    // The eight-bank CLAN REVEAL (WP-E, PEO §6 step 1).
+    // ---------------------------------------------------------------------
+    // Once per account, at the first settlement at or past eight validated
+    // banks. `clanRevealDue` is pure, so every settlement that is not a
+    // qualifying bank decides this without a query; a qualifying one costs one
+    // index-backed read on the row's unique key.
+    //
+    // It runs here, in the settlement rather than the route, for the same
+    // reason the curriculum promotion does: a run drained by the recovery
+    // sweep has no browser and no request, and a player who closed the tab is
+    // owed the same reveal as one who did not.
+    //
+    // WHY THE COLLISION RULE NEEDS NOTHING HERE. §13 row 12 gives the clan
+    // reveal the settlement and defers the Gene to the next one. Both are open
+    // server rows read from one store, and `chooseNextAction` already prefers
+    // `clan-reveal` over `curriculum-reveal`; deferring costs the player
+    // nothing, because the Gene's invitation stays open until they answer it.
+    if (
+      clanRevealDue({
+        bankedRunsBefore: curriculumFacts.bankedRunsBefore,
+        validated: bool(parsed.snapshot.validated),
+        extracted: bool(parsed.snapshot.extracted),
+        freePlay: bool((runContextRow.data as Row | null)?.is_free_play),
+      })
+    ) {
+      await insertClanRevealAttention(supabase, playerId);
     }
 
     return {

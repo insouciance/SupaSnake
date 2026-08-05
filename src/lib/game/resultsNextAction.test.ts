@@ -3,6 +3,7 @@ import {
   chooseNextAction,
   type ResultsNextActionContext,
 } from './resultsNextAction';
+import { clanRevealInvitation } from '@/shared/game/clanReveal';
 import { curriculumInvitation } from '@/shared/game/curriculum';
 
 const base: ResultsNextActionContext = {
@@ -19,6 +20,11 @@ const INVITATION = {
   geneId: 'coilkeeper',
   ...curriculumInvitation('coilkeeper'),
   attentionId: 'attention-1',
+};
+
+const CLAN_REVEAL = {
+  ...clanRevealInvitation(),
+  attentionId: 'clan-attention-1',
 };
 
 function ctx(overrides: Partial<ResultsNextActionContext> = {}) {
@@ -110,7 +116,7 @@ describe('chooseNextAction', () => {
   // Curriculum reveal (WP-D; PEO §5 and §13 rows 11-13)
   // -------------------------------------------------------------------
 
-  it('states the ratified fold order as data, with WP-E’s clan slot reserved', () => {
+  it('states the ratified fold order as data, clan reveal above the curriculum', () => {
     expect(RESULTS_NEXT_ACTION_PRIORITY).toEqual([
       'save-progress',
       'claim-handle',
@@ -163,7 +169,7 @@ describe('chooseNextAction', () => {
     ).toBe('curriculum-reveal');
   });
 
-  it('defers the Gene reveal to WP-E’s clan reveal (§13 row 12)', () => {
+  it('defers the Gene reveal to the clan reveal (§13 row 12)', () => {
     const action = chooseNextAction(
       ctx({
         curriculumReveal: INVITATION,
@@ -173,6 +179,83 @@ describe('chooseNextAction', () => {
     );
     expect(action.id).not.toBe('curriculum-reveal');
     expect(action.id).toBe('visit-lab');
+  });
+
+  // -------------------------------------------------------------------
+  // Clan reveal (WP-E; PEO §6, §13 rows 2, 12, 13)
+  // -------------------------------------------------------------------
+
+  it('makes the eight-bank reveal the single recommended action, pointing at /clan', () => {
+    const action = chooseNextAction(ctx({ clanReveal: CLAN_REVEAL }));
+    expect(action).toEqual({
+      id: 'clan-reveal',
+      label: 'Your runs can now power a Clan.',
+      description:
+        'Show me where they count — found one, join one, or start as a clan of one.',
+      href: '/clan',
+      attentionId: 'clan-attention-1',
+      declineLabel: 'Not now',
+    });
+  });
+
+  it('never routes the clan reveal to Compete (§6 step 2)', () => {
+    expect(chooseNextAction(ctx({ clanReveal: CLAN_REVEAL })).href).toBe('/clan');
+    expect(chooseNextAction(ctx({ clanReveal: CLAN_REVEAL })).href).not.toMatch(
+      /leaderboard/
+    );
+  });
+
+  it('wins the settlement it shares with a Gene unlock, and the Gene defers', () => {
+    const action = chooseNextAction(
+      ctx({
+        clanReveal: CLAN_REVEAL,
+        clanRevealPending: true,
+        curriculumReveal: INVITATION,
+      })
+    );
+    expect(action.id).toBe('clan-reveal');
+    // The Gene's own attention id is untouched, so the deferred invitation is
+    // still open on the next settlement.
+    expect(action.attentionId).toBe('clan-attention-1');
+    expect(action.attentionId).not.toBe(INVITATION.attentionId);
+  });
+
+  it('still puts account safety and the claim ceremony ahead of the clan reveal', () => {
+    expect(
+      chooseNextAction(ctx({ clanReveal: CLAN_REVEAL, isAnonymous: true })).id
+    ).toBe('save-progress');
+    expect(
+      chooseNextAction(ctx({ clanReveal: CLAN_REVEAL, handleIsGenerated: true })).id
+    ).toBe('claim-handle');
+  });
+
+  it('outranks the Lab and a run-impact milestone', () => {
+    expect(
+      chooseNextAction(
+        ctx({
+          clanReveal: CLAN_REVEAL,
+          isFirstCompletedRun: true,
+          impactAction: { headline: 'Review a record', destination: 'records' },
+        })
+      ).id
+    ).toBe('clan-reveal');
+  });
+
+  it('does not reveal a Clan on a practice run', () => {
+    expect(chooseNextAction(ctx({ clanReveal: CLAN_REVEAL, practice: true })).id).not.toBe(
+      'clan-reveal'
+    );
+  });
+
+  it('says "Not now" to a Clan too, never "Later" (§13 row 13)', () => {
+    const action = chooseNextAction(ctx({ clanReveal: CLAN_REVEAL }));
+    expect(action.declineLabel).toBe('Not now');
+    expect(action.declineLabel).not.toMatch(/later/i);
+  });
+
+  it('recommends no commercial destination when a clan reveal is open (R7)', () => {
+    const action = chooseNextAction(ctx({ clanReveal: CLAN_REVEAL }));
+    expect(action.href).not.toMatch(/shop|checkout|store|buy/i);
   });
 
   it('never teaches two new systems on one Results (boundary 5)', () => {

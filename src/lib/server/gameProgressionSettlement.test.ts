@@ -10,6 +10,7 @@ const mockBuildImpact = jest.fn((input: Record<string, unknown>) => ({
 const mockSettleSignal = jest.fn();
 const mockInsertAttention = jest.fn();
 const mockResolveLearningEvent = jest.fn();
+const mockInsertClanReveal = jest.fn();
 
 jest.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -29,6 +30,10 @@ jest.mock('@/lib/server/runImpact', () => ({
 }));
 jest.mock('@/lib/server/geneEligibility', () => ({
   resolveLearningEvent: (...args: unknown[]) => mockResolveLearningEvent(...args),
+}));
+jest.mock('@/lib/server/clanReveal', () => ({
+  ...jest.requireActual('@/lib/server/clanReveal'),
+  insertClanRevealAttention: (...args: unknown[]) => mockInsertClanReveal(...args),
 }));
 jest.mock('@/lib/server/signal', () => ({
   settleSignalAttemptForSession: (...args: unknown[]) => mockSettleSignal(...args),
@@ -177,6 +182,7 @@ beforeEach(() => {
   mockSettleSignal.mockResolvedValue(null);
   mockInsertAttention.mockResolvedValue(true);
   mockResolveLearningEvent.mockResolvedValue(true);
+  mockInsertClanReveal.mockResolvedValue(true);
 });
 
 describe('durable run progression orchestration', () => {
@@ -573,5 +579,83 @@ describe('curriculum settlement', () => {
       expect.objectContaining({ curriculum: null, bankedRunsBefore: null })
     );
     expect(mockCaptureException).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The eight-bank clan reveal (WP-E; PEO §6 step 1)
+// ---------------------------------------------------------------------------
+describe('clan reveal at settlement', () => {
+  const stampedBank = (
+    bankedRuns: number | null,
+    sessionExtras: Record<string, unknown> = {}
+  ) =>
+    client(
+      {},
+      {
+        data: {
+          run_context: runContext(
+            bankedRuns === null
+              ? null
+              : {
+                  eligibleGeneIds: ['gold_trail'],
+                  trialGeneId: null,
+                  bankedRuns,
+                  masteryLevel: 0,
+                }
+          ),
+          ...sessionExtras,
+        },
+        error: null,
+      }
+    );
+
+  it('opens the reveal on the settlement that reaches eight validated banks', async () => {
+    const supabase = stampedBank(7);
+    const result = await settleDurableRunProgression(supabase, 'player-1', 'session-1');
+    expect(result.ok).toBe(true);
+    expect(mockInsertClanReveal).toHaveBeenCalledWith(supabase, 'player-1');
+  });
+
+  it('says nothing one bank early', async () => {
+    await settleDurableRunProgression(stampedBank(6), 'player-1', 'session-1');
+    expect(mockInsertClanReveal).not.toHaveBeenCalled();
+  });
+
+  it('reads the run’s own stamp, so a flag-off run reveals nothing', async () => {
+    const result = await settleDurableRunProgression(
+      stampedBank(null),
+      'player-1',
+      'session-1'
+    );
+    expect(result.ok).toBe(true);
+    expect(mockInsertClanReveal).not.toHaveBeenCalled();
+  });
+
+  it('never counts a Free Play run toward the beat', async () => {
+    await settleDurableRunProgression(
+      stampedBank(20, { is_free_play: true }),
+      'player-1',
+      'session-1'
+    );
+    expect(mockInsertClanReveal).not.toHaveBeenCalled();
+  });
+
+  it('settles the run even when the reveal cannot be written', async () => {
+    mockInsertClanReveal.mockResolvedValue(false);
+    const result = await settleDurableRunProgression(
+      stampedBank(9),
+      'player-1',
+      'session-1'
+    );
+    // Presentation is never allowed to cost a player their settlement.
+    expect(result.ok).toBe(true);
+  });
+
+  it('reveals nothing on a run the server could not read the context for', async () => {
+    const supabase = client({}, { data: null, error: { message: 'connection reset' } });
+    const result = await settleDurableRunProgression(supabase, 'player-1', 'session-1');
+    expect(result.ok).toBe(true);
+    expect(mockInsertClanReveal).not.toHaveBeenCalled();
   });
 });
