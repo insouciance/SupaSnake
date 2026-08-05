@@ -119,6 +119,9 @@ describe('GET /api/genome/curriculum', () => {
     expect(body).toEqual({
       live: false,
       dynasty: 'CYBER',
+      // Telemetry-only, and truthfully null here: the fixture player row
+      // carries no cohort column value, and the route never guesses one.
+      cohort: null,
       bankedRuns: 0,
       trialsOpen: false,
       trialGeneId: null,
@@ -126,6 +129,35 @@ describe('GET /api/genome/curriculum', () => {
       genes: [],
     });
     expect(mockReadEligibility).not.toHaveBeenCalled();
+  });
+
+  it('carries the SERVER-read cohort, and never invents one', async () => {
+    // PEO §9.3 excludes the dev/QA/fixture accounts from every curriculum
+    // conclusion. The label has to travel from `players.cohort`, because a
+    // browser that asserted its own could exclude itself from measurement.
+    mockFrom = jest.fn(() => {
+      const chain: Record<string, jest.Mock> = {};
+      chain.select = jest.fn(() => chain);
+      chain.eq = jest.fn(() => chain);
+      chain.maybeSingle = jest.fn(async () => ({
+        data: { id: 'player-1', cohort: 'qa' },
+        error: null,
+      }));
+      return chain;
+    });
+    expect((await (await GET(request('GET'))).json()).cohort).toBe('qa');
+
+    mockFrom = jest.fn(() => {
+      const chain: Record<string, jest.Mock> = {};
+      chain.select = jest.fn(() => chain);
+      chain.eq = jest.fn(() => chain);
+      chain.maybeSingle = jest.fn(async () => ({
+        data: { id: 'player-1', cohort: 'not-a-cohort' },
+        error: null,
+      }));
+      return chain;
+    });
+    expect((await (await GET(request('GET'))).json()).cohort).toBeNull();
   });
 
   it('is dormant when the satellite table is not applied here yet', async () => {

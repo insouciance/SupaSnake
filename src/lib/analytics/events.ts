@@ -11,6 +11,7 @@
  * - Engagement: Streaks and rewards
  * - Social: Clans and multiplayer
  * - Growth: Acquisition-funnel stages (Constitution §11.5)
+ * - Curriculum: Genome Discovery onboarding (PEO §9.3, TGv2 §11)
  */
 
 export const EventCategories = {
@@ -22,6 +23,7 @@ export const EventCategories = {
   ENGAGEMENT: 'engagement',
   SOCIAL: 'social',
   GROWTH: 'growth',
+  CURRICULUM: 'curriculum',
 } as const;
 
 export type EventCategory = typeof EventCategories[keyof typeof EventCategories];
@@ -126,6 +128,31 @@ export const AnalyticsEvents = {
   // inflating the stage counts. Emitted through ./funnel.ts, never directly.
   LADDER_PROMPT_SHOWN: 'ladder_prompt_shown',
   LADDER_PROMPT_ENGAGED: 'ladder_prompt_engaged',
+
+  // Curriculum Events - Genome Discovery (PEO §9.3, TGv2 §11).
+  // Emitted through ./curriculum.ts, never directly, so every one of them
+  // carries the eligibility contract version and can be cut cleanly when
+  // that version bumps. All of it is consent-gated by trackEvent() and all
+  // conclusions filter `player_cohort = 'player'` (§9.3).
+  //
+  // The two ONBOARDING_* beats are the middle of §9.3's first funnel:
+  // arrival → first input → first terminal result → first BANK. Its ends are
+  // already measured — arrival by FUNNEL_ARRIVE_ENTERED and the first BANK by
+  // FUNNEL_ACTIVATE_ENTERED — so only the two beats nothing measured are
+  // added here. They are deliberately NOT funnel stages: the eight stages are
+  // the Acquisition Engine's and adding a ninth would change what every
+  // existing stage count means.
+  ONBOARDING_FIRST_INPUT: 'onboarding_first_input',
+  ONBOARDING_FIRST_RESULT: 'onboarding_first_result',
+  CURRICULUM_ELIGIBILITY_READ: 'curriculum_eligibility_read',
+  CURRICULUM_TRIAL_INVITED: 'curriculum_trial_invited',
+  CURRICULUM_TRIAL_ACCEPTED: 'curriculum_trial_accepted',
+  CURRICULUM_TRIAL_DECLINED: 'curriculum_trial_declined',
+  CURRICULUM_REFERENCE_OPENED: 'curriculum_reference_opened',
+  CURRICULUM_TRIAL_SELECTED: 'curriculum_trial_selected',
+  CURRICULUM_TRIAL_OFFERED: 'curriculum_trial_offered',
+  CURRICULUM_LEARNING_EVENT_RESOLVED: 'curriculum_learning_event_resolved',
+  CURRICULUM_GRADUATED: 'curriculum_graduated',
 } as const;
 
 export type AnalyticsEvent = typeof AnalyticsEvents[keyof typeof AnalyticsEvents];

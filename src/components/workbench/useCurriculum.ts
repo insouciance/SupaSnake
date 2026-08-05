@@ -18,6 +18,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PLAYER_EVOLUTION_ENABLED } from '@/lib/features/playerEvolution';
 import {
+  trackCurriculumEligibility,
+  trackCurriculumGraduation,
+  trackTrialSelected,
+} from '@/lib/analytics/curriculum';
+import {
   type CurriculumGeneAnnotation,
 } from '@/shared/game/curriculum';
 import type { GenomeV2ActiveGeneId, GenomeV2Dynasty } from '@/shared/game/genes';
@@ -25,11 +30,39 @@ import type { GenomeV2ActiveGeneId, GenomeV2Dynasty } from '@/shared/game/genes'
 export interface CurriculumProjection {
   live: boolean;
   dynasty: GenomeV2Dynasty;
+  /** `players.cohort`, server-read. Telemetry only — never a gameplay input. */
+  cohort?: string | null;
   bankedRuns: number;
   trialsOpen: boolean;
   trialGeneId: GenomeV2ActiveGeneId | null;
   candidates: GenomeV2ActiveGeneId[];
   genes: CurriculumGeneAnnotation[];
+}
+
+/**
+ * Report one composed projection (WP-F; PEO §9.3, TGv2 §11).
+ *
+ * The eligibility PREFIX and the contract version are the two numbers §9.3's
+ * "offer diversity and complete-pool graduation time" is read from, and this
+ * is the only place both are known at once. Consent-gated and inert without
+ * it; the cohort stamp is what keeps dev/QA accounts out of the conclusion.
+ */
+function reportProjection(projection: CurriculumProjection): void {
+  const eligible = projection.genes.filter(
+    (gene) => gene.state === 'offer_eligible'
+  ).length;
+  trackCurriculumEligibility({
+    dynasty: projection.dynasty,
+    eligibleGeneCount: eligible,
+    rosterSize: projection.genes.length,
+    bankedRuns: projection.bankedRuns,
+    trialsOpen: projection.trialsOpen,
+    hasTrial: projection.trialGeneId !== null,
+    cohort: projection.cohort ?? null,
+  });
+  if (projection.genes.length > 0 && eligible === projection.genes.length) {
+    trackCurriculumGraduation(projection.dynasty, projection.genes.length);
+  }
 }
 
 export interface CurriculumHandle {
@@ -75,7 +108,9 @@ export function useCurriculum(
         );
         if (!response.ok) throw new Error(`Curriculum read failed (${response.status})`);
         const parsed = parseProjection(await response.json());
-        if (!cancelled) setState(parsed);
+        if (cancelled) return;
+        setState(parsed);
+        if (parsed) reportProjection(parsed);
       } catch (caught) {
         // A failed annotation is a quiet absence, never an error state on a
         // free instrument: the player came here to read rules, not to be told
@@ -92,6 +127,10 @@ export function useCurriculum(
   const chooseTrial = useCallback(
     (geneId: GenomeV2ActiveGeneId) => {
       if (!PLAYER_EVOLUTION_ENABLED || !token) return;
+      // Read BEFORE the write: "was a trial already set" is what separates a
+      // first choice from a switch, and after the round trip the answer is
+      // always yes (§9.4 reads repeated switches differently from choices).
+      const switched = state?.trialGeneId != null && state.trialGeneId !== geneId;
       setPending(true);
       setError(null);
       void (async () => {
@@ -113,7 +152,14 @@ export function useCurriculum(
             );
           }
           const parsed = parseProjection(body);
-          if (parsed) setState(parsed);
+          if (parsed) {
+            setState(parsed);
+            // Only a write the SERVER confirmed is reported: the response is
+            // recomposed from the row `select_gene_trial` actually left, so a
+            // 503 or a rejected candidate produces no selection event.
+            trackTrialSelected(parsed.dynasty, geneId, switched);
+            reportProjection(parsed);
+          }
         } catch (caught) {
           setError(
             caught instanceof Error ? caught.message : 'That trial could not be set.'
@@ -123,7 +169,7 @@ export function useCurriculum(
         }
       })();
     },
-    [dynasty, token]
+    [dynasty, state?.trialGeneId, token]
   );
 
   return { state, pending, error, chooseTrial };

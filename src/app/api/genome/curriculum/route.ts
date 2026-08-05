@@ -38,6 +38,7 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
+import { isPlayerCohort } from '@/lib/cohort/cohort';
 import { playerEvolutionEnabled } from '@/lib/features/playerEvolution';
 import {
   readGeneEligibility,
@@ -79,9 +80,14 @@ async function playerFor(request: NextRequest) {
   if (authError || !auth.user) {
     return { response: progressionJson({ error: 'Invalid token' }, { status: 401 }) };
   }
+  // `cohort` rides along for telemetry only (WP-F): PEO §9.3 requires every
+  // curriculum conclusion to exclude the dev/QA/fixture accounts, and the
+  // label has to come from the server — a browser that asserted its own
+  // cohort could exclude itself from measurement at will. It reaches PostHog
+  // as a person property and reaches no gameplay path at all.
   const { data: player, error } = await supabase
     .from('players')
-    .select('id')
+    .select('id, cohort')
     .eq('user_id', auth.user.id)
     .maybeSingle();
   if (error) {
@@ -97,14 +103,18 @@ async function playerFor(request: NextRequest) {
   if (!player) {
     return { response: progressionJson({ error: 'Player not found' }, { status: 404 }) };
   }
-  return { playerId: player.id as string };
+  return {
+    playerId: player.id as string,
+    cohort: isPlayerCohort(player.cohort) ? player.cohort : null,
+  };
 }
 
 /** The dormant body: a truthful "nothing is staged here". */
-function dormant(dynasty: GenomeV2Dynasty) {
+function dormant(dynasty: GenomeV2Dynasty, cohort: string | null) {
   return {
     live: false,
     dynasty,
+    cohort,
     bankedRuns: 0,
     trialsOpen: false,
     trialGeneId: null,
@@ -113,10 +123,15 @@ function dormant(dynasty: GenomeV2Dynasty) {
   };
 }
 
-function projection(dynasty: GenomeV2Dynasty, facts: CurriculumFacts) {
+function projection(
+  dynasty: GenomeV2Dynasty,
+  facts: CurriculumFacts,
+  cohort: string | null
+) {
   return {
     live: true,
     dynasty,
+    cohort,
     bankedRuns: facts.bankedRuns,
     trialsOpen: curriculumTrialsOpen(facts),
     trialGeneId: facts.trialGeneId,
@@ -162,11 +177,13 @@ export async function GET(request: NextRequest) {
   }
   const auth = await playerFor(request);
   if ('response' in auth) return auth.response;
-  if (!playerEvolutionEnabled()) return progressionJson(dormant(dynasty));
+  if (!playerEvolutionEnabled()) {
+    return progressionJson(dormant(dynasty, auth.cohort));
+  }
 
   const facts = await readFacts(auth.playerId);
-  if (!facts) return progressionJson(dormant(dynasty));
-  return progressionJson(projection(dynasty, facts));
+  if (!facts) return progressionJson(dormant(dynasty, auth.cohort));
+  return progressionJson(projection(dynasty, facts, auth.cohort));
 }
 
 export async function POST(request: NextRequest) {
@@ -217,5 +234,7 @@ export async function POST(request: NextRequest) {
   // is idempotent and last-writer-wins, so the caller must read back what the
   // server now holds (server contract §2).
   const after = await readFacts(auth.playerId);
-  return progressionJson(projection(dynasty, after ?? { ...facts, trialGeneId: geneId }));
+  return progressionJson(
+    projection(dynasty, after ?? { ...facts, trialGeneId: geneId }, auth.cohort)
+  );
 }
