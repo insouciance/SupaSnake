@@ -34,9 +34,10 @@ Design references:
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–068 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
-| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 23/23 manifest flags enabled |
+| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 23/23 deployed manifest flags enabled |
 | Player Evolution flag | `NEXT_PUBLIC_PLAYER_EVOLUTION_V1=true`; the 23rd flag, live since `4e51e81` |
-| Public surface | 23 flags, hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be` |
+| Snake cosmetics flag | `NEXT_PUBLIC_SNAKE_COSMETICS` — the 24th flag, checked into the manifest but **not deployed**. There is no live QA surface for the home cosmetics menu until the LF-B release cuts over; do not go looking for a wardrobe on production |
+| Public surface | Live: 23 flags, hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. Checked in and pending: 24 flags, hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`; the LF-B release is the cutover |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |

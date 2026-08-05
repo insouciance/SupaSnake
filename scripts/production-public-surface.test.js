@@ -17,7 +17,7 @@ describe('production public-surface contract', () => {
   }
 
   it('has one stable exact contract covering every production-on surface', () => {
-    expect(PRODUCTION_PUBLIC_FLAGS).toHaveLength(23);
+    expect(PRODUCTION_PUBLIC_FLAGS).toHaveLength(24);
     expect(PRODUCTION_PUBLIC_FLAGS).toEqual(
       [...PRODUCTION_PUBLIC_FLAGS].sort()
     );
@@ -33,6 +33,10 @@ describe('production public-surface contract', () => {
         'NEXT_PUBLIC_CAREER_SPINE_V1',
         'NEXT_PUBLIC_LADDER_V1',
         'NEXT_PUBLIC_PLAYER_EVOLUTION_V1',
+        // LF-B: the home cosmetics menu. Named here so the production e2e leg
+        // arms it and the rollback leg proves the off path — neither state is
+        // ever inferred from an omitted flag.
+        'NEXT_PUBLIC_SNAKE_COSMETICS',
       ])
     );
     expect(PRODUCTION_PUBLIC_SURFACE_HASH).toMatch(/^[0-9a-f]{64}$/);

@@ -831,7 +831,7 @@ export default function Home() {
           than cosmetic: a faded control that is still clickable and still in
           the tab order is a trap, and blur alone would leave one. */}
       <div
-        className={`absolute inset-0 z-10 ${HOME_CHROME_TRANSITION} ${
+        className={`pointer-events-none absolute inset-0 z-10 ${HOME_CHROME_TRANSITION} ${
           cosmeticsOpen ? HOME_CHROME_BACK : ''
         }`}
         data-home-chrome
