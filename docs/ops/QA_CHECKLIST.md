@@ -27,9 +27,9 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `03d185a5976654c42fa33994ec294b04a381d055` — Wave-1 rules train: CYBER connectivity guarantee, 8 ± 2 relic cadence, food-wave and portal fairness |
-| Current deployment | `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`supasnake-obeb9b2ap-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`4e51e81`); same schema and 23-flag surface, but serves `snake-rules-2026-08-05.1`, so rolling back is itself a rules change |
+| Production behavior commit | `59fb58014464bcf0ca7143847c934b13e2cc5101` — INK & AMBER game screen (LF-A) plus the adaptive-quality governor |
+| Current deployment | `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`supasnake-cs8vx9fu0-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`03d185a`); same schema, surface and rules version, so a rollback crosses no continuity boundary |
 | Engine rules version | `snake-rules-2026-08-05.2` |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–068 deployed and aligned; no pending migration |
@@ -41,7 +41,7 @@ Design references:
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `03d185a5976654c42fa33994ec294b04a381d055` |
+| Canonical source | `main`; canonical health reports exact SHA `59fb58014464bcf0ca7143847c934b13e2cc5101` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
@@ -82,6 +82,56 @@ retired pre-v2 application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### INK & AMBER design release production evidence
+
+- Exact main SHA `59fb58014464bcf0ca7143847c934b13e2cc5101` — the LF-A
+  game-screen merge `6e7cf01` (PR 89) plus the previous release record.
+  Production workflow `31041034171` verified 19:47–20:00 UTC and deployed
+  20:00–20:06 UTC on 5 August 2026 with `expected_migrations=none`, as
+  `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB`
+  (`supasnake-cs8vx9fu0-josef-bells-projects.vercel.app`). The outgoing anchor
+  was `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` on `03d185a`.
+- **Presentation only.** Hosted schema unchanged at 001–068; public surface
+  unchanged at 23 flags with hash
+  `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`; cron
+  definition hash
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf` unchanged;
+  probe `cohesive_release_read_only_v5` green on 16/16 sentinels.
+- **The design cutover was proved at runtime.** The served stylesheet
+  `fb473e8894e4c3e1.css` carries `--venom-orange: #f2a03f` in 11 occurrences
+  together with the `--ink: #0b1118` and `--ink-stroke` tokens. The pre-cutover
+  baseline served `--venom-orange: #22d3ee` and contained no `f2a03f` anywhere;
+  after the deploy the cyan token is absent from every served stylesheet. This
+  is what distinguishes "the design is in the branch" from "the design is what
+  players see".
+- **No run-continuity boundary this train, and that was deliberate.**
+  `SNAKE_RULES_VERSION` is unchanged at `snake-rules-2026-08-05.2` and the rules
+  chunk `2894-433978b3ede14d00.js` kept a byte-identical filename hash across
+  the cutover, so runs open during the deploy continued seamlessly — no
+  `incompatible` phase, no recovery path. The two preceding releases each moved
+  the rules version and therefore each interrupted runs in flight; sequencing
+  the design cutover off that path kept a visual change from costing anyone a
+  run.
+- The release also ships the **adaptive-quality governor**: a tier ladder driven
+  by tick retention, spending bloom resolution then shadow casting then the
+  composer, and never the board's identity. T0 is the full look; T1 drops bloom
+  to quarter resolution; T2 takes terrain out of the shadow-casting pass while
+  it still receives; T3 removes the shadow map and composer entirely, leaving
+  flat toon fills, ink outlines, the slab and the amber. Two players on
+  different tiers play exactly the same game.
+- **New observable for the telemetry checkpoint:** a Sentry breadcrumb fires on
+  every tier change, so render-tier distribution across real devices becomes
+  measurable for the first time. Check it deliberately — a population sitting at
+  T2/T3 means the ratified look is not reaching most players.
+- Process note: the original target `6e7cf01` had its Test and E2E runs
+  auto-cancelled by the docs push for PR 92 (Actions concurrency supersedes runs
+  on an older SHA). The deploy agent halted on the missing evidence rather than
+  proceeding on stale green, and re-derived the target as `59fb580` — verified
+  as an ancestor-clean, docs-only delta over `6e7cf01` — before dispatching. The
+  fail-closed gate worked as intended; this is the second time the concurrency
+  behaviour has produced a cancelled post-main run, so expect it whenever two
+  PRs land close together.
 
 ### Wave-1 rules train production evidence
 
