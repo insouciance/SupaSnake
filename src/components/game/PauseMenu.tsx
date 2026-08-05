@@ -74,11 +74,11 @@ export function PauseMenu({
       aria-labelledby="pause-menu-title"
       aria-describedby="pause-menu-help"
       tabIndex={-1}
-      className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 backdrop-blur-sm p-4"
+      className="modal-scrim absolute inset-0 z-30 flex items-center justify-center p-4"
       data-testid="pause-menu"
     >
       <div
-        className="panel-glow p-8 min-w-[300px] max-w-full animate-pop-in"
+        className="panel-glow modal-frame modal-tray-narrow p-8 animate-pop-in"
         style={{ '--glow': theme.primary } as CSSProperties}
       >
         {/* Header */}
@@ -91,7 +91,7 @@ export function PauseMenu({
         </h2>
 
         {/* Current Stats */}
-        <div className="space-y-3 mb-8 p-4 rounded-arcade border border-scale-blue-light/40 bg-void/60">
+        <div className="space-y-3 mb-8 p-4 rounded-arcade bg-void/70">
           <div className="flex justify-between items-center">
             <span className="label-arcade">Score</span>
             <span className="font-display text-2xl text-bone-white">{formatAmount(score)}</span>

@@ -197,11 +197,7 @@ export interface GenomeV2PortalPresentation {
     salvageNext: string;
   };
   /** Exact inner Genome Yield; outer run-stamped multipliers remain server-owned. */
-  outcomeProjection: {
-    bank: string;
-    crash: string;
-    label: string;
-  };
+  outcomeProjection: GenomeV2OutcomePresentation;
   mirrorChoice: {
     available: boolean;
     detail: string;
@@ -219,6 +215,10 @@ export interface GenomeV2PortalPresentation {
 export interface GenomeV2OutcomePresentation {
   bank: string;
   crash: string;
+  /** The same two figures with no unit, for trays that name the unit once
+   *  beside them (`label`). See `formatScaledYield`'s `bare` form. */
+  bankBare: string;
+  crashBare: string;
   label: string;
 }
 
@@ -273,11 +273,24 @@ function formatBps(value: number): string {
  * Payout is an AMOUNT, so it reads as a whole number. The scaled ledger keeps
  * its four-decimal precision; only this readout rounds. `short` is the rail's
  * compact form and is an option on this function rather than a second one.
+ *
+ * `bare` is the third and last form: the figure with NO unit at all, for the
+ * instruments where the unit is already named beside the number and the tray
+ * is too tight to say it twice - the HUD's outcome pair (whose `title` and
+ * `aria-label` carry the unit) and the portal's stake grid (which prints
+ * `label` directly underneath). The doctrine rule is "fix the copy, not the
+ * tray": a unit that does not fit is a unit that is being said in the wrong
+ * place, so it moves rather than shrinking the type or clipping the number.
+ * Still one function - three forms of one quantity, not three formatters.
  */
-function formatScaledYield(value: number, options?: { short?: boolean }): string {
+function formatScaledYield(
+  value: number,
+  options?: { short?: boolean; bare?: boolean }
+): string {
   const sign = value < 0 ? '−' : '';
   const safe = Number.isSafeInteger(value) ? Math.abs(value) : 0;
   const amount = formatAmount(safe / GENOME_V2_YIELD_SCALE);
+  if (options?.bare) return `${sign}${amount}`;
   return options?.short ? `${sign}${amount}P` : `${sign}${amount} Payout`;
 }
 
@@ -755,6 +768,8 @@ export function buildGenomeV2OutcomePresentation(
   return {
     bank: formatScaledYield(bank.genomeYield),
     crash: formatScaledYield(crash.genomeYield),
+    bankBare: formatScaledYield(bank.genomeYield, { bare: true }),
+    crashBare: formatScaledYield(crash.genomeYield, { bare: true }),
     label: 'Power payout · before run-stamped Legacy and Energy',
   };
 }

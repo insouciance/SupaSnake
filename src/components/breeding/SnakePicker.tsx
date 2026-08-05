@@ -76,14 +76,14 @@ export function SnakePicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-void-deep/85"
+      className="modal-scrim fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
       aria-labelledby="snake-picker-title"
       data-testid="snake-picker"
     >
-      <div className="panel-elevated animate-pop-in relative w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden rounded-arcade">
+      <div className="panel-elevated modal-frame modal-tray-narrow animate-pop-in relative max-h-[85vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-scale-blue-light/40">
           <h2 id="snake-picker-title" className="heading-display text-lg text-bone-white">
@@ -92,7 +92,7 @@ export function SnakePicker({
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-bone-white/10 border border-scale-blue-light/50 text-bone-white/70 hover:text-bone-white transition-colors"
+            className="-m-2 inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-bone-white/70 transition-colors hover:bg-bone-white/10 hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
             aria-label="Close picker"
             data-testid="snake-picker-close"
           >

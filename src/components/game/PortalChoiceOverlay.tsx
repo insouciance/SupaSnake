@@ -202,27 +202,38 @@ export function PortalChoiceOverlay({
       aria-modal="true"
       aria-labelledby="portal-choice-title"
       tabIndex={-1}
-      className="absolute inset-0 z-30 flex items-end justify-center bg-gradient-to-t from-void-deep/40 via-void-deep/10 to-transparent sm:items-stretch sm:justify-end sm:bg-gradient-to-l"
+      className="modal-scrim absolute inset-0 z-30 flex items-end justify-center p-2 sm:items-center sm:p-4"
       data-testid="portal-choice-overlay"
       data-rules-version={rulesVersion}
     >
-      <div className="panel-elevated flex h-[min(58dvh,560px)] w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 [--glow:#f2a03f] animate-pop-in sm:ml-auto sm:h-full sm:max-h-none sm:w-[min(42rem,52vw)] sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5">
+      {/* ONE TRAY, ONE OUTLINE. This was a flush-edged sheet - bottom on
+          phones, right on desktop - which by construction has no line on the
+          edge it is flush against, so it could never wear a card outline. It
+          is a floating tray now in both paths, at the shared `--tray-w`
+          measure, and the cockpit dock's own centring override agrees with it
+          instead of contradicting it. */}
+      <div className="panel-elevated modal-frame modal-tray flex max-h-full flex-col overflow-hidden p-3 [--glow:#f2a03f] animate-pop-in sm:h-[min(72dvh,45rem)] sm:p-5">
         <header className="shrink-0 border-b border-scale-blue-light/20 pb-3">
           <div className="flex items-start justify-between gap-3">
-            <div>
+            {/* `min-w-0` on both children: without it a flex item refuses to
+                shrink below its longest word, and this row is the one piece
+                of the panel that cannot scroll. */}
+            <div className="min-w-0">
               <p className="font-body text-sm font-bold uppercase tracking-[0.18em] text-[#7df9ff]">Paused for your choice</p>
               <h2 id="portal-choice-title" className="heading-display text-xl text-[#7df9ff] text-glow sm:text-2xl">Portal Decision</h2>
             </div>
-            <p className="text-right font-body text-sm text-beige/50">{doorsPassed} ridden · {mutation.actionOrdinal - 1}/{mutation.actionLimit} trades</p>
+            <p className="min-w-0 text-right font-body text-sm text-beige/50">{doorsPassed} ridden · {mutation.actionOrdinal - 1}/{mutation.actionLimit} trades</p>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] border border-scale-blue-light/25 bg-void-deep/40 p-2" data-testid="portal-current-stake">
-            <div>
+          {/* A REGION, NOT A SECOND TRAY: fill and radius, no border. The
+              single bold outline belongs to the panel around all of this. */}
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] bg-void-deep/50 p-2" data-testid="portal-current-stake">
+            <div className="min-w-0">
               <p className="font-body text-sm uppercase tracking-[0.1em] text-beige/45">Secure now</p>
-              <p className="font-mono text-base font-bold text-rarity-uncommon">{bankOutcomeLabel ?? `${formatAmount(bankDna)} DNA`}</p>
+              <p className="truncate font-mono text-base font-bold text-rarity-uncommon">{bankOutcomeLabel ?? `${formatAmount(bankDna)} DNA`}</p>
             </div>
-            <div className="text-right">
+            <div className="min-w-0 text-right">
               <p className="font-body text-sm uppercase tracking-[0.1em] text-beige/45">Crash now</p>
-              <p className="font-mono text-base font-bold text-strike-red">{crashOutcomeLabel ?? `${formatAmount(crashDna)} DNA`}</p>
+              <p className="truncate font-mono text-base font-bold text-strike-red">{crashOutcomeLabel ?? `${formatAmount(crashDna)} DNA`}</p>
             </div>
           </div>
           {outcomeUnitLabel ? (
@@ -294,9 +305,12 @@ export function PortalChoiceOverlay({
           </div>
 
           {rulesVersion === 2 && mirrorChoice?.available ? (
-            <section className="mt-3 rounded-[10px] border border-cosmic/30 bg-cosmic/5 p-3" data-testid="portal-mirror-wager">
-              <div className="flex items-center justify-between gap-3">
-                <div>
+            <section className="mt-3 rounded-[10px] bg-cosmic/8 p-3" data-testid="portal-mirror-wager">
+              {/* `flex-wrap` + `min-w-0`: the toggle is a fixed 7.5rem and the
+                  copy beside it is server-authored, so at 320px the row has to
+                  be allowed to become two rows rather than push the panel. */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1 basis-48">
                   <p className="font-display text-sm uppercase tracking-[0.1em] text-cosmic">Split Bet · next stretch</p>
                   <p className="mt-1 font-body text-sm leading-snug text-beige/60">{mirrorChoice.detail}</p>
                 </div>
@@ -319,8 +333,14 @@ export function PortalChoiceOverlay({
             </section>
           ) : null}
 
-          <p className="mt-3 rounded-[10px] border border-scale-blue-light/20 bg-void-deep/35 px-3 py-2 font-body text-sm leading-snug text-beige/60">
-            BANK ends the run and pays out. {continueLabel} keeps playing — the payout grows, but crashing keeps less. {mutateLabel} buys a power with body length.
+          {/* R15. This line used to end "{mutateLabel} buys a power with body
+              length", which prices the power in body the player GIVES UP.
+              TRADE UP does the opposite: `SnakeGameLogic.performInfuse` pushes
+              `infuseGrowth` segments onto the tail, because under Rule 15
+              length is the difficulty clock and removing it would be a second
+              reward, not a cost. The copy now says which way the body moves. */}
+          <p className="mt-3 rounded-[10px] bg-void-deep/45 px-3 py-2 font-body text-sm leading-snug text-beige/60">
+            BANK ends the run and pays out. {continueLabel} keeps playing — the payout grows, but crashing keeps less. {mutateLabel} takes a power and grows you to carry it.
           </p>
         </div>
       </div>
@@ -337,8 +357,8 @@ export function StrainSurgeOverlay({ strains, onChoose }: StrainSurgeOverlayProp
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocusTrap(dialogRef);
   return (
-    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="surge-choice-title" tabIndex={-1} className="absolute inset-0 z-30 flex items-end justify-center bg-gradient-to-t from-void-deep/40 to-transparent sm:items-center" data-testid="surge-choice-overlay">
-      <div className="panel-elevated w-full max-w-md rounded-b-none p-5 [--glow:#a855f7] animate-pop-in sm:rounded-[18px]">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="surge-choice-title" tabIndex={-1} className="modal-scrim absolute inset-0 z-30 flex items-end justify-center p-2 sm:items-center sm:p-4" data-testid="surge-choice-overlay">
+      <div className="panel-elevated modal-frame modal-tray-narrow p-5 [--glow:#a855f7] animate-pop-in">
         <h2 id="surge-choice-title" className="heading-display text-center text-2xl text-cosmic">Path Surge</h2>
         <p className="mb-4 text-center text-sm font-body text-beige/70">No slots left — add one point to a Path you already hold.</p>
         <div className="flex flex-wrap justify-center gap-3">

@@ -33,7 +33,7 @@ export function AccountUpgradeModal({ isOpen, onClose }: AccountUpgradeModalProp
       onClose={onClose}
       ariaLabel="Create an account"
       testId="account-upgrade-modal"
-      panelClassName="max-w-md"
+      panelClassName="modal-tray-narrow"
       closeOnBackdrop={false}
       closeOnEscape={false}
     >

@@ -134,14 +134,14 @@ function NotificationDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-void-deep/85 p-3 backdrop-blur-sm sm:p-6 [padding-top:calc(0.75rem+env(safe-area-inset-top))] [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]"
+      className="modal-scrim fixed inset-0 z-[80] flex items-center justify-center overflow-hidden p-3 sm:p-6 [padding-top:calc(0.75rem+env(safe-area-inset-top))] [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <section
         ref={dialogRef}
-        className="flex max-h-full min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-arcade border-2 border-scale-blue-light bg-void-deep shadow-2xl"
+        className="modal-frame modal-tray-narrow flex max-h-full min-h-0 flex-col overflow-hidden border bg-void-deep"
         role="dialog"
         aria-modal="true"
         aria-labelledby="notification-center-title"

@@ -341,7 +341,7 @@ export function VariantDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-void-deep/85 sm:items-center sm:p-4"
+      className="modal-scrim fixed inset-0 z-50 flex items-end justify-center p-2 sm:items-center sm:p-4"
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -352,8 +352,7 @@ export function VariantDetailModal({
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="animate-pop-in relative flex h-full max-h-[96dvh] w-full max-w-xl flex-col overflow-hidden rounded-t-[26px] border border-scale-blue-light/45 bg-void shadow-2xl focus:outline-none sm:h-auto sm:max-h-[92dvh] sm:rounded-[26px]"
-        style={{ boxShadow: `0 22px 80px rgba(0,0,0,.72), 0 0 42px -22px ${theme.glow}` }}
+        className="modal-frame modal-tray-narrow animate-pop-in relative flex max-h-[96dvh] flex-col overflow-hidden border bg-void focus:outline-none sm:max-h-[92dvh]"
       >
         {/* Header */}
         <div

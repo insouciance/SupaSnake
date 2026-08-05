@@ -46,10 +46,10 @@ export function AbandonRunDialog({
       aria-labelledby="abandon-run-title"
       aria-describedby="abandon-run-description"
       tabIndex={-1}
-      className="absolute inset-0 z-30 flex items-center justify-center bg-void-deep/80 p-4 backdrop-blur-sm"
+      className="modal-scrim absolute inset-0 z-30 flex items-center justify-center p-4"
       data-testid="abandon-run-dialog"
     >
-      <div className="panel-elevated w-full max-w-md p-6 [--glow:#f43f5e] animate-pop-in">
+      <div className="panel-elevated modal-frame modal-tray-narrow p-6 [--glow:#f43f5e] animate-pop-in">
         <h2
           id="abandon-run-title"
           className="heading-display text-center text-2xl text-strike-red text-glow"

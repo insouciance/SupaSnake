@@ -491,7 +491,7 @@ export const GENOME_V2_GENES: Readonly<
     name: 'Wall Bounce',
     kind: 'EP',
     strains: GENOME_V2_GENE_STRAINS.wall_rush,
-    effect: 'Hit a wall on purpose. The next food pays ×2.5.',
+    effect: 'Hit a wall on purpose. Next food ×2.5. Refills each portal.',
     cost: 'The bounce is spent even when you miss the food it armed.',
     detail: 'Drive into a wall deliberately and bounce off along a path shown to you first. Reach the next food within six moves for ×2.5. One bounce per portal.',
     economics: 'path',

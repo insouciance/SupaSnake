@@ -87,7 +87,7 @@ export function ModalDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] overflow-y-auto overscroll-contain bg-void-deep/85 backdrop-blur-sm"
+      className="modal-scrim fixed inset-0 z-[100] overflow-y-auto overscroll-contain"
       data-modal-layer="true"
       onPointerDown={handleBackdropPointerDown}
       style={{

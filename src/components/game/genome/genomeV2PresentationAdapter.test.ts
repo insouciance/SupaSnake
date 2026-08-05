@@ -330,6 +330,11 @@ describe('Genome v2 presentation adapter', () => {
     expect(portal.outcomeProjection).toEqual({
       bank: '0 Payout',
       crash: '0 Payout',
+      // The same two figures with no unit. The portal's stake grid and the
+      // cockpit's outcome pair render these, because both name the unit once
+      // beside the numbers instead of repeating it inside a tight cell.
+      bankBare: '0',
+      crashBare: '0',
       label: 'Power payout · before run-stamped Legacy and Energy',
     });
     expect(portal.mirrorChoice).toBeNull();

@@ -61,7 +61,7 @@ const STEPS = [
   },
   {
     title: 'Make the deal',
-    body: 'A portal opens. BANK keeps what you have, RIDE ON pushes your luck, TRADE UP spends body length for power. This is the whole game in one decision.',
+    body: 'A portal opens. BANK keeps what you have, RIDE ON pushes your luck, TRADE UP takes a power and grows you to carry it. This is the whole game in one decision.',
   },
   {
     title: 'Keep what you built',

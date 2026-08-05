@@ -184,14 +184,14 @@ export function HandleClaimModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm p-4"
+      className="modal-scrim fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-label={currentHandle ? 'Change your handle' : 'Claim your handle'}
       data-testid="handle-claim-modal"
     >
       <div
-        className="panel-glow [--glow:#22d3ee] p-6 w-full max-w-sm space-y-4 animate-pop-in"
+        className="panel-glow modal-frame modal-tray-narrow [--glow:#22d3ee] p-6 space-y-4 animate-pop-in"
       >
         <div className="flex items-start justify-between gap-3">
           <h3 className="heading-display text-xl text-bone-white flex items-center gap-2">
@@ -202,7 +202,7 @@ export function HandleClaimModal({
             onClick={onClose}
             aria-label="Close"
             data-testid="handle-claim-close"
-            className="text-beige/60 hover:text-bone-white transition-colors"
+            className="-m-2 inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-beige/60 transition-colors hover:bg-bone-white/10 hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
           >
             <IconX size={20} />
           </button>

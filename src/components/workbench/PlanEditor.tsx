@@ -159,7 +159,7 @@ export function PlanEditor({ plan, pool, unreachable, onChange }: PlanEditorProp
         <span className="font-body text-xs text-beige/60">
           {infuseFoods.length > 0
             ? `Planned at food ${infuseFoods.join(', ')} — after the last gene, at the same cadence.`
-            : `Up to ${MAX_PLAN_INFUSES} per run. Each pays body length for a strain point.`}
+            : `Up to ${MAX_PLAN_INFUSES} per run. Each grows your body to carry a strain point.`}
         </span>
       </div>
 

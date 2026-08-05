@@ -191,7 +191,7 @@ export function SnakePickerSheet({
       ariaLabelledBy="snake-picker-title"
       ariaDescribedBy="snake-picker-description"
       testId="snake-picker-sheet"
-      panelClassName="max-w-lg overflow-hidden rounded-[26px] border border-cyber/40 bg-[radial-gradient(circle_at_50%_0%,rgba(139,92,246,0.16),transparent_42%),linear-gradient(180deg,#16202b,#06090d)] shadow-glow-lg shadow-cyber/15 animate-pop-in"
+      panelClassName="modal-frame modal-tray-narrow overflow-hidden border bg-[radial-gradient(circle_at_50%_0%,rgba(139,92,246,0.16),transparent_42%),linear-gradient(180deg,#16202b,#06090d)] animate-pop-in"
     >
       <header className="flex items-start justify-between gap-3 border-b border-scale-blue-light/30 px-4 py-4 text-left sm:px-5">
         <div className="min-w-0">

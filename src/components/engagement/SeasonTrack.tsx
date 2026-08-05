@@ -17,7 +17,7 @@
  */
 
 import Link from 'next/link';
-import { IconCrown, IconTrophy } from '@/components/ui/icons';
+import { IconCrown, IconTrophy, IconX } from '@/components/ui/icons';
 
 export interface SeasonView {
   seq: number;
@@ -85,12 +85,26 @@ export function SeasonTrack({
     : Math.min(100, Math.round((intoLevel / track.xp_per_level) * 100));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-void-deep/85 backdrop-blur-sm">
+    <div className="modal-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         data-testid="season-track"
-        className="panel-glow animate-pop-in p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
+        className="panel-glow modal-frame modal-tray-narrow animate-pop-in p-6 max-h-[90vh] overflow-y-auto"
         style={{ '--glow': '#22d3ee' } as React.CSSProperties}
       >
+        {/* X-CLOSE DISCIPLINE (owner ruling): this is an INFO/BROWSE surface -
+            nothing is pending, nothing is spent - so it gets the X. Decision
+            modals deliberately have none, because there the decline IS the
+            close and an X would be a fourth, unlabelled answer. */}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Close season track"
+            className="-m-2 inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-beige/60 transition-colors hover:bg-bone-white/10 hover:text-bone-white focus:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
+          >
+            <IconX size={20} />
+          </button>
+        </div>
         <div className="text-center mb-4">
           <IconTrophy size={44} className="mx-auto mb-3 text-venom-orange" />
           <h2 className="heading-display text-2xl text-bone-white mb-1">
