@@ -767,7 +767,7 @@ export const DEATH_SEQUENCE_DURATION_MS = 800;
  * this deployment must not continue.  Bump this value whenever a change can
  * alter deterministic board evolution or the meaning of persisted state.
  */
-export const SNAKE_RULES_VERSION = 'snake-rules-2026-08-05.1' as const;
+export const SNAKE_RULES_VERSION = 'snake-rules-2026-08-05.2' as const;
 
 /**
  * Compact, deterministic evidence for every player-authored state change.

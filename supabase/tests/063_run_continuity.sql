@@ -95,14 +95,14 @@ BEGIN
     v_orphan, v_player, v_snake, v_variant, 'PRIMAL',
     v_started, v_started, '06300000-0000-4000-8000-000000000006',
     repeat('1', 64), '06300000-0000-4000-8000-000000000007', 1,
-    'snake-rules-2026-08-05.1', jsonb_build_object(
+    'snake-rules-2026-08-05.2', jsonb_build_object(
       'v', 1, 'startRequestId', '06300000-0000-4000-8000-000000000006',
       'mode', 'earn', 'snakeId', v_snake, 'energyCommitment', 1,
       'confirmMaxEnergy', FALSE, 'signalObjectiveId', NULL, 'ladderRung', NULL
     ), 'preparing'
   );
   PERFORM abandon_run_continuity(
-    v_player, v_orphan, NULL, 'snake-rules-2026-08-05.1'
+    v_player, v_orphan, NULL, 'snake-rules-2026-08-05.2'
   );
   IF (SELECT end_reason FROM game_sessions WHERE id = v_orphan) <> 'abandoned'
      OR (SELECT energy_committed FROM game_sessions WHERE id = v_orphan) <> 0
@@ -128,7 +128,7 @@ BEGIN
       'confirmMaxEnergy', FALSE, 'signalObjectiveId', NULL, 'ladderRung', NULL
     ), v_manifest_base,
     1, FALSE, TRUE, '06300000-0000-4000-8000-000000000008', 1,
-    'snake-rules-2026-08-05.1', 'preparing'
+    'snake-rules-2026-08-05.2', 'preparing'
   );
   SELECT stored_energy INTO v_energy_before FROM players WHERE id = v_player;
   v_manifest := finalize_run_continuity_start(
@@ -156,7 +156,7 @@ BEGIN
   v_opening := jsonb_build_object(
     'version', 1,
     'engineVersion', 'snake-engine-v1',
-    'rulesVersion', 'snake-rules-2026-08-05.1',
+    'rulesVersion', 'snake-rules-2026-08-05.2',
     'config', '{}'::JSONB,
     'state', jsonb_build_object(
       'isPlaying', TRUE, 'isGameOver', FALSE, 'isDeathSequence', FALSE,
@@ -166,7 +166,7 @@ BEGIN
   );
   v_activation := activate_run_continuity(
     v_player, v_session, v_opening, v_opening_digest, v_old_lease,
-    'snake-rules-2026-08-05.1', 1048576
+    'snake-rules-2026-08-05.2', 1048576
   );
   IF v_activation ->> 'continuity_phase' <> 'active'
      OR (v_activation ->> 'continuity_checkpoint_revision')::INTEGER <> 1
@@ -177,7 +177,7 @@ BEGIN
   -- Resume rotates exclusive authority. The stale lease can no longer save a
   -- checkpoint; the new lease owns monotonic compare-and-swap writes.
   v_resume := resume_run_continuity(
-    v_player, v_session, v_current_lease, 'snake-rules-2026-08-05.1'
+    v_player, v_session, v_current_lease, 'snake-rules-2026-08-05.2'
   );
   IF (v_resume ->> 'continuity_lease_epoch')::INTEGER <> 2
      OR (SELECT continuity_lease_hash FROM game_sessions WHERE id = v_session) <> v_current_lease THEN
@@ -334,7 +334,7 @@ BEGIN
   END;
   BEGIN
     PERFORM abandon_run_continuity(
-      v_player, v_session, v_current_lease, 'snake-rules-2026-08-05.1'
+      v_player, v_session, v_current_lease, 'snake-rules-2026-08-05.2'
     );
     RAISE EXCEPTION 'settling run unexpectedly became abandonable';
   EXCEPTION WHEN OTHERS THEN

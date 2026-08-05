@@ -904,8 +904,8 @@ describe('SnakeGameLogic Genome v2 board mechanics', () => {
 
     const checkpointAt = Date.now();
     const checkpoint = original.exportCheckpoint(checkpointAt);
-    expect(SNAKE_RULES_VERSION).toBe('snake-rules-2026-08-05.1');
-    expect(checkpoint.rulesVersion).toBe('snake-rules-2026-08-05.1');
+    expect(SNAKE_RULES_VERSION).toBe('snake-rules-2026-08-05.2');
+    expect(checkpoint.rulesVersion).toBe('snake-rules-2026-08-05.2');
     expect(checkpoint.privateState.genomeV2Runtime?.targetProgress).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ circuitLegsCompleted: 1 }),
