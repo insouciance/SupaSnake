@@ -27,10 +27,10 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `4e51e817b7ceb802530c35ffb8399afaa6b2fc3a` — Player Evolution flag-on: the starter curriculum, WP-D reveals, WP-E clan handoff and account-safety fixes, and WP-F telemetry |
-| Current deployment | `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`supasnake-ibhhdbou5-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M` (`28d21f1`); same schema and rules version, but serves the 22-flag surface, so rolling back is itself a contract change and withdraws the curriculum mid-journey |
-| Engine rules version | `snake-rules-2026-08-05.1` |
+| Production behavior commit | `03d185a5976654c42fa33994ec294b04a381d055` — Wave-1 rules train: CYBER connectivity guarantee, 8 ± 2 relic cadence, food-wave and portal fairness |
+| Current deployment | `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`supasnake-obeb9b2ap-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`4e51e81`); same schema and 23-flag surface, but serves `snake-rules-2026-08-05.1`, so rolling back is itself a rules change |
+| Engine rules version | `snake-rules-2026-08-05.2` |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–068 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
@@ -40,7 +40,7 @@ Design references:
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `4e51e817b7ceb802530c35ffb8399afaa6b2fc3a` |
+| Canonical source | `main`; canonical health reports exact SHA `03d185a5976654c42fa33994ec294b04a381d055` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
@@ -81,6 +81,54 @@ retired pre-v2 application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Wave-1 rules train production evidence
+
+- Exact main SHA `03d185a5976654c42fa33994ec294b04a381d055` (PR 88), which also
+  carried the previous release record. Production workflow `31035732323` was
+  dispatched with `confirmation=DEPLOY`, `payments_mode=test` and
+  `expected_migrations=none`; it verified 18:39–18:55 UTC and deployed
+  18:56–19:03 UTC on 5 August 2026 as `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na`
+  (`supasnake-obeb9b2ap-josef-bells-projects.vercel.app`). The outgoing anchor
+  was `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` on `4e51e81`.
+- **Rules-only.** No migration: the dry run reported “Remote database is up to
+  date” and the plan was exactly `none`, so the hosted schema stays 001–068. The
+  public surface is unchanged at 23 flags with `contractHash` equal to
+  `declaredHash` at
+  `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`.
+- The cron definition hash
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf` is
+  unchanged; cron owner and every cron host name the new deployment and cron is
+  enabled. Probe `cohesive_release_read_only_v5` came back green on all 16
+  sentinels, including `settlementBoundsAligned` and
+  `geneEligibilityContractValid`.
+- `SNAKE_RULES_VERSION` is now `snake-rules-2026-08-05.2`, verified present in
+  the served chunk `2894-433978b3ede14d00.js` with `.1` absent from all 40
+  chunks. URL sanity: `/`, `/game` and `/lab` return 200; an unauthenticated
+  session start returns 401.
+- **What the bump does to a run in flight — state this precisely.** An active
+  run (its `start_request_id` set, its `simulation_rules_version` no longer
+  matching) resolves to phase `incompatible`, so `canContinue` is false and the
+  player is routed to recovery. It is **not** replayed under the old version;
+  describing it that way is wrong. Terminal outcomes stay `terminal` and
+  settling ones stay `settling` — both are excluded from `requiresAbandon` — so
+  earned value is never invalidated, and the migration-068 sweep settles them
+  unaided. Seamless continuation across a bump remains the open CE-6 item
+  (FM-12).
+- Player-visible behavior to QA: CYBER terrain never splits the reachable field
+  (a cell that would partition the free cells is skipped and laid later, while
+  unlimited inward ring progression is unchanged); a portal that cannot be drawn
+  becomes a debt retried until it can be placed rather than counting as met
+  unseen, and the debt survives a resume; the food wave no longer leaves a ghost
+  food rendered after it was consumed; and the relic cadence is 8 ± 2 foods
+  (6–10 inclusive, mean 8), which cuts build opportunities by food 42 from seven
+  to five as the ruled trade.
+- The starter-pool simulation gate passed 58/58 with the live cadence constant
+  wired in: a complete six-locus Genome still fits the ~48-food D1 median run at
+  the mean cadence, and PEO 4.4's three guaranteed trial appearances land by
+  food 24 at the mean and 30 worst case.
+- The INK & AMBER design release (PR 89 with follow-ups 90 and 91) is **not** in
+  this release and ships separately.
 
 ### Player Evolution flag-on production evidence
 
@@ -597,7 +645,7 @@ one sitting against a complete design rather than a series of partial reads.
 **D1 is closed.** CYBER and COSMIC use +1 normal growth throughout. PRIMAL uses
 +4 below modelled length 75, +3 below 96, +2 below 120, then +1. What remains
 open is threshold calibration from real PRIMAL play, not profile selection.
-Genome opportunities use their own deterministic 6 ± 2-food (4–8) clock,
+Genome opportunities use their own deterministic 8 ± 2-food (6–10) clock,
 independent of dynasty growth.
 
 Known before you start, so they are not reported as discoveries:
@@ -881,7 +929,7 @@ Start on desktop with keyboard controls.
 
 “Mutations” are now player-facing **genes** in Genome-capable runs.
 
-- [ ] Each ordinary 6 ± 2-food opportunity places one Gene relic (Patient doubles
+- [ ] Each ordinary 8 ± 2-food opportunity places one Gene relic (Patient doubles
       the sampled interval; Ascetic suppresses ordinary relics), independent of
       dynasty growth and distinct from food, with a legible 40-tick lifetime.
 - [ ] Collection alone freezes the engine and presents two neutral, readable,
