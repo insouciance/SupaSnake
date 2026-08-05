@@ -20,7 +20,13 @@
  * centre, which is paying for artwork and then deleting it.
  */
 .authoredBackground {
-  background-image: url('/textures/minimalistic_background_texture_of_space_1.png');
+  /*
+   * WebP, derived from the authored PNG at full 2048x2048 by
+   * `scripts/optimize-textures.mjs`. Same pixels, same crop, 2.1 MB -> 183 KB.
+   * A CSS background never passes through `next/image`, so before this the
+   * game screen handed every player the raw two-megabyte plate.
+   */
+  background-image: url('/textures/minimalistic_background_texture_of_space_1.webp');
   background-position: 52% 50%;
   background-size: cover;
   opacity: 0.62;

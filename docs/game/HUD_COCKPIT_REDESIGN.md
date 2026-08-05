@@ -238,9 +238,19 @@ hazard boundary.
 ### Player-authored background treatment
 
 The source artwork at
-`public/textures/minimalistic_background_texture_of_space_1.png` remains the
-canonical image. The public and source copies are currently checksum-identical;
-the redesign must not replace, repaint, or destructively recolor it.
+`assets/minimalistic_background_texture_of_space_1.png` remains the canonical
+image and is still byte-identical to the owner's original; the redesign must
+not replace, repaint, or destructively recolor it.
+
+What is SERVED is now a derived delivery format:
+`public/textures/minimalistic_background_texture_of_space_1.webp`, produced by
+`scripts/optimize-textures.mjs`. The derivative is **not resized** — same
+2048×2048, same crop, same pixels — so the fidelity condition in Performance
+budgets is met by construction, and the saving is format alone: **2,094,434 →
+183,090 bytes, a 91.3% reduction**. Before this, the plate reached every player
+uncompressed, because a CSS `background-image` never passes through
+`next/image`. Re-derive rather than re-author if the delivery format changes
+again.
 
 Its diagonal violet nebula and cyan/magenta star field become the visual world
 around the arena rather than a faint uniform watermark:
@@ -1050,7 +1060,10 @@ device in portrait and landscape.
 - Reuse the one existing 2048×2048 background; add no competing full-screen
   bitmap textures or runtime icon downloads. A derived delivery format is only
   allowed if measurement proves a loading win and the authored pixels/crop
-  remain visually faithful.
+  remain visually faithful. **Satisfied and exercised (LF-D):** WebP at the
+  same 2048×2048 and the same crop, 2,094,434 → 183,090 bytes. The condition
+  stands for any future derivation — measure first, and resize only where the
+  renderer provably cannot see the difference.
 - No full-screen blur/filter animation, animated star field, or continuous
   parallax.
 - Arena chassis adds no real-time lights, no additional shadow caster, and no

@@ -6278,7 +6278,8 @@ export default function GamePage() {
             <div
               className="absolute inset-0 pointer-events-none"
               style={{
-                backgroundImage: 'url(/textures/minimalistic_background_texture_of_space_1.png)',
+                backgroundImage:
+                  'url(/textures/minimalistic_background_texture_of_space_1.webp)',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 opacity: 0.12,

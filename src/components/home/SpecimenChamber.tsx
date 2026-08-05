@@ -990,9 +990,14 @@ class SpecimenFallbackBoundary extends Component<
 }
 
 function ChamberAtmosphere({ animate }: { animate: boolean }) {
+  // WebP derivatives of the owner's plates, produced by
+  // `scripts/optimize-textures.mjs` straight from the authored PNGs rather
+  // than from the JPEGs that shipped first, so there is no generation loss.
+  // Both are downscaled to 512: one is an alphaMap at 0.2 and the other a
+  // map at 0.07, and neither renders a pixel of the detail it was carrying.
   const [speed, paper] = useTexture([
-    '/textures/speed-lines.jpg',
-    '/textures/paper-fiber.jpg',
+    '/textures/speed-lines.webp',
+    '/textures/paper-fiber.webp',
   ]);
   const speedRef = useRef<THREE.Mesh>(null);
 
