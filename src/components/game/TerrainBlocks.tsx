@@ -11,6 +11,7 @@ import {
   type GenomeRuneEngravingStroke,
 } from './screen/gameRuneStrokes';
 import { getTerrainCellGeometry } from './screen/gameRenderGeometry';
+import { createInkHullMaterial, getToonGradientMap } from './screen/inkAmber';
 
 /**
  * One terrain physics primitive, one lifecycle, four causal signatures.
@@ -40,17 +41,24 @@ const SOLID_FOOTPRINT = 0.94;
 const SIGNATURE_HEIGHT = 0.04;
 
 const unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+// INK & AMBER, the amber law: ground becoming yours is the same amber as
+// banked yield, the Daily Take, and every primary action. A 3-unit shift off
+// the terrain amber that was already here - the grammar was right, it just
+// was not shared.
 const formingMaterial = new THREE.MeshBasicMaterial({
-  color: '#f2a640',
+  color: '#f2a03f',
   toneMapped: false,
 });
-const solidMaterial = new THREE.MeshStandardMaterial({
-  color: '#8292a0',
-  roughness: 0.9,
-  metalness: 0.03,
-  emissive: '#65717c',
-  emissiveIntensity: 0.18,
+// Solid terrain is a hazard, and at #8292a0 it was the lightest large object
+// on the board - the exact inverse of what it means. Slate deep + a hard ink
+// edge puts it back where the mascot's palette puts it: cool, heavy, behind.
+const solidMaterial = new THREE.MeshToonMaterial({
+  color: '#3f5060',
+  emissive: '#22303c',
+  emissiveIntensity: 0.5,
+  gradientMap: getToonGradientMap(),
 });
+const solidHullMaterial = createInkHullMaterial();
 const signatureMaterial = new THREE.MeshBasicMaterial({
   color: '#ffffff',
   toneMapped: false,
@@ -113,6 +121,7 @@ export interface TerrainBlocksProps {
 export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
   const formingRef = useRef<THREE.InstancedMesh>(null);
   const solidRef = useRef<THREE.InstancedMesh>(null);
+  const solidHullRef = useRef<THREE.InstancedMesh>(null);
   const signatureRef = useRef<THREE.InstancedMesh>(null);
 
   useEffect(() => {
@@ -254,6 +263,15 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
     markUpdated(forming);
     markUpdated(solid);
     markUpdated(signature);
+    // Ink hull: the identical solid instance set, copied rather than recomputed.
+    const solidHull = solidHullRef.current;
+    if (solidHull) {
+      (solidHull.instanceMatrix.array as Float32Array).set(
+        solid.instanceMatrix.array as Float32Array
+      );
+      solidHull.count = solidCount;
+      markUpdated(solidHull);
+    }
     if (signature.instanceColor) {
       signature.instanceColor.needsUpdate = true;
     }
@@ -267,10 +285,17 @@ export function TerrainBlocks({ terrain }: TerrainBlocksProps) {
         frustumCulled={false}
       />
       <instancedMesh
+        ref={solidHullRef}
+        args={[solidGeometry, solidHullMaterial, MAX_BLOCKS]}
+        frustumCulled={false}
+        renderOrder={-1}
+      />
+      <instancedMesh
         ref={solidRef}
         args={[solidGeometry, solidMaterial, MAX_BLOCKS]}
         frustumCulled={false}
         receiveShadow
+        castShadow
       />
       <instancedMesh
         ref={signatureRef}

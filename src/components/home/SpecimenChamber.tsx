@@ -146,13 +146,19 @@ const POSE_BOUNDS = (() => {
 // -----------------------------------------------------------------------------
 
 /** Portrait-local clones of the game's shared segment materials. The game's
- * cache is never mutated; one identical clone per dynasty+role lives here. */
-const heroMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
+ * cache is never mutated; one identical clone per dynasty+role lives here.
+ *
+ * The type FOLLOWS the game's material rather than restating it: the board and
+ * the portrait share one material profile by design (see below), so the
+ * portrait must never be the reason that profile cannot change. */
+type HeroMaterial = ReturnType<typeof getSnakeSegmentMaterial>;
+
+const heroMaterialCache = new Map<string, HeroMaterial>();
 
 function getHeroMaterial(
   dynasty: DynastyId,
   isHead: boolean
-): THREE.MeshStandardMaterial {
+): HeroMaterial {
   const key = `${dynasty}:${isHead ? 'head' : 'body'}`;
   let material = heroMaterialCache.get(key);
   if (!material) {
