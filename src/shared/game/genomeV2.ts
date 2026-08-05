@@ -4284,7 +4284,7 @@ export function genomeV2OfferInterval(
 }
 
 /**
- * Player-pulled relic cadence: deterministic 6 +/- 2 foods (4-8 inclusive).
+ * Player-pulled relic cadence: deterministic 8 +/- 2 foods (6-10 inclusive).
  * Opportunity identity is deliberately separate from offer identity: an
  * ignored relic reveals and consumes no candidates, but its next appearance
  * still follows a stable run-seed-frozen interval.

@@ -76,7 +76,7 @@ Items marked ⚙ are mechanically checkable (grep/test); the rest are reviewer r
       Research entrance renders the same free Genome Workbench; `/codex` is only
       a compatibility route and the Research Record remains subordinate.
 - [ ] **Genome interaction v2 (when touched).** Not touched, or the post-resolution
-      6 ± 2 cadence places a 40-tick relic without an automatic offer; ignore/
+      8 ± 2 cadence places a 40-tick relic without an automatic offer; ignore/
       expiry is not DECLINE/PASS/Bond, and foods eaten while live do not advance
       the next interval.
 - [ ] **Simple-first Loom (when touched).** Not touched, or the Loom begins neutral

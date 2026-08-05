@@ -53,7 +53,7 @@ history; where they conflict, this contract is authoritative.
   and camera shortcuts cannot leak through. BANK ends the run;
   non-terminal choices return to a deliberate tactical hold.
 - An ordinary Genome opportunity appears in the arena as a physical Gene relic
-  after a deterministic 6 ± 2 foods and lives for 40 resolved movement ticks.
+  after a deterministic 8 ± 2 foods and lives for 40 resolved movement ticks.
   Appearance and expiry are uninterrupted play, never an automatic offer or
   hold. Only deliberate collection creates the offer, rolls candidates, and
   opens the strategic dialog. The next interval begins at collection/expiry

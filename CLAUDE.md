@@ -25,8 +25,8 @@ Cite it for what shipped; as work packages land it goes stale — trust code ove
 recorded in Constitution §15). Twenty stale design documents were deleted on
 2026-07-25; git has the history; do not implement from any of it.
 
-Current Genome behavior is governed by Constitution v1.13 and
-`docs/game/TACTICAL_GENOME_V2.md`: ordinary 6 ± 2-food opportunities place a
+Current Genome behavior is governed by Constitution v1.15 and
+`docs/game/TACTICAL_GENOME_V2.md`: ordinary 8 ± 2-food opportunities place a
 40-tick physical relic, only collection creates an offer, the Loom is
 simple-first with per-offer UNFOLD DETAILS, and one free Genome Workbench is the
 only player-facing Research instrument. `/codex` remains a compatibility route,

@@ -38,7 +38,7 @@ thrilling, but ruled that their normal body growth must remain classic **+1**.
 CYBER owns speed pressure; COSMIC owns route/space pressure. PRIMAL owns the
 degressive body-pressure curve: +4 below modelled length 75, +3 below 96, +2
 below 120, then +1. Gene cadence is no longer coupled to any of those shapes:
-offers use 6 ± 2 foods (4–8), doubled by Patient, so skipping a poor offer does
+offers use 8 ± 2 foods (6–10), doubled by Patient, so skipping a poor offer does
 not make a significant build practically unreachable.
 
 The Growth Lab selector and rollout code are retired. Growth leaves setup and

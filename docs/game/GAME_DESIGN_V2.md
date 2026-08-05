@@ -13,7 +13,7 @@ where they overlapped. The current-rules notice below now controls that boundary
 `TACTICAL_GENOME_V2.md` now govern all current Genome interaction, ladder,
 continuity, and Research rules. The older Buildcraft and Mutation Food sections
 remain historical foundations only where they agree. In current v2, a deterministic
-6 ± 2-food opportunity places a physical relic for 40 resolved movement ticks;
+8 ± 2-food opportunity places a physical relic for 40 resolved movement ticks;
 only collection creates an offer and rolls candidates. Collection or expiry starts
 the next interval, and food eaten while the relic is live does not count toward it.
 Ignore/expiry reveals nothing and is not DECLINE, PASS, or a Bond. The Loom opens
@@ -287,7 +287,7 @@ mutations, ~10 in the launch pool. Every mutation is an offer **with a cost**
 
 ### 5.1 Spawn & choice rules
 
-- **Spawn:** once per `6 ± 2` foods (first eligible at food 4–8; Patient doubles
+- **Spawn:** once per `8 ± 2` foods (first eligible at food 6–10; Patient doubles
   the sampled interval), never
   while another mutation food is on the board. **Despawn: 40 ticks.**
   Distinct visual: a slow-pulsing violet double-helix voxel, unmistakable

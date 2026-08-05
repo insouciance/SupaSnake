@@ -1,6 +1,20 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.14 · amended 4 August 2026
+**Version:** 1.15 · amended 5 August 2026
+**v1.15 amendment (explicit owner ruling, 5 August 2026 — a recording, not a
+design change):** the ordinary Gene relic cadence is **8 ± 2 foods (6–10
+inclusive, mean 8)**, not the 6 ± 2 (4–8) this document carried from v1.13. At
+six the relic arrived while the previous decision was still being played out, so
+a run read as a queue of offers rather than a build with consequences between
+them; eight leaves room for the pick to matter before the next relic lands. The
+validator floor stays **4**, because the auto-offer rollback path still opens its
+first two offers after four foods. The **portal schedule is untouched** — the
+carry gamble is core design and its spacing is not a pacing dial. This ruling
+already shipped in the Wave-1 rules train (`snake-rules-2026-08-05.2`); the
+amendment exists because the design authority had drifted from the shipped
+`GENE_OFFER_CADENCE`, and the code is the thing being reconciled to. Recorded as
+row 37 in §15.
+
 **v1.14 amendment (explicit owner ruling, 3 August 2026; rulings extended
 4 August 2026):** the Genome's full current-ruleset catalog remains visible from
 run one, but a new account no longer receives the complete catalog in live
@@ -44,7 +58,8 @@ the trade-off is recorded in §15.
 
 **v1.13 amendment (explicit owner ruling, 3 August 2026):** ordinary Genome
 opportunities return to the player-pulled board rhythm. A deterministic physical Gene
-relic appears after **6 ± 2 foods (4–8)**, remains for **40 resolved movement
+relic appears after **8 ± 2 foods (6–10)** (v1.13 ruled 6 ± 2; the interval is
+superseded by v1.15 row 37, the rest of this block stands), remains for **40 resolved movement
 ticks**, and opens the Tactical Loom only when the snake deliberately collects
 it. Ignoring or outlasting a relic is not DECLINE or PASS: it reveals no
 candidates, advances no offer/reducer event, and mints no Bond. It advances only
@@ -304,7 +319,8 @@ Rule 6; active descendants and open runs block it.
 runs grow **+1 per food throughout**; their pressure remains speed and spatial
 restriction, respectively. PRIMAL owns the body-pressure profile: **+4 while
 modelled length is below 75, +3 below 96, +2 below 120, then +1**. Gene offers
-are a separate clock at **6 ± 2 foods (4–8)**, doubled by Patient. Growth is
+are a separate clock at **8 ± 2 foods (6–10)** (v1.4 ruled 6 ± 2; interval
+superseded by v1.15 row 37), doubled by Patient. Growth is
 event information, not permanent telemetry: announce it non-interactively at
 run opening and whenever it changes; CYBER speed changes use the same grammar.
 The Growth Lab selector and its rollout flag no longer govern new runs.
@@ -1993,6 +2009,7 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 34 | **Genome v2 cadence decisions open automatically after food, and the complete affected reaction map is always expanded** (v1.9–v1.12 implementation) | **v1.13:** ordinary cadence opportunities are 40-tick physical relics at deterministic 6 ± 2-food intervals; only collection creates the offer, reveals candidates, and freezes. Ignore/expiry is not DECLINE/PASS. The Loom starts neutral with two equal, Strain-badged, salient choices and exposes the affected reaction map only through per-offer UNFOLD DETAILS; Recode remains forced-exact. Automatic-offer sessions retain interaction v1 through a start-negotiated sub-version. Explicit owner ruling, 3 August 2026; cooling period waived | The guarantee that every cadence opportunity becomes a decision and every affected path occupies the first live view. Gained: uninterrupted Snake flow, meaningful spatial pursuit, beginner-legible first read, deliberate strategy breaks, and safe rolling-deploy continuity without weakening Research depth |
 | 35 | **Codex and Workbench coexist as paired surfaces of one free Research instrument** (v1.10) | **v1.13:** one free Genome Workbench is the only player-facing Research destination. `/codex` remains a compatibility route into it; personal discovery, Genome Weaver progress, world-first history, and legacy records are a subordinate Research Record, not a duplicate Archive/Codex choice or rules catalog. The five-rune Home relic is contextual and non-primary. Explicit owner ruling, 3 August 2026; cooling period waived | The dedicated archive-browsing surface and an explicit Codex-versus-Workbench choice. Gained: one coherent manipulation-first destination, lower information-architecture duplication and mobile load, and preserved personal and historical records |
 | 36 | **Every Gene in the active ruleset roster is eligible for a new account's live offers from its first run, and the Dynasty Signature is withheld from offers until Apex unlocks at ten banked runs** (`genomeV2.ts:3950-3951`) | **v1.14:** the full catalog stays transparent, while a server-authored **seven-Gene** Dynasty starter pool — Signature included from run one — expands through chosen contextual trials resolved in ordinary play. The `apexesUnlocked` offer filter is deleted; Apex *tier activation* keeps its ramp. Existing use grants migration credit and graduated veterans retain the full roster. Explicit owner ruling, 3 August 2026, extended 4 August 2026; cooling period waived | Immediate universal live-choice parity and unrestricted first-session experimentation, plus the late-Signature reveal as a Mastery reward. Gained: a learnable vocabulary, player-chosen sequencing, Dynasty identity present in the first run, and a stronger bridge from Snake competence to Genome mastery. The permanent guardrails are horizontal—not power—ordering, visible future depth, no paid acceleration, active-run continuity, and simulation proof that full eligibility is not strategically worse than an earlier pool. The price of the seventh Gene is a slightly wider first-run vocabulary than the six the design prose imagined; the price of six would have been a Genome that can never fill its sixth locus |
+| 37 | **Ordinary Gene relics arrive on a deterministic 6 ± 2-food interval (4–8)** (v1.13, restated at §4 and §17.28) | **v1.15:** the interval is **8 ± 2 foods (6–10 inclusive, mean 8)**; the validator floor stays 4 because the auto-offer rollback path still opens its first two offers after four foods. Everything else about the relic is unchanged — 40 resolved movement ticks, collection-only reveal, ignore/expiry is not DECLINE/PASS, Patient still doubles the sampled interval, Ascetic still suppresses. The **portal schedule is explicitly untouched**: the carry gamble is core design and its spacing is not a pacing dial. Explicit owner ruling, 5 August 2026, shipped in the Wave-1 rules train (`snake-rules-2026-08-05.2`); cooling period waived, and this row is the reconciliation of the document to rules that were already live | Roughly two build opportunities per long run (about seven by food 42 became about five), and the denser early-run buildcraft rhythm that made a Genome fill faster. Gained: room to play a pick out before the next relic lands, so a run reads as a build with consequences rather than a queue of offers. Recorded rather than designed here: the ruling was made and shipped before this amendment, which is the failure mode the amendment closes — the design authority must not lag the ruleset |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):
@@ -2181,7 +2198,8 @@ deliberately undecided pending data.
     run ends within ~5 foods, the window is too short to matter and the revive is
     decorative).
 28. **The re-basing table** (v1.4; interaction ruled 3 August 2026). Gene opportunities use
-    a dynasty-independent **6 ± 2-food interval, minimum 4**; Patient doubles the
+    a dynasty-independent **8 ± 2-food interval (6–10), minimum 4** (v1.15 row 37;
+    v1.4–v1.14 read 6 ± 2); Patient doubles the
     sampled interval. At each due opportunity a physical relic is placed on an
     honest reachable/survivable cell for 40 movement ticks. Only collection rolls
     and reveals candidates. Expiry advances the opportunity cursor but is not an

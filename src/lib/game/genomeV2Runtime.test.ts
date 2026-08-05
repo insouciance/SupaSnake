@@ -240,7 +240,7 @@ describe('GenomeV2Runtime deterministic decisions', () => {
     expect(runtime.openCadenceOffer(1, firstAt - 1)).toBeNull();
 
     // The relic may remain visible while ordinary food is collected. The
-    // next 6 +/- 2 interval begins only when that relic is deliberately
+    // next 8 +/- 2 interval begins only when that relic is deliberately
     // collected, matching the historical physical-relic cadence.
     const collectedAt = firstAt + 3;
     const offer = runtime.openCadenceOffer(2, collectedAt);
