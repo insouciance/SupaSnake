@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { WorkbenchView } from '@/components/workbench/WorkbenchView';
+import { CurriculumHint } from '@/components/engagement/CurriculumHint';
 import { LegacyGenomeArchive } from '@/components/game/genome/LegacyGenomeArchive';
 import { GENOME_V2_ENABLED } from '@/lib/features/genomeV2';
 import { WORKBENCH_V1_ENABLED } from '@/lib/features/workbench';
@@ -188,6 +189,13 @@ function ResearchShell({ studyRef = null }: { studyRef?: string | null }) {
             </Link>
           </div>
         </header>
+
+        {/*
+          The guided reveal's one banner (WP-D). It renders only for an open
+          server-held invitation and only here — the destination **Show me**
+          routes to — so nothing new can appear over a live run.
+        */}
+        <CurriculumHint />
 
         <HouseRules />
 

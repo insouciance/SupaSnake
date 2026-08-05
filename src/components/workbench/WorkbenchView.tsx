@@ -42,6 +42,8 @@ import { normalizeDynastyName, type DynastyName } from '@/shared/game/rulesets';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
 import { parseGenomeV2RunRecord } from '@/components/game/genome/genomeV2ResultsAdapter';
 import { genomeV2PresentationFormat } from '@/components/game/genome/genomeV2PresentationAdapter';
+import { CurriculumTrials } from './CurriculumTrials';
+import { useCurriculum, type CurriculumHandle } from './useCurriculum';
 import styles from './WorkbenchView.module.css';
 
 interface PanelSnake {
@@ -411,9 +413,12 @@ function AuthoritativeRunStudy({
 export function ResearchTable({
   plan,
   onPlan,
+  curriculum,
 }: {
   plan: GenomeV2ExperimentPlan;
   onPlan: (next: GenomeV2ExperimentPlan) => void;
+  /** Optional eligibility annotation (WP-D). Absent renders today's palette. */
+  curriculum?: CurriculumHandle;
 }) {
   const [lens, setLens] = useState<GenomeV2ResearchLens>('yield');
   const [focusId, setFocusId] = useState<GenomeV2ActiveGeneId | null>(null);
@@ -470,6 +475,13 @@ export function ResearchTable({
 
   const activeFacts = reading.lenses[lens];
   const focusedStrains = focusedGene?.strains ?? [];
+  const annotations = useMemo(
+    () =>
+      new Map(
+        (curriculum?.state?.genes ?? []).map((entry) => [entry.geneId, entry])
+      ),
+    [curriculum?.state?.genes]
+  );
 
   return (
     <div className={styles.table} data-testid="workbench-research-table">
@@ -564,6 +576,7 @@ export function ResearchTable({
         <div className={styles.geneRail} data-testid="workbench-gene-palette">
           {reading.availableGenes.map((geneId) => {
             const gene = GENOME_V2_GENES[geneId];
+            const annotation = annotations.get(geneId) ?? null;
             return (
               <button
                 key={geneId}
@@ -575,6 +588,7 @@ export function ResearchTable({
                   setOpenSpliceId(null);
                 }}
                 data-testid={`workbench-gene-${geneId}`}
+                data-eligibility={annotation?.state}
                 style={{ '--gene-strain': STRAINS[gene.strains[0]].color } as CSSProperties}
               >
                 <i aria-hidden="true"><GeneGlyph id={geneId} /></i>
@@ -585,11 +599,26 @@ export function ResearchTable({
                     strains={gene.strains}
                     testIdPrefix={`workbench-gene-${geneId}`}
                   />
+                  {/*
+                    ANNOTATION, NOT A GATE. Every Gene on this rail stays
+                    focusable, threadable and simulatable whatever this says;
+                    the label reports where it may appear in a REAL run's Pods
+                    and the one action that changes that (PEO §4.2, boundary 2).
+                  */}
+                  {annotation ? (
+                    <em
+                      className={styles.geneEligibility}
+                      data-testid={`workbench-gene-${geneId}-eligibility`}
+                    >
+                      {annotation.nextStep}
+                    </em>
+                  ) : null}
                 </span>
               </button>
             );
           })}
         </div>
+        {curriculum ? <CurriculumTrials curriculum={curriculum} /> : null}
       </section>
 
       {focusedGene ? (
@@ -889,6 +918,11 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
     };
   }, [isAuthenticated, ownerId, studyRef, token]);
 
+  // Eligibility annotation for the Dynasty currently on the table. Null under
+  // flag-off, signed out, or a failed read — the instrument stays free either
+  // way, and nothing below is gated on it.
+  const curriculum = useCurriculum(plan.dynasty, token);
+
   const ownedRoster = useMemo(() => compactRoster(panel?.snakes ?? []), [panel?.snakes]);
   const roster = usesPublicResearch || ownedRoster.length === 0
     ? PUBLIC_RESEARCH_SPECIMENS
@@ -965,7 +999,7 @@ export function GenomeV2WorkbenchView({ studyRef = null }: WorkbenchViewProps = 
 
       {snake ? (
         <div id="new-experiment">
-          <ResearchTable plan={plan} onPlan={setPlan} />
+          <ResearchTable plan={plan} onPlan={setPlan} curriculum={curriculum} />
         </div>
       ) : (
         <div className={styles.loading}>The Workbench could not form a Dynasty specimen.</div>

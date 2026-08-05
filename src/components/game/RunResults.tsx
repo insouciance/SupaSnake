@@ -100,6 +100,12 @@ export interface RunResultsProps {
   settlementPending: boolean;
   nextAction: ResultsNextAction;
   onNextAction: () => void;
+  /**
+   * **Not now** for an invitation that carries an attention id (WP-D). The
+   * transition is made server-side by the handler; this component never
+   * records a dismissal of its own.
+   */
+  onDeclineNextAction?: () => void;
   onReplay: () => void;
   onSetup: () => void;
   replayPending: boolean;
@@ -856,6 +862,7 @@ export function RunResults({
   settlementPending,
   nextAction,
   onNextAction,
+  onDeclineNextAction,
   onReplay,
   onSetup,
   replayPending,
@@ -1117,7 +1124,7 @@ export function RunResults({
         </div>
 
         {nextAction.href ? (
-          <Link href={nextAction.href} data-testid="results-next-action" data-next-action={nextAction.id} className="panel-glow [--glow:#22d3ee] mx-auto flex min-h-[44px] max-w-lg items-center justify-between gap-3 px-5 py-4 text-left">
+          <Link href={nextAction.href} onClick={onNextAction} data-testid="results-next-action" data-next-action={nextAction.id} className="panel-glow [--glow:#22d3ee] mx-auto flex min-h-[44px] max-w-lg items-center justify-between gap-3 px-5 py-4 text-left">
             <span><span className="block heading-display text-lg text-[#7df9ff]">{nextAction.label}</span><span className="block font-body text-sm text-beige/75">{nextAction.description}</span></span>
             <IconArrowRight size={20} className="shrink-0 text-[#7df9ff]" />
           </Link>
@@ -1127,6 +1134,25 @@ export function RunResults({
             <IconArrowRight size={20} className="shrink-0 text-[#7df9ff]" />
           </button>
         )}
+
+        {/*
+          The decline half of §5's INVITATION. It is rendered only for an
+          invitation the server can actually close — one carrying an attention
+          id — so Layer 3 still offers exactly one RECOMMENDED action (§12.2)
+          with a way to say no beside it, never two competing invitations.
+          Declining hides nothing: the Gene is already in the player's Pods.
+        */}
+        {nextAction.attentionId && onDeclineNextAction ? (
+          <button
+            type="button"
+            onClick={onDeclineNextAction}
+            data-testid="results-next-action-decline"
+            data-next-action-decline={nextAction.id}
+            className="mx-auto mt-2 flex min-h-[44px] items-center justify-center px-5 font-body text-sm text-beige/60 transition-colors hover:text-bone-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cosmic"
+          >
+            {nextAction.declineLabel ?? 'Not now'}
+          </button>
+        ) : null}
       </section>
     </div>
   );

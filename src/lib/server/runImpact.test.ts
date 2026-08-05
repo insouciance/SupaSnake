@@ -1,5 +1,6 @@
 import {
   buildRunImpactEnvelope,
+  insertCurriculumAttention,
   isMissingRunImpactInfra,
   loadRunImpactEnvelope,
   persistRunImpactEnvelope,
@@ -27,6 +28,8 @@ const base = {
   codex: null,
   signal: null,
   clan: null,
+  bankedRunsBefore: null,
+  curriculum: null,
 };
 
 describe('Career Spine run impact envelope', () => {
@@ -272,5 +275,176 @@ describe('run impact durability results', () => {
       envelope()
     );
     expect(persisted).toMatchObject({ status: 'persisted', impact: envelope() });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WP-D — the first BANK and the curriculum reveal (PEO §3.1, §4.4, §5)
+// ---------------------------------------------------------------------------
+
+describe('first-BANK recognition beat', () => {
+  it('plays once, on the first validated BANK', () => {
+    const envelope = buildRunImpactEnvelope({ ...base, bankedRunsBefore: 0 });
+    const beat = envelope.impacts.find(
+      (impact) => impact.kind === 'first_extraction'
+    );
+    expect(beat).toMatchObject({
+      pillar: 'mastery',
+      significance: 'milestone',
+      headline: 'First BANK secured',
+      detail: 'You left with the run instead of losing it. That is the whole game.',
+    });
+    expect(envelope.featuredImpactKeys).toContain(beat?.key);
+  });
+
+  it('creates no attention row of its own', () => {
+    // `persist_run_impact_envelope` only mints recognition for a milestone
+    // that carries BOTH a destination and an artifactRef. A first BANK is a
+    // beat, not a badge — the next thing this player needs is the next run.
+    const beat = buildRunImpactEnvelope({
+      ...base,
+      bankedRunsBefore: 0,
+    }).impacts.find((impact) => impact.kind === 'first_extraction');
+    expect(beat?.destination).toBeUndefined();
+    expect(beat?.artifactRef).toBeUndefined();
+  });
+
+  it('is silent on a second bank, a crash, an invalid run, and an unstamped run', () => {
+    const cases = [
+      { ...base, bankedRunsBefore: 1 },
+      { ...base, bankedRunsBefore: 0, extracted: false, died: true },
+      { ...base, bankedRunsBefore: 0, validated: false },
+      { ...base, bankedRunsBefore: null },
+    ];
+    for (const input of cases) {
+      expect(
+        buildRunImpactEnvelope(input).impacts.some(
+          (impact) => impact.kind === 'first_extraction'
+        )
+      ).toBe(false);
+    }
+  });
+});
+
+describe('curriculum unlock beat', () => {
+  const unlocked = () =>
+    buildRunImpactEnvelope({ ...base, curriculum: { geneId: 'coilkeeper' } });
+
+  it('reaches the Victory Lap and the Chronicle as a milestone', () => {
+    const envelope = unlocked();
+    const beat = envelope.impacts.find((impact) => impact.kind === 'gene_unlocked');
+    expect(beat).toMatchObject({
+      key: 'curriculum:gene:coilkeeper',
+      pillar: 'discovery',
+      significance: 'milestone',
+      headline: 'Loop Trap joined your Power Pods',
+      metadata: { geneId: 'coilkeeper' },
+    });
+    expect(envelope.featuredImpactKeys).toContain('curriculum:gene:coilkeeper');
+  });
+
+  it('carries no destination, so no undismissable recognition row is minted', () => {
+    // Decision 14: the INVITATION must be an `action` row, because
+    // `recognition_never_action_terminal` forbids the terminal states a
+    // **Not now** needs. Keeping the beat destination-less is what stops the
+    // settlement RPC from writing a competing recognition row for the same
+    // lesson — and stops it becoming a second pointer via recommendedAction.
+    const envelope = unlocked();
+    const beat = envelope.impacts.find((impact) => impact.kind === 'gene_unlocked');
+    expect(beat?.destination).toBeUndefined();
+    expect(beat?.artifactRef).toBeUndefined();
+    expect(envelope.recommendedAction).toBeNull();
+  });
+
+  it('promotes at most one Gene per run', () => {
+    expect(
+      unlocked().impacts.filter((impact) => impact.kind === 'gene_unlocked')
+    ).toHaveLength(1);
+  });
+
+  it('is absent with no curriculum on the run (flag off)', () => {
+    expect(
+      buildRunImpactEnvelope(base).impacts.some(
+        (impact) => impact.kind === 'gene_unlocked'
+      )
+    ).toBe(false);
+  });
+
+  it('produces a byte-identical envelope when both WP-D inputs are absent', () => {
+    // The flag-off proof for the receipt itself: a run with no curriculum
+    // stamp serializes exactly the bytes it serialized before WP-D.
+    const withoutFields = buildRunImpactEnvelope({
+      ...base,
+      bankedRunsBefore: null,
+      curriculum: null,
+    });
+    const legacy = buildRunImpactEnvelope({
+      ...base,
+      bankedRunsBefore: null,
+      curriculum: null,
+      extracted: true,
+    });
+    expect(JSON.stringify(withoutFields)).toBe(JSON.stringify(legacy));
+    expect(withoutFields.impacts.map((impact) => impact.kind)).toEqual([
+      'lineage_run',
+    ]);
+  });
+});
+
+describe('curriculum attention row', () => {
+  function insertClient(result: { error: unknown }) {
+    const insert = jest.fn(async () => result);
+    return { client: { from: jest.fn(() => ({ insert })) }, insert };
+  }
+
+  it('writes a dismissible action row at the Workbench (decision 14)', async () => {
+    const { client, insert } = insertClient({ error: null });
+    await expect(
+      insertCurriculumAttention(
+        client as never,
+        'player-1',
+        base.sessionId,
+        'coilkeeper'
+      )
+    ).resolves.toBe(true);
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        player_id: 'player-1',
+        source_type: 'curriculum',
+        source_id: base.sessionId,
+        attention_key: 'gene:coilkeeper',
+        attention_kind: 'action',
+        destination: 'codex',
+        artifact_ref: 'gene:coilkeeper',
+      })
+    );
+    const written = insert.mock.calls[0][0] as Record<string, string>;
+    expect(written.attention_kind).not.toBe('recognition');
+    expect(written.headline.length).toBeLessThanOrEqual(160);
+  });
+
+  it('treats a replayed settlement as an invitation already open', async () => {
+    const { client } = insertClient({ error: { code: '23505', message: 'duplicate key' } });
+    await expect(
+      insertCurriculumAttention(client as never, 'p', base.sessionId, 'coilkeeper')
+    ).resolves.toBe(true);
+  });
+
+  it('never fails a settlement when the invitation cannot be written', async () => {
+    const { client } = insertClient({
+      error: { code: '08006', message: 'connection failure' },
+    });
+    await expect(
+      insertCurriculumAttention(client as never, 'p', base.sessionId, 'coilkeeper')
+    ).resolves.toBe(false);
+
+    const thrown = {
+      from: jest.fn(() => {
+        throw new Error('offline');
+      }),
+    };
+    await expect(
+      insertCurriculumAttention(thrown as never, 'p', base.sessionId, 'coilkeeper')
+    ).resolves.toBe(false);
   });
 });

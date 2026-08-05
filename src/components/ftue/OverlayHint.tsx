@@ -33,9 +33,19 @@ interface OverlayHintProps {
   id: string;
   /** Hint text */
   message: string;
+  /**
+   * Called when the player closes the hint.
+   *
+   * The memory-only `Set` above still keeps the banner from reappearing within
+   * the page's lifetime, but it is a render guard, not a ledger: a hint whose
+   * state is real player progress (WP-D's curriculum invitation) passes this
+   * callback and records the close SERVER-side. Nothing here writes browser
+   * storage, and nothing should.
+   */
+  onDismiss?: () => void;
 }
 
-export function OverlayHint({ id, message }: OverlayHintProps) {
+export function OverlayHint({ id, message, onDismiss }: OverlayHintProps) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -45,6 +55,7 @@ export function OverlayHint({ id, message }: OverlayHintProps) {
   const handleDismiss = () => {
     dismissHint(id);
     setVisible(false);
+    onDismiss?.();
   };
 
   if (!visible) return null;

@@ -10,7 +10,12 @@ import {
   type EnergyStatus,
 } from '@/shared/game/energyEnvelope';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { InfoPopover } from '@/components/ui/InfoPopover';
+import { describe as describeLexiconEntry } from '@/shared/game/lexicon';
 import { formatAmount } from '@/shared/format/amount';
+
+/** The Energy Commitment rule, from the one registry that owns its numbers. */
+const ENERGY_LEXICON = describeLexiconEntry('mechanic', 'charges');
 
 interface EnergyCommitmentSelectorProps {
   energy: EnergyStatus | null;
@@ -79,7 +84,26 @@ export function EnergyCommitmentSelector({
             <span className="h-4 w-4"><StrainGlyph id="UMBRA" /></span>
           </span>
           <div>
-            <p className="heading-display text-sm text-rarity-legendary">Energy reactor</p>
+            {/*
+              The one control that spends a non-replaceable resource explains
+              itself on tap (WP-D). Its words are the lexicon's, so recovery
+              cadence, the lean-run share and "Energy cannot be bought or
+              gifted" are stated once and cannot drift between surfaces.
+            */}
+            {ENERGY_LEXICON ? (
+              <InfoPopover
+                title={ENERGY_LEXICON.name}
+                effect={ENERGY_LEXICON.effect}
+                cost={ENERGY_LEXICON.cost}
+                label="Energy Commitment: what it does"
+                testId="energy-commitment"
+                className="min-h-[44px] heading-display text-sm text-rarity-legendary underline decoration-dotted underline-offset-4"
+              >
+                Energy reactor
+              </InfoPopover>
+            ) : (
+              <p className="heading-display text-sm text-rarity-legendary">Energy reactor</p>
+            )}
             <p className="mt-0.5 hidden font-body text-xs text-beige/65 sm:block">Choose how much this run carries.</p>
           </div>
         </div>

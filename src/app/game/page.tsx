@@ -153,8 +153,11 @@ import { useCodexStore } from '@/lib/stores/codexStore';
 import {
   NOTIFICATION_TARGETS,
   requestAttentionRefresh,
+  transitionServerNotification,
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
+import { openCurriculumInvitation } from '@/lib/game/curriculumAttention';
+import { PLAYER_EVOLUTION_ENABLED } from '@/lib/features/playerEvolution';
 import {
   consumeLaunchHandoff,
   type GameSessionStartPayload,
@@ -5119,6 +5122,24 @@ export default function GamePage() {
     }
   }, [dailyTake]);
 
+  // ---------------------------------------------------------------------
+  // The curriculum INVITATION (WP-D, PEO §5).
+  // ---------------------------------------------------------------------
+  // Read from synced server attention state, never from this settlement's
+  // response: that is what makes **Not now** hold across devices and reloads
+  // (boundary 9). `requestAttentionRefresh()` already runs on every settled
+  // impact, so the row created by settlement is in the store by the time
+  // Results renders — and if it is not yet, the invitation simply appears on
+  // the next sync rather than being invented here.
+  const serverNotifications = useNotificationStore((state) => state.notifications);
+  const curriculumInvite = useMemo(
+    () =>
+      PLAYER_EVOLUTION_ENABLED && CAREER_SPINE_V1_ENABLED
+        ? openCurriculumInvitation(serverNotifications)
+        : null,
+    [serverNotifications]
+  );
+
   // Layer 3's single recommended next action, when it opens a modal rather
   // than navigating.
   const resultsNextAction = useMemo(
@@ -5133,9 +5154,11 @@ export default function GamePage() {
         impactAction: CAREER_SPINE_V1_ENABLED
           ? runImpact?.recommendedAction ?? null
           : null,
+        curriculumReveal: curriculumInvite,
       }),
     [
       codexDiscoveries.length,
+      curriculumInvite,
       endReason,
       isAnonymous,
       lastRunFree,
@@ -5155,10 +5178,38 @@ export default function GamePage() {
     [settledYieldBreakdown]
   );
 
+  /**
+   * Move a server-owned invitation to a terminal state.
+   *
+   * `resolved` is **Show me** taken (the player is on their way to the
+   * Workbench) and `dismissed` is **Not now**. Both are PATCHes to
+   * `/api/progression/attention`; a failure leaves the row open, which is the
+   * safe direction — the invitation reappears rather than vanishing unheard.
+   */
+  const transitionCurriculumInvite = useCallback(
+    (transition: 'resolved' | 'dismissed') => {
+      const token = sessionRef.current?.access_token;
+      const attentionId = resultsNextAction.attentionId;
+      if (!token || !attentionId) return;
+      void transitionServerNotification(attentionId, transition, token).catch(
+        (error) =>
+          console.error('Curriculum invitation transition failed:', error)
+      );
+    },
+    [resultsNextAction.attentionId]
+  );
+
   const handleResultsNextAction = useCallback(() => {
     if (resultsNextAction.id === 'save-progress') setShowSaveProgress(true);
     if (resultsNextAction.id === 'claim-handle') setShowHandleClaim(true);
-  }, [resultsNextAction.id]);
+    if (resultsNextAction.id === 'curriculum-reveal') {
+      transitionCurriculumInvite('resolved');
+    }
+  }, [resultsNextAction.id, transitionCurriculumInvite]);
+
+  const handleDeclineResultsNextAction = useCallback(() => {
+    transitionCurriculumInvite('dismissed');
+  }, [transitionCurriculumInvite]);
 
   // ---------------------------------------------------------------------
   // EVENT-ONLY RUN RATES.
@@ -6481,6 +6532,7 @@ export default function GamePage() {
                   settlementPending={settlementSecuredPending}
                   nextAction={resultsNextAction}
                   onNextAction={handleResultsNextAction}
+                  onDeclineNextAction={handleDeclineResultsNextAction}
                   onReplay={handleReplay}
                   onSetup={handleOpenSetup}
                   replayPending={isStarting}
