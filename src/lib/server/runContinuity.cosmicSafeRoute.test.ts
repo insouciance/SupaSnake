@@ -207,18 +207,18 @@ describe('COSMIC Genome wave reachability', () => {
     });
     game.activatePrepared(STARTED_AT);
 
-    while (game.getSimulationTick() < 626) advanceOneTick(game);
+    while (game.getSimulationTick() < 620) advanceOneTick(game);
     const beforeState = game.getState();
-    expect(beforeState.foodEaten).toBe(78);
-    expect(beforeState.snake[0]).toMatchObject({ x: 14, z: 0 });
+    expect(beforeState.foodEaten).toBe(77);
+    expect(beforeState.snake[0]).toMatchObject({ x: 12, z: 4 });
     expect(beforeState.foods).toHaveLength(1);
-    expect(beforeState.foods[0]).toMatchObject({ x: 13, z: 0 });
+    expect(beforeState.foods[0]).toMatchObject({ x: 11, z: 4 });
     const beforeWave = validateRunCheckpoint(
-      game.exportCheckpoint(STARTED_AT + 626 * COSMIC_SPEED_MS),
+      game.exportCheckpoint(STARTED_AT + 620 * COSMIC_SPEED_MS),
       {
         manifest,
         startedAt: new Date(STARTED_AT).toISOString(),
-        now: STARTED_AT + 626 * COSMIC_SPEED_MS,
+        now: STARTED_AT + 620 * COSMIC_SPEED_MS,
         previous: opening,
       }
     );
@@ -228,7 +228,7 @@ describe('COSMIC Genome wave reachability', () => {
     // server could never replay, producing the repeated checkpoint 400 loop.
     advanceOneTick(game);
     const wave = game.getState();
-    expect(wave.foodEaten).toBe(79);
+    expect(wave.foodEaten).toBe(78);
     expect(wave.foods).toHaveLength(5);
     const activeTargets = Object.values(wave.genomeV2?.targets ?? {}).filter(
       (target) =>
@@ -253,17 +253,17 @@ describe('COSMIC Genome wave reachability', () => {
     }
 
     const acceptedWave = validateRunCheckpoint(
-      game.exportCheckpoint(STARTED_AT + 627 * COSMIC_SPEED_MS),
+      game.exportCheckpoint(STARTED_AT + 621 * COSMIC_SPEED_MS),
       {
         manifest,
         startedAt: new Date(STARTED_AT).toISOString(),
-        now: STARTED_AT + 627 * COSMIC_SPEED_MS,
+        now: STARTED_AT + 621 * COSMIC_SPEED_MS,
         previous: beforeWave,
       }
     );
-    expect(acceptedWave.state.genomeV2?.foodCount).toBe(79);
+    expect(acceptedWave.state.genomeV2?.foodCount).toBe(78);
 
-    while (game.getState().foodEaten === 79) advanceOneTick(game);
+    while (game.getState().foodEaten === 78) advanceOneTick(game);
     const successorTick = game.getSimulationTick();
     const acceptedSuccessor = validateRunCheckpoint(
       game.exportCheckpoint(
@@ -276,8 +276,8 @@ describe('COSMIC Genome wave reachability', () => {
         previous: acceptedWave,
       }
     );
-    expect(acceptedSuccessor.state.foodEaten).toBe(80);
-    expect(acceptedSuccessor.state.genomeV2?.foodCount).toBe(80);
+    expect(acceptedSuccessor.state.foodEaten).toBe(79);
+    expect(acceptedSuccessor.state.genomeV2?.foodCount).toBe(79);
     expect(acceptedSuccessor.state.foods).toHaveLength(4);
   }, 30_000);
 });

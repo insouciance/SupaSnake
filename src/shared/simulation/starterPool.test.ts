@@ -15,10 +15,15 @@ import {
 } from '@/shared/game/genes';
 import {
   GENOME_V2_CONFIG,
+  GENOME_V2_TRIAL_OFFER_GUARANTEE,
   assertGenomeV2OfferMatchesRoll,
   createGenomeV2State,
   rollGenomeV2Offer,
 } from '@/shared/game/genomeV2';
+import {
+  GENE_OFFER_CADENCE,
+  rollGeneOfferInterval,
+} from '@/shared/game/geneCadence';
 import type { DynastyName } from '@/shared/game/rulesets';
 import {
   COHORTS,
@@ -102,6 +107,69 @@ describe('offer-exhaustion cliff', () => {
     expect(locked.legalSize).toBe(6);
     expect(locked.maximumAcquisitions).toBe(5);
     expect(locked.fillsAllLoci).toBe(false);
+  });
+});
+
+/**
+ * THE OFFER STREAM IS OFFER-INDEXED; THE RUN IS FOOD-INDEXED.
+ *
+ * `traverseOffers` opens offers until the pool stops producing two legal
+ * candidates, which is the right question for pool health and says nothing
+ * about WHEN in a run those offers arrive. The relic cadence answers that, and
+ * the 2026-08-05 ruling moved it (6 +/- 2 -> 8 +/- 2). These translate the
+ * harness's offer counts into foods through the live constant, so a cadence
+ * change either lands inside the pacing this document ratified or fails here.
+ */
+describe('relic pacing in foods (the 2026-08-05 cadence ruling)', () => {
+  /** The k-th offer's expected food, at the authored mean. */
+  const foodAtOffer = (index: number): number =>
+    GENE_OFFER_CADENCE.intervalBase * index;
+
+  /** Worst and best case for the k-th offer across the inclusive window. */
+  const foodBounds = (index: number): { earliest: number; latest: number } => ({
+    earliest:
+      (GENE_OFFER_CADENCE.intervalBase - GENE_OFFER_CADENCE.intervalJitter) *
+      index,
+    latest:
+      (GENE_OFFER_CADENCE.intervalBase + GENE_OFFER_CADENCE.intervalJitter) *
+      index,
+  });
+
+  it('rolls only inside the window the pacing arithmetic assumes', () => {
+    const bounds = foodBounds(1);
+    for (let index = 0; index < 500; index += 1) {
+      const rolled = rollGeneOfferInterval(() => index / 500);
+      expect(rolled).toBeGreaterThanOrEqual(bounds.earliest);
+      expect(rolled).toBeLessThanOrEqual(bounds.latest);
+    }
+  });
+
+  it.each(DYNASTIES)(
+    '%s: a complete six-locus Genome still fits inside the D1 median run',
+    (dynasty) => {
+      // D1's candidate median run is ~48 foods (REDESIGN_WAVE 1.3), and it is
+      // the food count every food-indexed dial in the catalog is re-based
+      // against. A pool that fills all six loci in exactly six offers must
+      // still be able to do it inside that run at the mean cadence.
+      const health = measurePool(
+        dynasty,
+        recommended(dynasty),
+        cohort('bank0'),
+        SEEDS
+      );
+      expect(health.meanAcquisitions).toBe(GENOME_LOCI);
+      expect(foodAtOffer(GENOME_LOCI)).toBeLessThanOrEqual(48);
+    }
+  );
+
+  it('spends the three guaranteed trial appearances inside a short run', () => {
+    // PEO 4.4 ratified three guaranteed appearances. At 8 +/- 2 the worst case
+    // is the third offer landing at food 30, which is well inside a run that
+    // reaches the first portal (food 15) and then some.
+    const guaranteed = GENOME_V2_TRIAL_OFFER_GUARANTEE;
+    expect(guaranteed).toBe(3);
+    expect(foodBounds(guaranteed).latest).toBe(30);
+    expect(foodAtOffer(guaranteed)).toBe(24);
   });
 });
 

@@ -126,6 +126,13 @@ describe('wrap continuity: the seam is adjacency, not a teleport', () => {
         died = true;
         break;
       }
+      // A relic collected on the march holds the tick behind a choice surface.
+      // The walk is the subject here, not the decision, so the hold is drained
+      // rather than allowed to freeze the drive into a false pass.
+      if (state.pendingChoice) {
+        engine.declineMutation();
+        continue;
+      }
       const head = state.snake[0];
       engine.placeFood({ x: (head.x + 1) % GRID, y: 0, z: head.z });
       engine.tick();
