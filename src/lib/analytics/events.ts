@@ -153,6 +153,19 @@ export const AnalyticsEvents = {
   CURRICULUM_TRIAL_OFFERED: 'curriculum_trial_offered',
   CURRICULUM_LEARNING_EVENT_RESOLVED: 'curriculum_learning_event_resolved',
   CURRICULUM_GRADUATED: 'curriculum_graduated',
+
+  // The eight-bank CLAN HANDOFF (PEO §6, §9.3). Social rather than curriculum:
+  // these measure belonging, and §9.3 reads them against D30 retention by clan
+  // status. Emitted through ./clanReveal.ts, never directly.
+  //
+  // Founding, joining and the clan of one are NOT here: CLAN_CREATED and
+  // CLAN_JOINED above already name those outcomes, and BELONG is their funnel
+  // stage. What nothing measured is the ASK — shown, taken, declined — and the
+  // first run that actually counted for a clan.
+  CLAN_REVEAL_SHOWN: 'clan_reveal_shown',
+  CLAN_REVEAL_ACCEPTED: 'clan_reveal_accepted',
+  CLAN_REVEAL_DECLINED: 'clan_reveal_declined',
+  CLAN_CONTRIBUTION_COUNTED: 'clan_contribution_counted',
 } as const;
 
 export type AnalyticsEvent = typeof AnalyticsEvents[keyof typeof AnalyticsEvents];

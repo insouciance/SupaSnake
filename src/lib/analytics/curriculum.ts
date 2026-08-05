@@ -42,11 +42,8 @@
  */
 
 import { AnalyticsEvents, EventCategories } from './events';
-import {
-  isAnalyticsInitialized,
-  setUserProperties,
-  trackEvent,
-} from './posthog';
+import { crossOnce, resetAnalyticsOnceGuards } from './onceGuard';
+import { setUserProperties, trackEvent } from './posthog';
 import { GENOME_V2_ELIGIBILITY_CONTRACT_VERSION } from '@/shared/game/genes';
 import type { GenomeV2ActiveGeneId, GenomeV2Dynasty } from '@/shared/game/genes';
 
@@ -74,24 +71,13 @@ function capture(event: string, properties: Properties = {}): void {
 
 /**
  * Once-per-page-lifecycle guard for beats that describe a threshold crossed
- * rather than an action repeated. Populated only after analytics is live, so
- * a visitor who declined consent leaves no trace here either.
- *
- * Returns true when this call was the first crossing in this page lifecycle.
+ * rather than an action repeated. Shared with the clan reveal's telemetry so
+ * the two cannot disagree about what "once" means — see `./onceGuard.ts`.
  */
-const crossedThisPage = new Set<string>();
-
-function once(key: string): boolean {
-  if (!isAnalyticsInitialized()) return false;
-  if (crossedThisPage.has(key)) return false;
-  crossedThisPage.add(key);
-  return true;
-}
+const once = crossOnce;
 
 /** Clear lifecycle-only guards when a runtime lifecycle or a test starts. */
-export function resetCurriculumTelemetryMemory(): void {
-  crossedThisPage.clear();
-}
+export const resetCurriculumTelemetryMemory = resetAnalyticsOnceGuards;
 
 // ---------------------------------------------------------------------------
 // §9.3's first funnel: arrival → first input → first terminal result → BANK

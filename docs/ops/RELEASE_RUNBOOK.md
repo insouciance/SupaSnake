@@ -248,6 +248,23 @@ makes it safe to do at any moment:
 Never deploy an artifact older than migration 067 as a substitute for this
 procedure.
 
+### Known SQL follow-ups — neither blocks this release
+
+Two database changes are queued for the **next Track-A migration** and are
+deliberately not in this release, which carries no migration at all:
+
+1. **The clan RPC-layer anonymous guard.** WP-E added the `is_anonymous` check
+   to every clan found/join path in the API route. Pushing the same guard down
+   into the RPC is defence in depth, not the fix — the route-level guard is the
+   one a client actually meets.
+2. **The expire-race continuity predicate.** A narrowing of the predicate that
+   decides when a lease may be treated as expired.
+
+Neither is reachable from the curriculum flag, and neither changes what this
+release deploys. Record them here so the next Track-A package does not have to
+rediscover them, and so a reader of this addendum does not mistake their
+absence for an oversight.
+
 ### Telemetry note
 
 The curriculum's instrumentation is consent-gated through the existing PostHog

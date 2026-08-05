@@ -160,6 +160,12 @@ import { openClanRevealInvitation } from '@/lib/game/clanRevealAttention';
 import { openCurriculumInvitation } from '@/lib/game/curriculumAttention';
 import { PLAYER_EVOLUTION_ENABLED } from '@/lib/features/playerEvolution';
 import {
+  trackClanContribution,
+  trackClanRevealAccepted,
+  trackClanRevealDeclined,
+  trackClanRevealShown,
+} from '@/lib/analytics/clanReveal';
+import {
   trackFirstInput,
   trackFirstTerminalResult,
   trackLearningEventResolved,
@@ -5246,7 +5252,15 @@ export default function GamePage() {
         curriculumInvite.geneId
       );
     }
-  }, [curriculumInvite, resultsNextAction.id, transitionResultsInvitation]);
+    if (resultsNextAction.id === 'clan-reveal' && clanReveal) {
+      trackClanRevealAccepted(clanReveal.attentionId);
+    }
+  }, [
+    clanReveal,
+    curriculumInvite,
+    resultsNextAction.id,
+    transitionResultsInvitation,
+  ]);
 
   const handleDeclineResultsNextAction = useCallback(() => {
     transitionResultsInvitation('dismissed');
@@ -5261,7 +5275,15 @@ export default function GamePage() {
         curriculumInvite.geneId
       );
     }
-  }, [curriculumInvite, resultsNextAction.id, transitionResultsInvitation]);
+    if (resultsNextAction.id === 'clan-reveal' && clanReveal) {
+      trackClanRevealDeclined(clanReveal.attentionId);
+    }
+  }, [
+    clanReveal,
+    curriculumInvite,
+    resultsNextAction.id,
+    transitionResultsInvitation,
+  ]);
 
   // ---------------------------------------------------------------------
   // CURRICULUM TELEMETRY (WP-F; PEO §9.3, TGv2 §11).
@@ -5319,6 +5341,35 @@ export default function GamePage() {
     if (!isGameOver) return;
     trackFirstTerminalResult({ end_reason: endReason ?? 'unknown' });
   }, [endReason, isGameOver]);
+
+  // ---------------------------------------------------------------------
+  // CLAN HANDOFF TELEMETRY (WP-F item 5; PEO §6, §9.3).
+  // ---------------------------------------------------------------------
+  // The ask, measured where the fold actually made it. `clanReveal` alone is
+  // not enough: §13 row 12 can hand this settlement to the clan reveal and
+  // defer the Gene, or the other way round, and only the chosen action says
+  // which invitation the player was shown.
+  useEffect(() => {
+    if (resultsNextAction.id !== 'clan-reveal' || !clanReveal) return;
+    trackClanRevealShown(clanReveal.attentionId);
+  }, [clanReveal, resultsNextAction.id]);
+
+  // The run that COUNTED for a clan (§6 step 5), read from the server's own
+  // settled clan result rather than from anything this client decided. Whether
+  // it was the account's FIRST is a question the event stream answers per
+  // person; deciding it here would need a durable browser record of a
+  // progression fact, which boundary 9 forbids.
+  useEffect(() => {
+    if (!clanBattleResult?.eligible || !currentSessionId) return;
+    trackClanContribution({
+      sessionId: currentSessionId,
+      enteredTopFive: clanBattleResult.enteredTopFive === true,
+      replaced: Boolean(clanBattleResult.replacedSessionId),
+      ...(typeof clanBattleResult.scoreDelta === 'number'
+        ? { delta: clanBattleResult.scoreDelta }
+        : {}),
+    });
+  }, [clanBattleResult, currentSessionId]);
 
   // ---------------------------------------------------------------------
   // EVENT-ONLY RUN RATES.
