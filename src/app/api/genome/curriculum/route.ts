@@ -39,8 +39,10 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { playerEvolutionEnabled } from '@/lib/features/playerEvolution';
-import { readGeneEligibility } from '@/lib/server/geneEligibility';
-import { selectGeneTrial } from '@/lib/server/geneTrialSelection';
+import {
+  readGeneEligibility,
+  selectGeneTrial,
+} from '@/lib/server/geneEligibility';
 import { getGenomeRunFacts } from '@/lib/server/genome';
 import { progressionJson } from '@/lib/server/noStoreResponse';
 import {
@@ -200,8 +202,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const result = await selectGeneTrial(supabase, auth.playerId, geneId);
-  if (result.status !== 'selected') {
+  // `selectGeneTrial` answers null — never throws — for a missing table, a
+  // missing RPC, or a transient failure. 503 is honest: the choice did not
+  // take. A silent success would leave a player believing they had chosen a
+  // trial they had not.
+  const selection = await selectGeneTrial(supabase, auth.playerId, geneId);
+  if (!selection) {
     return progressionJson(
       { error: 'Could not set that trial' },
       { status: 503 }

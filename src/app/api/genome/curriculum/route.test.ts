@@ -16,14 +16,15 @@ jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }));
 const mockReadEligibility = jest.fn();
 const mockRunFacts = jest.fn();
 const mockSelectTrial = jest.fn();
+// WP-D shipped its own `selectGeneTrial` in `geneTrialSelection.ts` because
+// WP-C's PR was still open. Both are merged, so there is one caller again and
+// this route mocks the one module that owns every eligibility RPC (WP-F).
 jest.mock('@/lib/server/geneEligibility', () => ({
   readGeneEligibility: (...args: unknown[]) => mockReadEligibility(...args),
+  selectGeneTrial: (...args: unknown[]) => mockSelectTrial(...args),
 }));
 jest.mock('@/lib/server/genome', () => ({
   getGenomeRunFacts: (...args: unknown[]) => mockRunFacts(...args),
-}));
-jest.mock('@/lib/server/geneTrialSelection', () => ({
-  selectGeneTrial: (...args: unknown[]) => mockSelectTrial(...args),
 }));
 
 import { NextRequest } from 'next/server';
@@ -74,7 +75,12 @@ beforeEach(() => {
     prevRunDied: false,
     ownedVariants: 1,
   });
-  mockSelectTrial.mockResolvedValue({ status: 'selected' });
+  mockSelectTrial.mockResolvedValue({
+    geneId: 'coilkeeper',
+    state: 'trial',
+    trialOffersRemaining: 3,
+    changed: true,
+  });
 });
 
 afterEach(() => {
@@ -191,7 +197,10 @@ describe('POST /api/genome/curriculum', () => {
 
   it('reports a failed write instead of pretending the trial was set', async () => {
     const first = (await (await GET(request('GET'))).json()).candidates[0];
-    mockSelectTrial.mockResolvedValue({ status: 'unavailable' });
+    // `geneEligibility.selectGeneTrial` answers null for a missing table, a
+    // missing RPC, or a transient failure — never a throw and never a shape
+    // the route could mistake for a successful write.
+    mockSelectTrial.mockResolvedValue(null);
     const response = await POST(request('POST', { dynasty: 'CYBER', geneId: first }));
     expect(response.status).toBe(503);
   });
