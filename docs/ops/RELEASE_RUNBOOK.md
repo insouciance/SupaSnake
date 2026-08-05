@@ -1,19 +1,28 @@
 # Production Release Runbook
 
-Current production baseline: the settlement-payload, plain-language and
-engine-hardening train `ba253b5a23c6d8bc3f887e9d1a8ae617c970c79f`,
-independently verified on 4 August 2026 by successful production workflow
-`30936005977` (17:53:34 to 18:13:12 UTC) as deployment
-`dpl_4PGGV7FS3EYVBXHv19mYXA4KpepA`
-(`supasnake-muv8yqmn0-josef-bells-projects.vercel.app`). This release applied
-**migration 066**, the first hosted migration since 065: the pre-push plan was
-exactly `066`, the push raised the firing notice
-`complete_free_run_continuity p_facts bound raised to 262144` rather than the
-no-op notice, the post-push plan was exactly `none`, and linked database lint
-passed with the known non-blocking warning. Hosted migrations are now aligned
-through **066**. The dedicated read-only probe is
-`cohesive_release_read_only_v4`, whose 15 keys include the new
-`settlementBoundsAligned`; it passed.
+Current production baseline: the Side Door and saturation-extraction train
+`28d21f1c83f335ad48257fdc0a4966062007b479`, independently verified on
+5 August 2026 by successful production workflow `30969645760` (02:32 to
+02:52 UTC) as deployment `dpl_Ad2ayZ2xdANctBKpcLk2q9vygL3M`
+(`supasnake-1ic69o9sk-josef-bells-projects.vercel.app`). It applied **migration
+068** cleanly with no backfill, and bumped the engine rules version to
+`snake-rules-2026-08-05.1`.
+
+It followed the dormant-infrastructure train
+`bf3020c9f59d212136998eac845902f076c812e9`, deployed the previous evening by
+workflow `30948525096` (20:35 to 20:54 UTC on 4 August 2026) as
+`dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL`
+(`supasnake-7eszq9ea1-josef-bells-projects.vercel.app`). That train applied
+**migration 067**, whose backfill notice reported 32 graduation, 7
+history-credit and 2,192 starter rows for 2,231 total; a re-run writes 0, which
+is the idempotence proof. It shipped **zero player-visible change**: its flag is
+absent from the public manifest, a test enforces that absence, the server code
+is dormant, and the public-surface hash and 22/22 count were unchanged.
+
+Hosted migrations are now aligned through **068**. The dedicated read-only probe
+is `cohesive_release_read_only_v5`, whose 16 keys include
+`geneEligibilityContractValid` — TRUE across both trains. Migration 068 added no
+probe key of its own.
 Canonical health reports the exact release SHA, healthy database, project ref
 `gmpwyzqafoyowndbvlma`, 22/22 public surfaces, public hash
 `8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99`, and
@@ -21,21 +30,32 @@ Genome schema/catalog/Ascendance 2/2/2 with eight Splices, rules version 2, and
 neutral 2/3/4 Strain thresholds. Canonical alias, cron owner, and every cron host
 name the same READY production deployment; cron is enabled and its normalized
 definition hash remains
-`a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
+`a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`, unchanged at
+all three checkpoints of *each* train.
 Stripe remains in sandbox/test mode. The deploy workflow's reviewed rollout
-allowlist now holds three contracts — `genome-v2-initial`, `genome-v2-resume`
-and `settlement-payload-bounds` — and this run proved the newest one end to end.
+allowlist now holds five contracts — `genome-v2-initial`, `genome-v2-resume`,
+`settlement-payload-bounds`, `player-gene-eligibility` and
+`settlement-sweep-primary` — the last two proved end to end by these two runs.
+
+The rules bump was verified in the served production chunk
+`2894-c16facb0187e24c2.js`, which carries `snake-rules-2026-08-05.1` with the
+old string absent. State the boundary of that proof honestly: canonical health
+was clean, but without hosted queries there is no positive proof that zero runs
+were open across the version change. Treat a rules bump as safe only in the
+sense that the served artifact is exactly the reviewed one.
 
 The live interaction-v2 contract uses optional physical Gene relics on a
 deterministic 6 ± 2-food cadence; already-issued or omitted interaction stamps
 retain automatic-offer v1 compatibility. The now-previous deployment
-`dpl_J738P2RxBNAkUxR2JGYiUXCsnNwM` (`381491e`) predates migration 066. Because
-066 only *widens* the settlement payload bounds and is forward-only, the raised
-caps stay in force whatever artifact is serving, so that deployment still reads
-and writes the hosted schema safely and remains the artifact-level rollback
-candidate. What it gives up is the payload projection that keeps a terminal
-outcome inside those bounds, the plain-language vocabulary, and the engine
-legal-play hardening. Older artifacts additionally restore the
+`dpl_12zrsvyn4QAcYKAFoA4F1ai4rGwL` (`bf3020c`) predates migration 068 and the
+rules bump. It remains the artifact-level rollback candidate — 067 and 068 are
+forward-only and additive, so the hosted schema stays safe under it — but it
+serves the previous rules version, so any run checkpointed under
+`snake-rules-2026-08-05.1` would be resumed by an artifact that does not know
+that version. It also gives up the Side Door treatment, saturation extraction,
+and the sweep as primary settler. The artifact before it
+(`dpl_4PGGV7FS3EYVBXHv19mYXA4KpepA`, `ba253b5`) additionally gives up the
+dormant curriculum server core. Older artifacts additionally restore the
 stranded-settlement trap that
 hard-blocked two production accounts behind the “Result secured” modal
 (`dpl_CLE4n4uQVw7kYopCpavA5miY8yuT`, `2fe33ca`), the fatal Gilded Fork
@@ -197,7 +217,7 @@ and exercise fixture state.
 The A/B/C state machine below records the completed first Genome v2 cutover and
 remains the recovery and incident-classification contract for a linked project
 that genuinely lacks migration 065. It is not the ordinary state machine for
-later application-only releases. Future releases start from the current 001–066
+later application-only releases. Future releases start from the current 001–068
 baseline and follow the Release law and Automated sequence in this runbook;
 their linked migration plan is `none` unless an exact reviewed suffix is named
 at dispatch.
@@ -220,7 +240,7 @@ If any check fails here, stop. No hosted migration has been attempted.
 
 ### B. Post-migration, pre-production
 
-- Hosted schema: 001–066, or the recognized forward-only partial state while a
+- Hosted schema: 001–068, or the recognized forward-only partial state while a
   failed push is being investigated.
 - Canonical alias and cron state: still exactly outgoing.
 - Outgoing application: healthy on the bridge schema.
@@ -250,7 +270,7 @@ never operator memory, decides.
 
 ### C. Post-cutover
 
-- Hosted schema: 001–066.
+- Hosted schema: 001–068.
 - Canonical alias: exact deployment ID and host returned by the deliberate
   Production deployment.
 - Canonical health: exact Git SHA, exact project ref/public-surface hash,
