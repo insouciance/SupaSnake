@@ -42,6 +42,7 @@ import {
   GENOME_RULES_V2,
   assertGenomeV2PersistenceBound,
   genomeV2FtueFromPresentation,
+  genomeV2RunRecord,
   genomeV2YieldFloor,
   type GenomeV2InteractionVersion,
   type GenomeV2RunRecord,
@@ -150,23 +151,50 @@ export interface ActiveRunContract {
   startIntent: StoredRunStartIntent | null;
 }
 
+export type RunContinuityReason =
+  | 'invalid_request_id'
+  | 'request_conflict'
+  | 'active_run'
+  | 'insufficient_energy'
+  | 'not_found'
+  | 'not_prepared'
+  | 'invalid_checkpoint'
+  | 'checkpoint_conflict'
+  | 'lease_conflict'
+  | 'unavailable';
+
+/**
+ * Whether trying the identical request again could plausibly succeed.
+ *
+ * CE-3, from the PR #72 incident: every caller used to answer this question by
+ * inspecting the HTTP status it had just computed (`retryable: status === 503`),
+ * and every status ternary defaulted to 503. So any reason a given call site
+ * had not enumerated became a retryable 503 — which is how a *deterministic*
+ * database rejection ("this envelope is too large") turned into a client that
+ * re-posted the same permanently-refused payload forever, silently, through a
+ * full deploy cycle.
+ *
+ * Retryability is now a property of the error, decided where the error is
+ * classified, not re-derived from a status by each caller. The default is
+ * deliberately conservative: only `unavailable` — the reason reserved for
+ * "the server could not answer" — is retryable, and even that can be
+ * overridden when the server knows its refusal is permanent.
+ */
+function reasonIsRetryable(reason: RunContinuityReason): boolean {
+  return reason === 'unavailable';
+}
+
 export class RunContinuityError extends Error {
+  public readonly retryable: boolean;
+
   constructor(
     message: string,
-    public readonly reason:
-      | 'invalid_request_id'
-      | 'request_conflict'
-      | 'active_run'
-      | 'insufficient_energy'
-      | 'not_found'
-      | 'not_prepared'
-      | 'invalid_checkpoint'
-      | 'checkpoint_conflict'
-      | 'lease_conflict'
-      | 'unavailable'
+    public readonly reason: RunContinuityReason,
+    retryable: boolean = reasonIsRetryable(reason)
   ) {
     super(message);
     this.name = 'RunContinuityError';
+    this.retryable = retryable;
   }
 }
 
@@ -1847,6 +1875,24 @@ export async function saveRunCheckpoint(
   return accepted;
 }
 
+/**
+ * Stamped on a terminal the SERVER derived for itself after refusing the
+ * client's own proof. Its presence is the whole "flagged for review" signal:
+ * it rides inside the immutable terminal facts, so it reaches the settlement
+ * audit record, the operator and Sentry without a new column or a new state.
+ */
+export interface TerminalReviewMarker {
+  v: 1;
+  /** The classification of the refusal, for grouping. */
+  reason: RunContinuityReason;
+  /** The validator's REAL message. Never a placeholder — that is the point. */
+  detail: string;
+  /** Where the held value came from. One value today; named so it can grow. */
+  heldFrom: 'accepted_checkpoint';
+  /** The accepted checkpoint revision whose proven state was settled. */
+  checkpointRevision: number;
+}
+
 export interface TerminalRunIntent {
   facts: {
     score: number;
@@ -1868,8 +1914,95 @@ export interface TerminalRunIntent {
      */
     extraction_kind: GameOverData['extractionKind'];
     run_events: ReturnType<SnakeGameLogic['getRunEvents']>;
+    /** Present only on a held terminal. Absent on every proven one. */
+    review?: TerminalReviewMarker;
   };
   digest: string;
+  /** True when this outcome is the server's held fallback, not the proof. */
+  held: boolean;
+}
+
+/**
+ * The terminal a run is worth when its own proof cannot be replayed.
+ *
+ * CE-3 / audit F-02. Every field here is read from the LAST ACCEPTED CANONICAL
+ * CHECKPOINT — state this server already replayed, compared bit-for-bit against
+ * its own deterministic re-simulation, and stored. Nothing is taken from the
+ * refused proof, and nothing is recomputed: a checkpoint is accepted only after
+ * `deriveCanonicalReplay`, `validateCheckpointBoard` and `validateCheckpointGenome`
+ * have all passed over it, so reading its fields introduces no second source of
+ * truth for what happened.
+ *
+ * WHY THIS IS SAFE AGAINST FORGERY, WHICH IS WHY IT MAY DEGRADE UNCONDITIONALLY.
+ * A player who forges a terminal proof gets exactly this: the value the server
+ * had already proven on its own, minus everything the forged suffix claimed.
+ * Forgery is therefore strictly worse than honesty here — it can only ever
+ * *lower* the settled result — so there is no incentive to trip this path and
+ * no need to keep a fatal branch to deter it. What the old code deterred was
+ * not cheating; it was finishing a run while the validator disagreed with the
+ * engine, and it deterred that by destroying the run.
+ *
+ * WHY IT CANNOT ITSELF THROW. It reads the stored checkpoint directly rather
+ * than restoring an engine from it. The degradation path is reached because
+ * something already failed; it must not be able to fail in turn.
+ */
+function heldTerminalFacts(
+  checkpoint: SnakeCheckpointV1,
+  marker: TerminalReviewMarker
+): TerminalRunIntent['facts'] {
+  const { state, privateState, config } = checkpoint;
+  const genomeV2 = state.genomeV2;
+  // Mirrors the engine's own terminal assembly (`SnakeGameLogic` game-over
+  // payload): the v2 run record when the run is on v2 rules, the v1 genome
+  // block when it is on v1, and null for a run with no genome at all.
+  const genome: TerminalRunIntent['facts']['genome'] =
+    config.genome?.rulesVersion === GENOME_RULES_V2 && genomeV2
+      ? genomeV2RunRecord(genomeV2, null)
+      : config.genome
+        ? {
+            infuses: state.infuses.map((entry) => ({ ...entry })),
+            surges: state.surges.map((entry) => ({ ...entry })),
+            revive: state.revive ? { ...state.revive } : null,
+            claims: { ...state.genomeClaims },
+            pressureEvents: state.pressureEvents.map((entry) => ({ ...entry })),
+            lossEvents: state.lossEvents.map((entry) => ({ ...entry })),
+            offerTrace: privateState.offerTrace.map(({ k, atFood, picked }) => ({
+              k,
+              atFood,
+              picked,
+            })),
+            fusedSplices: state.fusedSplices.map((entry) => ({ ...entry })),
+            strainCounts: { ...state.strainCounts },
+            strainTiers: { ...state.strainTiers },
+          }
+        : null;
+  return {
+    score: state.score,
+    dna_earned: state.dnaCollected,
+    duration_seconds: Math.floor(Math.max(0, privateState.elapsedMs) / 1_000),
+    food_count: state.foodEaten,
+    // An accepted checkpoint is by construction a live, non-terminal,
+    // non-extracted board (`validateRunCheckpoint` refuses `isGameOver`), so
+    // the honest reading of "the run ended and we cannot prove how" is a death
+    // that banked nothing. Claiming an extraction here would invent a x1.25
+    // the server never saw.
+    extracted: false,
+    died: true,
+    victory: false,
+    mutations: state.heldMutations.map((pick) => ({ ...pick })),
+    phoenix_triggered_at_food: state.phoenixTriggeredAtFood,
+    genome,
+    // 'timeout' is the existing enum member for "ended without a proven
+    // cause" — already legal in the migration 022 CHECK and already handled
+    // by `isRunDeathCause`. No new persisted value is introduced.
+    death_cause: 'timeout',
+    extraction_kind: null,
+    run_events: {
+      events: privateState.runEvents.map((event) => ({ ...event })),
+      truncated: privateState.runEventsTruncated,
+    },
+    review: marker,
+  };
 }
 
 function deriveTerminalIntent(
@@ -1880,8 +2013,84 @@ function deriveTerminalIntent(
   const checkpoint = row.continuity_checkpoint;
   const activatedAt = Date.parse(row.continuity_activated_at ?? '');
   if (!checkpoint || !Number.isFinite(activatedAt)) {
+    // KEPT FATAL. There is no accepted state to hold: this row has never had a
+    // canonical checkpoint, so "settle what we proved" would settle nothing at
+    // all, which is the voiding this work package exists to stop. Activation
+    // stores the seeded opening as revision 1, so a live run always has one;
+    // reaching this means the row itself is broken, and the run stays open for
+    // the sweep and the operator rather than being closed at zero.
     throw new RunContinuityError('The run has no canonical terminal base.', 'not_prepared');
   }
+  try {
+    return provenTerminalIntent(row, checkpoint, activatedAt, proofValue, now);
+  } catch (error) {
+    if (!(error instanceof RunContinuityError)) throw error;
+    // ---------------------------------------------------------------
+    // F-02 — a refused proof must not destroy an honest finished run
+    // ---------------------------------------------------------------
+    // Every refusal above is a statement about the PROOF, and the strongest
+    // thing a failed terminal replay says is that the server's model and the
+    // engine that produced the state disagree — the client already
+    // demonstrated it could reach that state. Under the old code all 57 engine
+    // invariants were also a settlement veto: 400, `retryable: false`, claim
+    // dropped, run swept to `expired`, committed Energy gone.
+    //
+    // Now the value the server proved for itself is settled instead, marked
+    // for review. The run leaves this function terminal-with-facts, which is
+    // the state migration 068's `list_stranded_terminal_runs` scans, so the
+    // settlement sweep drives it to completion whether or not the player ever
+    // comes back.
+    return heldTerminalIntent(row, checkpoint, error);
+  }
+}
+
+function heldTerminalIntent(
+  row: ContinuityRow,
+  checkpoint: SnakeCheckpointV1,
+  cause: RunContinuityError
+): TerminalRunIntent {
+  const checkpointRevision = safeInteger(row.continuity_checkpoint_revision) ?? 0;
+  const facts = heldTerminalFacts(checkpoint, {
+    v: 1,
+    reason: cause.reason,
+    detail: cause.message.slice(0, 500),
+    heldFrom: 'accepted_checkpoint',
+    checkpointRevision,
+  });
+  if (Buffer.byteLength(JSON.stringify(facts), 'utf8') > RUN_TERMINAL_FACTS_MAX_BYTES) {
+    // A hold that the database would refuse is not a hold. `run_events` is
+    // Chronicle/display evidence that no payout reads — `validateRunEvents`
+    // accepts an empty record — so it is shed before any value-bearing field.
+    facts.run_events = { events: [], truncated: true };
+  }
+  if (Buffer.byteLength(JSON.stringify(facts), 'utf8') > RUN_TERMINAL_FACTS_MAX_BYTES) {
+    // Everything still here is value-bearing: shedding the genome would lower
+    // the payout, which is the harm this path exists to prevent. Surface the
+    // original refusal rather than settle a run for less than it earned; the
+    // row stays open for the sweep and the operator.
+    throw cause;
+  }
+  return {
+    facts,
+    // The held terminal binds the accepted checkpoint it was derived from, not
+    // a replay path — there is no accepted path past the checkpoint. Two holds
+    // of the same run at the same revision therefore produce the same digest,
+    // so a client that re-posts its refused proof re-stages the identical
+    // outcome instead of colliding with `terminal_intent_conflict`.
+    digest: createHash('sha256')
+      .update(JSON.stringify({ checkpointRevision, facts }))
+      .digest('hex'),
+    held: true,
+  };
+}
+
+function provenTerminalIntent(
+  row: ContinuityRow,
+  checkpoint: SnakeCheckpointV1,
+  activatedAt: number,
+  proofValue: unknown,
+  now: number
+): TerminalRunIntent {
   const priorTrace = parseReplayTrace(checkpoint.privateState.replay);
   const proof = parseTerminalReplayProof(proofValue);
   const overlapCount = priorTrace.actions.length - proof.actionOffset;
@@ -1996,6 +2205,7 @@ function deriveTerminalIntent(
         facts,
       }))
       .digest('hex'),
+    held: false,
   };
 }
 
@@ -2043,9 +2253,15 @@ export async function stageRunTerminalIntent(
     if (!storedFacts || typeof storedDigest !== 'string') {
       throw new RunContinuityError('The secured run outcome is incomplete.', 'unavailable');
     }
+    const facts = storedFacts as unknown as TerminalRunIntent['facts'];
     return {
-      facts: storedFacts as unknown as TerminalRunIntent['facts'],
+      facts,
       digest: storedDigest,
+      // A re-post of an already-secured terminal reports the outcome it finds.
+      // A held outcome stays held: its marker is durable, so this answer is
+      // the same for the player's retry, for the start-path absorb and for the
+      // settlement sweep, and no path can silently re-derive a different one.
+      held: objectRecord(facts.review) !== null,
     };
   }
   const currentRevision = Number(row.continuity_checkpoint_revision);
@@ -2053,7 +2269,15 @@ export async function stageRunTerminalIntent(
     !Number.isSafeInteger(currentRevision) ||
     currentRevision < input.expectedRevision
   ) {
-    throw new RunContinuityError('The terminal checkpoint revision is invalid.', 'checkpoint_conflict');
+    // RETRYABLE, unlike every other conflict here: this says the DATABASE is
+    // behind the revision the client was already told was accepted, which a
+    // later read can catch up with. Answering `retryable: false` stranded a
+    // finished run on a transient read-your-writes gap.
+    throw new RunContinuityError(
+      'The terminal checkpoint revision is invalid.',
+      'checkpoint_conflict',
+      true
+    );
   }
   const intent = deriveTerminalIntent(row, input.replay, input.now);
   const { data, error } = await supabase.rpc('stage_run_continuity_terminal', {
@@ -2079,6 +2303,78 @@ export function terminalFactsFromRow(row: Record<string, unknown>): Record<strin
   return objectRecord(row.continuity_terminal_facts);
 }
 
+/**
+ * Postgres classes whose failures are genuinely transient — the identical
+ * statement can succeed on the next attempt because nothing about the request
+ * was wrong. Everything NOT on this list is treated as permanent.
+ *
+ * | Class | Name | Why retrying works |
+ * |---|---|---|
+ * | 40001 | serialization_failure | Lost a concurrency race; re-run resolves it |
+ * | 40P01 | deadlock_detected | One victim is aborted so the other can finish |
+ * | 55P03 | lock_not_available | A row lock was held; it is released |
+ * | 57014 | query_canceled | Statement timeout under load |
+ * | 57P01 | admin_shutdown | Connection dropped by a restart/failover |
+ * | 57P02 | crash_shutdown | Same |
+ * | 57P03 | cannot_connect_now | Startup/recovery window |
+ * | 53100 | disk_full | Operator-clearable, and never caused by the payload |
+ * | 53200 | out_of_memory | Transient resource pressure |
+ * | 53300 | too_many_connections | Pool exhaustion |
+ * | 53400 | configuration_limit_exceeded | Same family |
+ * | 08xxx | connection_exception | The connection died mid-statement |
+ */
+const TRANSIENT_POSTGRES_CODES = new Set([
+  '40001',
+  '40P01',
+  '55P03',
+  '57014',
+  '57P01',
+  '57P02',
+  '57P03',
+  '53100',
+  '53200',
+  '53300',
+  '53400',
+  '08000',
+  '08001',
+  '08003',
+  '08004',
+  '08006',
+  '08007',
+  '08P01',
+]);
+
+/**
+ * Transport failures, which carry no Postgres code at all. A fetch that never
+ * reached the database says nothing about whether the request was acceptable.
+ */
+const TRANSIENT_TRANSPORT_MESSAGE =
+  /\b(fetch failed|network|socket hang up|connection (?:terminated|reset|closed|refused)|timed? ?out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|EPIPE)\b/i;
+
+export function isTransientSettlementFault(error: SupabaseErrorLike): boolean {
+  if (TRANSIENT_POSTGRES_CODES.has(error.code ?? '')) return true;
+  // A code we recognise as *permanent* wins over any message heuristic.
+  if (typeof error.code === 'string' && error.code.length > 0) return false;
+  return TRANSIENT_TRANSPORT_MESSAGE.test(error.message ?? '');
+}
+
+/**
+ * Classify a settlement RPC failure.
+ *
+ * CE-3 item 2, the PR #72 lesson. This function used to end in a single
+ * unconditional fallback: anything it did not recognise became `unavailable`,
+ * which every caller rendered as a retryable 503. Two real production
+ * exceptions — `INVALID_PENDING_GAME_END_ENVELOPE` (migration 060) and
+ * `invalid_free_run_facts` (063) — are raised by deterministic byte guards
+ * over a payload the server rebuilds identically every time. As retryable
+ * 503s they produced a client that re-posted a permanently refused payload
+ * forever while showing the player "Checking…", and an operator with no
+ * message to search for. The incident survived a full deploy cycle.
+ *
+ * The default is now inverted: a fault is permanent unless it is recognisably
+ * transient, and the database's real message is carried out to the caller so
+ * the next incident is greppable in minutes instead of days.
+ */
 function terminalError(error: SupabaseErrorLike): RunContinuityError {
   const message = error.message ?? '';
   if (/run_lease_conflict/i.test(message)) {
@@ -2108,11 +2404,39 @@ function terminalError(error: SupabaseErrorLike): RunContinuityError {
   if (/session_not_found/i.test(message)) {
     return new RunContinuityError('Run session not found.', 'not_found');
   }
+  // The two guards from the incident, named explicitly so they can never
+  // silently rejoin the retryable default again.
+  if (
+    /INVALID_PENDING_GAME_END_ENVELOPE|invalid_free_run_facts|invalid_pending_game_end_envelope/i
+      .test(message)
+  ) {
+    return new RunContinuityError(
+      `The run result was refused by its durable bound: ${message.slice(0, 300)}`,
+      'unavailable',
+      false
+    );
+  }
+  if (isMissingRunContinuityInfra(error)) {
+    return new RunContinuityError(
+      'Run continuity is being prepared.',
+      'unavailable',
+      true
+    );
+  }
+  if (isTransientSettlementFault(error)) {
+    return new RunContinuityError(
+      'Could not secure the run outcome.',
+      'unavailable',
+      true
+    );
+  }
+  // Unknown, and therefore assumed permanent. Carrying the real message is
+  // the entire point: a bare "Could not secure the run outcome" is what made
+  // the last incident invisible.
   return new RunContinuityError(
-    isMissingRunContinuityInfra(error)
-      ? 'Run continuity is being prepared.'
-      : 'Could not secure the run outcome.',
-    'unavailable'
+    `Could not secure the run outcome: ${message.slice(0, 300) || 'unknown database fault'}`,
+    'unavailable',
+    false
   );
 }
 
