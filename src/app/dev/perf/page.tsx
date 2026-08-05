@@ -51,6 +51,7 @@ import {
   SnakeModel,
   SnakeSegmentFallback,
 } from '@/components/game/SnakeModel';
+import { AssetGate } from '@/components/game/AssetGate';
 import { AimRenderer } from '@/components/game/AimRenderer';
 import { isAimSystemId, type AimSystemId } from '@/lib/game/aimSystems';
 import type { AimTarget } from '@/components/game/aimUtils';
@@ -116,8 +117,9 @@ function LegacySnake({
   return (
     <>
       {Array.from({ length }, (_, i) => (
-        <Suspense
+        <AssetGate
           key={i}
+          label="a snake segment model"
           fallback={
             <SnakeSegmentFallback
               meshRef={(mesh: THREE.Mesh | null) => {
@@ -137,7 +139,7 @@ function LegacySnake({
             isHead={i === 0}
             dynasty={dynasty}
           />
-        </Suspense>
+        </AssetGate>
       ))}
     </>
   );
@@ -339,7 +341,8 @@ export default function PerfHarnessPage() {
             length={config.length}
           />
         ) : (
-          <Suspense
+          <AssetGate
+            label="the snake model"
             fallback={
               <InstancedSnakeFallback
                 bufferRef={bufferRef}
@@ -355,7 +358,7 @@ export default function PerfHarnessPage() {
               direction={direction}
               terrain={terrain}
             />
-          </Suspense>
+          </AssetGate>
         )}
         {config.aim && (
           <AimRenderer

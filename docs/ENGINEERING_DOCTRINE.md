@@ -215,6 +215,28 @@ build instead, the test shape that catches it, and what it already cost us.
   A finished run survives a bump; a run *in progress* becomes `incompatible` and the
   player's only action is to throw it away. Latent — this entry keeps it that way.
 
+### FM-13 · A loading guard that does not guard failure
+
+- **Recognize.** `<Suspense>` around anything that FETCHES — drei's `useTexture`
+  and `useGLTF` are the live examples — with no error boundary above it. The hook
+  suspends while the asset loads but THROWS when it 404s, and a throw walks past
+  every Suspense boundary to the nearest *error* boundary. Suspense reads like it
+  covers loading, so the site looks finished; it covers half the cases.
+- **Counter.** `AssetGate` (`components/game/AssetGate.tsx`) — the boundary and
+  the Suspense are one component taking ONE `fallback`, so the failed and the
+  slow case cannot drift apart and the boundary cannot be forgotten. A decorative
+  asset falls back to `null`; anything the player must see falls back to the
+  primitive version of itself, never to an empty scene.
+- **Test.** Throw from the child and assert the fallback renders AND that an
+  outer sentinel boundary never trips. Assert the counter-example too: bare
+  Suspense with the same child must let the throw escape, or the test is
+  passing for the wrong reason.
+- **Incident.** PR #90 (2026-08-05): two decorative JPEGs 404'd and the throw
+  reached `global-error.tsx`, replacing the whole of Home with "Something went
+  wrong". Fixed there in one component and left untested, so the LF-D sweep
+  found five more unguarded sites — including the live run screen, where a
+  missing GLB would have ended a run in progress on the global error page.
+
 ---
 
 ## 3. The prior-art gate
