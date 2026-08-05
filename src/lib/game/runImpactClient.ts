@@ -8,6 +8,7 @@
  */
 
 import {
+  RUN_IMPACT_KINDS,
   RUN_IMPACT_VERSION,
   type ImpactSignificance,
   type JsonValue,
@@ -54,22 +55,17 @@ const OUTCOMES = new Set<RunImpactOutcome>([
   'completed',
 ]);
 const DYNASTIES = new Set<RunImpactDynasty>(['CYBER', 'PRIMAL', 'COSMIC']);
-const KINDS = new Set<RunImpactKind>([
-  'mastery_xp',
-  'mastery_level',
-  'personal_best',
-  'lineage_run',
-  'record_value',
-  'record_tier',
-  'ladder_record',
-  'codex_discovery',
-  'codex_milestone',
-  'signal_progress',
-  'signal_completion',
-  'signal_milestone',
-  'clan_contribution',
-  'clan_top_five',
-]);
+/**
+ * DERIVED, NEVER RE-TYPED (WP-F).
+ *
+ * This was a hand-written copy of `RunImpactKind`, and it fell two kinds
+ * behind when WP-D added the first-BANK and Gene-unlock beats. Because
+ * `parseRunImpactEnvelope` rejects an envelope containing any impact it
+ * cannot parse, the effect was not a missing beat — it was the whole Victory
+ * Lap and receipt being discarded on exactly the two settlements that matter
+ * most. Deriving the Set from the exported list makes that drift impossible.
+ */
+const KINDS = new Set<RunImpactKind>(RUN_IMPACT_KINDS);
 const DESTINATIONS = new Set<RunImpactDestination>([
   'chronicle',
   'mastery',

@@ -16,14 +16,15 @@ jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }));
 const mockReadEligibility = jest.fn();
 const mockRunFacts = jest.fn();
 const mockSelectTrial = jest.fn();
+// WP-D shipped its own `selectGeneTrial` in `geneTrialSelection.ts` because
+// WP-C's PR was still open. Both are merged, so there is one caller again and
+// this route mocks the one module that owns every eligibility RPC (WP-F).
 jest.mock('@/lib/server/geneEligibility', () => ({
   readGeneEligibility: (...args: unknown[]) => mockReadEligibility(...args),
+  selectGeneTrial: (...args: unknown[]) => mockSelectTrial(...args),
 }));
 jest.mock('@/lib/server/genome', () => ({
   getGenomeRunFacts: (...args: unknown[]) => mockRunFacts(...args),
-}));
-jest.mock('@/lib/server/geneTrialSelection', () => ({
-  selectGeneTrial: (...args: unknown[]) => mockSelectTrial(...args),
 }));
 
 import { NextRequest } from 'next/server';
@@ -74,7 +75,12 @@ beforeEach(() => {
     prevRunDied: false,
     ownedVariants: 1,
   });
-  mockSelectTrial.mockResolvedValue({ status: 'selected' });
+  mockSelectTrial.mockResolvedValue({
+    geneId: 'coilkeeper',
+    state: 'trial',
+    trialOffersRemaining: 3,
+    changed: true,
+  });
 });
 
 afterEach(() => {
@@ -113,6 +119,9 @@ describe('GET /api/genome/curriculum', () => {
     expect(body).toEqual({
       live: false,
       dynasty: 'CYBER',
+      // Telemetry-only, and truthfully null here: the fixture player row
+      // carries no cohort column value, and the route never guesses one.
+      cohort: null,
       bankedRuns: 0,
       trialsOpen: false,
       trialGeneId: null,
@@ -120,6 +129,35 @@ describe('GET /api/genome/curriculum', () => {
       genes: [],
     });
     expect(mockReadEligibility).not.toHaveBeenCalled();
+  });
+
+  it('carries the SERVER-read cohort, and never invents one', async () => {
+    // PEO §9.3 excludes the dev/QA/fixture accounts from every curriculum
+    // conclusion. The label has to travel from `players.cohort`, because a
+    // browser that asserted its own could exclude itself from measurement.
+    mockFrom = jest.fn(() => {
+      const chain: Record<string, jest.Mock> = {};
+      chain.select = jest.fn(() => chain);
+      chain.eq = jest.fn(() => chain);
+      chain.maybeSingle = jest.fn(async () => ({
+        data: { id: 'player-1', cohort: 'qa' },
+        error: null,
+      }));
+      return chain;
+    });
+    expect((await (await GET(request('GET'))).json()).cohort).toBe('qa');
+
+    mockFrom = jest.fn(() => {
+      const chain: Record<string, jest.Mock> = {};
+      chain.select = jest.fn(() => chain);
+      chain.eq = jest.fn(() => chain);
+      chain.maybeSingle = jest.fn(async () => ({
+        data: { id: 'player-1', cohort: 'not-a-cohort' },
+        error: null,
+      }));
+      return chain;
+    });
+    expect((await (await GET(request('GET'))).json()).cohort).toBeNull();
   });
 
   it('is dormant when the satellite table is not applied here yet', async () => {
@@ -191,7 +229,10 @@ describe('POST /api/genome/curriculum', () => {
 
   it('reports a failed write instead of pretending the trial was set', async () => {
     const first = (await (await GET(request('GET'))).json()).candidates[0];
-    mockSelectTrial.mockResolvedValue({ status: 'unavailable' });
+    // `geneEligibility.selectGeneTrial` answers null for a missing table, a
+    // missing RPC, or a transient failure — never a throw and never a shape
+    // the route could mistake for a successful write.
+    mockSelectTrial.mockResolvedValue(null);
     const response = await POST(request('POST', { dynasty: 'CYBER', geneId: first }));
     expect(response.status).toBe(503);
   });

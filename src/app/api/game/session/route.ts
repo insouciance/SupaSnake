@@ -87,7 +87,6 @@ import {
   grantStarterEligibility,
   readGeneEligibility,
   recordTrialOffer,
-  resolveLearningEvent,
 } from '@/lib/server/geneEligibility';
 import { genomeV2StampedTrial } from '@/lib/game/genomeCapability';
 import { verifyOfferTrace } from '@/lib/server/offerVerifier';
@@ -145,7 +144,6 @@ import {
   GENOME_V2_INTERACTION_PHYSICAL_RELIC,
   GENOME_V2_LEARNING_EVENT_VERSION,
   GENOME_RULES_V2,
-  genomeV2LearningEventsResolved,
   genomeV2TrialOffersConsumed,
   isGenomeV2InteractionVersion,
 } from '@/shared/game/genomeV2';
@@ -3540,22 +3538,23 @@ export async function POST(request: NextRequest) {
       await refreshLinkedRolesForPlayer(supabase, player.id);
 
       // ---------------------------------------------------------------
-      // Curriculum learning-event resolution (WP-B, server contract §4)
+      // Curriculum settlement inputs (WP-B/WP-C, server contract §2.1, §4)
       // ---------------------------------------------------------------
       // READ FROM THE VALIDATED RECORD, NEVER FROM THE JOURNAL. The journal
       // compacts above 256 entries, so a scan here would answer "no" for
-      // exactly the long runs an engaged learner produces;
-      // `learningEventsResolved` is written by the pure reducer and survives
-      // compaction. THE TRIAL COMES FROM THE START STAMP, not from a fresh
-      // read: an unlock granted mid-run must not change the run that earned
-      // it, and vocabulary is never recomputed at settlement.
+      // exactly the long runs an engaged learner produces; the reducer-written
+      // state fields survive compaction. THE TRIAL COMES FROM THE START STAMP,
+      // not from a fresh read: an unlock granted mid-run must not change the
+      // run that earned it, and vocabulary is never recomputed at settlement.
       //
-      // At most one Gene completes per run (PEO §4.4) — there is at most one
-      // trial, so that bound is structural rather than enforced. Success and
-      // failure both resolve; only Free Play and an unvalidated run do not.
-      // A failure here is not a settlement failure: the run is already paid,
-      // the Gene stays a trial, and the next run that resolves the same event
-      // promotes it.
+      // THE PROMOTION ITSELF IS NOT HERE. `settleDurableRunProgression` calls
+      // `resolve_learning_event` from the same stamp (WP-D), which is the only
+      // place that can also emit the REVEAL beat and reach the run drained by
+      // the recovery sweep. This route once repeated the call; it was a no-op
+      // second write kept only while WP-C's PR asserted its position, and
+      // keeping it would have meant a settlement path that promotes a Gene
+      // without ever telling the player. What remains here is the guarantee
+      // consumption, which has no other home.
       const stampedTrialGeneId =
         runContext?.genome?.rulesVersion === GENOME_RULES_V2
           ? runContext.genome.eligibilityInputs?.trialGeneId ?? null
@@ -3596,26 +3595,6 @@ export async function POST(request: NextRequest) {
             sessionId
           );
         }
-      }
-      if (
-        stampedTrialGeneId &&
-        validation.valid &&
-        !isFreeSession &&
-        settledV2Record &&
-        genomeV2LearningEventsResolved(settledV2Record).includes(
-          stampedTrialGeneId
-        )
-      ) {
-        await resolveLearningEvent(
-          supabase,
-          player.id,
-          stampedTrialGeneId,
-          sessionId,
-          runContext?.genome?.rulesVersion === GENOME_RULES_V2
-            ? runContext.genome.learningEventVersion ??
-                GENOME_V2_LEARNING_EVENT_VERSION
-            : GENOME_V2_LEARNING_EVENT_VERSION
-        );
       }
 
       // ---------------------------------------------------------------

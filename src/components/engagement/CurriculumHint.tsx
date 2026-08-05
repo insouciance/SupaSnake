@@ -37,6 +37,7 @@ import {
 } from '@/lib/stores/notificationStore';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 import { PLAYER_EVOLUTION_ENABLED } from '@/lib/features/playerEvolution';
+import { trackReferenceOpened } from '@/lib/analytics/curriculum';
 import { curriculumHintMessage } from '@/shared/game/curriculum';
 
 export function CurriculumHint() {
@@ -51,6 +52,17 @@ export function CurriculumHint() {
       : null;
   const attentionId = invitation?.attentionId ?? null;
   const unseen = invitation?.unseen ?? false;
+  const geneId = invitation?.geneId ?? null;
+
+  // REFERENCE reached (§5), reported once per invitation. Rendering the
+  // banner IS the introduction, so the telemetry beat and the `seen`
+  // transition below describe the same moment — but this one fires whether or
+  // not the PATCH lands, because what it measures is that the player got
+  // there, not that a write succeeded.
+  useEffect(() => {
+    if (!attentionId || !geneId) return;
+    trackReferenceOpened(attentionId, geneId);
+  }, [attentionId, geneId]);
 
   // Arriving on the Workbench IS the introduction, so the row moves to `seen`
   // without waiting for a close. `seenRef` keeps a re-render from re-issuing

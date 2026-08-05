@@ -160,6 +160,25 @@ import { openClanRevealInvitation } from '@/lib/game/clanRevealAttention';
 import { openCurriculumInvitation } from '@/lib/game/curriculumAttention';
 import { PLAYER_EVOLUTION_ENABLED } from '@/lib/features/playerEvolution';
 import {
+  markDecisionOpened,
+  trackDecisionResolved,
+} from '@/lib/analytics/decisionLatency';
+import {
+  trackClanContribution,
+  trackClanRevealAccepted,
+  trackClanRevealDeclined,
+  trackClanRevealShown,
+} from '@/lib/analytics/clanReveal';
+import {
+  trackFirstInput,
+  trackFirstTerminalResult,
+  trackLearningEventResolved,
+  trackTrialInvitationAccepted,
+  trackTrialInvitationDeclined,
+  trackTrialInvitationShown,
+  trackTrialOfferShown,
+} from '@/lib/analytics/curriculum';
+import {
   consumeLaunchHandoff,
   type GameSessionStartPayload,
 } from '@/lib/ftue/launchFlow';
@@ -836,6 +855,17 @@ export default function GamePage() {
   // display mirror, not a mutex: two first inputs in one event turn must share
   // exactly one prepared→active request and opening checkpoint.
   const activationPromiseRef = useRef<Promise<boolean> | null>(null);
+  /**
+   * Identity for the CURRENT v1 portal decision, for latency measurement only.
+   *
+   * The v1 rail has no id of its own the way a v2 portal or a Genome offer
+   * does, so one is assigned when it opens. A counter rather than a timestamp:
+   * the value only has to be unique within this page lifecycle, and a
+   * timestamp would read like a progression fact to the next person editing
+   * this file.
+   */
+  const portalDecisionIdRef = useRef<string | null>(null);
+  const portalDecisionSeqRef = useRef(0);
   const deathPresentationRef = useRef<{
     promise: Promise<void>;
     resolve: () => void;
@@ -2200,6 +2230,12 @@ export default function GamePage() {
       ...(replacementSlot !== undefined ? { replacementSlot } : {}),
     })) {
       setChoiceOptions(null);
+      // How long THE DROP was held open, and which answer won. Measurement
+      // only: nothing renders, nothing is a deadline, nothing reads it back.
+      trackDecisionResolved('drop', offerId, 'lock_in', {
+        candidate_index: candidateIndex,
+        recode: replacementSlot !== undefined,
+      });
       revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
       armResumeAfterDecision();
@@ -2217,6 +2253,9 @@ export default function GamePage() {
       ...(pinCandidateIndex !== undefined ? { pinCandidateIndex } : {}),
     })) {
       setChoiceOptions(null);
+      trackDecisionResolved('drop', offerId, 'decline', {
+        pinned: pinCandidateIndex !== undefined,
+      });
       revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
       armResumeAfterDecision();
@@ -2225,6 +2264,14 @@ export default function GamePage() {
 
   const handlePortalChoice = useCallback((choice: 'bank' | 'pass' | 'infuse') => {
     if (gameRef.current?.resolvePortalChoice(choice)) {
+      // The v1 portal rail carries no id of its own, so the open stamp is
+      // keyed on the sequence number the effect below assigned it.
+      trackDecisionResolved(
+        'portal',
+        portalDecisionIdRef.current ?? 'portal-unknown',
+        choice
+      );
+      portalDecisionIdRef.current = null;
       setPortalChoicePending(false);
       audioManager.play('uiClick');
       armResumeAfterDecision();
@@ -2241,6 +2288,7 @@ export default function GamePage() {
     const bridge = genomeV2RuntimeBridge(gameRef.current);
     if (!portalId || !bridge) return;
     if (bridge.resolveGenomeV2Portal({ action: 'bank', portalId })) {
+      trackDecisionResolved('portal', portalId, 'bank');
       syncGenomeV2Mirror();
       audioManager.play('uiClick');
     }
@@ -2256,6 +2304,9 @@ export default function GamePage() {
       portalId,
       activateMirror,
     })) {
+      trackDecisionResolved('portal', portalId, 'ride_on', {
+        mirror: activateMirror,
+      });
       setPortalChoicePending(false);
       revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
@@ -2278,6 +2329,9 @@ export default function GamePage() {
       candidateIndex,
       ...(replacementSlot !== undefined ? { replacementSlot } : {}),
     })) {
+      trackDecisionResolved('portal', portalId, 'trade_up', {
+        candidate_index: candidateIndex,
+      });
       setPortalChoicePending(false);
       revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
@@ -4226,6 +4280,11 @@ export default function GamePage() {
       setRequiresDirectionalStart(false);
       setReady(false);
       startGameLoop();
+      // §9.3's first-input beat, fired where the held board actually releases
+      // rather than where a key was pressed: a press that lost the race with
+      // the listener starts nothing, and counting it would inflate the beat
+      // exactly on the devices where the race is worst.
+      trackFirstInput();
       return true;
     })();
     activationPromiseRef.current = task;
@@ -5226,11 +5285,168 @@ export default function GamePage() {
     ) {
       transitionResultsInvitation('resolved');
     }
-  }, [resultsNextAction.id, transitionResultsInvitation]);
+    if (resultsNextAction.id === 'curriculum-reveal' && curriculumInvite) {
+      trackTrialInvitationAccepted(
+        curriculumInvite.attentionId,
+        curriculumInvite.geneId
+      );
+    }
+    if (resultsNextAction.id === 'clan-reveal' && clanReveal) {
+      trackClanRevealAccepted(clanReveal.attentionId);
+    }
+  }, [
+    clanReveal,
+    curriculumInvite,
+    resultsNextAction.id,
+    transitionResultsInvitation,
+  ]);
 
   const handleDeclineResultsNextAction = useCallback(() => {
     transitionResultsInvitation('dismissed');
-  }, [transitionResultsInvitation]);
+    // Declining is measured because §9.4 needs it: if **Not now** correlates
+    // with healthier retention the autonomy is preserved. It is never an input
+    // to whether the invitation is shown. The fold decides which invitation a
+    // tap belongs to, so the telemetry reads the CHOSEN action's id for the
+    // same reason the transition does.
+    if (resultsNextAction.id === 'curriculum-reveal' && curriculumInvite) {
+      trackTrialInvitationDeclined(
+        curriculumInvite.attentionId,
+        curriculumInvite.geneId
+      );
+    }
+    if (resultsNextAction.id === 'clan-reveal' && clanReveal) {
+      trackClanRevealDeclined(clanReveal.attentionId);
+    }
+  }, [
+    clanReveal,
+    curriculumInvite,
+    resultsNextAction.id,
+    transitionResultsInvitation,
+  ]);
+
+  // ---------------------------------------------------------------------
+  // CURRICULUM TELEMETRY (WP-F; PEO §9.3, TGv2 §11).
+  // ---------------------------------------------------------------------
+  // Consent-gated to the last function: every call below reaches PostHog only
+  // through `trackEvent`, which is inert until AnalyticsProvider initialises
+  // the SDK from a granted analytics consent. Nothing here reads back into
+  // gameplay, and nothing is written to browser storage — the once-per-beat
+  // guards live in module memory (see `lib/analytics/curriculum.ts`).
+
+  // The INVITATION was shown. Once per attention row: Results re-renders on
+  // every settlement tick, and double-counting the ask would halve the
+  // apparent **Show me** rate.
+  useEffect(() => {
+    if (resultsNextAction.id !== 'curriculum-reveal' || !curriculumInvite) return;
+    trackTrialInvitationShown(
+      curriculumInvite.attentionId,
+      curriculumInvite.geneId
+    );
+  }, [curriculumInvite, resultsNextAction.id]);
+
+  // The learning event RESOLVED, taken from the settled receipt's own
+  // `gene_unlocked` beat. That beat exists only when `resolve_learning_event`
+  // returned, so this measures promotions the server made and never one the
+  // client predicted.
+  useEffect(() => {
+    if (!runImpact) return;
+    for (const beat of runImpact.impacts) {
+      if (beat.kind !== 'gene_unlocked') continue;
+      const geneId = (beat.metadata as { geneId?: unknown } | undefined)?.geneId;
+      if (typeof geneId !== 'string') continue;
+      trackLearningEventResolved(runImpact.sessionId, geneId);
+    }
+  }, [runImpact]);
+
+  // GUARANTEE CONSUMPTION (§13 decision 7), observed where it is spent: a
+  // collected offer whose candidates contained the trial. Counted in offers,
+  // never in runs, so Ascetic, Patient, Free Play, an ignored relic and a
+  // relic-less run all produce nothing — exactly as they consume nothing
+  // server-side.
+  useEffect(() => {
+    const offer = genomeV2State?.offer;
+    const trialGeneId = genomeV2State?.trial?.geneId;
+    if (!offer || !trialGeneId) return;
+    if (!offer.candidateGeneIds.includes(trialGeneId)) return;
+    trackTrialOfferShown(trialGeneId, offer.offerId, offer.source);
+  }, [genomeV2State?.offer, genomeV2State?.trial?.geneId]);
+
+  // §9.3's first funnel, middle two beats. Arrival and the first BANK are
+  // already measured by the Acquisition funnel's ARRIVE and ACTIVATE stages;
+  // these are the two nothing measured. A terminal result is a result whether
+  // the run banked or crashed — that is the point of measuring it separately
+  // from the BANK.
+  useEffect(() => {
+    if (!isGameOver) return;
+    trackFirstTerminalResult({ end_reason: endReason ?? 'unknown' });
+  }, [endReason, isGameOver]);
+
+  // ---------------------------------------------------------------------
+  // DECISION LATENCY (WP-F; the measurement TGv2 §11's list omits).
+  // ---------------------------------------------------------------------
+  // §11 records which option won every decision and never how long it took,
+  // which leaves "the game interrupts too much" unfalsifiable: the same
+  // surface answered in 900ms and in nine seconds is two different products.
+  // These two effects stamp the OPEN; the resolve handlers above report the
+  // elapsed time with the winning option.
+  //
+  // Nothing renders and nothing is a deadline — R1 forbids a new in-run
+  // surface, and a timer the player could feel would be one. The stamps live
+  // in module memory for the length of the decision (see
+  // `lib/analytics/decisionLatency.ts`) and never touch browser storage.
+  useEffect(() => {
+    const offerId = genomeV2State?.offer?.offerId;
+    if (!offerId) return;
+    markDecisionOpened('drop', offerId);
+  }, [genomeV2State?.offer?.offerId]);
+
+  useEffect(() => {
+    const v2PortalId = genomeV2State?.portal?.portalId;
+    if (v2PortalId) {
+      markDecisionOpened('portal', v2PortalId);
+      return;
+    }
+    if (!portalChoicePending) {
+      portalDecisionIdRef.current = null;
+      return;
+    }
+    // A v1 rail with no id of its own: assign one on the transition into
+    // pending, and only then, so a re-render cannot restart the clock.
+    if (portalDecisionIdRef.current) return;
+    portalDecisionSeqRef.current += 1;
+    const id = `portal-v1-${portalDecisionSeqRef.current}`;
+    portalDecisionIdRef.current = id;
+    markDecisionOpened('portal', id);
+  }, [genomeV2State?.portal?.portalId, portalChoicePending]);
+
+  // ---------------------------------------------------------------------
+  // CLAN HANDOFF TELEMETRY (WP-F item 5; PEO §6, §9.3).
+  // ---------------------------------------------------------------------
+  // The ask, measured where the fold actually made it. `clanReveal` alone is
+  // not enough: §13 row 12 can hand this settlement to the clan reveal and
+  // defer the Gene, or the other way round, and only the chosen action says
+  // which invitation the player was shown.
+  useEffect(() => {
+    if (resultsNextAction.id !== 'clan-reveal' || !clanReveal) return;
+    trackClanRevealShown(clanReveal.attentionId);
+  }, [clanReveal, resultsNextAction.id]);
+
+  // The run that COUNTED for a clan (§6 step 5), read from the server's own
+  // settled clan result rather than from anything this client decided. Whether
+  // it was the account's FIRST is a question the event stream answers per
+  // person; deciding it here would need a durable browser record of a
+  // progression fact, which boundary 9 forbids.
+  useEffect(() => {
+    if (!clanBattleResult?.eligible || !currentSessionId) return;
+    trackClanContribution({
+      sessionId: currentSessionId,
+      enteredTopFive: clanBattleResult.enteredTopFive === true,
+      replaced: Boolean(clanBattleResult.replacedSessionId),
+      ...(typeof clanBattleResult.scoreDelta === 'number'
+        ? { delta: clanBattleResult.scoreDelta }
+        : {}),
+    });
+  }, [clanBattleResult, currentSessionId]);
 
   // ---------------------------------------------------------------------
   // EVENT-ONLY RUN RATES.

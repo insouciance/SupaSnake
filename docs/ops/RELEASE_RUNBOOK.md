@@ -149,6 +149,131 @@ only production mutation path; never run a separate hosted `supabase db push`.
    potentially writing 3/4/5 artifact cannot be treated as a legacy reader
    across two non-atomic point-in-time queries.
 
+## Addendum: the Genome Discovery flag-on release (WP-F)
+
+This addendum governs exactly one release — the one that first ships
+`NEXT_PUBLIC_PLAYER_EVOLUTION_V1` as a live public surface. After it, the flag
+is an ordinary manifest entry and the standard sequence above applies again.
+
+### What changes, and what does not
+
+The manifest goes from 22 flags to 23, so the deterministic public-surface
+hash changes from
+`8bf7f5634d0e36982326920668c1f5a8e79df5f9cdf402c66925899509e0fd99` to
+`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. Recompute
+rather than copy:
+
+```sh
+node scripts/production-public-surface-cli.mjs hash
+```
+
+**No migration and no backfill.** The curriculum's table, RPCs and backfill
+shipped dormant in migration 067 (the `bf3020c` train), which reported 32
+graduation, 7 history-credit and 2,192 starter rows and is idempotent on
+re-run. This release changes only which artifact the flag is compiled into.
+
+### Operator prerequisite — before dispatching the workflow
+
+`NEXT_PUBLIC_*` values are inlined at **build** time, and the deploy workflow
+validates the pulled Production environment **before** it builds anything. Two
+variables must therefore already exist in the Vercel project
+`josef-bells-projects/supasnake`, **Production** environment:
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_PLAYER_EVOLUTION_V1` | `true` |
+| `SUPASNAKE_PUBLIC_SURFACE_HASH` | `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be` |
+
+The release operator sets both. Neither is optional and neither can be added
+mid-run:
+
+- `production-env-validation.cjs` derives its required list from the manifest
+  (`REQUIRED_VARIABLES` splices `PRODUCTION_PUBLIC_FLAGS`), so a **missing**
+  flag is an error even when every production value is sealed — sealing hides
+  the value, never the absence. `verify:production-env` runs at the "Validate
+  production environment contract" step and stops the release there, before
+  Preview and before any hosted mutation.
+- When the pulled values are not sealed, the same validator asserts the flag is
+  exactly `true` and the hash is exactly the checked-in one, so a stale hash in
+  the dashboard also stops the release.
+- The workflow additionally injects both through
+  `production-public-surface-cli.mjs vercel-args` as `--build-env`/`--env`, so
+  the artifact receives the correct values regardless of the dashboard. That
+  injection is belt-and-braces for the deploy path; it does not excuse leaving
+  the dashboard wrong, because `/api/health`'s `publicSurface` check reads the
+  runtime value and any deployment made outside this workflow would report
+  unhealthy.
+
+### Proof after cutover
+
+Canonical `/api/health` must report `publicSurface.status = healthy`,
+`enabledFlagCount = expectedFlagCount = 23`, and `contractHash` equal to the
+hash above. `/api/release-contract` must report the same hash from the
+anonymous surface. A 22/22 count or the old hash after cutover means the
+environment, not the code, is wrong — treat it as a failed release health check
+under "Failure and recovery" and do not roll back the application.
+
+### Rollback: flag-off is a forward release, and a full pool
+
+`NEXT_PUBLIC_PLAYER_EVOLUTION_V1` is a **build-time rollout boundary, not an
+instantaneous kill switch** — the same shape as `NEXT_PUBLIC_GENOME_V2` above,
+and it is handled the same way. An emergency flag-off requires one reviewed
+forward release of the same dual-version code:
+
+1. Remove the flag from `config/production-public-surface.json`, which returns
+   the manifest to 22 flags and the hash to `8bf7f563…fd99`.
+2. Remove it from the Vercel Production environment, or set it to a non-`true`
+   value, and set `SUPASNAKE_PUBLIC_SURFACE_HASH` back to the 22-flag hash.
+3. Build and deploy through the ordinary sequence.
+4. Prove that a new run composes the **complete legal Dynasty roster**.
+
+**Flag-off is a dual-version fallback, not a data migration**, and this is what
+makes it safe to do at any moment:
+
+- `player_gene_eligibility` rows are not deleted, lowered or revoked — Rule 6
+  holds through a rollback, and re-enabling the flag restores every account to
+  exactly the prefix it had earned.
+- A run already in flight settles under the pool it was **stamped** with at
+  start, because settlement reads the run's own context and never recomposes a
+  vocabulary. A flag flip mid-run changes the next run, never that one.
+- A run started with the flag off writes the pre-curriculum context blob
+  byte-for-byte, so nothing downstream can tell the difference.
+- Every curriculum surface is inert with the flag off:
+  `/api/genome/curriculum` answers `live: false`, the Workbench renders exactly
+  today's palette, Results recommends what it recommended before, and no
+  invitation is written. The `rollback` e2e leg runs the whole suite in this
+  configuration, and `e2e/player-evolution.spec.ts` asserts the client never
+  even requests a curriculum projection.
+
+Never deploy an artifact older than migration 067 as a substitute for this
+procedure.
+
+### Known SQL follow-ups — neither blocks this release
+
+Two database changes are queued for the **next Track-A migration** and are
+deliberately not in this release, which carries no migration at all:
+
+1. **The clan RPC-layer anonymous guard.** WP-E added the `is_anonymous` check
+   to every clan found/join path in the API route. Pushing the same guard down
+   into the RPC is defence in depth, not the fix — the route-level guard is the
+   one a client actually meets.
+2. **The expire-race continuity predicate.** A narrowing of the predicate that
+   decides when a lease may be treated as expired.
+
+Neither is reachable from the curriculum flag, and neither changes what this
+release deploys. Record them here so the next Track-A package does not have to
+rediscover them, and so a reader of this addendum does not mistake their
+absence for an oversight.
+
+### Telemetry note
+
+The curriculum's instrumentation is consent-gated through the existing PostHog
+path, so it produces nothing for a visitor who declined analytics. Every
+conclusion drawn from it filters `player_cohort = 'player'` — the property is
+stamped from `players.cohort` server-side, so the dev/QA/fixture accounts that
+still make up most of this database do not reach a curriculum number. A
+dashboard that omits that filter is reading noise, not players.
+
 ## SQL evidence boundary
 
 The release has three deliberately different database gates:

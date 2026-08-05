@@ -210,9 +210,12 @@ NEXT_PUBLIC_RUN_FLOW_V1=true  # cockpit Setup and Victory Lap
 NEXT_PUBLIC_GENOME_V2=true  # new starts use physical-interaction v2; stamped v1 remains supported
 ```
 
-The complete 22-flag production set is defined only in
+The complete 23-flag production set is defined only in
 `config/production-public-surface.json`; the list above highlights the
-player-flow flags most relevant to this status summary.
+player-flow flags most relevant to this status summary. The 23rd,
+`NEXT_PUBLIC_PLAYER_EVOLUTION_V1`, was added by WP-F and is armed by the
+flag-on release described in `docs/ops/RELEASE_RUNBOOK.md`; the currently
+deployed artifact still proves the previous 22/22 contract.
 
 ## Known follow-ups
 

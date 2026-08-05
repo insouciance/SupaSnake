@@ -18,6 +18,16 @@ import * as path from 'path';
 import { describe, expect, it } from '@jest/globals';
 
 const source = fs.readFileSync(path.join(__dirname, 'route.ts'), 'utf8');
+/**
+ * The promotion moved out of this route (WP-D, deduplicated by WP-F): it
+ * lives in the durable settlement, which is the only caller the recovery
+ * sweep also reaches and the only one that can emit the REVEAL. The
+ * structural assertions below follow it there rather than being dropped.
+ */
+const settlementSource = fs.readFileSync(
+  path.join(__dirname, '../../../../lib/server/gameProgressionSettlement.ts'),
+  'utf8'
+);
 
 describe('run start: composing the vocabulary', () => {
   it('reads eligibility server-side, and only when the curriculum is live', () => {
@@ -93,37 +103,59 @@ describe('settlement: resolving a learning event', () => {
     expect(
       source.indexOf('readGeneEligibility(supabase, player.id)')
     ).toBeLessThan(source.indexOf('const stampedTrialGeneId'));
+    // The settlement's own trial also comes from the stamp, read out of the
+    // run's stored context rather than from today's eligibility rows.
+    expect(settlementSource).toMatch(
+      /const parsed = parseRunStartContext\(runContextRaw\)/
+    );
+    expect(settlementSource).toMatch(/const trialGeneId = inputs\.trialGeneId/);
   });
 
   it('reads the resolution from the validated record and never from the journal', () => {
-    expect(source).toMatch(
-      /genomeV2LearningEventsResolved\(settledV2Record\)\.includes\(\s*\n?\s*stampedTrialGeneId\s*\n?\s*\)/
-    );
-    expect(source).toMatch(
-      /validation\.genome && validation\.genome\.v === GENOME_RULES_V2/
-    );
     // The journal compacts above 256 entries, so a scan for "did event X
     // happen" answers false for exactly the long runs an engaged learner
     // produces. The resolution is a reducer-written state field instead.
-    const promotion = source.slice(
-      source.indexOf('const stampedTrialGeneId'),
-      source.indexOf('await resolveLearningEvent(')
+    expect(settlementSource).toMatch(
+      /const resolvedRaw = settledGenome\?\.learningEventsResolved/
+    );
+    const promotion = settlementSource.slice(
+      settlementSource.indexOf('function readCurriculumFacts'),
+      settlementSource.indexOf('await resolveLearningEvent(')
     );
     expect(promotion.length).toBeGreaterThan(0);
     expect(promotion).not.toContain('.journal');
   });
 
-  it('promotes only from a validated, non-Free-Play run', () => {
-    expect(source).toMatch(/validation\.valid &&\s*\n?\s*!isFreeSession &&/);
+  it('promotes only from a validated run, and never from this route', () => {
+    // `validated` is the settlement snapshot's own flag, and a Free Play run
+    // never carries an eligibility stamp to begin with, so both exclusions
+    // survive the move.
+    expect(settlementSource).toMatch(/const resolved =\s*\n?\s*validated &&/);
+    expect(settlementSource).toMatch(/if \(!inputs\) return NO_CURRICULUM_FACTS;/);
+    // ONE promotion path. The route's duplicate call was deleted by WP-F: a
+    // settlement that promotes a Gene must be the settlement that can also
+    // announce it, and two callers meant one of them was silent.
+    expect(source).not.toContain('resolveLearningEvent');
+    expect(settlementSource.match(/await resolveLearningEvent\(/g)).toHaveLength(1);
   });
 
   it('promotes after the durable settlement, and never blocks it', () => {
-    const settlement = source.indexOf('await settleDurableRunProgression(');
-    const resolve = source.indexOf('await resolveLearningEvent(');
-    expect(settlement).toBeGreaterThan(0);
-    expect(resolve).toBeGreaterThan(settlement);
-    // No early return, no throw, and nothing reads its result.
-    expect(source).not.toMatch(/const \w+ = await resolveLearningEvent\(/);
+    // Inside the durable settlement now, so "after" means after the reward and
+    // progression RPCs have committed and before the receipt is built.
+    const reward = settlementSource.indexOf(
+      "'settle_game_session_reward_from_snapshot'"
+    );
+    const resolve = settlementSource.indexOf('await resolveLearningEvent(');
+    const receipt = settlementSource.indexOf('buildRunImpactEnvelope({');
+    expect(reward).toBeGreaterThan(0);
+    expect(resolve).toBeGreaterThan(reward);
+    expect(receipt).toBeGreaterThan(resolve);
+    // Its result gates the REVEAL beat and nothing else: no early return, no
+    // throw, no settlement failure.
+    expect(settlementSource).toMatch(
+      /const promoted = await resolveLearningEvent\(/
+    );
+    expect(settlementSource).toMatch(/if \(promoted\) \{/);
   });
 
   it('never recomposes a vocabulary at settlement', () => {
@@ -180,13 +212,19 @@ describe('settlement: consuming guaranteed appearances (WP-C)', () => {
     expect(consumption).toMatch(/trialAppearances > 0/);
   });
 
-  it('records the appearances before promoting, and never blocks settlement', () => {
+  it('records the appearances after the durable settlement, and never blocks it', () => {
+    // WP-C asserted this consumption sits after `settleDurableRunProgression`
+    // and before the promotion. The promotion moved INSIDE that settlement
+    // (WP-D/WP-F), so the ordering claim it was really making — the guarantee
+    // is spent only once the run is durably settled, and the promotion the
+    // settlement performs sees the spend — is unchanged and still checked.
     const settlement = source.indexOf('await settleDurableRunProgression(');
     const record = source.indexOf('await recordTrialOffer(');
-    const resolve = source.indexOf('await resolveLearningEvent(');
     expect(settlement).toBeGreaterThan(0);
     expect(record).toBeGreaterThan(settlement);
-    expect(resolve).toBeGreaterThan(record);
+    // `record_trial_offer` only touches a row still in the trial state, so a
+    // Gene the settlement just promoted is untouched by a later appearance.
+    expect(source).toContain('await recordTrialOffer(');
     // Nothing reads its result, so nothing can branch on it.
     expect(source).not.toMatch(/const \w+ = await recordTrialOffer\(/);
   });
