@@ -6560,14 +6560,18 @@ export default function GamePage() {
 
       {/* Game Over / Start Screen */}
       {!isPlaying && (
-        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto bg-void-deep/85 p-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] backdrop-blur-sm sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
+        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto bg-ink/86 p-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] backdrop-blur-sm sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
+          {/* ONE tray, ONE outline (owner ruling). This element is the tray for
+              every state of the overlay - Run Setup, Results, recovery - so the
+              single bold frame lives here and nothing inside it may draw a
+              second one. See `.modal-frame` in globals.css. */}
           <div
-            className={`panel-elevated my-auto min-w-0 w-full max-w-3xl space-y-6 p-2 text-center animate-pop-in sm:p-8 ${
+            className={`panel-elevated modal-frame my-auto min-w-0 w-full max-w-3xl space-y-6 p-2 text-center animate-pop-in sm:p-8 ${
               isGameOver
                 ? endReason === 'extracted'
-                  ? '[--glow:#4ade80]'
-                  : '[--glow:#f43f5e]'
-                : '[--glow:#22d3ee]'
+                  ? '[--glow:#f2a03f]'
+                  : '[--glow:#a3324a]'
+                : '[--glow:#f2a03f]'
             }`}
           >
             {/* Constitution §5 / WP-1.06: one consolidated Run Setup page and
@@ -6953,7 +6957,7 @@ export default function GamePage() {
                 )}
                 {settlementSecuredPending && !lastRunFree ? (
                   <div
-                    className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg px-5 py-4 text-left"
+                    className="panel-glow [--glow:#f2a03f] mx-auto max-w-lg px-5 py-4 text-left"
                     data-testid="legacy-results-settlement-pending"
                     role="status"
                   >
@@ -7088,7 +7092,7 @@ export default function GamePage() {
 
                 {showFirstResultDiscovery && (
                   <div
-                    className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg space-y-2 px-5 py-4 text-left animate-fade-up"
+                    className="panel-glow [--glow:#f2a03f] mx-auto max-w-lg space-y-2 px-5 py-4 text-left animate-fade-up"
                     data-testid="first-result-discovery"
                   >
                     <p className="heading-display text-xl text-[#7df9ff]">

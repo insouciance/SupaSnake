@@ -206,7 +206,7 @@ export function PortalChoiceOverlay({
       data-testid="portal-choice-overlay"
       data-rules-version={rulesVersion}
     >
-      <div className="panel-elevated flex h-[min(58dvh,560px)] w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 [--glow:#22d3ee] animate-pop-in sm:ml-auto sm:h-full sm:max-h-none sm:w-[min(42rem,52vw)] sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5">
+      <div className="panel-elevated flex h-[min(58dvh,560px)] w-full flex-col overflow-hidden rounded-b-none border-b-0 p-3 [--glow:#f2a03f] animate-pop-in sm:ml-auto sm:h-full sm:max-h-none sm:w-[min(42rem,52vw)] sm:rounded-l-[20px] sm:rounded-r-none sm:border-b sm:border-r-0 sm:p-5">
         <header className="shrink-0 border-b border-scale-blue-light/20 pb-3">
           <div className="flex items-start justify-between gap-3">
             <div>

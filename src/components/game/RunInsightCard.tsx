@@ -99,7 +99,7 @@ export function RunInsightCard({ sessionId, accessToken }: RunInsightCardProps) 
 
   return (
     <div
-      className="panel-glow [--glow:#22d3ee] p-4 text-left animate-pop-in"
+      className="panel-glow [--glow:#f2a03f] p-4 text-left animate-pop-in"
       data-testid="run-insight-card"
     >
       <p className="label-arcade">The Analyst</p>

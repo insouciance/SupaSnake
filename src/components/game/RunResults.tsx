@@ -127,7 +127,7 @@ function headline(outcome: RunResultsOutcome, practice: boolean) {
     return {
       testId: 'gameover-practice',
       title: 'Practice Run',
-      tone: 'text-[#22d3ee]',
+      tone: 'text-beige',
       detail:
         outcome === 'extracted'
           ? 'Extracted — practice, no rewards'
@@ -138,7 +138,7 @@ function headline(outcome: RunResultsOutcome, practice: boolean) {
     return {
       testId: 'gameover-extracted',
       title: 'Extracted',
-      tone: 'text-rarity-uncommon',
+      tone: 'text-venom-orange',
       detail: 'Banked at the portal',
     };
   }
@@ -333,8 +333,8 @@ function buildClaimBeats(envelope: RunImpactEnvelope): ClaimBeat[] {
       payoff: `${formatAmount(credited)} DNA secured in your vault`,
       impacts: [],
       tone: 'border-venom-orange/70 bg-venom-orange/10 text-venom-orange',
-      orb: 'border-venom-orange/80 bg-venom-orange/15 text-venom-orange shadow-[0_0_40px_rgba(250,204,21,0.3)]',
-      action: 'border-venom-orange bg-venom-orange text-void-deep hover:brightness-110',
+      orb: 'border-venom-orange/80 bg-venom-orange/15 text-venom-orange shadow-[0_0_40px_rgba(242,160,63,0.32)]',
+      action: 'border-venom-orange bg-venom-orange text-ink hover:brightness-110',
     });
   }
 
@@ -879,7 +879,7 @@ export function RunResults({
     ? {
         testId: 'gameover-finalizing',
         title: 'Run Secured',
-        tone: 'text-[#7df9ff]',
+        tone: 'text-venom-orange-light',
         detail: 'Outcome finalizing on the server',
       }
     : headline(outcome, practice);
@@ -926,7 +926,7 @@ export function RunResults({
     <div className="space-y-6" data-testid="run-results">
       <section data-testid="results-layer-1" aria-label="Outcome" className="space-y-4">
         <div className="space-y-1">
-          <h2 className={`heading-display text-4xl text-glow ${head.tone}`} data-testid={head.testId}>
+          <h2 className={`heading-display heading-ink text-4xl text-glow ${head.tone}`} data-testid={head.testId}>
             {head.title}
           </h2>
           <p className="font-body text-sm uppercase tracking-wide text-beige/60">
@@ -950,11 +950,11 @@ export function RunResults({
 
         {settlementPending && !practice ? (
           <div
-            className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg px-5 py-4 text-left"
+            className="panel-glow [--glow:#f2a03f] mx-auto max-w-lg px-5 py-4 text-left"
             data-testid="results-settlement-pending"
             role="status"
           >
-            <p className="label-arcade text-[#7df9ff]">Run secured</p>
+            <p className="label-arcade text-venom-orange-light">Run secured</p>
             <p className="mt-1 font-body text-sm text-beige/85">
               Finalizing DNA, records, and Career progress on the server. You can safely leave this screen.
             </p>
@@ -1116,7 +1116,7 @@ export function RunResults({
 
       <section data-testid="results-layer-3" aria-label="Progression" className="space-y-4">
         <div
-          className="panel-glow [--glow:#22d3ee] mx-auto max-w-lg p-4 text-left"
+          className="panel-glow [--glow:#f2a03f] mx-auto max-w-lg p-4 text-left"
           data-testid="results-digest"
         >
           <div className="space-y-3">
@@ -1149,14 +1149,14 @@ export function RunResults({
         </div>
 
         {nextAction.href ? (
-          <Link href={nextAction.href} onClick={onNextAction} data-testid="results-next-action" data-next-action={nextAction.id} className="panel-glow [--glow:#22d3ee] mx-auto flex min-h-[44px] max-w-lg items-center justify-between gap-3 px-5 py-4 text-left">
-            <span><span className="block heading-display text-lg text-[#7df9ff]">{nextAction.label}</span><span className="block font-body text-sm text-beige/75">{nextAction.description}</span></span>
-            <IconArrowRight size={20} className="shrink-0 text-[#7df9ff]" />
+          <Link href={nextAction.href} onClick={onNextAction} data-testid="results-next-action" data-next-action={nextAction.id} className="panel-glow [--glow:#f2a03f] mx-auto flex min-h-[44px] max-w-lg items-center justify-between gap-3 px-5 py-4 text-left">
+            <span><span className="block heading-display text-lg text-venom-orange-light">{nextAction.label}</span><span className="block font-body text-sm text-beige/75">{nextAction.description}</span></span>
+            <IconArrowRight size={20} className="shrink-0 text-venom-orange-light" />
           </Link>
         ) : (
-          <button type="button" onClick={onNextAction} data-testid="results-next-action" data-next-action={nextAction.id} className="panel-glow [--glow:#22d3ee] mx-auto flex min-h-[44px] w-full max-w-lg items-center justify-between gap-3 px-5 py-4 text-left">
-            <span><span className="block heading-display text-lg text-[#7df9ff]">{nextAction.label}</span><span className="block font-body text-sm text-beige/75">{nextAction.description}</span></span>
-            <IconArrowRight size={20} className="shrink-0 text-[#7df9ff]" />
+          <button type="button" onClick={onNextAction} data-testid="results-next-action" data-next-action={nextAction.id} className="panel-glow [--glow:#f2a03f] mx-auto flex min-h-[44px] w-full max-w-lg items-center justify-between gap-3 px-5 py-4 text-left">
+            <span><span className="block heading-display text-lg text-venom-orange-light">{nextAction.label}</span><span className="block font-body text-sm text-beige/75">{nextAction.description}</span></span>
+            <IconArrowRight size={20} className="shrink-0 text-venom-orange-light" />
           </button>
         )}
 
