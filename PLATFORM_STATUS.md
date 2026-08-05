@@ -12,7 +12,7 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–068 deployed and aligned; no pending migration |
+| Schema | Migrations 001–068 deployed and aligned; migration 069 is merged to `main` and awaits its own deploy |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
 | Practice | Training Lab enabled; deterministic and rewardless |
@@ -25,28 +25,29 @@
 | Engine rules | `snake-rules-2026-08-05.2` |
 | Player Evolution | **Live.** New players receive the seven-Gene starter curriculum; trials run in THE DROP and unlocks are revealed on Results |
 | Public surface | Live: 23 flags, contract hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`; health reports 23/23 with no disabled flags. Checked in and pending: 24 flags at `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, adding `NEXT_PUBLIC_SNAKE_COSMETICS`; it becomes the live contract only when the LF-B release cuts over |
-| Player-feature baseline | `03d185a5976654c42fa33994ec294b04a381d055` |
-| Current deployment | `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`supasnake-obeb9b2ap-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1` (`4e51e81`); same schema and 23-flag surface, but serves `snake-rules-2026-08-05.1`, so rolling back is itself a rules change |
+| Presentation | INK & AMBER; amber `#f2a03f` on ink `#0b1118`, verified in the served stylesheet |
+| Player-feature baseline | `59fb58014464bcf0ca7143847c934b13e2cc5101` |
+| Current deployment | `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`supasnake-cs8vx9fu0-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`03d185a`); same schema, surface **and rules version**, so a rollback crosses no continuity boundary — it only gives up the design and the quality governor |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release is the Wave-1 rules train (PR 88), which also carried the
-previous release record. It is **rules-only**: no migration, no schema change,
-and no public-surface change — the linked plan was exactly `none`, the hosted
-schema stays 001–068, and the 23-flag contract hash is unchanged. What moved is
-the engine, to `snake-rules-2026-08-05.2`: the CYBER connectivity guarantee, the
-8 ± 2 relic cadence, and the food-wave and portal fairness fixes.
+The current release is INK & AMBER, the LF-A game screen (PR 89), carrying the
+previous release record with it. It is a **presentation release**: no migration,
+no schema change, no public-surface change, and — deliberately — no rules
+change. The hosted schema stays 001–068, the 23-flag contract hash is unchanged,
+and `snake-rules-2026-08-05.2` is untouched, so open runs crossed the cutover
+seamlessly. It also ships the adaptive-quality governor.
 
 The release passed all ten protected-PR checks including the four
 isolated-Supabase E2E flag shapes, its post-main push workflows on the exact
 main SHA, full type checking, lint, `verify:constitution`, the production build,
-the deterministic cockpit verifications, the starter-pool simulation gate at
-58/58, local migrations 001–068 from zero, ordinary and two-session SQL
+the deterministic cockpit verifications, local migrations from zero, ordinary
+and two-session SQL
 integration, the production runtime dependency audit, staged and canonical
 health, the 16-key `cohesive_release_read_only_v5` schema probe, exact cron
 ownership, and focused public-production smoke. Production workflow
-`31035732323` deployed it. Detailed evidence is maintained
+`31041034171` deployed it. Detailed evidence is maintained
 in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -132,6 +133,16 @@ in `docs/ops/QA_CHECKLIST.md`.
   RIDE ON, TRADE UP, GOLDEN HOUR, and GOLD, PULSE, COILS, WARP and RISK. A
   mounted glossary is available wherever the terms appear, so a term is never
   the thing standing between a player and the decision.
+- The game screen is drawn in INK & AMBER: amber `#f2a03f` on ink `#0b1118`,
+  with ink outlines and role-chosen stroke weights rather than the previous
+  cyan. The palette is the styleguide's, recovered rather than invented.
+- The board adapts its cost, never its identity. A governor watches tick
+  retention and steps down a four-rung ladder — T0 full look, T1 quarter-
+  resolution bloom, T2 terrain out of the shadow-casting pass, T3 no shadow map
+  or composer — so a struggling device gets a board that plays correctly rather
+  than a prettier one that stutters. Flat toon fills, ink outlines, the slab and
+  the amber are present at every tier: two players on different tiers play
+  exactly the same game, and one of them is looking at cheaper shadows.
 - CYBER's board keeps closing, but it can no longer cut the arena in two. A
   terrain cell that would split the free field into separate regions is skipped
   and laid on a later pass once it no longer partitions anything, so cells the
@@ -260,6 +271,10 @@ These do not invalidate the operator production release:
   clan RPC-layer anonymous guard (defence in depth behind the route-level guard
   WP-E already ships) and a narrowing of the expire-race continuity predicate.
   Neither is reachable from the curriculum flag.
+- Render-tier distribution across real devices is a new observable, reported by
+  a Sentry breadcrumb on every tier change. It belongs in the next telemetry
+  checkpoint: a population sitting at T2/T3 would mean the ratified look is not
+  actually reaching most players, which is a design finding rather than a bug.
 - Live Player Evolution tuning now that the curriculum is on: trial completion
   and abandonment, whether the seven-Gene starter pool holds up against real
   play, reveal pacing on Results, and the eight-bank clan handoff moment
