@@ -37,6 +37,17 @@ interface DestinationDefinition {
   color: string;
 }
 
+/**
+ * Glyph colours, chosen for a LIGHT ground.
+ *
+ * The same adaptive rule the outline system uses applies to the mark, not just
+ * to the line: an identity keeps its hue and changes its VALUE with the surface
+ * it is drawn on. These three used to be `cosmic-glow`, `rarity-legendary` and
+ * `pulse`, which was correct over the old dark room and is wrong over the paper
+ * sweep - `cosmic-glow` resolves to #FFD700 and `rarity-legendary` to #fbbf24,
+ * so on cream the Lab and Compete glyphs were two near-identical golds at
+ * roughly 1.3:1 against their own chip. Same families, darker end.
+ */
 const DESTINATIONS: DestinationDefinition[] = [
   {
     command: 'lab',
@@ -44,7 +55,8 @@ const DESTINATIONS: DestinationDefinition[] = [
     label: 'Lab',
     Icon: IconFlask,
     notificationDestination: 'lab',
-    color: 'text-cosmic-glow hover:text-cosmic-glow',
+    // COSMIC, at its deep value rather than its glow.
+    color: 'text-cosmic-dim',
   },
   {
     command: 'compete',
@@ -52,7 +64,8 @@ const DESTINATIONS: DestinationDefinition[] = [
     label: 'Compete',
     Icon: IconTrophy,
     notificationDestination: 'clan',
-    color: 'text-rarity-legendary hover:text-rarity-legendary',
+    // The amber, taken dark: a struck-metal trophy, not a lit one.
+    color: 'text-venom-orange-dark',
   },
   {
     command: 'you',
@@ -60,12 +73,25 @@ const DESTINATIONS: DestinationDefinition[] = [
     label: 'You',
     Icon: IconMedal,
     notificationDestination: 'identity',
-    color: 'text-pulse hover:text-pulse',
+    color: 'text-pulse',
   },
 ];
 
+/**
+ * The drawn chip (owner: more contrast against the bright ground, slightly
+ * bigger, bold outline from the outline tokens).
+ *
+ * These controls sit on the Specimen Chamber's near-white paper sweep, so the
+ * adaptive rule in globals.css selects the INK stroke - `.ink-chip` carries
+ * `--ink-border-2` (the button weight) plus `--ink-drop-2`. See that block for
+ * why the contrast has to come from the chip's AREA and not from the glyph's
+ * colour: a 24px stroked icon on cream is mostly holes.
+ *
+ * 56px -> 64px, which keeps the row inside a 19rem rail with a real gutter, so
+ * four chips with 2.5px keylines never read as one bar.
+ */
 const controlClass =
-  'group relative flex h-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-[color,filter,transform,background-color] hover:-translate-y-0.5 hover:bg-void-deep/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current active:translate-y-0 active:scale-90 disabled:cursor-wait disabled:opacity-40 disabled:hover:translate-y-0';
+  'ink-chip group relative mx-auto flex h-16 w-16 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 active:translate-y-0 disabled:cursor-wait disabled:opacity-40 disabled:hover:translate-y-0';
 
 export function HomeCommandRail({
   onPlay,
@@ -107,10 +133,13 @@ export function HomeCommandRail({
 
   return (
     <nav
-      className="grid w-[min(16rem,100%)] grid-cols-4"
+      className="grid w-[min(19rem,100%)] grid-cols-4 gap-2 sm:gap-3"
       aria-label="Home actions"
       data-testid="home-command-rail"
     >
+      {/* Play is the one amber chip in the row, and its glyph goes ink: on the
+          filled chip the accent has moved from the mark to its ground, which
+          is what makes it the loudest thing in the dock. */}
       <button
         type="button"
         onClick={onPlay}
@@ -118,13 +147,13 @@ export function HomeCommandRail({
         aria-label={playLabel}
         aria-describedby={playErrorId}
         title={playLabel}
-        className={`${controlClass} text-venom-orange hover:drop-shadow-[0_0_7px_rgba(34,211,238,0.8)]`}
+        className={`${controlClass} ink-chip-primary text-ink`}
         data-testid="launch-cta"
         data-launch-phase={playPhase}
         data-home-command="play"
         {...interactionProps('play')}
       >
-        <IconPlay size={25} />
+        <IconPlay size={28} />
         <span className="sr-only">{playLabel}</span>
       </button>
 
@@ -145,7 +174,7 @@ export function HomeCommandRail({
             {...interactionProps(command)}
           >
             <span className="relative inline-flex h-8 w-8 items-center justify-center">
-              <Icon size={24} />
+              <Icon size={28} />
               <NotificationBadge
                 kind={badge.kind}
                 count={badge.count}

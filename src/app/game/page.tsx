@@ -65,6 +65,11 @@ import type { PlayerIdentity } from '@/lib/identity/types';
 import Link from 'next/link';
 import { CollectEffect, DeathExplosion } from '@/components/game/Particles';
 import { InstancedSnake, InstancedSnakeFallback } from '@/components/game/InstancedSnake';
+import type { CosmeticLoadout } from '@/components/home/SnakeCosmetics';
+import {
+  EMPTY_SNAKE_LOADOUT,
+  parseSnakeLoadout,
+} from '@/lib/cosmetics/snakeCosmetics';
 import { PerfHUD } from '@/components/game/PerfHUD';
 import { PauseMenu } from '@/components/game/PauseMenu';
 import { AbandonRunDialog } from '@/components/game/AbandonRunDialog';
@@ -733,6 +738,14 @@ export default function GamePage() {
   // a game - account nudges belong after a run, not before it)
   const [showSaveProgress, setShowSaveProgress] = useState(false);
   const [equippedSnake, setEquippedSnake] = useState<EquippedSnakeView | null>(null);
+  /**
+   * What the snake wears for THIS run. Written once, by `applyStartedRun`,
+   * from the server's start manifest; never from the collection, and never
+   * refetched. See that call site for why the fix-at-start matters.
+   */
+  const [runCosmetics, setRunCosmetics] = useState<CosmeticLoadout>(
+    EMPTY_SNAKE_LOADOUT
+  );
   const [collectionSnakes, setCollectionSnakes] = useState<OwnedSnake[]>([]);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
   const [snakePickerOpen, setSnakePickerOpen] = useState(false);
@@ -3456,6 +3469,15 @@ export default function GamePage() {
     setTorus(ruleset.torus === true);
     setSelectedDynasty(dynasty);
     setGameMode(mode);
+
+    // CHAMBER = GAME LAW, at the one seam every start path passes through:
+    // fresh start, resume, repair, prepared-run recovery and handoff all
+    // arrive here with the manifest the server wrote. Reading the loadout HERE
+    // rather than from the collection is what fixes the appearance for the
+    // run — a collection refresh landing mid-run cannot undress the snake, and
+    // a recovered run replays the look it actually had rather than the look
+    // the account has now.
+    setRunCosmetics(parseSnakeLoadout(data.runSnake?.cosmetics));
 
     // Sync server state to local. The server has already decided and
     // stamped how this run settles; the client only mirrors it.
@@ -7629,6 +7651,7 @@ export default function GamePage() {
             genomeV2Board={genomeV2Board}
             terrain={terrain}
             revivePhaseTicksRemaining={revivePhaseTicksRemaining}
+            cosmetics={runCosmetics}
             constellationGlyph={constellationGlyph}
             exitTile={exitTile}
             exitTile2={exitTile2}
@@ -7738,6 +7761,8 @@ interface GameBoardProps {
   genomeV2Board: GenomeV2BoardProjection;
   terrain: readonly TerrainBlock[];
   revivePhaseTicksRemaining: number;
+  /** The run's cosmetic loadout, fixed at start by the session manifest. */
+  cosmetics: CosmeticLoadout;
   constellationGlyph: number | null;
   exitTile: Position | null;
   /** Second portal of the Twin Exits anomaly pair (§7.2), null otherwise. */
@@ -7773,6 +7798,7 @@ function GameBoard({
   genomeV2Board,
   terrain,
   revivePhaseTicksRemaining,
+  cosmetics,
   constellationGlyph,
   exitTile,
   exitTile2,
@@ -7923,6 +7949,7 @@ function GameBoard({
             terrain={snakeTerrain}
             wrapActive={torus}
             revivePhaseActive={revivePhaseTicksRemaining > 0}
+            loadout={cosmetics}
           />
         }
       >
@@ -7934,6 +7961,7 @@ function GameBoard({
           terrain={snakeTerrain}
           wrapActive={torus}
           revivePhaseActive={revivePhaseTicksRemaining > 0}
+          loadout={cosmetics}
         />
       </Suspense>
 

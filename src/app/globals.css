@@ -145,6 +145,39 @@
 .ink-card { border: var(--ink-border-2); box-shadow: var(--ink-drop-2); }
 .ink-card-heavy { border: var(--ink-border-3); box-shadow: var(--ink-drop-3); }
 
+/* A chip is a card you can press: same outline and block, plus the press.
+   The block shrinks under the finger rather than the chip moving away from
+   it, which is how a physical button reads. */
+.ink-chip {
+  border: var(--ink-border-2);
+  background: #fffdf8;
+  box-shadow: var(--ink-drop-2);
+  transition:
+    box-shadow 130ms ease,
+    transform 130ms ease,
+    background-color 130ms ease;
+}
+.ink-chip:hover { box-shadow: var(--ink-drop-3); }
+.ink-chip:active { box-shadow: 1px 1px 0 var(--ink-stroke); }
+/* The primary action wears the amber - the one warm chip in the row, and the
+   product's single semantic warm. Its glyph goes ink, because an orange glyph
+   on an orange chip is the underread this whole block exists to fix. */
+.ink-chip-primary { background: var(--venom-orange); }
+.ink-chip-primary:hover { background: var(--venom-orange-light); }
+
+/* Selected state for a chip that is a CHOICE rather than an action - the
+   equipped cosmetic in the chamber menu. Ink fill, paper glyph: the strongest
+   contrast available without introducing a colour that means nothing else. */
+.ink-chip-selected {
+  background: var(--ink);
+  color: var(--bone-white);
+  box-shadow: var(--ink-drop-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ink-chip { transition: none; }
+}
+
 /* -----------------------------------------------------------------------
    THE MODAL FRAME - one tray, one bold outline. (Owner ruling.)
 
@@ -414,6 +447,26 @@ canvas {
     -webkit-text-stroke: var(--ink-w-1) var(--ink);
     paint-order: stroke fill;
     text-shadow: 2px 2px 0 var(--ink);
+  }
+
+  /* The wordmark's weight class. Same grammar as .heading-ink, three steps
+     louder, for the one piece of type that is a LOGO rather than a heading.
+
+       STROKE   heavy ink outline, painted UNDER the fill so the letterform
+                keeps its own colour and gains a drawn edge rather than losing
+                weight to it.
+       BLOCK    ONE hard offset, no blur. An earlier pass threw two shadows in
+                disagreeing directions to fake a misregistered print; two
+                offsets read as a mistake, one reads as a decision.
+
+     The drawn quality is then carried by CHARACTER, applied per glyph by the
+     component - a slight baseline bounce and a little variation in size and
+     angle, the way a letterer's hand varies. A stylesheet has no glyphs, so it
+     cannot do that part, and it must not try: the edges stay crisp. */
+  .heading-lettered {
+    -webkit-text-stroke: var(--ink-w-3) var(--ink);
+    paint-order: stroke fill;
+    text-shadow: 5px 5px 0 var(--ink);
   }
 
   /* Section label: small, wide-tracked, dimmed */

@@ -89,6 +89,12 @@ import {
 import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 import { getSnakeRoundedGeometry } from './screen/gameRenderGeometry';
 import { createInkHullMaterial } from './screen/inkAmber';
+import {
+  EquippedCosmetics,
+  occludesFeature,
+  type CosmeticLoadout,
+} from '@/components/home/SnakeCosmetics';
+import { EMPTY_SNAKE_LOADOUT } from '@/lib/cosmetics/snakeCosmetics';
 import { centerYFromBase, FLOOR_CLEARANCE } from './ArenaFloor';
 import {
   HEAD_SIZE,
@@ -129,6 +135,18 @@ export interface InstancedSnakeProps {
   wrapActive?: boolean;
   /** Static head shell during the short post-revive body/edge phase. */
   revivePhaseActive?: boolean;
+  /**
+   * What this snake is wearing, resolved SERVER-SIDE at run start and carried
+   * in the session manifest (`runSnake.cosmetics`).
+   *
+   * CHAMBER = GAME LAW. The head the player drives wears exactly what the home
+   * portrait wears, because both read one answer — `read_snake_loadout`
+   * (migration 069) — rather than two copies kept in step. It arrives as a
+   * prop rather than being fetched here so the appearance is fixed for the
+   * whole run: a cosmetic changed in another tab cannot repaint the snake
+   * mid-play, and a recovered run replays the look it actually had.
+   */
+  loadout?: CosmeticLoadout;
 }
 
 // -----------------------------------------------------------------------------
@@ -669,6 +687,7 @@ function InstancedSnakeCore({
   terrain,
   wrapActive = false,
   revivePhaseActive = false,
+  loadout = EMPTY_SNAKE_LOADOUT,
   headGeometry,
   bodyGeometry,
 }: InstancedSnakeCoreProps) {
@@ -855,13 +874,24 @@ function InstancedSnakeCore({
           scale={HEAD_SIZE}
           renderOrder={-1}
         />
+        {/*
+          The cosmetics mount at the same head-local anchors the portrait uses,
+          and ask for `detail="board"` - the cosmetics module's own contract for
+          "this head is 17px wide". It drops sub-pixel parts and refuses to hang
+          anything below the board plane. Nothing here decides what is dropped;
+          the asset decides, once, for every surface that draws it.
+
+          The bare eyes stand down when something covers them, which is why the
+          shades read as worn rather than as painted over a face.
+        */}
         <mesh
           geometry={headGeometry}
           material={headMaterial}
           scale={HEAD_SIZE}
           castShadow
         >
-          <SnakeEyes />
+          {!occludesFeature(loadout, 'eyes') && <SnakeEyes />}
+          <EquippedCosmetics loadout={loadout} detail="board" />
         </mesh>
       </group>
     </group>
