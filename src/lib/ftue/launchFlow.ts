@@ -83,6 +83,14 @@ export interface GameSessionStartPayload {
     dynasty: string;
     traits: unknown;
     traitSlots?: number;
+    /**
+     * The cosmetic loadout this run renders, resolved server-side at start
+     * from the same `read_snake_loadout` answer the home chamber reads. It
+     * rides the manifest rather than being fetched by the board so a run
+     * cannot repaint itself mid-play, and so recovery replays the appearance
+     * the run actually had (see `parseSnakeLoadout`).
+     */
+    cosmetics?: unknown;
     lineage?: unknown;
   };
   /** Server-authoritative recovered stock and immutable run commitment. */

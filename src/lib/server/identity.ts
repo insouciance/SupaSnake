@@ -29,6 +29,12 @@ interface SupabaseErrorLike {
  * missing relation (42P01), missing column (42703), missing RPC
  * (PostgREST PGRST202/205 / 42883), or a message naming the identity
  * objects.
+ *
+ * Migration 069's snake-cosmetic RPCs are named here too. The release order
+ * is app-first, database-second, so between the two a build asks for
+ * `read_snake_loadout` and gets 42883; that must degrade to "no cosmetics",
+ * never to a 500 on Home. Anything added to the identity surface belongs in
+ * this list on the way in.
  */
 export function isMissingIdentityInfra(
   error: SupabaseErrorLike | null | undefined
@@ -43,7 +49,7 @@ export function isMissingIdentityInfra(
   ) {
     return true;
   }
-  return /player_identity_view|reserved_handles|cosmetic_definitions|player_cosmetics|player_loadout|claim_handle|equip_cosmetic|get_player_identities|\bhandle\b|run_events|death_cause/i.test(
+  return /player_identity_view|reserved_handles|cosmetic_definitions|player_cosmetics|player_loadout|claim_handle|equip_cosmetic|get_player_identities|read_snake_loadout|read_snake_cosmetic_catalog|\bhandle\b|run_events|death_cause/i.test(
     error.message || ''
   );
 }
