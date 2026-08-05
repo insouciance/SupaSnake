@@ -213,6 +213,15 @@ function ArenaPreview({
 }) {
   const portalLive = state === 'portal' || state === 'apex';
   return (
+    <>
+      {/* THE CAMERA'S GRAB SURFACE - a SIBLING of the bay, not a child, so it
+          keeps the board's OLD input level while the bay paints at 20. See
+          `.arenaInputIsland`. */}
+      <div
+        className={styles.arenaInputIsland}
+        data-arena-input-island=""
+        aria-hidden="true"
+      />
     <div className={styles.arenaBay} data-testid="cockpit-arena-bay">
       <div className={styles.arenaQuietZone} aria-hidden="true" />
       <div className={styles.arenaFrame} data-testid="cockpit-arena-frame">
@@ -232,12 +241,6 @@ function ArenaPreview({
                 />
               </div>
             </div>
-            {/* Camera grab surface - see `.arenaInputIsland`. */}
-            <div
-              className={styles.arenaInputIsland}
-              data-arena-input-island=""
-              aria-hidden="true"
-            />
           </>
         ) : (
         <div className={styles.apron}>
@@ -286,6 +289,7 @@ function ArenaPreview({
         )}
       </div>
     </div>
+    </>
   );
 }
 

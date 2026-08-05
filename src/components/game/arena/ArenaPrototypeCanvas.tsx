@@ -192,7 +192,6 @@ function PrototypeScene({
 
   return (
     <>
-      <fog attach="fog" args={[GAME_SCREEN_COLORS.void, 39, 72]} />
       <hemisphereLight args={['#a9c3d5', GAME_SCREEN_COLORS.graphiteDeep, 0.42]} />
       <ambientLight intensity={0.12} />
       <primitive object={keyLightTarget} />
@@ -311,7 +310,7 @@ function PrototypeScene({
         targetY={COCKPIT_TARGET_Y}
       />
 
-      {!isMobile && effectsEnabled && quality.bloomResolutionScale !== null && (
+      {!isMobile && effectsEnabled && (
         <EffectComposer>
           {/* Governor-driven - see the note on the live board's Bloom. */}
           <Bloom

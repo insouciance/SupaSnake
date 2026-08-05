@@ -68,7 +68,13 @@ describe('the tier table', () => {
     // Bloom is spent first and spent twice; it was the largest measured cost.
     expect(RENDER_QUALITY_TIERS[0].bloomResolutionScale).toBe(0.5);
     expect(RENDER_QUALITY_TIERS[1].bloomResolutionScale).toBe(0.25);
-    expect(RENDER_QUALITY_TIERS[3].bloomResolutionScale).toBeNull();
+    // NEVER null at any tier: bloom carries ~12% of the scene's measured mean
+    // luminance, so removing it dims the board rather than simplifying it.
+    // Tiers spend softness, never brightness.
+    for (const quality of RENDER_QUALITY_TIERS) {
+      expect(quality.bloomResolutionScale).toBeGreaterThan(0);
+    }
+    expect(RENDER_QUALITY_TIERS[3].bloomResolutionScale).toBe(0.125);
 
     // Terrain keeps casting until T2, and shadows survive until the floor.
     expect(RENDER_QUALITY_TIERS[1].terrainCastsShadow).toBe(true);
@@ -81,7 +87,7 @@ describe('the tier table', () => {
       const prev = RENDER_QUALITY_TIERS[i - 1];
       const curr = RENDER_QUALITY_TIERS[i];
       const cost = (q: (typeof RENDER_QUALITY_TIERS)[number]) =>
-        (q.bloomResolutionScale ?? 0) +
+        q.bloomResolutionScale +
         (q.terrainCastsShadow ? 1 : 0) +
         (q.shadowsEnabled ? 1 : 0);
       expect(cost(curr)).toBeLessThan(cost(prev));

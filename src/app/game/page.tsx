@@ -7599,15 +7599,31 @@ export default function GamePage() {
         // authored in sRGB and should ship what it was authored as.
         gl={{ toneMapping: NoToneMapping }}
       >
-        {/* Fog in the void family so the arena's far edge melts into the
-            page backdrop instead of cutting out against it - lifted and
-            pulled back so the board reads bright and premium */}
-        <fog
-          attach="fog"
-          args={HUD_COCKPIT_V1_ENABLED
-            ? [GAME_SCREEN_COLORS.void, 39, 72]
-            : ['#0a0f14', 40, 75]}
-        />
+        {/* NO FOG, AND THAT IS THE FIX FOR "the board is only bright when I
+            zoom in" - reported from real mobile play.
+
+            Linear fog blends a surface toward the fog colour by its distance
+            FROM THE CAMERA. The fog here ran from 39 to 72 world units in the
+            near-black void, and the zoom range is the fit distance times
+            0.55 to 1.6 - so zooming out walked the whole board deep into that
+            band and zooming in pulled it out. Measured on a 390x844 viewport,
+            the board's centre was 2.70x brighter at maximum zoom-in than at
+            maximum zoom-out, and it was being dimmed even at rest. Portrait
+            phones fit from further away, which is why the owner saw it worst.
+
+            Owner ruling: "lighting should move with the game board, be
+            constant." Camera-distance fog is the one effect that CANNOT
+            satisfy that - it is a function of camera distance by definition -
+            so it goes. The rest of the rig already obeys the ruling: the key
+            light, the dynasty point light and the food spots are all placed
+            in BOARD space, so their relationship to the surfaces they light
+            never changes when the camera moves.
+
+            What the fog was for - keeping the arena's far edge from cutting
+            out against the backdrop - is now done better by the things INK &
+            AMBER gave the board: an ink outline, a chamfered edge and the
+            float halo underneath it. The board is a drawn object with a
+            deliberate silhouette; it is no longer supposed to dissolve. */}
         {/* Premium base rig: cool sky/ground hemisphere carries the
             ambient read (subtle top/bottom shading instead of flat fill) */}
         <hemisphereLight
@@ -7717,7 +7733,7 @@ export default function GamePage() {
             raised from 0.55/0.35 with the tone-mapping change: without the ACES
             shoulder the mid-tones sit higher, so the old threshold would have
             let ordinary lit surfaces bloom. The same set of objects glows. */}
-        {!isMobile && renderQuality.bloomResolutionScale !== null && (
+        {!isMobile && (
           <EffectComposer>
             {/* BLOOM'S RESOLUTION IS THE GOVERNOR'S FIRST LEVER, AND HALVING
                 IT AT REST IS A CORRECTION THE POP-OUT MADE NECESSARY.

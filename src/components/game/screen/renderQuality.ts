@@ -48,10 +48,15 @@ export const MAX_RENDER_TIER: RenderTier = 3;
 export interface RenderQuality {
   readonly tier: RenderTier;
   /**
-   * Bloom's internal resolution as a fraction of the canvas, or `null` to drop
-   * the post-processing composer entirely.
+   * Bloom's internal resolution as a fraction of the canvas.
+   *
+   * NEVER NULL. Bloom is not decoration on this board - measured, it carries
+   * about 12% of the scene's mean luminance, so removing it does not simplify
+   * the image, it DIMS it. A tier change that dims the board is exactly what
+   * the owner saw as "a lag spike made the lighting go down". Tiers may spend
+   * detail and softness; they may never spend brightness.
    */
-  readonly bloomResolutionScale: number | null;
+  readonly bloomResolutionScale: number;
   /** Whether solid terrain contributes to the shadow map. */
   readonly terrainCastsShadow: boolean;
   /** Whether the key light renders a shadow map at all. */
@@ -79,8 +84,16 @@ export interface RenderQuality {
  *   T2  terrain stops casting into the shadow map. Up to 400 instanced blocks
  *       leave the shadow pass; they still RECEIVE, so the board keeps its
  *       depth. Sanctioned only as a degraded tier - never the default.
- *   T3  no shadow map and no composer. The floor: flat toon fills, ink
- *       outlines, the slab, the amber. Still unmistakably this board.
+ *   T3  no shadow map, and bloom at an eighth. The floor still glows - the
+ *       composer is never dropped, because dropping it costs BRIGHTNESS
+ *       rather than detail - it just glows softer. Flat toon fills, ink
+ *       outlines, the slab, the amber, all intact.
+ *
+ * LUMINANCE NEUTRALITY IS THE RULE ACROSS EVERY BOUNDARY. A player should not
+ * be able to see a tier change except as a slight softening of shadows and
+ * glow. Bloom's resolution changes how WIDE and how soft the glow is, not how
+ * much light it adds, which is why resolution is the knob and intensity is
+ * not.
  */
 export const RENDER_QUALITY_TIERS: readonly RenderQuality[] = [
   {
@@ -103,7 +116,7 @@ export const RENDER_QUALITY_TIERS: readonly RenderQuality[] = [
   },
   {
     tier: 3,
-    bloomResolutionScale: null,
+    bloomResolutionScale: 0.125,
     terrainCastsShadow: false,
     shadowsEnabled: false,
   },

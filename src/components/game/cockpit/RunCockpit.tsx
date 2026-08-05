@@ -462,6 +462,20 @@ export function RunCockpit({
             </div>
           )}
 
+                    {/* THE CAMERA'S GRAB SURFACE - a SIBLING of the bay, not a child.
+
+              It occupies the same rectangle (`grid-area: arena`), but it must
+              not inherit the bay's z-index: the bay paints at 20 so a twisted
+              board can break out over the HUD, and a grab surface up there
+              outranks the mobile flick layer at z-5 and swallows every
+              steering gesture. Input belongs at the board's OLD level, below
+              flick and below the HUD controls. See `.arenaInputIsland`. */}
+          <div
+            className={styles.arenaInputIsland}
+            data-arena-input-island=""
+            aria-hidden="true"
+          />
+
           <div className={styles.arenaBay} data-testid="cockpit-arena-bay">
             <div className={styles.arenaQuietZone} aria-hidden="true" />
             <div className={styles.arenaFrame} data-testid="cockpit-arena-frame">
@@ -476,15 +490,6 @@ export function RunCockpit({
                   {children}
                 </div>
               </div>
-              {/* The camera's grab surface. It is the bay rectangle exactly,
-                  so the oversized canvas above can paint over the frame, the
-                  gap and the HUD without ever stealing a HUD hit. See
-                  `.arenaInputIsland` and CameraRig's domElement lookup. */}
-              <div
-                className={styles.arenaInputIsland}
-                data-arena-input-island=""
-                aria-hidden="true"
-              />
             </div>
           </div>
         </div>
