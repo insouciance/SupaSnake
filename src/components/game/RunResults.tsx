@@ -1106,13 +1106,25 @@ export function RunResults({
         data-testid="results-action-dock"
         data-action-surface="integrated"
       >
+        {/* REPLAY IS THE LABEL (ruling D3). It used to carry its own cost -
+            "Replay · 1 Energy" / "Replay · Lean" - which put a fact inside an
+            action word and made the button's width depend on the player's
+            stock. The word is the action; the cost is stated once, below. */}
         <button type="button" onClick={onReplay} disabled={replayDisabled} data-testid="results-replay" className={`btn-go inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-8 py-4 text-xl sm:w-auto ${replayDisabled ? 'cursor-wait' : 'animate-glow-pulse shadow-venom-orange/50'}`}>
-          <IconPlay size={20} /> {replayPending ? 'Starting…' : replayEnergy > 0 ? `Replay · ${replayEnergy} Energy` : 'Replay · Lean'}
+          <IconPlay size={20} /> {replayPending ? 'Starting…' : 'REPLAY'}
         </button>
         <button type="button" onClick={onSetup} data-testid="results-setup" className="btn-neutral inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-6 py-3 sm:w-auto">
-          <IconReset size={18} /> Setup
+          <IconReset size={18} /> SETUP
         </button>
       </div>
+      <p
+        className="mx-auto max-w-lg text-center font-body text-xs leading-relaxed text-beige/55"
+        data-testid="results-replay-cost"
+      >
+        {replayEnergy > 0
+          ? 'REPLAY runs it again on 1 Energy. SETUP reopens the page with your last stake ready.'
+          : 'No Energy left, so REPLAY runs lean — it still plays, it just pays less. SETUP reopens the page with your last stake ready.'}
+      </p>
 
       <section data-testid="results-layer-3" aria-label="Progression" className="space-y-4">
         <div

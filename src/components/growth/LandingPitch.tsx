@@ -32,7 +32,12 @@ const CHOICES = [
   {
     key: 'infuse',
     label: 'TRADE UP',
-    body: 'Trade body length for a new power. A stronger snake is a longer, harder snake.',
+    // NOT the R15 contradiction it was flagged as: sentence two already says
+    // "longer", which is what the code does (`performInfuse` pushes segments).
+    // What sentence one did was open with "trade body length FOR", which a
+    // first-time reader hears as giving length away - so the two sentences
+    // read as opposites. Same fact, one direction now.
+    body: 'Take a new power and grow to carry it. A stronger snake is a longer, harder snake.',
   },
 ] as const;
 

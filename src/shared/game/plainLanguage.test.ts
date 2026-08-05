@@ -162,6 +162,28 @@ describe('a payout figure carries its unit exactly once', () => {
     expect(short.replace(/P$/, '')).toBe(long.replace(/ Payout$/, ''));
   });
 
+  it('offers a bare form for the trays that name the unit beside the number', () => {
+    const long = genomeV2PresentationFormat.scaledYield(420_000);
+    const bare = genomeV2PresentationFormat.scaledYield(420_000, {
+      bare: true,
+    });
+    expect(bare).not.toMatch(/Payout|Yield|P$/);
+    // Same number, same rounding — the unit is absent, not abbreviated.
+    expect(bare).toBe(long.replace(/ Payout$/, ''));
+  });
+
+  it('renders the HUD outcome pair bare, with the unit named beside it', () => {
+    // The HUD's `.outcomes` tray and the BANK ticker chip are the tightest
+    // cells in the product. Both once carried `.replace(' Yield', 'Y')`, which
+    // the rename to "Payout" silently turned into a no-op — the full unit went
+    // on rendering into a cell measured without it. A dead replace cannot come
+    // back: the bare figures come from the one formatter.
+    const page = source('src/app/game/page.tsx');
+    expect(page).not.toMatch(/replace\('\s*Yield'/);
+    expect(page).toContain('genomeV2LiveOutcome?.bankBare');
+    expect(page).toContain('genomeV2LiveOutcome?.crashBare');
+  });
+
   it('leaves no caller re-appending the unit the formatter already added', () => {
     const workbench = source('src/components/workbench/WorkbenchView.tsx');
     expect(workbench).not.toMatch(/scaledYield\([^)]*\)\}\s*Yield/);
