@@ -273,8 +273,21 @@ export type ExtractionKind = 'portal' | 'saturation';
 
 export interface GameState {
   snake: Position[];
-  /** Primary food cell (= foods[0]) - kept for renderer/store compatibility. */
-  food: Position;
+  /**
+   * Primary food cell (= `foods[0]`), or null when no wave is live.
+   *
+   * A MIRROR, NEVER A SECOND TRUTH. It was a bare `Position` written at some of
+   * the places `foods` changes and not at others, and that gap shipped a defect
+   * with two faces: at saturation `spawnFoods` emptied `foods` and left this
+   * field pointing at the food the player had just eaten (BF-2), and on a
+   * crowded board `registerGenomeV2Targets` dropped an unroutable wave AFTER
+   * this field had already been written - so the renderer drew a target the
+   * engine no longer recognised, the head passed straight through it, and the
+   * run had no food left to eat. Nullable plus one writer
+   * (`syncPrimaryFood`) makes "there is no food" a state the field can express
+   * rather than one it silently misreports.
+   */
+  food: Position | null;
   /**
    * All live food cells. One food normally; Splitter adds a second;
    * COSMIC spawns a scattered constellation. A new wave spawns when every
@@ -1568,7 +1581,7 @@ export class SnakeGameLogic {
   private createInitialState(): GameState {
     return {
       snake: [],
-      food: { x: 0, y: 0, z: 0 },
+      food: null,
       foods: [],
       terrain: [],
       direction: 'RIGHT',
@@ -1915,7 +1928,7 @@ export class SnakeGameLogic {
     return {
       ...this.state,
       snake: this.state.snake.map((s) => ({ ...s })),
-      food: { ...this.state.food },
+      food: this.state.food ? { ...this.state.food } : null,
       foods: this.state.foods.map((f) => ({ ...f })),
       // Cloned per tick, deliberately: the renderer reads this through zustand,
       // and a stable array reference would never re-render — terrain would be
@@ -3333,7 +3346,7 @@ export class SnakeGameLogic {
           y: 0,
           z: circuit.destination.z,
         };
-        this.state.food = { ...this.state.foods[0] };
+        this.syncPrimaryFood();
         foodIndex = -1;
       }
     }
@@ -3496,7 +3509,7 @@ export class SnakeGameLogic {
       } else if (this.state.foods.length === 0) {
         this.spawnFoods();
       } else {
-        this.state.food = { ...this.state.foods[0] };
+        this.syncPrimaryFood();
       }
 
       this.advancePortalSchedule(n);
@@ -3667,6 +3680,13 @@ export class SnakeGameLogic {
     // That boundary is what makes a completed loop replayable: the exact
     // body/terrain cells that enclosed the region are already committed.
     this.maybeSealGenomeV2Coil();
+
+    // Two placements the board may have refused earlier, retried against the
+    // board as it stands NOW. Both are consequences of the move - the body just
+    // vacated a cell - so they belong after it, and both are pure functions of
+    // the resolved state, so the server replays them identically.
+    this.refillEmptyFoodWave();
+    this.drawOwedPortal();
 
     this.emit('tick');
   }
@@ -4643,9 +4663,7 @@ export class SnakeGameLogic {
         dna: this.state.dnaCollected,
       });
     }
-    if (this.state.foods.length > 0) {
-      this.state.food = { ...this.state.foods[0] };
-    }
+    this.syncPrimaryFood();
   }
 
   /**
@@ -4884,14 +4902,33 @@ export class SnakeGameLogic {
       );
     }
     if (routePlans.length === 0) {
-      const fallback = chooseSurvivableTargetCell(
-        this.gridSize,
-        head,
-        this.waveBlockedGrid(),
-        this.rng,
-        this.state.snake.length
-      );
-      if (fallback) {
+      // TWO ATTEMPTS, AND THE SECOND IS THE OWNER'S ABSOLUTE.
+      //
+      // The escape budget is a FAIRNESS PREFERENCE - it keeps food out of a
+      // cul-de-sac smaller than the body that comes to get it. Treating it as a
+      // requirement is what ended a live run: a long PRIMAL snake whose pocket
+      // held fewer free cells than its own length got no food at all, and since
+      // the wave only ever refilled after an eat, it never got food again. The
+      // pocket was transient - a tail vacates a cell every tick - but the
+      // refusal was permanent.
+      //
+      // So a cell the head can REACH always beats no cell. A route is still
+      // required and is not negotiable: Genome state is a claim about physical
+      // geometry, and a target with no path is a fact that is simply false.
+      const attempts: Array<{ minEscapeCells: number; closingRing: boolean }> = [
+        { minEscapeCells: this.state.snake.length, closingRing: true },
+        { minEscapeCells: 0, closingRing: true },
+        { minEscapeCells: 0, closingRing: false },
+      ];
+      for (const { minEscapeCells, closingRing } of attempts) {
+        const fallback = chooseSurvivableTargetCell(
+          this.gridSize,
+          head,
+          this.waveBlockedGrid({ closingRing }),
+          this.rng,
+          minEscapeCells
+        );
+        if (!fallback) continue;
         const food = { ...fallback, y: 0 };
         const route = shortestGenomeV2Route(
           this.gridSize,
@@ -4900,10 +4937,10 @@ export class SnakeGameLogic {
           baseBlocked,
           this.ruleset.torus === true
         );
-        if (route) {
-          foods.push(food);
-          routePlans = [{ food, route }];
-        }
+        if (!route) continue;
+        foods.push(food);
+        routePlans = [{ food, route }];
+        break;
       }
     }
     // A Gilded Fork appends one mutually exclusive physical branch to the
@@ -5040,7 +5077,7 @@ export class SnakeGameLogic {
       // reason recorded, never thrown: no half-registered wave, no halt.
       runtime.openCrownWave(this.replayTicks, currentTargetIds, futureTargetId);
     }
-    if (foods.length > 0) this.state.food = { ...foods[0] };
+    this.syncPrimaryFood();
     this.syncGenomeV2State();
   }
 
@@ -5088,7 +5125,7 @@ export class SnakeGameLogic {
       true
     );
     this.state.foods = [{ ...cell, y: 0 }];
-    this.state.food = { ...this.state.foods[0] };
+    this.syncPrimaryFood();
     runtime.spawnTarget(this.replayTicks, {
       cell,
       speedAtSpawnMs: this.getSpeed(),
@@ -5475,9 +5512,29 @@ export class SnakeGameLogic {
       }
       foods.push({ x: cell.x, y: 0, z: cell.z });
     }
+    // LAST RESORT: a board whose only reachable cells sit inside the arena's
+    // closing front. Refusing there is the same silent end-of-food-supply the
+    // Genome fallback ladder exists to prevent, and the forming decal still
+    // telegraphs for its full window, so the placement is honest.
+    if (foods.length === 0) {
+      const relaxed = chooseFoodCell(
+        this.gridSize,
+        head,
+        this.waveBlockedGrid({ closingRing: false }),
+        occupancy,
+        this.rng,
+        null,
+        escape
+      );
+      if (relaxed) foods.push({ x: relaxed.x, y: 0, z: relaxed.z });
+    }
     this.state.foods = foods;
-    if (foods.length > 0) this.state.food = { ...foods[0] };
     this.registerGenomeV2Targets(foods);
+    // AFTER registration, never before: the reducer may drop an unroutable
+    // food from this very array, and a mirror written first would then point
+    // at a cell the engine no longer holds - which is exactly the ghost the
+    // player chased across an empty board.
+    this.syncPrimaryFood();
 
     // The window opens with the wave and closes on whatever is left.
     if (constellation) {
@@ -5638,7 +5695,9 @@ export class SnakeGameLogic {
    * Walk the OBJECTS, never probe every cell: `isPositionOnTerrain` is a scan,
    * so a per-cell probe would be O(gridSize^2 x terrain).
    */
-  private waveBlockedGrid(): Uint8Array {
+  private waveBlockedGrid(
+    options: { closingRing?: boolean } = {}
+  ): Uint8Array {
     const cells = Math.max(0, this.gridSize * this.gridSize);
     if (!this.blockedScratch || this.blockedScratch.length !== cells) {
       this.blockedScratch = blockedGrid(this.gridSize);
@@ -5661,7 +5720,11 @@ export class SnakeGameLogic {
         markBlocked(blocked, this.gridSize, cell.x, cell.z);
       }
     }
-    this.markClosingRing(blocked);
+    // The arena's closing front is excluded so food never BAITS the player into
+    // the ring that is about to harden. It is a fairness preference, not a
+    // physical fact, and the last-resort placement drops it rather than leave a
+    // board with no food at all - see `spawnFoods`.
+    if (options.closingRing !== false) this.markClosingRing(blocked);
     if (this.state.exitTile) {
       markBlocked(
         blocked,
@@ -5833,6 +5896,50 @@ export class SnakeGameLogic {
   }
 
   /**
+   * Re-point the legacy single-food mirror at the live wave.
+   *
+   * THE ONLY WRITER of `state.food`, and the only reason the field is allowed
+   * to exist. Every path that changes `state.foods` ends here, so the mirror
+   * cannot disagree with the wave and cannot survive it.
+   */
+  private syncPrimaryFood(): void {
+    const primary = this.state.foods[0];
+    this.state.food = primary ? { ...primary } : null;
+  }
+
+  /**
+   * Put food back on the board when the wave came up empty.
+   *
+   * THE OWNER'S RUN THIS EXISTS FOR. A live PRIMAL run stopped eating "at a
+   * certain length": the snake flew through a rendered food and nothing
+   * happened, and the run was over without ending. The mechanism had two
+   * halves. `registerGenomeV2Targets` drops a food it cannot route to through
+   * the CURRENT body - a transient fact, since the tail vacates a cell every
+   * tick - and when its own survivable fallback also declines, the wave is
+   * emptied. Then nothing ever refilled it: `spawnFoods` was only ever reached
+   * from inside the eat branch, so a board with no food could never produce the
+   * eat that would spawn more. One unlucky body configuration ended food supply
+   * for the rest of the run.
+   *
+   * OWNER ABSOLUTE: no hidden walls skill can hit. A crowd is a difficulty, and
+   * a difficulty must pass. So the wave is retried on EVERY resolved tick while
+   * it is empty; a body that moves one cell is a different board, and the food
+   * returns the moment the geometry allows it. On a genuinely saturated board
+   * the retry places nothing, which is the honest answer and the state
+   * `boardIsSaturated` terminalizes as an extraction on the next contact.
+   *
+   * Replay-stable: it runs at a fixed point in the tick from state the server
+   * replays anyway, and it consumes the same seeded stream `spawnFoods` always
+   * consumed.
+   */
+  private refillEmptyFoodWave(): void {
+    if (this.state.foods.length > 0) return;
+    if (this.state.isGameOver || this.state.extracted) return;
+    if (this.state.snake.length === 0) return;
+    this.spawnFoods();
+  }
+
+  /**
    * Spawn food at random valid position(s). Public for compatibility -
    * replaces the whole wave.
    */
@@ -5954,8 +6061,8 @@ export class SnakeGameLogic {
   placeFood(position: Position, glyph?: number): void {
     this.expireDisplacedGenomeV2Targets(this.state.foods);
     this.state.foods = [{ ...position }];
-    this.state.food = { ...position };
     this.registerGenomeV2Targets(this.state.foods);
+    this.syncPrimaryFood();
     if (this.ruleset.constellation) {
       this.state.constellationGlyph =
         glyph ??
@@ -5969,8 +6076,8 @@ export class SnakeGameLogic {
     if (positions.length === 0) return;
     this.expireDisplacedGenomeV2Targets(this.state.foods);
     this.state.foods = positions.map((p) => ({ ...p }));
-    this.state.food = { ...positions[0] };
     this.registerGenomeV2Targets(this.state.foods);
+    this.syncPrimaryFood();
     if (this.ruleset.constellation && glyph !== undefined) {
       this.state.constellationGlyph = glyph;
     }
@@ -6359,9 +6466,7 @@ export class SnakeGameLogic {
     // cell, and Arc Lightning can clear the wave mid-tick. Spreading
     // `foods[0]` unguarded wrote `{}` into a Position and corrupted the
     // legacy single-food mirror.
-    if (this.state.foods.length > 0) {
-      this.state.food = { ...this.state.foods[0] };
-    }
+    this.syncPrimaryFood();
   }
 
   /**
@@ -6719,7 +6824,7 @@ export class SnakeGameLogic {
       pulled.push(this.sampleCellNearHead(head, radius, pulled) ?? food);
     }
     this.state.foods = pulled;
-    this.state.food = { ...pulled[0] };
+    this.syncPrimaryFood();
   }
 
   /**
