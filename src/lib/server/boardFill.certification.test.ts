@@ -780,22 +780,63 @@ describe('FACT 3 — the engine survives its own saturated board', () => {
     }
   }, 300_000);
 
-  it('FINDING BF-3: filling the board is a death, not a victory', () => {
-    // There is no board-full, no no-legal-move and no victory terminal state
-    // anywhere in the engine. `RunDeathCause` is 'wall' | 'self' | 'timeout' |
-    // 'extracted', and the terminal facts hardcode `victory: false`. A player
-    // who fills all 400 cells is killed by the next tick as an ordinary
-    // collision — the single hardest thing in the game settles as a crash.
+  it('BF-3 RULED: filling the board terminalizes as a successful extraction', () => {
+    // BF-3 asked what board fill should BE. It was a death: `RunDeathCause`
+    // had no board-full state, so a player who claimed all 400 cells was
+    // killed by the next tick as an ordinary collision, and the single
+    // hardest thing in the game settled as a crash.
     //
-    // This is a PRODUCT decision, not a bug to route. Options are in the PR.
+    // Ruled as option B. At zero free cells the run terminalizes EXTRACTED:
+    // the board is full, there is no move in any direction, and nothing the
+    // player could have done differently. It settles through the ordinary
+    // extraction fold — no new currency, no new surface, no Results layer —
+    // and the persisted `death_cause` enum is untouched, because both kinds
+    // of extraction are 'extracted'. `extractionKind` refines it for
+    // presentation exactly as `collisionDiagnostic` refines wall/self.
     for (const dynasty of ['PRIMAL', 'COSMIC'] as DynastyName[]) {
       const driven = drive(dynasty);
+      expect(driven.freeCells).toBe(0);
       expect(driven.game.getState().isGameOver).toBe(false);
+
       driven.game.tick();
+
+      const terminal = driven.game.getTerminalResult();
       expect(driven.game.getState().isGameOver).toBe(true);
-      expect(['self', 'wall']).toContain(driven.game.getDeathCause());
-      expect(driven.game.getTerminalResult()?.extracted).toBe(false);
+      expect(driven.game.getState().extracted).toBe(true);
+      expect(driven.game.getDeathCause()).toBe('extracted');
+      expect(terminal).toMatchObject({
+        extracted: true,
+        endReason: 'extracted',
+        extractionKind: 'saturation',
+      });
+      // Nothing was created by ending this way: the run banked what its
+      // ledger already held, and score never reads anything but dynasty and
+      // food count (R2).
+      expect(terminal?.score).toBe(driven.game.getState().score);
+      expect(terminal?.foodEaten).toBe(driven.foodEaten);
+      // A saturated board is not a portal the player walked into, and the
+      // run-event stream does not claim one.
+      const events = driven.game.getRunEvents()?.events ?? [];
+      expect(events.filter((event) => event.e === 'x')).toMatchObject([
+        { c: 'extracted' },
+      ]);
+      expect(events.at(-2)).toMatchObject({ e: 'b' });
     }
+  }, 300_000);
+
+  it('leaves a snake cornered with free cells still on the board a death', () => {
+    // The ruling is "the BOARD is full", not "the head is stuck". CYBER's
+    // arena seals its snake into a pocket with a hundred cells still open
+    // elsewhere — that is a death the player was cornered into, and turning
+    // it into a bank would pay out an entombment. The predicate is
+    // deliberately blind to reachability for exactly this reason.
+    const driven = drive('CYBER');
+    expect(driven.freeCells).toBeGreaterThan(0);
+    driven.game.tick();
+    expect(driven.game.getState().isGameOver).toBe(true);
+    expect(driven.game.getState().extracted).toBe(false);
+    expect(['self', 'wall']).toContain(driven.game.getDeathCause());
+    expect(driven.game.getTerminalResult()?.extractionKind).toBeNull();
   }, 300_000);
 });
 
@@ -869,7 +910,7 @@ describe('FACT 5 — a maximum-length run is settleable', () => {
       const accepted = driven.saturated;
       const now = driven.startedAtMs + accepted.privateState.elapsedMs + 2_000;
 
-      // The engine is already sealed. One more tick is the death.
+      // The engine is already sealed. One more tick terminalizes it.
       if (!driven.game.getState().isGameOver) driven.game.tick();
       expect(driven.game.getState().isGameOver).toBe(true);
 
@@ -899,8 +940,23 @@ describe('FACT 5 — a maximum-length run is settleable', () => {
         }
       );
 
-      // The server replayed a 400-cell body to its death and produced facts.
-      expect(intent.facts.died).toBe(true);
+      // ONE SOURCE OF TRUTH, PROVEN RATHER THAN ASSERTED.
+      //
+      // Nothing in `runContinuity` knows what saturation is. It restores the
+      // accepted checkpoint, re-runs the ENGINE's own tick over the accepted
+      // journal, and reads whatever terminal the engine reached. So the
+      // server agreeing that a filled board is an extraction is not a second
+      // implementation that happens to match — it is the same implementation,
+      // and these are the facts it staged from a 400-cell body.
+      expect(intent.facts).toMatchObject({
+        extracted: true,
+        died: false,
+        death_cause: 'extracted',
+        extraction_kind: 'saturation',
+      });
+      // `victory` stays the literal false it has always been: this is an
+      // extraction, not a new terminal category, and no persisted enum grew.
+      expect(intent.facts.victory).toBe(false);
       expect(intent.facts.food_count).toBe(driven.foodEaten);
       expect(intent.digest).toMatch(/^[0-9a-f]{64}$/);
 

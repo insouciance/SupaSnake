@@ -181,6 +181,7 @@ import {
   genomeV2FtueFromPresentation,
   genomeV2RunRecord,
   genomeV2StrainPoints,
+  genomeV2TerrainSolidAt,
   genomeV2Yield,
   genomeV2YieldFloor,
   projectGenomeV2Ladders,
@@ -256,6 +257,18 @@ export interface Position {
 
 /** How a run ended: crashed into something, or left through the exit portal. */
 export type EndReason = 'died' | 'extracted';
+
+/**
+ * The two ways a run can end extracted.
+ *
+ * `portal` is the decision the whole game is built around: a door appeared
+ * and the player chose to take it. `saturation` is the board itself running
+ * out - every cell claimed, no move left in any direction, and nothing more
+ * the player could have done. That is the hardest achievable outcome in
+ * SupaSnake, and it settles as what it is: a completed run, banked through
+ * the identical fold, not a crash.
+ */
+export type ExtractionKind = 'portal' | 'saturation';
 
 export interface GameState {
   snake: Position[];
@@ -372,6 +385,17 @@ export interface GameState {
   phantomTicksRemaining: number;
   /** Post-revive self/body-wall phase; length and terrain remain intact. */
   revivePhaseTicksRemaining: number;
+  /**
+   * Side Door arrival beat: movement boundaries the snake holds after coming
+   * out of a gate.
+   *
+   * NOT INVINCIBILITY, AND NOT A HOLD. Nothing is pardoned, no clock is
+   * slowed, and no budget is spent - the board's own clocks keep running and
+   * the walls stay exactly as lethal. It is one move the snake does not take,
+   * so a player who has just been relocated across the board can re-acquire
+   * their head and enter a turn that lands at the FRONT of an emptied queue.
+   */
+  arrivalBeatTicksRemaining: number;
   /** True while a held Phoenix can still absorb one death. */
   phoenixAvailable: boolean;
   /** Food count at the Phoenix trigger, null if never triggered. */
@@ -441,6 +465,16 @@ export interface GameOverData {
    * wall/self enum without changing its public database contract.
    */
   collisionDiagnostic: CollisionDiagnostic | null;
+  /**
+   * WHICH KIND of extraction this was, or null on a death.
+   *
+   * Same device as `collisionDiagnostic` above, for the same reason: it
+   * refines the persisted `extracted` enum value so Results can tell the two
+   * apart, without growing `game_sessions.death_cause` - a CHECK-constrained
+   * column (migration 022) whose four values every historical row depends on.
+   * Never a payout claim: both kinds settle through the identical fold.
+   */
+  extractionKind: ExtractionKind | null;
   /** Food count at the Phoenix trigger (honest-client analytics + payout). */
   phoenixTriggeredAtFood: number | null;
   /**
@@ -504,6 +538,8 @@ type GameEvent =
   | 'ironScalesTriggered'
   /** COSMIC: the live constellation's survivors have calcified. */
   | 'constellationCalcified'
+  /** Side Door: the head came out at the exit and two Scars began forming. */
+  | 'sideDoorUsed'
   // Genome events (never fire in legacy mode)
   | 'portalChoice'
   | 'infused'
@@ -704,7 +740,7 @@ export const DEATH_SEQUENCE_DURATION_MS = 800;
  * this deployment must not continue.  Bump this value whenever a change can
  * alter deterministic board evolution or the meaning of persisted state.
  */
-export const SNAKE_RULES_VERSION = 'snake-rules-2026-07-31.2' as const;
+export const SNAKE_RULES_VERSION = 'snake-rules-2026-08-05.1' as const;
 
 /**
  * Compact, deterministic evidence for every player-authored state change.
@@ -1548,6 +1584,7 @@ export class SnakeGameLogic {
       pocketRiftCharged: false,
       phantomTicksRemaining: 0,
       revivePhaseTicksRemaining: 0,
+      arrivalBeatTicksRemaining: 0,
       phoenixAvailable: false,
       phoenixTriggeredAtFood: null,
       ironScalesAvailable: this.hasTrait('iron_scales'),
@@ -2852,13 +2889,32 @@ export class SnakeGameLogic {
       this.speed = this.effectiveSpeedForFood(this.state.foodEaten);
     }
 
+    // THE SIDE DOOR ARRIVAL BEAT (G). One movement boundary the snake holds
+    // after a gate relocated it, and the last thing decided before input is
+    // consumed - so the beat cannot eat the press it exists to wait for.
+    //
+    // The line this draws is exact: EVERYTHING BEFORE THE HEAD MOVES RUNS,
+    // AND THE HEAD DOES NOT MOVE. The tick is counted, the queue is promoted,
+    // terrain keeps forming and target windows keep expiring, because those
+    // are the board's clocks and a tick of real time did pass. Nothing after
+    // the move runs, because those are all consequences OF the move: the
+    // eat-gap counter, the near-wall episode, the constellation window, the
+    // Coilkeeper observation. The snake stood still; it did not act.
+    //
+    // Engine-modelled and therefore in the replay: the server ticks the same
+    // beat from the same journal and reaches the same board.
+    const arrivalBeat = this.state.arrivalBeatTicksRemaining > 0;
+    if (arrivalBeat) this.state.arrivalBeatTicksRemaining -= 1;
+
     // Consume exactly one buffered input per tick
-    const queued = this.directionQueue.shift();
+    const queued = arrivalBeat ? undefined : this.directionQueue.shift();
     // Whether or not a turn executed, this boundary defines the reference a
     // press buffered behind it was admitted against (see `lastConsumedTurn`).
     // A tick that consumed nothing left the buffer empty, so the next press
     // could only have been validated against the live heading.
-    this.lastConsumedTurn = queued ? queued.direction : null;
+    if (!arrivalBeat) {
+      this.lastConsumedTurn = queued ? queued.direction : null;
+    }
     if (queued) {
       this.state.direction = queued.direction;
       this.recordReplayAction({
@@ -2882,6 +2938,13 @@ export class SnakeGameLogic {
     if (this.genomeV2Runtime) {
       const expired = this.genomeV2Runtime.expireGoldWindows(this.replayTicks);
       if (expired.length > 0) this.syncGenomeV2State();
+    }
+
+    // The beat ends here: the board's clocks have run and the snake stays
+    // where the door left it. A wall one cell ahead is still a wall.
+    if (arrivalBeat) {
+      this.emit('tick');
+      return;
     }
 
     const head = this.state.snake[0];
@@ -2983,6 +3046,26 @@ export class SnakeGameLogic {
       ) {
         pendingPhaseGate = gate;
         newHead = { ...exit, y: 0 };
+        // THE HEAD MOVED DISCONTINUOUSLY, SO THE BUFFER IS STALE (D2).
+        //
+        // `rebirthBody` - the only other place a head is relocated - has
+        // always discarded the buffer, and the gate path simply never did.
+        // The turns queued behind this tick were composed for the ENTRY
+        // neighbourhood; firing them from the EXIT is not the input the
+        // player gave. Worse, they occupy the front of the FIFO: with two
+        // queued, the first tick a corrective press can reach is N+3, and an
+        // exit two cells from the wall kills at N+2. That is what made the
+        // death unavoidable rather than merely hard.
+        //
+        // Replay is unaffected: the trace records turns at CONSUMPTION, so a
+        // discarded turn was never written, and `applyReplayTurn` holds at
+        // most one queued turn which this tick has already consumed.
+        this.clearDirectionalIntent();
+        // ...and give them a beat to use the empty queue with (G). Armed
+        // here, spent by the NEXT tick, so this tick still resolves the
+        // arrival - collisions at the exit cell are not deferred.
+        this.state.arrivalBeatTicksRemaining =
+          GENOME_V2_CONFIG.phaseGate.arrivalBeatTicks;
       }
     }
 
@@ -2995,7 +3078,9 @@ export class SnakeGameLogic {
       (this.state.terrain.some(
         (b) => b.solid && b.x === newHead.x && b.z === newHead.z
       ) ||
-        this.isGenomeV2PermanentTerrain(newHead));
+        // `solid`, not merely present - a Scar still forming is a decal the
+        // snake passes over, exactly like every other forming block.
+        this.isGenomeV2SolidTerrain(newHead));
 
     const exitExistedAtTickStart = this.state.exitTile !== null;
     const mutationExistedAtTickStart = this.state.mutationTile !== null;
@@ -3082,6 +3167,28 @@ export class SnakeGameLogic {
       this.checkSelfCollisionForDeath(newHead);
 
     if (wallHit || terrainHit || selfHit) {
+      // BOARD FILLED: the run is complete, not crashed.
+      //
+      // Checked before every pardon, deliberately. At zero free cells there
+      // is no move left in any direction, so Iron Scales, Thick Hide and the
+      // one revive would each buy a tick of standing still and then the
+      // identical ending - spending a save on a board that cannot be
+      // survived, and leaving the player alive with nothing to do. The board
+      // is full; there is nothing left to be pardoned from.
+      //
+      // Deliberately direction-blind for the same reason: at saturation the
+      // wall and the body are the same answer, and which one the head
+      // happened to face is not a fact about how the run was played.
+      //
+      // It settles through the ORDINARY extraction fold - the same
+      // `settleGenomeV2(record, 'bank')` a portal BANK reaches - so nothing
+      // here creates value, and score is untouched (score has never read
+      // anything but dynasty and food count).
+      if (this.boardIsSaturated()) {
+        this.finalizeRun('extracted', false, 'saturation');
+        return;
+      }
+
       const legacyTerrain = terrainHit
         ? this.state.terrain.find(
             (block) =>
@@ -3164,7 +3271,17 @@ export class SnakeGameLogic {
         'Genome v2 Phase Gate could not commit its previewed route.'
       );
     }
-    if (pendingPhaseGate) this.syncGenomeV2State();
+    if (pendingPhaseGate) {
+      this.syncGenomeV2State();
+      // The traversal had no sound at all, and the only feedback was a status
+      // line that pulls the eye OFF the board at the exact moment the player
+      // must find their head again. COSMIC's calcification already treats the
+      // moment as the feedback; the door gets the same courtesy.
+      this.emit('sideDoorUsed', {
+        entry: { ...pendingPhaseGate.cells[0] },
+        exit: { ...pendingPhaseGate.cells[1] },
+      });
+    }
 
     // Mutation food pickup: the helix is not food (no growth, no DNA) -
     // stepping onto it opens the choice-of-2 hold after the move resolves.
@@ -5624,9 +5741,64 @@ export class SnakeGameLogic {
     );
   }
 
+  /**
+   * IS THE BOARD FULL? - the one authority, asked by the engine's terminal
+   * branch and re-asked by the server replaying the same tick.
+   *
+   * A cell is free when no body segment and no SOLID block holds it, which
+   * is exactly the set `chooseFoodCell` draws from: zero free cells is the
+   * state in which it returns null, the wave places nothing, and the head
+   * has no legal move in any direction. Forming terrain is deliberately NOT
+   * counted as occupying - the head can still cross it, so a board with a
+   * forming Scar on it is not full yet.
+   *
+   * This is NOT "the head is walled in". CYBER's arena can seal a snake into
+   * a pocket with a hundred free cells left elsewhere on the board; that is a
+   * death the player was cornered into, and it stays one.
+   */
+  private boardIsSaturated(): boolean {
+    const claimed = new Set<string>();
+    for (const segment of this.state.snake) {
+      claimed.add(cellKey(segment.x, segment.z));
+    }
+    for (const block of this.state.terrain) {
+      if (block.solid) claimed.add(cellKey(block.x, block.z));
+    }
+    for (const fact of this.state.genomeV2?.permanentTerrain ?? []) {
+      if (!genomeV2TerrainSolidAt(fact, this.replayTicks)) continue;
+      for (const cell of fact.cells) claimed.add(cellKey(cell.x, cell.z));
+    }
+    return claimed.size >= this.gridSize * this.gridSize;
+  }
+
+  /**
+   * Genome terrain in this cell, forming or solid - the OCCUPANCY question.
+   *
+   * Deliberately blind to the forming phase, because every caller is asking
+   * "may something else be put here?", and a cell that is two seconds from
+   * lethal is not a cell to spawn food or route a gate exit through.
+   */
   private isGenomeV2PermanentTerrain(pos: { x: number; z: number }): boolean {
     return (this.state.genomeV2?.permanentTerrain ?? []).some((fact) =>
       fact.cells.some((cell) => cell.x === pos.x && cell.z === pos.z)
+    );
+  }
+
+  /**
+   * Genome terrain in this cell that is LETHAL RIGHT NOW - the collision
+   * question, and the only one a forming Scar answers differently.
+   *
+   * A Scar is created under the head by construction: the exit cell is where
+   * the door put you. Killing on contact with a block that appeared beneath
+   * you is the trap `terrain.ts` spent three dynasties learning not to build,
+   * so the Scar forms for two seconds first, exactly as COSMIC's
+   * calcification and CYBER's arena do. Then it is permanent, forever (R15).
+   */
+  private isGenomeV2SolidTerrain(pos: { x: number; z: number }): boolean {
+    return (this.state.genomeV2?.permanentTerrain ?? []).some(
+      (fact) =>
+        genomeV2TerrainSolidAt(fact, this.replayTicks) &&
+        fact.cells.some((cell) => cell.x === pos.x && cell.z === pos.z)
     );
   }
 
@@ -6613,7 +6785,8 @@ export class SnakeGameLogic {
    */
   private finalizeRun(
     reason: EndReason,
-    retainDeathPresentation = false
+    retainDeathPresentation = false,
+    extractionKind: ExtractionKind = 'portal'
   ): void {
     if (this.genomeV2Runtime) {
       // No live target contract survives the terminal boundary. This closes
@@ -6637,7 +6810,11 @@ export class SnakeGameLogic {
       this.state.exitTicksRemaining = 0;
       this.deathCause = 'extracted';
       this.pendingCollisionDiagnostic = null;
-      this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'enter' });
+      // A saturated board is not a portal the player walked into, so the
+      // stream does not claim one. The bank is real and is recorded.
+      if (extractionKind === 'portal') {
+        this.recordRunEvent({ t: this.runTimeDs(), e: 'p', k: 'enter' });
+      }
       this.recordRunEvent({ t: this.runTimeDs(), e: 'b' });
       this.recordRunEvent(
         { t: this.runTimeDs(), e: 'x', c: 'extracted' },
@@ -6668,6 +6845,7 @@ export class SnakeGameLogic {
       collisionDiagnostic: this.pendingCollisionDiagnostic
         ? checkpointClone(this.pendingCollisionDiagnostic)
         : null,
+      extractionKind: reason === 'extracted' ? extractionKind : null,
       phoenixTriggeredAtFood: this.state.phoenixTriggeredAtFood,
       genome: this.genomeActive()
         ? {

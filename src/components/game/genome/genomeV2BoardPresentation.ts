@@ -4,12 +4,14 @@ import {
   GENOME_V2_YIELD_SCALE,
   genomeV2HasGene,
   genomeV2HasSplice,
+  genomeV2TerrainSolidAt,
   type GenomeV2Cell,
   type GenomeV2ExclusiveTargetKind,
   type GenomeV2State,
   type GenomeV2TargetLifecycle,
 } from '@/shared/game/genomeV2';
 import { GENOME_V2_GENES } from '@/shared/game/genes';
+import type { Direction } from '@/lib/game/SnakeGameLogic';
 import { genomeV2PresentationFormat } from './genomeV2PresentationAdapter';
 
 export type GenomeV2BoardTerrainSource =
@@ -39,11 +41,25 @@ export interface GenomeV2BoardGate {
   targetId: string;
   entry: GenomeV2Cell;
   exit: GenomeV2Cell;
+  /**
+   * The heading the head would come out of this door with, if it crossed the
+   * entry on the heading it has right now.
+   *
+   * The door preserves heading exactly - that is the whole rule - so this is
+   * simply the live direction, drawn where the consequence of it lands.
+   * Turning before the entry turns the chevron with you, which is what makes
+   * it a route the player can plan rather than a leap of faith.
+   */
+  arrivalHeading: Direction;
 }
 
 export interface GenomeV2BoardTerrainCell extends GenomeV2Cell {
   source: GenomeV2BoardTerrainSource;
   terrainId: string;
+  /** True while the cell is a passable decal counting down to lethal. */
+  forming: boolean;
+  /** 0 at the moment of creation, 1 the tick it locks. Drawn as a fill. */
+  formingProgress: number;
 }
 
 export interface GenomeV2BoardProjection {
@@ -76,6 +92,11 @@ export interface GenomeV2BoardFeedback {
 
 function cellKey(cell: GenomeV2Cell): string {
   return `${cell.x}:${cell.z}`;
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(1, Math.max(0, value));
 }
 
 function sameCell(left: GenomeV2Cell, right: GenomeV2Cell): boolean {
@@ -160,7 +181,9 @@ function liveTargetCell(
 export function projectGenomeV2Board(
   state: GenomeV2State | null,
   foods: readonly GenomeV2Cell[],
-  simulationTick: number
+  simulationTick: number,
+  /** Live heading, so a gate can draw the heading it will hand back. */
+  direction: Direction = 'RIGHT'
 ): GenomeV2BoardProjection {
   if (!state) {
     return { targets: [], gates: [], permanentTerrain: [], occupiedCells: [] };
@@ -170,7 +193,15 @@ export function projectGenomeV2Board(
   const occupied = new Map<string, GenomeV2Cell>();
   const terrainSource = new Map<string, GenomeV2BoardTerrainSource>();
   const terrainId = new Map<string, string>();
+  const terrainForming = new Map<string, number>();
   for (const fact of state.permanentTerrain) {
+    // A forming Scar is still a claimed cell - it is drawn, and nothing else
+    // may be placed on it - but it is not lethal yet, and the fill says so.
+    const solid = genomeV2TerrainSolidAt(fact, simulationTick);
+    const total = fact.formingTotalTicks ?? 0;
+    const progress = solid || total <= 0
+      ? 1
+      : clamp01((simulationTick - (fact.formingFromTick ?? 0)) / total);
     for (const cell of fact.cells) {
       const key = cellKey(cell);
       // An overlap is invalid authority, but choosing Scar here keeps the
@@ -183,15 +214,21 @@ export function projectGenomeV2Board(
       if (fact.source === 'phase_gate_scar' || !terrainId.has(key)) {
         terrainId.set(key, fact.terrainId);
       }
+      // A cell claimed twice reads as the closer of the two to lethal: an
+      // overlap must never make a block look further away than it is.
+      terrainForming.set(key, Math.max(terrainForming.get(key) ?? 0, progress));
       occupied.set(key, { ...cell });
     }
   }
   occupied.forEach((cell, key) => {
     const source = terrainSource.get(key) ?? 'coilkeeper_seal';
+    const progress = terrainForming.get(key) ?? 1;
     permanentTerrain.push({
       ...cell,
       source,
       terrainId: terrainId.get(key) ?? `terrain:${key}`,
+      forming: progress < 1,
+      formingProgress: progress,
     });
   });
 
@@ -306,6 +343,7 @@ export function projectGenomeV2Board(
         targetId: target.targetId,
         entry: { ...target.optionalRouteCells[0] },
         exit: { ...target.optionalRouteCells[1] },
+        arrivalHeading: direction,
       });
     }
   }
@@ -437,7 +475,7 @@ export function latestGenomeV2BoardFeedback(
     if (event.type === 'phase_gate_used') {
       return {
         eventId: event.eventId,
-        label: 'SIDE DOOR USED · 2 SCARS NOW SOLID',
+        label: 'SIDE DOOR USED · 2 SCARS FORMING',
         tone: 'risk',
       };
     }
