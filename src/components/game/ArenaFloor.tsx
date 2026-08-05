@@ -168,6 +168,25 @@ export const ARENA_EDGE_WASH_FRAGMENT_SHADER = /* glsl */ `
   }
 `;
 
+/**
+ * How much of an authored dynasty edge wash survives on a stone board.
+ *
+ * The wash was authored against a near-black plane, where it read as the
+ * board's edge being lit. On the slab it reads as a 4-cell-wide painted frame
+ * inside the playfield - on PRIMAL, a bright olive one - which is the single
+ * loudest thing fighting "a fine slab of stone". The rim carries dynasty
+ * identity in its own tint and emissive now, so the wash only has to be the
+ * atmosphere it always claimed to be.
+ *
+ * It lives HERE, as this component's default, rather than at one call site.
+ * Every path that draws the slab draws it on stone - the cockpit assembly, the
+ * released rollback in `game/page.tsx`, the `/dev/perf` harness and the arena
+ * prototype - so a factor applied by only one of them would leave the other
+ * three washing a stone board at full strength. That was exactly the defect:
+ * the rollback path passed no strength at all and got 1.0.
+ */
+export const EDGE_WASH_ON_STONE = 0.25;
+
 /** Build the one-draw, resolution-independent arena edge wash. */
 export function createArenaEdgeWashMaterial(
   accentColor: string,
@@ -528,6 +547,86 @@ export function createArenaSlabGeometry(
   return geometry;
 }
 
+/** How far past the slab's own footprint the float halo reaches. */
+const HALO_REACH = 1.62;
+
+/**
+ * Peak halo alpha at the slab's silhouette.
+ *
+ * Measured, not eyeballed: at 0.34 the scatter read as a lit floor the tile
+ * was resting ON, which is the opposite of the cue - the halo exists so the
+ * slab reads as FLOATING. 0.28 is the most it can carry while the gap between
+ * the tile and the backdrop still reads as empty space.
+ */
+const HALO_STRENGTH = 0.28;
+
+export const ARENA_HALO_VERTEX_SHADER = /* glsl */ `
+  varying vec2 vUv;
+
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+/**
+ * The float halo: scattered light where a floor would otherwise be.
+ *
+ * An object "floats in space" when the eye can find the gap between it and
+ * anything else. On a black backdrop there is nothing to find - the slab's
+ * unlit side face and the void behind it are within a few sRGB levels of each
+ * other, so the silhouette dissolves exactly where the thickness is supposed
+ * to read. A soft plane of light sitting just under the tile fixes that from
+ * both directions at once: it is the ambient occlusion the slab would cast if
+ * it were sitting on something, and it is the only thing the dark side face
+ * has to be a silhouette AGAINST.
+ *
+ * It follows the tile's square with a superellipse rather than a disc, is
+ * analytic so no bitmap resolution appears when the viewport grows, and is
+ * cubed so it hugs the silhouette instead of washing the backdrop. Depth
+ * testing does the framing for free: everything under the tile is occluded by
+ * the tile, so only the ring outside it is ever seen.
+ */
+export const ARENA_HALO_FRAGMENT_SHADER = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uInner;
+  uniform float uStrength;
+  varying vec2 vUv;
+
+  void main() {
+    vec2 edgeVector = abs(vUv * 2.0 - vec2(1.0));
+    float boardDistance = pow(
+      pow(edgeVector.x, 5.0) + pow(edgeVector.y, 5.0),
+      1.0 / 5.0
+    );
+    float glow = smoothstep(1.0, uInner, boardDistance);
+    glow = glow * glow * glow;
+    gl_FragColor = vec4(uColor, glow * uStrength);
+    #include <colorspace_fragment>
+  }
+`;
+
+/** Build the one-draw, resolution-independent float halo. */
+export function createArenaHaloMaterial(
+  color: string,
+  inner: number,
+  strength: number
+): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uInner: { value: inner },
+      uStrength: { value: strength },
+    },
+    vertexShader: ARENA_HALO_VERTEX_SHADER,
+    fragmentShader: ARENA_HALO_FRAGMENT_SHADER,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+}
+
 /** The slab's own ink outline - the same line the snake carries. */
 const floorHullMaterial = createInkHullMaterial();
 
@@ -538,7 +637,7 @@ export function ArenaFloor({
   majorGridColor = ARENA_STONE.cut,
   accentColor = '#22d3ee',
   surfacePreset = 'released',
-  edgeWashStrength = 1,
+  edgeWashStrength = EDGE_WASH_ON_STONE,
   minorGridOpacity = 0.4,
   majorGridOpacity = 0.58,
 }: ArenaFloorProps) {
@@ -590,6 +689,11 @@ export function ArenaFloor({
    * multiplies the per-face tone in; the material colour stays white so the
    * geometry alone decides what each face is made of.
    */
+  const haloMaterial = useMemo(
+    () => createArenaHaloMaterial(ARENA_STONE.halo, 1 / HALO_REACH, HALO_STRENGTH),
+    []
+  );
+
   const slabMaterial = useMemo(
     () =>
       new THREE.MeshToonMaterial({
@@ -607,8 +711,9 @@ export function ArenaFloor({
       edgeWashMaterial.dispose();
       boardMaterial.dispose();
       slabMaterial.dispose();
+      haloMaterial.dispose();
     };
-  }, [edgeWashMaterial, boardMaterial, slabMaterial]);
+  }, [edgeWashMaterial, boardMaterial, slabMaterial, haloMaterial]);
 
   useEffect(() => {
     return () => {
@@ -616,8 +721,25 @@ export function ArenaFloor({
     };
   }, [slabGeometry]);
 
+  const slabSpan = gridSize + apron * 2;
+
   return (
     <group>
+      {/*
+        The float halo. It belongs to the SLAB, not to the cockpit chassis that
+        used to host it: it is the cue that says the tile is floating, and a
+        tile floats in the rollback path too. Sized from this arena's own span
+        and apron, so the released preset gets a halo that fits its smaller
+        tile instead of the cockpit's.
+      */}
+      <mesh
+        position={[center, -SLAB_THICKNESS * 0.88, center]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        material={haloMaterial}
+      >
+        <planeGeometry args={[slabSpan * HALO_REACH, slabSpan * HALO_REACH]} />
+      </mesh>
+
       {/* The tile: one stone body with thickness, wearing the board's ink. */}
       <mesh
         position={[center, 0, center]}

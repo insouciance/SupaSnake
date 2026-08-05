@@ -4,10 +4,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
 import type { StrainId } from '@/shared/game/strains';
-import { ARENA_STONE } from '@/components/game/screen/gameScreenTokens';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 import { genomeRuneEngravingStrokes } from '@/components/game/screen/gameRuneStrokes';
-import { SLAB_APRON, SLAB_THICKNESS } from '@/components/game/ArenaFloor';
 
 interface ArenaUndertrayProps {
   gridSize: number;
@@ -53,76 +51,6 @@ export function arenaOrientationRuneLayout(
   });
 }
 
-/** How far past the slab's own footprint the float halo reaches. */
-const HALO_REACH = 1.62;
-
-export const ARENA_HALO_VERTEX_SHADER = /* glsl */ `
-  varying vec2 vUv;
-
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-/**
- * The float halo: scattered light where a floor would otherwise be.
- *
- * An object "floats in space" when the eye can find the gap between it and
- * anything else. On a black backdrop there is nothing to find - the slab's
- * unlit side face and the void behind it are within a few sRGB levels of each
- * other, so the silhouette dissolves exactly where the thickness is supposed
- * to read. A soft plane of light sitting just under the tile fixes that from
- * both directions at once: it is the ambient occlusion the slab would cast if
- * it were sitting on something, and it is the only thing the dark side face
- * has to be a silhouette AGAINST.
- *
- * It follows the tile's square with a superellipse rather than a disc, is
- * analytic so no bitmap resolution appears when the viewport grows, and is
- * cubed so it hugs the silhouette instead of washing the backdrop. Depth
- * testing does the framing for free: everything under the tile is occluded by
- * the tile, so only the ring outside it is ever seen.
- */
-export const ARENA_HALO_FRAGMENT_SHADER = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uInner;
-  uniform float uStrength;
-  varying vec2 vUv;
-
-  void main() {
-    vec2 edgeVector = abs(vUv * 2.0 - vec2(1.0));
-    float boardDistance = pow(
-      pow(edgeVector.x, 5.0) + pow(edgeVector.y, 5.0),
-      1.0 / 5.0
-    );
-    float glow = smoothstep(1.0, uInner, boardDistance);
-    glow = glow * glow * glow;
-    gl_FragColor = vec4(uColor, glow * uStrength);
-    #include <colorspace_fragment>
-  }
-`;
-
-/** Build the one-draw, resolution-independent float halo. */
-export function createArenaHaloMaterial(
-  color: string,
-  inner: number,
-  strength: number
-): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: new THREE.Color(color) },
-      uInner: { value: inner },
-      uStrength: { value: strength },
-    },
-    vertexShader: ARENA_HALO_VERTEX_SHADER,
-    fragmentShader: ARENA_HALO_FRAGMENT_SHADER,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false,
-  });
-}
-
 /**
  * What is under and around the slab.
  *
@@ -134,27 +62,24 @@ export function createArenaHaloMaterial(
  * apron is `SLAB_APRON.cockpit`, which is the camera's frame margin), and what
  * used to be chassis is simply more stone.
  *
- * Two draws remain, and both do work no other object does:
+ * ONE draw remains, and it does work no other object does:
  *
- *   HALO   the float cue. See `ARENA_HALO_FRAGMENT_SHADER`.
  *   RUNE   the north mark. One instanced Genome engraving on the slab's apron,
  *          which is unambiguous orientation in a way the four deleted corner
  *          diamonds never were - one mark tells you which way you are facing,
  *          four identical ones tell you nothing.
+ *
+ * The float halo lived here too and has moved to `ArenaFloor`. It is a
+ * property of the SLAB - the cue that says the tile is floating - and this
+ * component is mounted only by the cockpit assembly, so hosting it here left
+ * the released rollback path drawing a tile with nothing under it. It also had
+ * to hardcode `SLAB_APRON.cockpit` to guess a span it did not own.
  *
  * No lights, no per-frame work; all geometry stays outside the 20x20 bounds.
  */
 export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
   const orientationRef = useRef<THREE.InstancedMesh>(null);
   const profile = getGameMaterialProfile(dynasty);
-  const center = gridSize / 2;
-  const slabSpan = gridSize + SLAB_APRON.cockpit * 2;
-  const haloSpan = slabSpan * HALO_REACH;
-
-  const haloMaterial = useMemo(
-    () => createArenaHaloMaterial(ARENA_STONE.halo, 1 / HALO_REACH, 0.28),
-    []
-  );
 
   const orientationMaterial = useMemo(
     () =>
@@ -192,21 +117,12 @@ export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
 
   useEffect(() => {
     return () => {
-      haloMaterial.dispose();
       orientationMaterial.dispose();
     };
-  }, [haloMaterial, orientationMaterial]);
+  }, [orientationMaterial]);
 
   return (
     <group>
-      <mesh
-        position={[center, -SLAB_THICKNESS * 0.88, center]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        material={haloMaterial}
-      >
-        <planeGeometry args={[haloSpan, haloSpan]} />
-      </mesh>
-
       <instancedMesh
         ref={orientationRef}
         args={[

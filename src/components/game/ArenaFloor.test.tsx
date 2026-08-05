@@ -6,8 +6,10 @@ import {
   centerYFromBase,
   createArenaEdgeWashMaterial,
   createArenaSlabGeometry,
+  EDGE_WASH_ON_STONE,
   FLOOR_CLEARANCE,
   FLOOR_GRAPHICS_TOP_Y,
+  SLAB_APRON,
 } from './ArenaFloor';
 
 describe('arena floor render geometry', () => {
@@ -55,10 +57,10 @@ describe('analytic arena edge wash', () => {
    * bigger number but a statement of WHICH resources are per-mount and which
    * are deliberately shared:
    *
-   *   PER MOUNT   the edge wash and the board pass (both parameterised by the
-   *               caller's colours), the slab's toon material, and the slab
-   *               GEOMETRY, which is built at world size from this arena's
-   *               own span and can therefore never be shared.
+   *   PER MOUNT   the edge wash, the board pass and the float halo (all
+   *               parameterised or sized from this arena), the slab's toon
+   *               material, and the slab GEOMETRY, which is built at world
+   *               size from this arena's own span and can never be shared.
    *   SHARED      the ink hull material and the toon gradient ramp, which are
    *               parameter-free module singletons like every other pooled
    *               resource in this renderer. Disposing those on unmount would
@@ -82,9 +84,9 @@ describe('analytic arena edge wash', () => {
     const geometriesBefore = disposeGeometry.mock.calls.length;
     view.unmount();
 
-    // Edge wash + board pass + slab toon. The module-scope ink hull and the
-    // shared gradient ramp are not among them.
-    expect(disposeMaterial.mock.calls.length - materialsBefore).toBe(3);
+    // Edge wash + board pass + slab toon + float halo. The module-scope ink
+    // hull and the shared gradient ramp are not among them.
+    expect(disposeMaterial.mock.calls.length - materialsBefore).toBe(4);
     // The slab body only. `planeGeometry` elements are owned by R3F.
     expect(disposeGeometry.mock.calls.length - geometriesBefore).toBe(1);
 
@@ -98,6 +100,49 @@ describe('analytic arena edge wash', () => {
     disposeMaterial.mockRestore();
     disposeGeometry.mockRestore();
     consoleError.mockRestore();
+  });
+
+  /**
+   * THE ROLLBACK SHAPE, TESTED DELIBERATELY.
+   *
+   * `NEXT_PUBLIC_HUD_COCKPIT_V1=false` mounts `ArenaFloor` and `ArenaBorder`
+   * directly instead of `ArenaAssembly`, and so do `/dev/perf` and the arena
+   * prototype's `released` variant. Those paths pass no `edgeWashStrength` and
+   * mount no undertray, so anything the cockpit assembly did to make the slab
+   * coherent had to be moved INTO this component or the rollback would render
+   * a stone tile washed at full strength with nothing under it.
+   *
+   * CI runs e2e only with the flag ON (`.github/workflows/e2e.yml`), so no
+   * browser leg exercises this shape. It is pinned here on purpose rather than
+   * inferred from an omitted flag.
+   */
+  it('gives the rollback path the same damped wash and float halo as the cockpit', () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    // Exactly what `game/page.tsx` renders with the cockpit flag off.
+    const { container } = render(<ArenaFloor gridSize={20} accentColor="#35e6ff" />);
+
+    // The wash is damped for stone by DEFAULT, not by a call-site multiplier
+    // that only the cockpit applies.
+    expect(EDGE_WASH_ON_STONE).toBeLessThan(1);
+    const wash = createArenaEdgeWashMaterial('#35e6ff', EDGE_WASH_ON_STONE);
+    expect(wash.uniforms.uStrength.value).toBe(EDGE_WASH_ON_STONE);
+    wash.dispose();
+
+    // Slab, halo, wash and board pass - the float cue is present without an
+    // undertray, because it belongs to the tile rather than to the chassis.
+    expect(container.querySelectorAll('mesh').length).toBeGreaterThanOrEqual(4);
+
+    consoleError.mockRestore();
+  });
+
+  it('scales the float halo from its own preset rather than the cockpit apron', () => {
+    // The released tile has a smaller apron than the cockpit's, so a halo
+    // sized from `SLAB_APRON.cockpit` - which is what the undertray used to
+    // hardcode - would have overhung the rollback board.
+    expect(SLAB_APRON.released).toBeLessThan(SLAB_APRON.cockpit);
   });
 
   it('builds the slab at world size so its hull expands evenly on every face', () => {

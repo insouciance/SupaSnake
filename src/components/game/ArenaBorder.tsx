@@ -75,8 +75,8 @@ const RIM_EMISSIVE_SCALE = 0.1;
  * against slate's 0.02/0.03/0.05: an 18% linear lerp toward it is a ~75%
  * perceptual jump, and the first render of this pass came back with a bright
  * olive frame around the board instead of a green-cast stone. Converted back
- * to sRGB the same 12% lands where the eye expects it - slate that has taken
- * the dynasty's cast, which is what a tinted stone looks like.
+ * to sRGB, 9% lands where the eye expects it - slate that has taken the
+ * dynasty's cast, which is what a tinted stone looks like.
  */
 const RIM_DYNASTY_TINT = 0.09;
 

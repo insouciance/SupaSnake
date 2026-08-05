@@ -5,6 +5,18 @@
 
 import { chromium } from 'playwright';
 
+/**
+ * How far the board's drawing surface overhangs its bay, per side.
+ *
+ * Mirrors `COCKPIT_CANVAS_OVERHANG` in
+ * `src/components/game/screen/gameScreenTokens.ts`, which is the single source
+ * the CSS token and `CameraRig`'s `COCKPIT_FIT_SCALE` are both derived from.
+ * This script is plain node with no bundler, so it cannot import it; the
+ * assertion below fails loudly if the two ever diverge, which is the point.
+ */
+const CANVAS_OVERHANG = 0.25;
+const CANVAS_GROWTH = 1 + 2 * CANVAS_OVERHANG;
+
 const BASE_URL = process.env.COCKPIT_BASE_URL ?? 'http://127.0.0.1:3107';
 const CASES = [
   { width: 390, height: 844, dynasty: 'PRIMAL', state: 'portal' },
@@ -66,7 +78,13 @@ async function measure(testCase, arena, density = 'standard') {
     const hostRect = element.getBoundingClientRect();
     const canvas = element.querySelector('canvas');
     const canvasRect = canvas?.getBoundingClientRect();
+    // The board's RECTANGLE, as distinct from its drawing surface. This is
+    // what the HUD-overlap and decision-geometry audits measure against.
+    const bay = document
+      .querySelector('[data-testid="cockpit-board"]')
+      ?.getBoundingClientRect();
     return {
+      bay: bay ? { width: bay.width, height: bay.height } : null,
       drawCalls: Number(element.getAttribute('data-draw-calls')),
       triangles: Number(element.getAttribute('data-triangles')),
       density: element.getAttribute('data-fixture-density'),
@@ -93,7 +111,37 @@ try {
     invariant(released.errors.length === 0, `${label}: released render error: ${released.errors.join('; ')}`);
     invariant(cockpit.errors.length === 0, `${label}: cockpit render error: ${cockpit.errors.join('; ')}`);
     invariant(cockpit.canvas !== null, `${label}: WebGL canvas missing`);
-    invariant(Math.abs(cockpit.host.width - cockpit.host.height) < 1, `${label}: arena host is not square`);
+
+    /*
+     * THE BOARD IS NO LONGER A SQUARE CLIPPED WELL, AND THIS IS WHERE THAT IS
+     * ASSERTED.
+     *
+     * This used to require `|host.width - host.height| < 1`, because the arena
+     * was an octagonal well sized to `min(100cqw, 100cqh)`. That shape was
+     * removed deliberately: on desktop it made roughly half the bay's width
+     * chassis, and zoom and pan ran straight into its clip-path, which is what
+     * made both controls feel pointless. A square-host check now measures a
+     * shape the product does not draw.
+     *
+     * The replacement is strictly stronger, not weaker. Squareness was one
+     * loose relation between two numbers; the pop-out has an EXACT one, and it
+     * is the relation that actually matters - the surface the board paints on
+     * must be the bay grown by exactly the shared overhang on BOTH axes,
+     * because the fit compensation in CameraRig is a single scalar and is only
+     * correct while the growth is uniform. A non-uniform bleed would render the
+     * board at the wrong size at rest, silently, on one aspect ratio.
+     */
+    invariant(cockpit.bay !== null, `${label}: board rectangle missing`);
+    const expectedWidth = cockpit.bay.width * CANVAS_GROWTH;
+    const expectedHeight = cockpit.bay.height * CANVAS_GROWTH;
+    invariant(
+      Math.abs(cockpit.host.width - expectedWidth) < 1,
+      `${label}: paint surface is ${cockpit.host.width.toFixed(1)}px wide, expected ${expectedWidth.toFixed(1)} (bay x ${CANVAS_GROWTH})`
+    );
+    invariant(
+      Math.abs(cockpit.host.height - expectedHeight) < 1,
+      `${label}: paint surface is ${cockpit.host.height.toFixed(1)}px tall, expected ${expectedHeight.toFixed(1)} (bay x ${CANVAS_GROWTH})`
+    );
     invariant(Math.abs(cockpit.canvas.width - cockpit.host.width) < 1, `${label}: canvas width does not fill host`);
     invariant(Math.abs(cockpit.canvas.height - cockpit.host.height) < 1, `${label}: canvas height does not fill host`);
 

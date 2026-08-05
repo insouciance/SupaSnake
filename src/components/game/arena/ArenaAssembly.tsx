@@ -1,7 +1,7 @@
 'use client';
 
 import type { DynastyId } from '@/shared/types/game';
-import { ArenaFloor } from '@/components/game/ArenaFloor';
+import { ArenaFloor, EDGE_WASH_ON_STONE } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { ArenaUndertray } from '@/components/game/arena/ArenaUndertray';
 import {
@@ -16,17 +16,6 @@ interface ArenaAssemblyProps {
   torus?: boolean;
 }
 
-/**
- * How much of the profile's dynasty edge wash survives on a stone board.
- *
- * The wash was authored against a near-black plane, where it read as the
- * board's edge being lit. On the slab it read as a 4-cell-wide painted frame
- * inside the playfield - on PRIMAL, a bright olive one - which is the single
- * loudest thing fighting "a fine slab of stone". The rim now carries dynasty
- * identity in its own tint and emissive, so the wash only has to be the
- * atmosphere it always claimed to be.
- */
-const EDGE_WASH_ON_STONE = 0.25;
 
 /**
  * Cockpit-v1 arena visual assembly. It deliberately contains no gameplay
