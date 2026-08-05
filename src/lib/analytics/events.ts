@@ -154,6 +154,21 @@ export const AnalyticsEvents = {
   CURRICULUM_LEARNING_EVENT_RESOLVED: 'curriculum_learning_event_resolved',
   CURRICULUM_GRADUATED: 'curriculum_graduated',
 
+  // DECISION LATENCY — the one measurement TGv2 §11's list omits.
+  //
+  // §11 tracks WHICH option won every decision and never how long the player
+  // held it open. "The game interrupts too much" is therefore unfalsifiable
+  // today: a surface that is opened often and answered in 900ms is a rhythm,
+  // and the same surface answered in nine seconds is an interruption, and the
+  // existing telemetry cannot tell those two products apart.
+  //
+  // Two events, not one, because the two surfaces cost the player different
+  // things: THE DROP pauses the board to compose a build, and the portal rail
+  // asks a risk question mid-flight. Averaging them would hide whichever is
+  // worse. Both carry the elapsed milliseconds and the option that won.
+  DROP_DECISION_RESOLVED: 'drop_decision_resolved',
+  PORTAL_DECISION_RESOLVED: 'portal_decision_resolved',
+
   // The eight-bank CLAN HANDOFF (PEO §6, §9.3). Social rather than curriculum:
   // these measure belonging, and §9.3 reads them against D30 retention by clan
   // status. Emitted through ./clanReveal.ts, never directly.

@@ -160,6 +160,10 @@ import { openClanRevealInvitation } from '@/lib/game/clanRevealAttention';
 import { openCurriculumInvitation } from '@/lib/game/curriculumAttention';
 import { PLAYER_EVOLUTION_ENABLED } from '@/lib/features/playerEvolution';
 import {
+  markDecisionOpened,
+  trackDecisionResolved,
+} from '@/lib/analytics/decisionLatency';
+import {
   trackClanContribution,
   trackClanRevealAccepted,
   trackClanRevealDeclined,
@@ -851,6 +855,17 @@ export default function GamePage() {
   // display mirror, not a mutex: two first inputs in one event turn must share
   // exactly one prepared→active request and opening checkpoint.
   const activationPromiseRef = useRef<Promise<boolean> | null>(null);
+  /**
+   * Identity for the CURRENT v1 portal decision, for latency measurement only.
+   *
+   * The v1 rail has no id of its own the way a v2 portal or a Genome offer
+   * does, so one is assigned when it opens. A counter rather than a timestamp:
+   * the value only has to be unique within this page lifecycle, and a
+   * timestamp would read like a progression fact to the next person editing
+   * this file.
+   */
+  const portalDecisionIdRef = useRef<string | null>(null);
+  const portalDecisionSeqRef = useRef(0);
   const deathPresentationRef = useRef<{
     promise: Promise<void>;
     resolve: () => void;
@@ -2215,6 +2230,12 @@ export default function GamePage() {
       ...(replacementSlot !== undefined ? { replacementSlot } : {}),
     })) {
       setChoiceOptions(null);
+      // How long THE DROP was held open, and which answer won. Measurement
+      // only: nothing renders, nothing is a deadline, nothing reads it back.
+      trackDecisionResolved('drop', offerId, 'lock_in', {
+        candidate_index: candidateIndex,
+        recode: replacementSlot !== undefined,
+      });
       revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
       armResumeAfterDecision();
@@ -2232,6 +2253,9 @@ export default function GamePage() {
       ...(pinCandidateIndex !== undefined ? { pinCandidateIndex } : {}),
     })) {
       setChoiceOptions(null);
+      trackDecisionResolved('drop', offerId, 'decline', {
+        pinned: pinCandidateIndex !== undefined,
+      });
       revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
       armResumeAfterDecision();
@@ -2240,6 +2264,14 @@ export default function GamePage() {
 
   const handlePortalChoice = useCallback((choice: 'bank' | 'pass' | 'infuse') => {
     if (gameRef.current?.resolvePortalChoice(choice)) {
+      // The v1 portal rail carries no id of its own, so the open stamp is
+      // keyed on the sequence number the effect below assigned it.
+      trackDecisionResolved(
+        'portal',
+        portalDecisionIdRef.current ?? 'portal-unknown',
+        choice
+      );
+      portalDecisionIdRef.current = null;
       setPortalChoicePending(false);
       audioManager.play('uiClick');
       armResumeAfterDecision();
@@ -2256,6 +2288,7 @@ export default function GamePage() {
     const bridge = genomeV2RuntimeBridge(gameRef.current);
     if (!portalId || !bridge) return;
     if (bridge.resolveGenomeV2Portal({ action: 'bank', portalId })) {
+      trackDecisionResolved('portal', portalId, 'bank');
       syncGenomeV2Mirror();
       audioManager.play('uiClick');
     }
@@ -2271,6 +2304,9 @@ export default function GamePage() {
       portalId,
       activateMirror,
     })) {
+      trackDecisionResolved('portal', portalId, 'ride_on', {
+        mirror: activateMirror,
+      });
       setPortalChoicePending(false);
       revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
@@ -2293,6 +2329,9 @@ export default function GamePage() {
       candidateIndex,
       ...(replacementSlot !== undefined ? { replacementSlot } : {}),
     })) {
+      trackDecisionResolved('portal', portalId, 'trade_up', {
+        candidate_index: candidateIndex,
+      });
       setPortalChoicePending(false);
       revealGenomeV2Commit(before, syncGenomeV2Mirror());
       audioManager.play('uiClick');
@@ -5341,6 +5380,44 @@ export default function GamePage() {
     if (!isGameOver) return;
     trackFirstTerminalResult({ end_reason: endReason ?? 'unknown' });
   }, [endReason, isGameOver]);
+
+  // ---------------------------------------------------------------------
+  // DECISION LATENCY (WP-F; the measurement TGv2 §11's list omits).
+  // ---------------------------------------------------------------------
+  // §11 records which option won every decision and never how long it took,
+  // which leaves "the game interrupts too much" unfalsifiable: the same
+  // surface answered in 900ms and in nine seconds is two different products.
+  // These two effects stamp the OPEN; the resolve handlers above report the
+  // elapsed time with the winning option.
+  //
+  // Nothing renders and nothing is a deadline — R1 forbids a new in-run
+  // surface, and a timer the player could feel would be one. The stamps live
+  // in module memory for the length of the decision (see
+  // `lib/analytics/decisionLatency.ts`) and never touch browser storage.
+  useEffect(() => {
+    const offerId = genomeV2State?.offer?.offerId;
+    if (!offerId) return;
+    markDecisionOpened('drop', offerId);
+  }, [genomeV2State?.offer?.offerId]);
+
+  useEffect(() => {
+    const v2PortalId = genomeV2State?.portal?.portalId;
+    if (v2PortalId) {
+      markDecisionOpened('portal', v2PortalId);
+      return;
+    }
+    if (!portalChoicePending) {
+      portalDecisionIdRef.current = null;
+      return;
+    }
+    // A v1 rail with no id of its own: assign one on the transition into
+    // pending, and only then, so a re-render cannot restart the clock.
+    if (portalDecisionIdRef.current) return;
+    portalDecisionSeqRef.current += 1;
+    const id = `portal-v1-${portalDecisionSeqRef.current}`;
+    portalDecisionIdRef.current = id;
+    markDecisionOpened('portal', id);
+  }, [genomeV2State?.portal?.portalId, portalChoicePending]);
 
   // ---------------------------------------------------------------------
   // CLAN HANDOFF TELEMETRY (WP-F item 5; PEO §6, §9.3).
