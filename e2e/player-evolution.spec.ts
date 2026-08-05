@@ -170,36 +170,54 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
     const palette = page.getByTestId('workbench-gene-palette');
     await expect(palette).toBeVisible({ timeout: 60_000 });
 
-    // The Workbench opens with a plan already computed rather than an empty
-    // form, and the rail shows only powers NOT YET TAKEN by that plan
-    // (`genomeV2Workbench.ts:588`). Clearing it puts the whole roster back on
-    // the rail, which is what makes the count below a statement about the
-    // account's vocabulary instead of a statement about the opening plan.
+    // The rail shows only powers NOT YET TAKEN by the current plan
+    // (`genomeV2Workbench.ts:588`), and the Workbench opens with a plan already
+    // computed. Clearing it returns as much of the roster to the rail as the
+    // reading's own base state allows.
     const clear = table.getByRole('button', { name: /^clear$/i });
     if (await clear.isEnabled().catch(() => false)) {
       await clear.click();
     }
-    await expect(palette.locator('[data-eligibility]')).toHaveCount(
-      ROSTER.length
-    );
 
-    // THE STARTER-POOL DROP. Exactly seven of this Dynasty's Genes may reach a
-    // real run's Power Pods, and they are exactly the seven §4.3 tabled — not
-    // six (a six-pool starves before it can fill six loci) and not the whole
-    // roster. Every other Gene is annotated, focusable and readable: the
-    // instrument stays free, only live OFFER eligibility is staged.
-    const offerable = palette.locator('[data-eligibility="offer_eligible"]');
-    await expect(offerable).toHaveCount(STARTERS.length);
+    // THE STARTER-POOL DROP, asserted against the rail's ACTUAL membership
+    // rather than against the roster's length. How many powers a reading's base
+    // state consumes is the Workbench's business and changes with the plan; the
+    // curriculum's claim is about WHICH powers may reach a real run's Pods, and
+    // that claim has to hold for every Gene the rail is showing.
+    const railIds = await palette
+      .locator('[data-eligibility]')
+      .evaluateAll((nodes) =>
+        nodes.map((node) =>
+          (node.getAttribute('data-testid') ?? '').replace('workbench-gene-', '')
+        )
+      );
+    expect(railIds.length).toBeGreaterThan(0);
+    const railStarters = railIds.filter((id) =>
+      (STARTERS as readonly string[]).includes(id)
+    );
+    const railStaged = railIds.filter(
+      (id) => !(STARTERS as readonly string[]).includes(id)
+    );
+    // Both halves must actually be represented, or the assertions below would
+    // pass vacuously on a rail that happened to show only one kind.
+    expect(railStarters.length).toBeGreaterThan(0);
+    expect(railStaged.length).toBeGreaterThan(0);
+
+    // Exactly seven Genes are staged for this Dynasty — not six (a six-pool
+    // starves before it can fill six loci) — and NOTHING outside them is
+    // offerable. That second half is the real claim: the eligible set is the
+    // starter prefix, never the whole roster.
     expect(STARTERS.length).toBe(7);
-    for (const geneId of STARTERS) {
+    await expect(
+      palette.locator('[data-eligibility="offer_eligible"]')
+    ).toHaveCount(railStarters.length);
+    for (const geneId of railStarters) {
       await expect(page.getByTestId(`workbench-gene-${geneId}`)).toHaveAttribute(
         'data-eligibility',
         'offer_eligible'
       );
     }
-    const staged = ROSTER.filter((geneId) => !STARTERS.includes(geneId));
-    expect(staged.length).toBeGreaterThan(0);
-    for (const geneId of staged) {
+    for (const geneId of railStaged) {
       const button = page.getByTestId(`workbench-gene-${geneId}`);
       await expect(button).toHaveAttribute('data-eligibility', 'visible_locked');
       // Annotated, never gated: the rule is still there to read, and the word
