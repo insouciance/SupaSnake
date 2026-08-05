@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { progressionArtifactHref } from '@/shared/progression/destinations';
+import { CLAN_REVEAL_SOURCE_TYPE } from '@/shared/game/clanReveal';
 import { CURRICULUM_SOURCE_TYPE } from '@/shared/game/curriculum';
 
 /**
@@ -259,10 +260,17 @@ function notificationFromServerItem(item: ServerAttentionItem): GameNotification
     // (PEO §5, presentation constraints). It is an `action` row because only
     // an action can carry the terminal states a **Not now** needs — the badge
     // is a presentation choice, not a change to what the row is.
+    //
+    // The eight-bank clan reveal joins it for the same reason and one more:
+    // §6 promises a player who declines "a quiet clan destination marker", and
+    // an exclamation on Compete is not quiet. It is also the only badge a
+    // player at eight banks has not asked for, so it is the last one that
+    // should shout.
     badgeKind:
       item.kind !== 'action'
         ? 'dot'
-        : item.source.type === CURRICULUM_SOURCE_TYPE
+        : item.source.type === CURRICULUM_SOURCE_TYPE ||
+            item.source.type === CLAN_REVEAL_SOURCE_TYPE
           ? 'dot'
           : 'exclamation',
     sourceType: item.source.type,
@@ -397,7 +405,16 @@ export function attentionBadge(
     ).length;
     return { kind: 'numeric', count: numericCount + exclamationCount };
   }
-  return { kind: 'exclamation' };
+  // An `action` row that asked to be quiet stays quiet on the rail as well as
+  // in the bell (PEO §5: "no pulsing global badge for optional learning; one
+  // destination dot is enough"). Until now `badgeKind: 'dot'` was honoured
+  // only by the notification list, so the curriculum invitation and the clan
+  // reveal — the two rows the constraint was written for — still put an
+  // exclamation on a nav node. One loud item among quiet ones still shouts:
+  // the badge is only a dot when nothing under it is asking for more.
+  return matching.every((notification) => notification.badgeKind === 'dot')
+    ? { kind: 'dot' }
+    : { kind: 'exclamation' };
 }
 
 export function destinationBadge(
@@ -421,6 +438,35 @@ export function recognitionHref(
   return notificationList(notifications, 'recognition').find(
     (notification) => destinationMatches(notification.destination, destination)
   )?.href ?? null;
+}
+
+/**
+ * Where a quietly marked rail destination should actually go (WP-E, G9).
+ *
+ * A DOT MEANS "THE THING IS OVER HERE", AND IT HAS TO BE TRUE.
+ *
+ * The Compete node carries `notificationDestination: 'clan'` but links to
+ * `/leaderboard` (`Navigation.tsx`), because a clan family and a leaderboard
+ * share one nav slot. Before this, only RECOGNITION dots redirected the node
+ * at what they marked; a quiet `action` dot — which is what the clan reveal
+ * and the curriculum invitation are — left the node pointing at its default,
+ * so following a clan mark opened a leaderboard. PEO §6 step 2 rules that out
+ * by name, and §6 promises a declining player "a quiet clan destination
+ * marker", which is only a marker if it leads to the destination.
+ *
+ * Attention wins over recognition because an action is something the player
+ * still has to answer; both are newest-first, and the fallback is the node's
+ * own href, so a destination with nothing open is unchanged.
+ */
+export function markedDestinationHref(
+  notifications: Record<string, GameNotification>,
+  destination: NotificationDestination
+): string | null {
+  const marked =
+    notificationList(notifications, 'attention').find((notification) =>
+      destinationMatches(notification.destination, destination)
+    ) ?? null;
+  return marked?.href ?? recognitionHref(notifications, destination);
 }
 
 function destinationMatches(
