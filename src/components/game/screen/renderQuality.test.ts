@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  COMPOSER_OFF_EXPOSURE_COMPENSATION,
   INITIAL_GOVERNOR_STATE,
   windowsRequiredToStepUp,
   MAX_RENDER_TIER,
@@ -55,7 +56,14 @@ describe('the tier table', () => {
     // post-processing only.
     for (const quality of RENDER_QUALITY_TIERS) {
       expect(Object.keys(quality).sort()).toEqual(
-        ['bloomResolutionScale', 'shadowsEnabled', 'terrainCastsShadow', 'tier'].sort()
+        [
+          'bloomResolutionScale',
+          'composerEnabled',
+          'exposureCompensation',
+          'shadowsEnabled',
+          'terrainCastsShadow',
+          'tier',
+        ].sort()
       );
     }
   });
@@ -68,30 +76,56 @@ describe('the tier table', () => {
     // Bloom is spent first and spent twice; it was the largest measured cost.
     expect(RENDER_QUALITY_TIERS[0].bloomResolutionScale).toBe(0.5);
     expect(RENDER_QUALITY_TIERS[1].bloomResolutionScale).toBe(0.25);
-    // NEVER null at any tier: bloom carries ~12% of the scene's measured mean
-    // luminance, so removing it dims the board rather than simplifying it.
-    // Tiers spend softness, never brightness.
-    for (const quality of RENDER_QUALITY_TIERS) {
-      expect(quality.bloomResolutionScale).toBeGreaterThan(0);
-    }
     expect(RENDER_QUALITY_TIERS[3].bloomResolutionScale).toBe(0.125);
 
-    // Terrain keeps casting until T2, and shadows survive until the floor.
+    // Terrain keeps casting until T2, and shadows survive until T3.
     expect(RENDER_QUALITY_TIERS[1].terrainCastsShadow).toBe(true);
     expect(RENDER_QUALITY_TIERS[2].terrainCastsShadow).toBe(false);
     expect(RENDER_QUALITY_TIERS[2].shadowsEnabled).toBe(true);
     expect(RENDER_QUALITY_TIERS[3].shadowsEnabled).toBe(false);
+
+    // The composer survives to T3 and only the floor drops it.
+    expect(RENDER_QUALITY_TIERS[3].composerEnabled).toBe(true);
+    expect(RENDER_QUALITY_TIERS[4].composerEnabled).toBe(false);
 
     // Monotonic: no tier restores something a cheaper-numbered tier gave up.
     for (let i = 1; i < RENDER_QUALITY_TIERS.length; i += 1) {
       const prev = RENDER_QUALITY_TIERS[i - 1];
       const curr = RENDER_QUALITY_TIERS[i];
       const cost = (q: (typeof RENDER_QUALITY_TIERS)[number]) =>
-        q.bloomResolutionScale +
+        (q.composerEnabled ? q.bloomResolutionScale + 1 : 0) +
         (q.terrainCastsShadow ? 1 : 0) +
         (q.shadowsEnabled ? 1 : 0);
       expect(cost(curr)).toBeLessThan(cost(prev));
     }
+  });
+
+  it('never spends brightness: every tier runs the composer or repays its light', () => {
+    // Bloom carries ~12% of the scene's measured mean luminance (30.10 with the
+    // composer, 26.60 without), so a tier that dropped the composer without
+    // repayment would DIM the board - the exact thing the owner rejected as
+    // "a lag spike made the lighting go down". The invariant: wherever the
+    // composer runs, exposure is untouched; wherever it does not, exposure
+    // repays the measured share.
+    for (const quality of RENDER_QUALITY_TIERS) {
+      if (quality.composerEnabled) {
+        expect(quality.exposureCompensation).toBe(1);
+        expect(quality.bloomResolutionScale).toBeGreaterThan(0);
+      } else {
+        expect(quality.exposureCompensation).toBe(
+          COMPOSER_OFF_EXPOSURE_COMPENSATION
+        );
+      }
+    }
+    // The repayment is calibrated empirically against encoded-pixel
+    // measurements (scripts/measure-floor-luminance.mjs) - see the constant's
+    // doc for why it is neither the naive luminance ratio (~1.13, too dim on
+    // encoded pixels) nor mean-parity (~1.85, lifts shadows and clips the
+    // amber). A drift outside this band means someone changed the number
+    // without re-running the measurement.
+    expect(COMPOSER_OFF_EXPOSURE_COMPENSATION).toBeCloseTo(1.318, 10);
+    expect(COMPOSER_OFF_EXPOSURE_COMPENSATION).toBeGreaterThan(1.25);
+    expect(COMPOSER_OFF_EXPOSURE_COMPENSATION).toBeLessThan(1.4);
   });
 
   it('resolves every tier, and falls back to the full look on a bad index', () => {
@@ -111,11 +145,11 @@ describe('stepping down', () => {
 
   it('keeps descending while the run stays starved, and stops at the floor', () => {
     let state = warmed();
-    for (const expected of [1, 2, 3]) {
+    for (const expected of [1, 2, 3, 4]) {
       state = nextGovernorState(state, STARVED);
       expect(state.tier).toBe(expected);
     }
-    // The floor holds: no tier 4, no wrap, no oscillation.
+    // The floor holds: no tier 5, no wrap, no oscillation.
     state = feed(state, STARVED, 5);
     expect(state.tier).toBe(MAX_RENDER_TIER);
   });

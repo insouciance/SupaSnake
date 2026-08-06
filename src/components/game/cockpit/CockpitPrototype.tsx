@@ -9,6 +9,7 @@ import {
 } from '@/components/game/screen/gameScreenTokens';
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { ArenaPrototypeCanvas } from '@/components/game/arena/ArenaPrototypeCanvas';
+import type { RenderTier } from '@/components/game/screen/renderQuality';
 import { GeneGlyph as CatalogGeneGlyph } from './CockpitGlyphs';
 import styles from './CockpitPrototype.module.css';
 
@@ -26,6 +27,8 @@ interface CockpitPrototypeProps {
   arenaVariant?: 'released' | 'cockpit';
   arenaEffects?: boolean;
   arenaDensity?: 'standard' | 'extreme';
+  /** Dev-fixture-only tier pin; see ArenaPrototypeCanvas.forceRenderTier. */
+  arenaRenderTier?: RenderTier;
 }
 
 type TokenStyle = CSSProperties & Record<`--${string}`, string>;
@@ -203,6 +206,7 @@ function ArenaPreview({
   arenaVariant,
   arenaEffects,
   arenaDensity,
+  arenaRenderTier,
 }: {
   state: CockpitPrototypeState;
   dynasty: DynastyId;
@@ -210,6 +214,7 @@ function ArenaPreview({
   arenaVariant: 'released' | 'cockpit';
   arenaEffects: boolean;
   arenaDensity: 'standard' | 'extreme';
+  arenaRenderTier?: RenderTier;
 }) {
   const portalLive = state === 'portal' || state === 'apex';
   return (
@@ -238,6 +243,7 @@ function ArenaPreview({
                   arenaVariant={arenaVariant}
                   effectsEnabled={arenaEffects}
                   density={arenaDensity}
+                  forceRenderTier={arenaRenderTier}
                 />
               </div>
             </div>
@@ -304,6 +310,7 @@ export function CockpitPrototype({
   arenaVariant = 'cockpit',
   arenaEffects = true,
   arenaDensity = 'standard',
+  arenaRenderTier,
 }: CockpitPrototypeProps) {
   const theme = getDynastyScreenTokens(dynasty);
   const normalizedGeneCount = Math.max(0, Math.min(6, Math.floor(geneCount)));
@@ -437,6 +444,7 @@ export function CockpitPrototype({
             arenaVariant={arenaVariant}
             arenaEffects={arenaEffects}
             arenaDensity={arenaDensity}
+            arenaRenderTier={arenaRenderTier}
           />
         </div>
       </div>

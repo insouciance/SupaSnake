@@ -2,7 +2,7 @@
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
-import { NoToneMapping } from 'three';
+import { LinearToneMapping } from 'three';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import type { Position } from '@/lib/game/SnakeGameLogic';
@@ -21,6 +21,10 @@ import { DynamicLights } from '@/components/game/DynamicLights';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { createLightTarget } from '@/components/game/screen/inkAmber';
 import { useRenderQuality } from '@/components/game/screen/useRenderQuality';
+import {
+  qualityForTier,
+  type RenderTier,
+} from '@/components/game/screen/renderQuality';
 import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { ExitPortal } from '@/components/game/ExitPortal';
 import {
@@ -54,6 +58,14 @@ interface ArenaPrototypeCanvasProps {
   arenaVariant?: 'released' | 'cockpit';
   effectsEnabled?: boolean;
   density?: 'standard' | 'extreme';
+  /**
+   * Dev-fixture-only: pin the governor to one tier so a verifier or a human
+   * can measure a specific tier's output (e.g. the floor's luminance
+   * repayment) reproducibly instead of waiting for the governor to wander
+   * there. The live board never sets this; the /dev/cockpit route is not
+   * served in production at all.
+   */
+  forceRenderTier?: RenderTier;
 }
 
 const GRID = GAME_CONFIG.board.gridSize;
@@ -145,6 +157,7 @@ function PrototypeScene({
   arenaVariant = 'cockpit',
   effectsEnabled = true,
   density = 'standard',
+  forceRenderTier,
 }: ArenaPrototypeCanvasProps & { isMobile: boolean }) {
   const theme = getDynastyScreenTokens(dynasty);
   const snake = density === 'extreme' ? DENSE_SNAKE : STATIC_SNAKE;
@@ -162,7 +175,9 @@ function PrototypeScene({
    * only exists in production. There is no decision surface here, so a step up
    * is always allowed.
    */
-  const quality = useRenderQuality({ active: true, allowStepUp: true });
+  const governed = useRenderQuality({ active: true, allowStepUp: true });
+  const quality =
+    forceRenderTier != null ? qualityForTier(forceRenderTier) : governed;
   // Published for `verify:cockpit-webgl`, which asserts the governor resolved a
   // real tier from the table rather than silently rendering an undefined one.
   useEffect(() => {
@@ -310,7 +325,7 @@ function PrototypeScene({
         targetY={COCKPIT_TARGET_Y}
       />
 
-      {!isMobile && effectsEnabled && (
+      {!isMobile && effectsEnabled && quality.composerEnabled && (
         <EffectComposer>
           {/* Governor-driven - see the note on the live board's Bloom. */}
           <Bloom
@@ -322,8 +337,29 @@ function PrototypeScene({
           />
         </EffectComposer>
       )}
+      {/* Same repayment as the live board's FloorExposure: while the floor
+          tier has the composer off, exposure repays bloom's luminance share.
+          Mobile never runs the composer, so exposure stays 1 there. */}
+      <FixtureFloorExposure
+        exposure={
+          !isMobile && effectsEnabled && !quality.composerEnabled
+            ? quality.exposureCompensation
+            : 1
+        }
+      />
     </>
   );
+}
+
+function FixtureFloorExposure({ exposure }: { exposure: number }) {
+  const gl = useThree((state) => state.gl);
+  useEffect(() => {
+    gl.toneMappingExposure = exposure;
+    return () => {
+      gl.toneMappingExposure = 1;
+    };
+  }, [gl, exposure]);
+  return null;
 }
 
 function RenderStatsProbe() {
@@ -346,6 +382,7 @@ export function ArenaPrototypeCanvas({
   arenaVariant = 'cockpit',
   effectsEnabled = true,
   density = 'standard',
+  forceRenderTier,
 }: ArenaPrototypeCanvasProps) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -373,8 +410,10 @@ export function ArenaPrototypeCanvas({
         }}
         shadows
         dpr={isMobile ? [1, 1.5] : [1, 2]}
-        // INK & AMBER: match the live board - no ACES shoulder over flat toon fills.
-        gl={{ alpha: true, antialias: true, toneMapping: NoToneMapping }}
+        // INK & AMBER: match the live board - no ACES shoulder over flat toon
+        // fills. Linear at exposure 1 is the identity NoToneMapping was, but
+        // honors toneMappingExposure - the floor tier's repayment knob.
+        gl={{ alpha: true, antialias: true, toneMapping: LinearToneMapping }}
         onCreated={({ gl, camera }) => {
           gl.setClearColor(0x000000, 0);
           camera.lookAt(center, 0, center);
@@ -387,6 +426,7 @@ export function ArenaPrototypeCanvas({
           arenaVariant={arenaVariant}
           effectsEnabled={effectsEnabled}
           density={density}
+          forceRenderTier={forceRenderTier}
         />
         <RenderStatsProbe />
       </Canvas>

@@ -10,6 +10,7 @@
  * - ?state=ready|active|portal|apex
  * - ?mode=standard|free|anomaly
  * - ?genes=0..6
+ * - ?tier=0..4 (pin the render-quality governor to one tier - measurement only)
  * - ?contrast=high
  * - ?motion=reduced
  * - ?renderer=static|webgl
@@ -21,6 +22,10 @@
  */
 
 import { notFound } from 'next/navigation';
+import {
+  MAX_RENDER_TIER,
+  type RenderTier,
+} from '@/components/game/screen/renderQuality';
 import {
   CockpitPrototype,
   type CockpitPrototypeMode,
@@ -54,6 +59,15 @@ function parseMode(value: string | undefined): CockpitPrototypeMode {
     : 'anomaly';
 }
 
+function parseRenderTier(value: string | undefined): RenderTier | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_RENDER_TIER) {
+    return undefined;
+  }
+  return parsed as RenderTier;
+}
+
 function parseGeneCount(value: string | undefined): number {
   const parsed = Number(value ?? '4');
   return Number.isFinite(parsed) ? Math.max(0, Math.min(6, Math.floor(parsed))) : 4;
@@ -75,6 +89,7 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
       arenaVariant={first(params.arena) === 'released' ? 'released' : 'cockpit'}
       arenaEffects={first(params.effects) !== 'off'}
       arenaDensity={first(params.density) === 'extreme' ? 'extreme' : 'standard'}
+      arenaRenderTier={parseRenderTier(first(params.tier))}
     />
   );
 }

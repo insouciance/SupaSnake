@@ -167,7 +167,7 @@ try {
     ]) {
       const tier = Number(measured.renderTier);
       invariant(
-        measured.renderTier !== null && Number.isInteger(tier) && tier >= 0 && tier <= 3,
+        measured.renderTier !== null && Number.isInteger(tier) && tier >= 0 && tier <= 4,
         `${tierLabel}: render tier is "${measured.renderTier}", not a tier from the table`
       );
     }
