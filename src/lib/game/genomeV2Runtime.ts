@@ -6,6 +6,7 @@
  * board progress between canonical events, and checkpoint cursors.
  */
 
+import { reportTelemetry } from '@/lib/telemetry/report';
 import type { GenomeV2ActiveGeneId } from '@/shared/game/genes';
 import {
   GENOME_V2_INTERACTION_AUTO_OFFER,
@@ -773,17 +774,43 @@ export class GenomeV2Runtime {
    * `this.state` is replaced only on success - so a refusal leaves the runtime
    * exactly as it was, and recording it costs nothing but the truth.
    *
-   * Full Sentry routing is CE-5's job. Until then the reason is logged with
-   * its method for context and retained for exactly one reader, so a caller
-   * that must still fail can fail WITH the reducer's own words.
+   * CE-5 completes it. The reason is still retained for exactly one reader, so
+   * a caller that must fail can fail WITH the reducer's own words, and it is
+   * now ALSO reported — because the two incidents in this class were diagnosed
+   * only because a player wrote in, and `console.error` is not a channel that
+   * exists in production (`compiler.removeConsole`, next.config.js:38).
+   *
+   * The fingerprint is `[channel, method]`, not the message: the message
+   * carries the reducer's specific complaint and would otherwise open a new
+   * issue per variant, burying the fact that one method refuses at all.
+   *
+   * `refuse` is called from a guarded `apply`, so a refusal is already a
+   * non-fatal, transactional no-op. Reporting must be equally harmless, which
+   * `reportTelemetry` guarantees — this runs inside the engine, on the tick.
    */
   private refuse(method: string, error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
     this.lastRefusal = `${method}: ${message}`;
-    console.error(
-      `[genomeV2Runtime] ${method} refused by the reducer: ${message}`,
-      error
-    );
+    reportTelemetry({
+      channel: 'engine-reducer',
+      message: `genomeV2 reducer refused ${method}`,
+      level: 'warning',
+      error,
+      tags: {
+        reducer_method: method,
+        interaction_version: this.interactionVersion,
+        dynasty: this.state.dynasty,
+      },
+      fingerprint: ['engine-reducer', method],
+      data: {
+        method,
+        reason: message,
+        runSeed: this.state.runSeed,
+        tick: this.state.tick,
+        eventIndex: this.state.eventIndex,
+        cadenceOfferCount: this.cadenceOfferCount,
+      },
+    });
   }
 
   /**
