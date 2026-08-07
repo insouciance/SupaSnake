@@ -457,7 +457,6 @@ export default function TrainingPage() {
     setResult(null);
     setActiveGuidance(nextGuidance);
     setView('run');
-    setViewResetToken((token) => token + 1);
     trackEvent(TRAINING_EVENTS.ATTEMPT_STARTED, {
       category: 'gameplay',
       source,

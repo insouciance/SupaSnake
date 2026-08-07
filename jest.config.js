@@ -41,6 +41,11 @@ const customJestConfig = {
     // Deterministic visual-review fixtures are exercised by the dedicated
     // Playwright cockpit scripts, not by the production Jest coverage gate.
     '!src/app/dev/**',
+    // Same rule for the dev-only ET-5 camera surveyor (?cameraTune=1): its
+    // probe and tray are three.js/DOM tuning instruments the owner drives by
+    // hand, and they are compiled out of production entirely. The one part
+    // with a contract - the parameter line - is pure and is unit-tested.
+    '!src/components/game/dev/**',
     '!src/components/game/arena/ArenaPrototypeCanvas.tsx',
     '!src/components/game/cockpit/CockpitPrototype.tsx',
     '!src/components/game/cockpit/CockpitDecisionFixture.tsx',
