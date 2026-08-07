@@ -9,7 +9,7 @@
 
 import { test, expect } from '@playwright/test';
 import {
-  openRunSetupControls,
+  chooseFreePlay,
   seedConsent,
   signInAsGuest,
   startRunIfSetupPresent,
@@ -133,14 +133,12 @@ test.describe('Equipped-snake game flow', () => {
     await seedConsent(page);
     await signInAsGuest(page);
 
-    // Pre-game overlay: both mode chips present. EARN is always the default
-    // and is never disabled (§8.6: the envelope gates no mode).
-    // WP-1.06 moves the chips behind the Run Setup disclosure; flag-off this
-    // is a no-op.
-    await openRunSetupControls(page);
-    await expect(page.getByTestId('mode-earn')).toBeVisible({ timeout: 20000 });
-    await expect(page.getByTestId('mode-free')).toBeVisible();
-    await expect(page.getByTestId('mode-earn')).toHaveAttribute('aria-pressed', 'true');
+    // THE MODE COLLAPSE (owner ruling 2026-08-07). There are no mode chips on
+    // Run Setup any more: `gameMode` is DERIVED from the Energy Reactor, so a
+    // seated rod IS an earning run and a cold core IS a free one. §8.6 still
+    // holds and is now structural rather than asserted — the envelope cannot
+    // gate a mode that no control selects. The rollback screen keeps the
+    // shipped chips, which is why the gesture lives in `chooseFreePlay`.
 
     // FREE PLAY remains a deliberate choice, never a demotion (§7.4).
     //
@@ -151,10 +149,7 @@ test.describe('Equipped-snake game flow', () => {
     // coordinates, and land the click on empty space - the reported flake.
     // The default actionability wait rides the shift out, and additionally
     // proves the chip is genuinely pressable rather than merely present.
-    await page.getByTestId('mode-free').click();
-    await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('mode-free-hint')).toHaveText(/no rewards — pure practice/i);
-    await expect(page.getByTestId('training-lab-link')).toHaveAttribute('href', '/training');
+    await chooseFreePlay(page);
 
     // The primary CTA becomes Free Play, which consumes no charge
     const freeStart = page.getByTestId('free-play-start');

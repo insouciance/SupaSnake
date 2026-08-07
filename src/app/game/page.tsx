@@ -1499,9 +1499,27 @@ export default function GamePage() {
     }
   }, []);
 
+  /*
+   * THE DERIVED RUN MODE (owner: "Energy Reactor — zero is free play").
+   *
+   * Mode used to be a thing the player SET, on a toggle that sat beside a
+   * commitment control it could contradict. It is now a thing the reactor
+   * MEANS: no rod seated is a free run, any rod seated is an earning run, and
+   * the anomaly is the one genuinely different board, so it keeps its own
+   * value and arrives from Home rather than from a control here.
+   *
+   * Everything downstream reads this ONE expression — the start label, the
+   * start test id, the mode `handleStart` records on the session, and the Lab
+   * round-trip draft — so the four can no longer disagree. It is derived here,
+   * above `setupLabHref`, precisely so the draft cannot serialise a stale
+   * store value while the reactor shows something else.
+   */
+  const setupRunMode: GameMode =
+    gameMode === 'anomaly' ? 'anomaly' : energyCommitment > 0 ? 'earn' : 'free';
+
   const setupLabHref = buildLabSetupHref({
     currentSearch: setupCurrentSearch,
-    mode: gameMode,
+    mode: setupRunMode,
     energyCommitment,
     ladderRung,
   });
@@ -6816,20 +6834,6 @@ export default function GamePage() {
    * the portal decision reads. What is gone is the pre-run surface that asked
    * the player to pick a difficulty before they had played.
    */
-
-  /*
-   * THE DERIVED RUN MODE (owner: "Energy Reactor — zero is free play").
-   *
-   * Mode used to be a thing the player SET, on a toggle that sat beside a
-   * commitment control it could contradict. It is now a thing the reactor
-   * MEANS: no rod seated is a free run, any rod seated is an earning run, and
-   * the anomaly is the one genuinely different board so it keeps its own
-   * value. Everything downstream — the start label, the test id, and the mode
-   * `handleStart` records on the session — reads this one expression, so the
-   * three can no longer disagree.
-   */
-  const setupRunMode: GameMode =
-    gameMode === 'anomaly' ? 'anomaly' : energyCommitment > 0 ? 'earn' : 'free';
 
   const startTestId =
     setupRunMode === 'free'

@@ -7,7 +7,7 @@
  * exercise the banner itself.
  */
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const RUN_FLOW_ENABLED = process.env.NEXT_PUBLIC_RUN_FLOW_V1 === 'true';
 
@@ -52,19 +52,72 @@ export async function dismissConsentIfVisible(page: Page): Promise<void> {
 }
 
 /**
- * Reveal the Run Setup page's adjustable controls.
+ * Reveal the Run Setup page's adjustable controls — a PERMANENT NO-OP.
  *
- * Run Setup keeps the ordinary mode choice directly in the cockpit, while
- * Aim, Ladder, anomaly detail, and Build Seed live in one closed disclosure.
- * Specs that exercise those advanced controls call this first; it is a no-op with
- * NEXT_PUBLIC_RUN_FLOW_V1 off, where the controls are already laid out flat.
+ * Run Setup is three elements (owner ruling 2026-08-07): Dynasty Favorites,
+ * the Energy Reactor, PLAY. The `<details data-testid="run-setup-adjust">`
+ * "Tune run" disclosure this helper used to open went with the four controls
+ * it hid — the aim picker (moved to the Lab), the anomaly entry (moved to
+ * Home), the difficulty ladder (deleted) and Build Seed. There is nothing left
+ * to reveal, so the body is an immediate return rather than a count-then-open
+ * that can only ever find zero.
+ *
+ * The export is kept so existing call sites still compile, and so that a spec
+ * which needs a control cannot quietly reintroduce a disclosure by calling a
+ * helper that opens one. New specs must not call it: every control Setup still
+ * has is visible on arrival, which is the whole point of the ruling.
  */
-export async function openRunSetupControls(page: Page): Promise<void> {
-  const adjust = page.getByTestId('run-setup-adjust');
-  if ((await adjust.count()) === 0) return;
-  if (await adjust.evaluate((node) => (node as HTMLDetailsElement).open)) return;
-  await adjust.getByText(/tune run|adjust this run/i).click();
-  await expect(adjust).toHaveJSProperty('open', true);
+export async function openRunSetupControls(_page: Page): Promise<void> {
+  return;
+}
+
+/**
+ * The pre-run screen, whichever one this build ships.
+ *
+ * The 2026-08-07 ruling removed Run Setup's "Ready to launch" heading along
+ * with the launch chamber that carried it, so a spec that runs on every flag
+ * leg can no longer ask for a heading: with NEXT_PUBLIC_RUN_FLOW_V1 ON the
+ * pre-run surface is the `run-setup` tray and has no heading at all, and with
+ * the flag OFF the shipped rollback screen still prints "Ready to Play".
+ *
+ * Branch on the flag rather than `.or()`-ing the two: only one of them exists
+ * in any given build, and naming the build's own surface makes a failure say
+ * which leg broke.
+ */
+export function runSetupReady(page: Page): Locator {
+  return RUN_FLOW_ENABLED
+    ? page.getByTestId('run-setup')
+    : page.getByRole('heading', { name: /ready to play/i });
+}
+
+/**
+ * Set up a FREE run — no Energy staked, no rewards.
+ *
+ * THE MODE COLLAPSE (owner ruling 2026-08-07). Run Setup has no Earn/Free
+ * toggle any more: `gameMode` is DERIVED from the Energy Reactor, so a run
+ * with no rod seated IS a free run and the start control becomes
+ * `free-play-start` on its own. The rollback screen still carries the shipped
+ * `ModeToggle`, so the two legs choose free play with two different gestures
+ * and that split lives here instead of in every spec.
+ *
+ * `energy-run-lean` is disabled at zero, which is the state this helper wants:
+ * an account with no recovered Energy already starts cold.
+ */
+export async function chooseFreePlay(page: Page): Promise<void> {
+  if (RUN_FLOW_ENABLED) {
+    const reactor = page.getByTestId('energy-commitment');
+    await expect(reactor).toBeVisible({ timeout: 30_000 });
+    const goCold = page.getByTestId('energy-run-lean');
+    if (await goCold.isEnabled()) await goCold.click();
+    await expect(page.getByTestId('energy-summary')).toHaveText(/free play/i);
+    return;
+  }
+  const freeMode = page.getByTestId('mode-free');
+  // Deliberately NOT a forced click: the ANOMALY chip is inserted to this
+  // button's left once /api/anomaly resolves, and skipping the stability check
+  // lands the click at the pre-shift coordinates.
+  await freeMode.click();
+  await expect(freeMode).toHaveAttribute('aria-pressed', 'true');
 }
 
 /**
@@ -85,7 +138,16 @@ export async function startRunIfSetupPresent(page: Page): Promise<void> {
   // momentary count of zero leaves the test on Setup and falsely treats it as
   // the rollback board. CI builds each matrix leg with this exact flag.
   if (!RUN_FLOW_ENABLED) return;
-  const start = page.getByTestId('earn-start');
+  // The start control's test id is DERIVED from the Energy Reactor since the
+  // 2026-08-07 mode collapse: no rod seated renders `free-play-start`, any rod
+  // renders `earn-start`, and Home's `?mode=anomaly` card renders
+  // `anomaly-start`. Exactly one of the three is ever mounted, so `.or()` is
+  // not a strict-mode hazard — and asking only for `earn-start` would hang for
+  // the full 30s on any account whose Energy has not recovered.
+  const start = page
+    .getByTestId('earn-start')
+    .or(page.getByTestId('free-play-start'))
+    .or(page.getByTestId('anomaly-start'));
   await expect(start).toBeVisible({ timeout: 30_000 });
   await start.click();
   // The board replaces the setup page; `run-setup` disappearing is the
@@ -156,13 +218,14 @@ export async function signInAsGuest(page: Page): Promise<void> {
     await page.goto('/game', { waitUntil: 'domcontentloaded' });
   }
 
-  // Authenticated /game renders either the HUD or the ready-to-play setup
-  // surface. The setup surface intentionally obscures the pre-run HUD, so it
-  // is the stronger marker on slower production/WebGL boots.
+  // Authenticated /game renders either the HUD or the pre-run setup surface.
+  // The setup surface intentionally obscures the pre-run HUD, so it is the
+  // stronger marker on slower production/WebGL boots. It is asked for by
+  // `runSetupReady` because the 2026-08-07 ruling left Run Setup with no
+  // heading at all — a heading locator would only ever resolve on the
+  // rollback leg.
   const scoreMarker = page.getByText(/^score$/i).first();
-  const setupMarker = page
-    .getByRole('heading', { name: /ready to (?:play|launch)/i })
-    .first();
+  const setupMarker = runSetupReady(page).first();
   const signInPrompt = page.getByText(/sign in to play and save/i);
   // Do not combine these locators with `.or(...).first()`: the pre-run HUD
   // keeps a visually hidden Score label before the visible Setup heading in

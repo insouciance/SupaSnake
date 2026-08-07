@@ -16,7 +16,6 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import {
-  openRunSetupControls,
   releaseHeldBoard,
   seedConsent,
   signInAsGuest,
@@ -456,15 +455,15 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     const setup = page.getByTestId('run-setup');
     await expect(setup).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText(/Preparing board/i)).toHaveCount(0);
-    await expect(page.getByTestId('run-setup-summary')).toBeVisible();
-    // Mode is an ordinary cockpit choice; advanced tuning stays behind one
-    // closed disclosure and neither requires a tap before launch.
-    await expect(page.getByTestId('run-setup-mode-control')).toBeVisible();
-    await expect(page.getByTestId('mode-earn')).toBeVisible();
-    await expect(page.getByTestId('run-setup-adjust')).toHaveJSProperty(
-      'open',
-      false
-    );
+    // THE THREE ELEMENTS (owner ruling 2026-08-07): Dynasty Favorites, the
+    // Energy Reactor, PLAY. All three are present and settled on arrival, and
+    // none of them is a prerequisite — the tap counted below is START itself.
+    // The run summary, the mode control and the "Tune run" disclosure that
+    // used to be checked here were removed by the same ruling; the test that
+    // polices their absence is `Run Setup is three elements…` further down.
+    await expect(page.getByTestId('run-setup-favorites')).toBeVisible();
+    await expect(page.getByTestId('energy-commitment')).toBeVisible();
+    await expect(page.getByTestId('earn-start')).toBeVisible();
 
     // Tap 2 — START.
     await taps.click(page, 'earn-start');
@@ -488,18 +487,40 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
 
     const setup = page.getByTestId('run-setup');
     await expect(setup).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByTestId('energy-summary')).toContainText('Commit 1 Energy');
-    await expect(page.getByTestId('energy-summary')).toContainText('×1.0');
+
+    // The reactor's output gauge carries no test id of its own; it is the one
+    // paragraph inside the reactor that reads "harvest". Scoping to it is not
+    // pedantry: `energy-run-lean` and `energy-commit-6` print multipliers too
+    // ("×0.25", "×10.0"), so an unscoped multiplier check would be satisfied
+    // by a button label and never notice a dead gauge.
+    const harvestGauge = page
+      .getByTestId('energy-commitment')
+      .locator('p')
+      .filter({ hasText: /harvest/ });
+
+    // "Staked · N Energy", not "Commit N Energy": the reactor states what the
+    // core is making rather than instructing the player (ruling 2026-08-07).
+    await expect(page.getByTestId('energy-summary')).toHaveText('Staked · 1 Energy');
+    await expect(harvestGauge).toContainText('×1.0');
+    await expect(page.getByTestId('energy-rod-1')).toHaveAttribute('data-seated', 'true');
+    await expect(page.getByTestId('energy-rod-2')).toHaveAttribute('data-seated', 'false');
 
     const maximum = page.getByTestId('energy-commit-6');
     await maximum.click();
     await expect(page.getByTestId('energy-max-confirmation')).toBeVisible();
-    await expect(page.getByTestId('energy-summary')).toContainText('Commit 1 Energy');
+    // The stake is unchanged until the confirmation is accepted.
+    await expect(page.getByTestId('energy-summary')).toHaveText('Staked · 1 Energy');
 
     await page.getByTestId('energy-max-confirm').click();
     await expect(page.getByTestId('energy-max-confirmation')).toHaveCount(0);
-    await expect(page.getByTestId('energy-summary')).toContainText('Commit 6 Energy');
-    await expect(page.getByTestId('energy-summary')).toContainText('×10.0');
+    await expect(page.getByTestId('energy-summary')).toHaveText('Staked · 6 Energy');
+    await expect(harvestGauge).toContainText('×10.0');
+    for (let rod = 1; rod <= 6; rod += 1) {
+      await expect(page.getByTestId(`energy-rod-${rod}`)).toHaveAttribute(
+        'data-seated',
+        'true'
+      );
+    }
 
     const startRequest = page.waitForRequest((request) => {
       if (request.method() !== 'POST') return false;
@@ -537,21 +558,20 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
 
       const reactor = page.getByTestId('energy-commitment');
       const reactorBox = await reactor.boundingBox();
-      const lineageBox = await page
-        .getByRole('region', { name: 'Selected snake launch chamber' })
-        .boundingBox();
-      const modeBox = await page.getByTestId('run-setup-mode-control').boundingBox();
+      // THE THREE ELEMENTS, IN ORDER (owner ruling 2026-08-07): who is flying,
+      // then what it costs, then go. The launch-chamber region and the mode
+      // control that used to be measured here were removed by that ruling —
+      // the chamber because it offered the snake decision a second time,
+      // directly above the favorites that already made it.
+      const favoritesBox = await page.getByTestId('run-setup-favorites').boundingBox();
       const startBox = await page.getByTestId('earn-start').boundingBox();
-      expect(lineageBox).not.toBeNull();
-      expect(modeBox).not.toBeNull();
+      expect(favoritesBox).not.toBeNull();
       expect(reactorBox).not.toBeNull();
       expect(startBox).not.toBeNull();
-      expect(lineageBox!.y + lineageBox!.height).toBeLessThanOrEqual(modeBox!.y + 1);
-      expect(modeBox!.y + modeBox!.height).toBeLessThanOrEqual(reactorBox!.y + 1);
+      expect(favoritesBox!.y + favoritesBox!.height).toBeLessThanOrEqual(reactorBox!.y + 1);
       expect(startBox!.y).toBeGreaterThanOrEqual(reactorBox!.y + reactorBox!.height - 1);
       expect(reactorBox!.y).toBeGreaterThanOrEqual(0);
       expect(reactorBox!.y + reactorBox!.height).toBeLessThanOrEqual(viewport.height + 1);
-      await expect(page.getByRole('heading', { name: /ready to launch/i })).toBeVisible();
       await expect(page.getByTestId('energy-summary')).toBeVisible();
       await expect(page.getByTestId('earn-start')).toBeVisible();
 
@@ -601,19 +621,20 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
       { waitUntil: 'domcontentloaded' }
     );
     await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
-    await page.getByTestId('energy-commitment-slider').fill('4');
-    await expect(page.getByTestId('energy-summary')).toContainText('Commit 4 Energy');
-    await openRunSetupControls(page);
-    await page.getByTestId('ladder-rung-2').click();
-    await expect(page.getByTestId('ladder-readout')).toContainText('Rung 2');
-    await page.getByTestId('mode-free').click();
-    await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
+    // The reactor seats ONE rod per press — there is no slider to fill, which
+    // is the point of the instrument: what it sets is non-refundable.
+    for (let press = 1; press < 4; press += 1) {
+      await page.getByTestId('energy-increase').click();
+    }
+    await expect(page.getByTestId('energy-summary')).toHaveText('Staked · 4 Energy');
 
     await page.getByRole('link', { name: 'Snake Lab' }).click();
     await page.waitForURL(/\/lab\?/, { timeout: 60_000 });
     const labUrl = new URL(page.url());
+    // `setupMode` is DERIVED from the reactor now, so four seated rods make
+    // this an earning run: the draft cannot carry a mode the core contradicts.
     expect(labUrl.searchParams.get('returnTo')).toBe(
-      '/game?seed=e2eSetupSeed&target=4200&challenge=signal%3A214&by=CoilAce&setupMode=free&setupEnergy=4&setupRung=2'
+      '/game?seed=e2eSetupSeed&target=4200&challenge=signal%3A214&by=CoilAce&setupMode=earn&setupEnergy=4&setupRung=1'
     );
     const backToSetup = page.getByRole('link', { name: 'Back to Setup' });
     await expect(backToSetup).toBeVisible({ timeout: 60_000 });
@@ -625,18 +646,17 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await backToSetup.click();
     await page.waitForURL(/\/game\?/, { timeout: 60_000 });
     await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('ladder-readout')).toContainText('Rung 1');
-    await page.getByTestId('mode-earn').click();
-    await expect(page.getByTestId('energy-summary')).toContainText('Commit 1 Energy');
+    // Authority wins over the URL: the Lab reported only 2 Energy available,
+    // so the restored core is clamped to it and the draft's 4 is discarded.
+    await expect(page.getByTestId('energy-summary')).toHaveText('Staked · 2 Energy');
 
     const restoredUrl = new URL(page.url());
     expect(restoredUrl.searchParams.get('seed')).toBe('e2eSetupSeed');
     expect(restoredUrl.searchParams.get('target')).toBe('4200');
     expect(restoredUrl.searchParams.get('challenge')).toBe('signal:214');
     expect(restoredUrl.searchParams.get('by')).toBe('CoilAce');
-    expect(restoredUrl.searchParams.get('setupEnergy')).toBe('4');
-    expect(restoredUrl.searchParams.get('setupRung')).toBe('2');
+    expect(restoredUrl.searchParams.get('setupEnergy')).toBe('2');
+    expect(restoredUrl.searchParams.get('setupRung')).toBe('1');
 
     const setupStorageKeys = await page.evaluate(() => [
       ...Object.keys(window.localStorage),
@@ -943,38 +963,47 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await expect(page.getByTestId('tactical-hold')).toHaveCount(0);
   });
 
-  test('the ladder adds a readout but no tap (WP-3.12, §5)', async ({ page }) => {
-    // The rung selector is allowed "<=1 tap added" and takes ZERO: it lives
-    // inside the disclosure the growth selector already lives in, which is
-    // still closed on arrival. This asserts the structure rather than the
-    // count, because the count above only stays 3 for as long as no control
-    // escapes that disclosure - and a selector beside START would be the
-    // obvious, plausible mistake.
+  test('Run Setup is three elements and nothing else (owner ruling 2026-08-07)', async ({
+    page,
+  }) => {
+    /*
+     * This test replaces "the ladder adds a readout but no tap".
+     *
+     * That test's whole subject was WHERE the ladder readout and selector sat
+     * relative to the "Tune run" disclosure. The ruling deleted all three, so
+     * the question it policed no longer exists — but the reason it existed
+     * does: a control escaping onto the pre-run surface is the obvious,
+     * plausible regression, and it is exactly how Setup accumulated eleven
+     * elements the first time. So the guard is kept and pointed at the new
+     * shape: three elements present, and every removed surface asserted
+     * ABSENT rather than merely un-tapped.
+     */
     await installRunFlowFixtures(page);
     await signInAsGuest(page);
     await page.goto('/game', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
 
-    // The readout is ALWAYS visible and never gated on the ladder flag: with
-    // the flag off it must still say which rung this run plays, which is what
-    // makes it a diagnostic. Two playtests in this wave were distorted by a
-    // surface that vanished with its feature.
-    const readout = page.getByTestId('ladder-readout');
-    await expect(readout).toBeVisible();
-    await expect(readout).toContainText(/Rung \d/);
+    // (a) who is flying, (b) what it costs, (c) go.
+    await expect(page.getByTestId('run-setup-favorites')).toBeVisible();
+    await expect(page.getByTestId('energy-commitment')).toBeVisible();
+    await expect(page.getByTestId('earn-start')).toBeVisible();
 
-    // ...and it is OUTSIDE the disclosure, which is still closed.
-    const adjust = page.getByTestId('run-setup-adjust');
-    await expect(adjust).toHaveJSProperty('open', false);
-    await expect(adjust.getByTestId('ladder-readout')).toHaveCount(0);
-
-    // The SELECTOR, where it exists at all, is inside it — so it is reachable
-    // only through a disclosure tap that was already the sanctioned one.
-    const selector = page.getByTestId('ladder-selector');
-    if ((await selector.count()) > 0) {
-      await expect(adjust.getByTestId('ladder-selector')).toHaveCount(1);
-      await expect(selector).not.toBeVisible();
+    // The aim picker went to the Lab, the anomaly entry went Home, the
+    // difficulty ladder was deleted, and free play became the reactor at zero.
+    for (const testId of [
+      'run-setup-adjust',
+      'run-setup-mode-control',
+      'run-setup-summary',
+      'setup-portal-rail',
+      'ladder-readout',
+      'ladder-selector',
+      'aim-selector',
+      'anomaly-panel',
+      'build-seed',
+      'energy-commitment-slider',
+    ]) {
+      await expect(page.getByTestId(testId)).toHaveCount(0);
     }
   });
 

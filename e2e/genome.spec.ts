@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openRunSetupControls, seedConsent, signInAsGuest } from './helpers';
+import { chooseFreePlay, runSetupReady, seedConsent, signInAsGuest } from './helpers';
 
 const COCKPIT_ENABLED = process.env.NEXT_PUBLIC_HUD_COCKPIT_V1 === 'true';
 
@@ -115,20 +115,16 @@ test.describe('Genome capability UI', () => {
     });
 
     await signInAsGuest(page);
-    await expect(page.getByRole('heading', { name: /ready to (?:play|launch)/i })).toBeVisible({
-      timeout: 60_000,
-    });
-    await openRunSetupControls(page);
-    await expect(page.getByTestId('build-seed')).toBeVisible({ timeout: 60_000 });
-    // Heirlooms are NO LONGER inside Build Seed. WP-2.07a moved them into
-    // `heirloom-summary`, which renders ungated, because traits are always
-    // live at settlement while the spawn points beside them genuinely are
-    // not below 12 banked runs — the old code gated both on one flag and
-    // conflated two different facts. Asserting the new location is the
-    // stronger claim: it fails if the traits ever slide back behind the
-    // ramp, which is the regression that made Ascetic unknowable on a phone.
+    await expect(runSetupReady(page).first()).toBeVisible({ timeout: 60_000 });
+    // WP-2.07a's claim, and the reason this element survived the 2026-08-07
+    // cut to three: traits are ALWAYS live at settlement, so what the snake
+    // brings must be readable before the stake is made. `build-seed` — the
+    // spawn-point block that used to sit beside it inside the "Tune run"
+    // disclosure — was removed with that disclosure, so the pair assertion
+    // becomes a single one against the surface that still exists. The
+    // regression it guards is unchanged: traits sliding back behind a ramp is
+    // what made Ascetic unknowable on a phone.
     await expect(page.getByTestId('heirloom-summary')).toContainText(/heirlooms/i);
-    await expect(page.getByTestId('build-seed')).not.toContainText(/heirlooms/i);
     const researchLink = page.getByRole('link', {
       name: 'Open Genome Research',
       exact: true,
@@ -136,9 +132,7 @@ test.describe('Genome capability UI', () => {
     await expect(researchLink).toBeVisible();
     await expect(researchLink).toHaveAttribute('href', '/codex');
 
-    const freeMode = page.getByTestId('mode-free');
-    await freeMode.click();
-    await expect(freeMode).toHaveAttribute('aria-pressed', 'true');
+    await chooseFreePlay(page);
     const freePlayStart = page.getByTestId('free-play-start');
     await expect(freePlayStart).toBeEnabled();
     await freePlayStart.click();

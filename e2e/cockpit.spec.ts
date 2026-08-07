@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openRunSetupControls, seedConsent, signInAsGuest } from './helpers';
+import { chooseFreePlay, runSetupReady, seedConsent, signInAsGuest } from './helpers';
 
 const COCKPIT_ENABLED = process.env.NEXT_PUBLIC_HUD_COCKPIT_V1 === 'true';
 const CAPTURE_VISUALS = process.env.COCKPIT_CAPTURE_VISUALS === 'true';
@@ -161,17 +161,8 @@ test.describe('Run Cockpit v1', () => {
     await installReturningPlayerFixtures(page);
     await signInAsGuest(page);
 
-    await expect(page.getByRole('heading', { name: /ready to (?:play|launch)/i })).toBeVisible({
-      timeout: 60_000,
-    });
-    await openRunSetupControls(page);
-    const freeMode = page.getByTestId('mode-free');
-    // Not forced: the canvas repaints behind this screen but never covers the
-    // chip. What does move it is the ANOMALY chip, inserted to its left once
-    // /api/anomaly resolves - and skipping the stability check is what makes a
-    // forced click land at the pre-shift coordinates. See e2e/game.spec.ts.
-    await freeMode.click();
-    await expect(freeMode).toHaveAttribute('aria-pressed', 'true');
+    await expect(runSetupReady(page).first()).toBeVisible({ timeout: 60_000 });
+    await chooseFreePlay(page);
     const freePlayStart = page.getByTestId('free-play-start');
     await expect(freePlayStart).toBeEnabled();
     await freePlayStart.click({ force: true });
