@@ -34,6 +34,17 @@ export interface RunSetupPanelProps {
   startError: string | null;
   /** The Energy Reactor. */
   energySelector?: ReactNode;
+  /**
+   * What THIS snake brings to the run — inherited traits and heirlooms.
+   *
+   * It is not a fourth element and it is not a setting: it is a property of
+   * the snake in element (a), which is why it renders inside that section
+   * rather than beside it. WP-2.07a's reasoning is the reason it survived the
+   * cut at all — "a trait that removes every mutation food is something the
+   * player has to know BEFORE pressing START" — and a surface that hides it
+   * would be asking for a stake against unseen rules.
+   */
+  heirloom?: ReactNode;
   /** Exactly one setup dock per dynasty; null renders a deliberate pick slot. */
   favorites?: Partial<Record<SetupDynasty, RunSetupSnake | null>>;
   onFavoriteDock?: (
@@ -179,6 +190,7 @@ export function RunSetupPanel({
   onChooseSnake,
   startError,
   energySelector,
+  heirloom,
   favorites = {},
   onFavoriteDock,
   favoriteBusyId = null,
@@ -284,6 +296,8 @@ export function RunSetupPanel({
               {selectedDynasty ? `${selectedDynasty} · ` : ''}
               {rulesetExplainer}
             </p>
+
+            {heirloom ? <div className="mt-1.5">{heirloom}</div> : null}
 
             <div className="mt-1 flex items-center justify-center gap-2">
               <button

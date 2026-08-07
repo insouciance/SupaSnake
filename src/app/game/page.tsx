@@ -7553,6 +7553,7 @@ export default function GamePage() {
                   }}
                   startError={startError}
                   energySelector={energySelectorNode}
+                  heirloom={heirloomNode}
                 />
               )
             ) : (
