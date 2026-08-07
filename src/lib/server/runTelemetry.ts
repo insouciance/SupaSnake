@@ -17,6 +17,7 @@
 import type { RunContinuityReason } from '@/lib/server/runContinuity';
 import { SNAKE_RULES_VERSION } from '@/lib/game/SnakeGameLogic';
 import { reportTelemetry, telemetryBreadcrumb } from '@/lib/telemetry/report';
+import { summarizeSamples, type SampleSummary } from '@/lib/telemetry/percentiles';
 
 /**
  * Where a continuity refusal happened, as a closed set.
@@ -248,36 +249,8 @@ export interface SweepPassReport {
   budgetExhausted: boolean;
 }
 
-export interface AgeDistribution {
-  count: number;
-  minMs: number | null;
-  p50Ms: number | null;
-  p95Ms: number | null;
-  maxMs: number | null;
-}
-
-/** Nearest-rank percentiles. Small n, so exactness beats interpolation. */
-export function ageDistribution(samples: readonly number[]): AgeDistribution {
-  const sorted = samples
-    .filter((value) => Number.isFinite(value))
-    .slice()
-    .sort((left, right) => left - right);
-  if (sorted.length === 0) {
-    return { count: 0, minMs: null, p50Ms: null, p95Ms: null, maxMs: null };
-  }
-  const at = (fraction: number) =>
-    sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(fraction * sorted.length) - 1))];
-  return {
-    count: sorted.length,
-    minMs: sorted[0],
-    p50Ms: at(0.5),
-    p95Ms: at(0.95),
-    maxMs: sorted[sorted.length - 1],
-  };
-}
-
-export function reportSweepPass(report: SweepPassReport): AgeDistribution {
-  const ages = ageDistribution(report.terminalAges);
+export function reportSweepPass(report: SweepPassReport): SampleSummary {
+  const ages = summarizeSamples(report.terminalAges);
   reportTelemetry({
     channel: 'run-settlement',
     message: 'settlement sweep pass',
