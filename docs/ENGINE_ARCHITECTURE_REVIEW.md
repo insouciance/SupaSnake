@@ -284,7 +284,7 @@ perceptual contract). **Effort:** M (1–2 days incl. validator + sim gates).
 **Exit criterion:** coyote-zone deaths → near zero in forensics; zero replay
 rejections attributable to grace turns.
 
-## ET-3 — React out of the hot path (the governor goes dormant)
+## ET-3 — React out of the hot path (the governor goes dormant) — AT PR #104 (2026-08-07, auto-merge armed)
 **Scope:** per-tick `syncState()` (~20 setStates, game/page.tsx:3392-3413) is
 dismantled: movement-tick data flows only through the interpolation buffer (already
 a ref) and a transient store; HUD leaves subscribe to exactly their fields
@@ -298,6 +298,15 @@ untouched — any test edit is a red flag reviewed individually).
 **Effort:** M-L (2–4 days; mechanical but wide in game/page.tsx).
 **Exit criterion:** tick commit cost ≈ 0 React work during steady movement;
 governor breadcrumbs silent on the dev machine under 4× throttle.
+**Measured (PR #104, dev fixture, 4× CPU throttle, matched long runs):** page
+commits per tick **1.20 → 0.17**, and **0.00 in every steady-movement window** —
+the residue is eats and portal spawns, which are events. Cockpit 1.20 → 0.17,
+board 0.80 → 0.33. Tick jitter p50 +28.0 → +23.9 ms and p99 +193 → +159 ms
+(means across runs); realized cadence 5.29 → 5.51 ticks/s against a 5.71 ideal,
+halving tick loss from 7.4% to 3.5%. The jitter half improves in direction but
+not in kind, and honestly so: the fixture is a software-rendered dev build where
+frame cost, not React, is the binding constraint on the per-tick budget. The
+governor's dormancy is not separately instrumented by that harness.
 
 ## ET-4 — The rAF fixed-timestep accumulator (timing becomes ours)
 **Scope:** replace the `setInterval` driver (game/page.tsx:3429-3466) with an
