@@ -55,6 +55,14 @@ import {
   type ChargeExemptionFacts,
 } from '@/shared/game/energyEnvelope';
 
+import {
+  ageMsBetween,
+  reportRunContinuityRejection,
+  reportRunDilationSegment,
+  type RunContinuityRejectionContext,
+  type RunContinuitySite,
+} from '@/lib/server/runTelemetry';
+
 interface SupabaseErrorLike {
   code?: string;
   message?: string;
@@ -190,15 +198,62 @@ function reasonIsRetryable(reason: RunContinuityReason): boolean {
 export class RunContinuityError extends Error {
   public readonly retryable: boolean;
 
+  /**
+   * CE-5: every refusal reports itself, HERE, in the constructor.
+   *
+   * This subsystem has sixty-nine throw sites. Instrumenting them one by one
+   * makes coverage a checklist item, and the site that eventually gets missed
+   * is by definition the one nobody was thinking about — which is the profile
+   * of every continuity incident so far. Reporting at construction makes the
+   * guarantee structural instead: a refusal cannot be ADDED to this file
+   * without becoming visible, today or in two years.
+   *
+   * A side effect in a constructor is a real smell and is accepted knowingly.
+   * It is safe because the effect is fail-open telemetry that returns `void`
+   * and cannot throw (`reportTelemetry`), and because this class exists for
+   * exactly one purpose: to be thrown as a refusal. There is no branch on
+   * which constructing one is not a refusal.
+   *
+   * `context` is optional because most sites have nothing beyond the reason to
+   * add. Where the row IS in scope — the checkpoint, resume, activate and
+   * terminal paths — it carries phase, stored rules version and the ages, and
+   * those are the sites whose telemetry a dashboard slices on.
+   */
   constructor(
     message: string,
     public readonly reason: RunContinuityReason,
-    retryable: boolean = reasonIsRetryable(reason)
+    retryable: boolean = reasonIsRetryable(reason),
+    public readonly context: RunContinuityRejectionContext = {}
   ) {
     super(message);
     this.name = 'RunContinuityError';
     this.retryable = retryable;
+    reportRunContinuityRejection(reason, message, this.retryable, context);
   }
+}
+
+/**
+ * Facts about the row a refusal happened on, for the sites that hold it.
+ *
+ * Kept as a helper rather than inlined so the four rich sites cannot drift
+ * into computing the ages differently from one another (FM-1).
+ */
+function rejectionContext(
+  site: RunContinuitySite,
+  row: ContinuityRow | null,
+  extra: Partial<RunContinuityRejectionContext> = {}
+): RunContinuityRejectionContext {
+  const now = Date.now();
+  return {
+    site,
+    sessionId: row?.id ?? null,
+    phase: row?.continuity_phase ?? null,
+    storedRulesVersion: row?.simulation_rules_version ?? null,
+    checkpointRevision: row?.continuity_checkpoint_revision ?? null,
+    runAgeMs: ageMsBetween(row?.server_started_at ?? row?.started_at, now),
+    checkpointAgeMs: ageMsBetween(row?.continuity_checkpoint_saved_at, now),
+    ...extra,
+  };
 }
 
 export function isValidStartRequestId(value: unknown): value is string {
@@ -1821,20 +1876,37 @@ export async function saveRunCheckpoint(
   }
   const row = rowData as ContinuityRow | null;
   if (!row || row.ended_at !== null || row.end_reason !== null) {
-    throw new RunContinuityError('Run session not found.', 'not_found');
+    throw new RunContinuityError(
+      'Run session not found.',
+      'not_found',
+      undefined,
+      rejectionContext('checkpoint_save', row)
+    );
   }
   if (row.continuity_phase !== 'active') {
-    throw new RunContinuityError('The run is not active.', 'not_prepared');
+    throw new RunContinuityError(
+      'The run is not active.',
+      'not_prepared',
+      undefined,
+      rejectionContext('checkpoint_save', row)
+    );
   }
   if (!hashMatchesToken(row.continuity_lease_hash, input.leaseToken)) {
     throw new RunContinuityError(
       'This run is open in a newer session.',
-      'lease_conflict'
+      'lease_conflict',
+      undefined,
+      rejectionContext('checkpoint_save', row)
     );
   }
   const manifest = asManifest(row.start_manifest);
   if (!manifest) {
-    throw new RunContinuityError('The run has no secured start manifest.', 'not_prepared');
+    throw new RunContinuityError(
+      'The run has no secured start manifest.',
+      'not_prepared',
+      undefined,
+      rejectionContext('checkpoint_save', row)
+    );
   }
 
   const checkpoint = validateRunCheckpoint(input.checkpoint, {
@@ -1888,7 +1960,43 @@ export async function saveRunCheckpoint(
   }
   const accepted = savedCheckpoint(data);
   if (!accepted) {
-    throw new RunContinuityError('Checkpoint save returned no receipt.', 'unavailable');
+    throw new RunContinuityError(
+      'Checkpoint save returned no receipt.',
+      'unavailable',
+      undefined,
+      rejectionContext('checkpoint_save', row)
+    );
+  }
+
+  // DILATION MEASUREMENT (Wave 3). Deliberately AFTER the write is accepted:
+  // the segment we are measuring is the one that just closed, and a
+  // measurement taken before the durable write could describe a segment that
+  // never happened. It is also the only ordering in which a fault in this
+  // block cannot cost the player a checkpoint — and `reportRunDilationSegment`
+  // cannot fault anyway, which is belt and braces on purpose (FM-3).
+  //
+  // Both endpoints are canonical: `previous` is what a prior call stored after
+  // its own server-side replay, and `checkpoint` is what this call's replay
+  // just produced. No client number enters the expectation.
+  const previous = row.continuity_checkpoint ?? null;
+  const segmentFrom = row.continuity_checkpoint_saved_at ?? row.continuity_activated_at;
+  if (previous && segmentFrom) {
+    const observedMs = ageMsBetween(segmentFrom, Date.now());
+    if (observedMs !== null) {
+      reportRunDilationSegment({
+        sessionId: row.id,
+        playerId: input.playerId,
+        dynasty: row.dynasty ?? null,
+        fromTick: previous.privateState.replay.ticks,
+        toTick: checkpoint.privateState.replay.ticks,
+        fromSpeedMs: previous.privateState.speed,
+        toSpeedMs: checkpoint.privateState.speed,
+        observedMs,
+        claimedElapsedMs:
+          checkpoint.privateState.elapsedMs - previous.privateState.elapsedMs,
+        checkpointRevision: accepted.revision,
+      });
+    }
   }
   return accepted;
 }
