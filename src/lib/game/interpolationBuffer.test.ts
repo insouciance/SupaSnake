@@ -186,4 +186,51 @@ describe('interpolated reads', () => {
     expect(getInterpolatedX(buffer, 0, 0.5)).toBeCloseTo(4.5);
     expect(getInterpolatedZ(buffer, 0, 0.5)).toBeCloseTo(8);
   });
+
+  /**
+   * ET-1 feeds these a blend above 1 during the arrival settle. The contract
+   * is deliberately NOT "extrapolate freely": see the module note.
+   */
+  describe('the arrival settle (alpha above 1)', () => {
+    it('extrapolates an ordinary move exactly as a lerp would', () => {
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(4, 8)], 100, 0);
+      recordTick(buffer, [seg(5, 8)], 100, 100);
+      // One cell of travel: 6% past the cell is 0.06 of a cell, which is what
+      // an unbounded lerp gives and what the settle is specified in.
+      expect(getInterpolatedX(buffer, 0, 1.06)).toBeCloseTo(5.06, 12);
+      expect(getInterpolatedZ(buffer, 0, 1.06)).toBeCloseTo(8, 12);
+    });
+
+    it('bounds a torus wrap to one cell instead of flinging the head off the board', () => {
+      // COSMIC's permanent wrap records prev and curr nineteen cells apart.
+      // Scaled by the delta, a 6% settle would carry the head 1.14 cells past
+      // the far edge - a real artefact, and the reason the overshoot is
+      // denominated in cells rather than in "fraction of whatever just moved".
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(19, 4)], 100, 0);
+      recordTick(buffer, [seg(0, 4)], 100, 100);
+      expect(getInterpolatedX(buffer, 0, 1)).toBe(0);
+      expect(getInterpolatedX(buffer, 0, 1.06)).toBeCloseTo(-0.06, 12);
+    });
+
+    it('carries a stationary segment nowhere at all', () => {
+      // Growth seeds prev = curr; a settle must not invent motion for a tail
+      // piece that never moved.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5), seg(4, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5), seg(5, 5), seg(4, 5)], 100, 100);
+      expect(getInterpolatedX(buffer, 2, 1.06)).toBe(4);
+      expect(getInterpolatedZ(buffer, 2, 1.06)).toBe(5);
+    });
+
+    it('leaves every alpha at or below 1 bit-for-bit unchanged', () => {
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(3, 11)], 100, 0);
+      recordTick(buffer, [seg(3, 12)], 100, 100);
+      for (const alpha of [0, 0.13, 0.45, 0.5, 0.9999, 1]) {
+        expect(getInterpolatedZ(buffer, 0, alpha)).toBe(11 + alpha);
+      }
+    });
+  });
 });

@@ -23,6 +23,11 @@ import {
   INTERPOLATION_CAPACITY,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
+import {
+  ARRIVAL_ALPHA,
+  resetArrivalMode,
+  setArrivalMode,
+} from '@/lib/game/arrivalEasing';
 import type { Direction, Position } from '@/lib/game/SnakeGameLogic';
 import { COSMETIC_ANCHORS } from '@/components/home/SnakeCosmetics';
 import {
@@ -338,11 +343,45 @@ describe('tail taper is fluid across engine ticks', () => {
       return instance!.scale.y;
     };
 
+    // The property under test is that the vacancy taper FLOWS rather than
+    // blinking once per engine tick. It still does - it just runs on ET-1's
+    // clock now, which completes at ARRIVAL_ALPHA instead of at alpha 1. The
+    // sample points move with the curve; the contract does not.
     const previousHeight = heightAt(0);
-    const middleHeight = heightAt(0.5);
-    const currentHeight = heightAt(1);
+    const middleHeight = heightAt(ARRIVAL_ALPHA / 2);
+    const arrivedHeight = heightAt(ARRIVAL_ALPHA);
     expect(previousHeight).toBeGreaterThan(middleHeight);
-    expect(middleHeight).toBeGreaterThan(currentHeight);
+    expect(middleHeight).toBeGreaterThan(arrivedHeight);
+
+    // ...and having landed, it HOLDS. The trail must not keep creeping while
+    // the head sits on its cell, or the body would visibly lag the creature
+    // for the whole settle - the accordion ET-1 exists to prevent.
+    expect(heightAt(0.7)).toBeCloseTo(arrivedHeight, 10);
+    expect(heightAt(1)).toBeCloseTo(arrivedHeight, 10);
+  });
+
+  it('runs the classic leg on the old symmetric curve, end to end', () => {
+    // The A/B's control arm. Under `classic` the same taper is still mid-blend
+    // at the interval midpoint and only completes at alpha 1 - which is the
+    // timing the owner is comparing against, so it has to be real.
+    setArrivalMode('classic');
+    try {
+      const previous = straight(10);
+      const current = [at(5, 4), ...previous.slice(0, -1)];
+      const buffer = movingBuffer(previous, current);
+      const levels = new Array(10).fill(1);
+      const heightAt = (alpha: number) => {
+        const instance = emit(buffer, levels, alpha).sink.instances.find(
+          (entry) => Math.abs(entry.position.z - 13.5) < 1e-6
+        );
+        expect(instance).toBeDefined();
+        return instance!.scale.y;
+      };
+      expect(heightAt(0)).toBeGreaterThan(heightAt(0.5));
+      expect(heightAt(0.5)).toBeGreaterThan(heightAt(1));
+    } finally {
+      resetArrivalMode();
+    }
   });
 });
 
