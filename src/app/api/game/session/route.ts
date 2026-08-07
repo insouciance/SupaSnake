@@ -191,6 +191,7 @@ import {
   resolveInternalAbsorbIdentity,
   INTERNAL_ABSORB_SESSION_HEADER,
 } from '@/lib/server/strandedTerminalRun';
+import { ageMsBetween, reportSettlementAge } from '@/lib/server/runTelemetry';
 
 // Preserve the proven production budget: settlement now contains multiple
 // independent durable stages. The cutover drains the outgoing canonical
@@ -3656,6 +3657,37 @@ export async function POST(request: NextRequest) {
       // collected today. `parseDailyTake` renders null as "no slot", so the
       // Results layer's default is simply that the Take is not offered.
       const takeSlot = await describeDailyTakeSlot(supabase, player.id);
+
+      // SETTLEMENT AGE (Wave 3). Every settlement is reported from here,
+      // because this is the single fold BOTH drivers reach: a real client
+      // POSTing its run end, and the sweep calling in through
+      // `absorbStrandedTerminalRun`. The sweep itself cannot measure this —
+      // it is deliberately table-free and never reads a session row — and one
+      // reporter at the shared fold is also the only arrangement in which the
+      // two paths cannot be counted twice or drift apart.
+      //
+      // The path split is the load-bearing part: CE-2 ratified that the sweep
+      // is the primary settler and the browser only an accelerator, and this
+      // field is what will say whether that is true in production.
+      {
+        const settledAt = Date.now();
+        reportSettlementAge({
+          path: serviceRoleAbsorb ? 'sweep_stranded_terminal' : 'client_accelerated',
+          sessionId,
+          playerId: player.id,
+          dynasty: typeof session.dynasty === 'string' ? session.dynasty : null,
+          outcome: 'settled',
+          runAgeMs: ageMsBetween(
+            session.server_started_at ?? session.started_at,
+            settledAt
+          ),
+          terminalAgeMs: ageMsBetween(session.continuity_terminal_at, settledAt),
+          checkpointAgeMs: ageMsBetween(
+            session.continuity_checkpoint_saved_at,
+            settledAt
+          ),
+        });
+      }
 
       return progressionJson({
         success: true,

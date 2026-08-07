@@ -135,6 +135,15 @@ import {
   recordDebugEvent,
   type InputDebugState,
 } from '@/lib/input/flickControl';
+import {
+  InputLatencyMeter,
+  RenderTierLedger,
+  TickJitterMeter,
+  buildDeathForensics,
+  COYOTE_OBSERVATION_MS,
+  type DeathForensics,
+} from '@/lib/game/runInstruments';
+import { reportTelemetry } from '@/lib/telemetry/report';
 import { audioManager } from '@/lib/audio/AudioManager';
 import { haptics } from '@/lib/effects/Haptics';
 import { screenShake } from '@/lib/effects/ScreenShake';
@@ -706,6 +715,25 @@ export default function GamePage() {
   const [inputDebugEnabled, setInputDebugEnabled] = useState(false);
   // ?perf render-stats overlay (dev builds only)
   const [perfEnabled, setPerfEnabled] = useState(false);
+  // ET-0 trust instruments. Unlike the debug ring above these run in EVERY
+  // build, flag or no flag: the overlays are dev-only, but the numbers are the
+  // dataset ET-2, ET-3 and ET-4 are each waiting on, and a measurement that
+  // only exists when a developer asks for it measures developers. Each is a
+  // bounded accumulator costing one push per tick.
+  const inputLatencyRef = useRef(new InputLatencyMeter());
+  const tickJitterRef = useRef(new TickJitterMeter());
+  const renderTierLedgerRef = useRef(new RenderTierLedger());
+  /** DOM timestamp of the most recent input the engine actually consumed. */
+  const lastInputAtRef = useRef<number | null>(null);
+  /** performance.now() of the tick that killed the run, for the coyote watch. */
+  const fatalTickAtRef = useRef<number | null>(null);
+  /** First turn pressed after the fatal tick, inside the observation window. */
+  const postFatalTurnAtRef = useRef<number | null>(null);
+  /** Interpolation alpha and head cell at the most recent input. */
+  const lastInputAlphaRef = useRef<number | null>(null);
+  const lastInputHeadRef = useRef<{ x: number; z: number } | null>(null);
+  /** Last death's forensics, for the ?debug=input overlay. */
+  const [deathForensics, setDeathForensics] = useState<DeathForensics | null>(null);
   // Tick-alpha interpolation buffer (fluidity core): written every engine
   // tick, read every animation frame - lives in a ref, NEVER in zustand.
   const interpBufferRef = useRef<InterpolationBuffer | null>(null);
@@ -2042,6 +2070,15 @@ export default function GamePage() {
    * told at the most consequential moment in the game.
    */
   const activeRuleset = getRuleset(normalizeDynastyName(selectedDynasty));
+  /**
+   * Dynasty mirrored into a ref for the forensics record. Read inside the
+   * long-lived `gameOver` subscription, which must NOT re-register when the
+   * selection changes - re-subscribing the terminal handler mid-run is exactly
+   * the kind of churn that loses a death.
+   */
+  const selectedDynastyRef = useRef(selectedDynasty);
+  selectedDynastyRef.current = selectedDynasty;
+
   const genomeV2Spatial = useMemo(() => ({
     bodyLength: snake.length,
     occupiedSpace: `${snake.length + terrain.length} / ${GAME_CONFIG.board.gridSize ** 2} cells`,
@@ -2187,6 +2224,31 @@ export default function GamePage() {
       return timing;
     }
     const elapsed = performance.now() - buffer.tickAt;
+    // ET-0 death forensics, captured here because this is the one place every
+    // input path (keyboard, flick, resume-gate release) already funnels
+    // through with the interpolation buffer in hand. Alpha is where the VISUAL
+    // head sat inside its tick when the player committed - the quantity ET-1
+    // is about to move and ET-2 needs the death distribution over.
+    lastInputAlphaRef.current = Math.min(1, Math.max(0, elapsed / buffer.tickInterval));
+    // `curr` is packed [x0, z0, x1, z1, ...] in grid cells, head first.
+    lastInputHeadRef.current =
+      buffer.count > 0 ? { x: buffer.curr[0], z: buffer.curr[1] } : null;
+    if (typeof timing.inputTimeMs === 'number') {
+      lastInputAtRef.current = timing.inputTimeMs;
+      // THE COYOTE WATCH. Once the fatal tick has landed the engine refuses
+      // every input, so engine admission cannot judge this one; what ET-2
+      // needs to know is that the player PRESSED A TURN, and that is exactly
+      // what reaching this function means. Recorded only inside the
+      // observation window, and only for the first such press.
+      const fatalAt = fatalTickAtRef.current;
+      if (
+        fatalAt !== null &&
+        postFatalTurnAtRef.current === null &&
+        performance.now() - fatalAt <= COYOTE_OBSERVATION_MS
+      ) {
+        postFatalTurnAtRef.current = performance.now();
+      }
+    }
     return {
       ...timing,
       nextTickInMs: Math.max(0, Math.min(buffer.tickInterval, buffer.tickInterval - elapsed)),
@@ -2458,6 +2520,7 @@ export default function GamePage() {
   const renderQuality = useRenderQuality({
     active: isPlaying,
     allowStepUp: !blockingOverlayActive,
+    ledger: renderTierLedgerRef.current,
   });
 
   // Initialize game logic
@@ -2705,6 +2768,68 @@ export default function GamePage() {
       }
       setCollisionDiagnostic(data.collisionDiagnostic ?? null);
       setExtractionKind(data.extractionKind ?? null);
+
+      // ---------------------------------------------------------------
+      // ET-0 DEATH FORENSICS — the coyote-zone dataset
+      // ---------------------------------------------------------------
+      // Only a collision is forensic material; an extraction is the player
+      // choosing to leave, and folding those in would dilute the very cluster
+      // ET-2's ruling is sized against.
+      //
+      // Reported from a timer rather than inline BECAUSE the interesting fact
+      // has not happened yet: the whole question is whether an admissible turn
+      // arrives in the window AFTER this tick. Building the record now would
+      // guarantee `coyoteZone: false` and quietly answer ET-2's question with
+      // the measurement's own ordering. The delay is diagnostics-only and
+      // holds nothing else up — settlement continues below on its own path.
+      if (data.collisionDiagnostic) {
+        const contact = data.collisionDiagnostic.contact;
+        const fatalCell = data.collisionDiagnostic.cell;
+        const fatalTickAt = performance.now();
+        fatalTickAtRef.current = fatalTickAt;
+        postFatalTurnAtRef.current = null;
+        const headAtInput = lastInputHeadRef.current;
+        const dynastyAtDeath = selectedDynastyRef.current;
+        const tickIntervalMs = interpBufferRef.current?.tickInterval ?? null;
+        // The run's own tick count, straight off the instrument that has been
+        // counting every movement boundary since the run began.
+        const tickAtDeath = tickJitterRef.current.tickCount;
+        const lastInputAt = lastInputAtRef.current;
+        const alphaAtInput = lastInputAlphaRef.current;
+        setTimeout(() => {
+          const forensics = buildDeathForensics({
+            cause:
+              contact === 'border' ? 'wall' : contact === 'self' ? 'self' : 'other',
+            tick: tickAtDeath,
+            dynasty: dynastyAtDeath,
+            tickIntervalMs,
+            fatalTickAtMs: fatalTickAt,
+            lastInputAtMs: lastInputAt,
+            alphaAtLastInput: alphaAtInput,
+            cellDistanceAtInput: headAtInput
+              ? Math.abs(headAtInput.x - fatalCell.x) +
+                Math.abs(headAtInput.z - fatalCell.z)
+              : null,
+            turnAfterFatalTickAtMs: postFatalTurnAtRef.current,
+          });
+          setDeathForensics(forensics);
+          // Production too. It is one breadcrumb-sized event per death and it
+          // IS the dataset — a coyote counter that only runs where a
+          // developer has the overlay open measures developers.
+          reportTelemetry({
+            channel: 'run-death',
+            message: `death: ${forensics.cause}${forensics.coyoteZone ? ' (coyote zone)' : ''}`,
+            level: 'info',
+            tags: {
+              death_cause: forensics.cause,
+              coyote_zone: forensics.coyoteZone,
+              dynasty: forensics.dynasty ?? 'unknown',
+            },
+            fingerprint: ['run-death', forensics.cause],
+            data: { ...forensics, fatalCell },
+          });
+        }, COYOTE_OBSERVATION_MS + 20);
+      }
       // Freeze the cumulative play clock at the terminal simulation boundary.
       // Awaiting an in-flight checkpoint or settlement request must not turn
       // network time into run time. Resumes backdate this ref only by the last
@@ -2725,6 +2850,44 @@ export default function GamePage() {
         : Promise.resolve();
       const currentSession = sessionRef.current;
       const sessionId = currentSessionIdRef.current;
+
+      // ---------------------------------------------------------------
+      // PER-RUN INSTRUMENT SUMMARY (Wave 3 items 4 + 5)
+      // ---------------------------------------------------------------
+      // One event per finished run carrying what the run's own instruments
+      // saw. This is what makes governor tier distribution across real
+      // devices queryable — the plan parks the engine-in-worker decision
+      // behind exactly that number, and breadcrumbs cannot be charted.
+      //
+      // CLIENT-REPORTED AND ADVISORY, and nothing downstream may change:
+      // every field here is render- or scheduling-side, none of it reaches
+      // the payload the server settles from, and a run whose telemetry is
+      // absent, late or fabricated settles identically. Emitted before the
+      // settlement request is built so a settlement failure still leaves the
+      // measurement behind.
+      renderTierLedgerRef.current.mark(performance.now());
+      const tierSummary = renderTierLedgerRef.current.summary();
+      reportTelemetry({
+        channel: 'run-governor',
+        message: 'run instrument summary',
+        level: 'info',
+        tags: {
+          dynasty: selectedDynastyRef.current,
+          max_render_tier: tierSummary.maxTier,
+          governor_demoted: tierSummary.demotions > 0,
+          end_reason: data.endReason,
+        },
+        fingerprint: ['run-governor', 'run-summary'],
+        data: {
+          sessionId,
+          renderTiers: tierSummary,
+          inputLatency: inputLatencyRef.current.summary(),
+          turnsObserved: inputLatencyRef.current.observed,
+          jitter: tickJitterRef.current.summary(),
+          ticks: tickJitterRef.current.tickCount,
+        },
+      });
+
       pendingTerminalPresentationRef.current = {
         score: data.score,
         dnaCollected: data.dnaCollected,
@@ -3400,6 +3563,26 @@ export default function GamePage() {
         setRevive(state.revive);
       }
 
+      // ET-0 instruments, read BEFORE recordTick overwrites the buffer.
+      //
+      // The jitter meter wants the interval this tick was SCHEDULED at, which
+      // is the one still standing in the buffer; `getSpeed()` below is the
+      // interval the loop is about to re-arm WITH, and on a CYBER food those
+      // two differ. Measuring against the wrong one would read a legitimate
+      // cadence change as lateness.
+      const tickAtMs = performance.now();
+      const scheduledMs = interpBufferRef.current?.tickInterval ?? 0;
+      if (scheduledMs > 0) {
+        tickJitterRef.current.record(tickAtMs, scheduledMs);
+      }
+      // Input-to-effect: the engine reports which input this boundary acted
+      // on, and the meter drops anything whose clocks do not agree.
+      const consumedInputAt = gameRef.current.lastConsumedInputTime;
+      if (consumedInputAt !== null) {
+        inputLatencyRef.current.record(consumedInputAt, tickAtMs);
+        lastInputAtRef.current = consumedInputAt;
+      }
+
       // Fluidity core: stamp this tick into the interpolation buffer.
       // getSpeed() AFTER the tick is the exact interval the loop re-arms
       // with - the precise denominator for the render-side alpha.
@@ -3407,7 +3590,7 @@ export default function GamePage() {
         interpBufferRef.current!,
         state.snake,
         gameRef.current.getSpeed(),
-        performance.now()
+        tickAtMs
       );
     }
   }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setStrains, setFusedSplices, setGildedCells, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setRevivePhaseTicks, setTerrain]);
@@ -3441,6 +3624,30 @@ export default function GamePage() {
           // invariant threw. That is how a hidden position change becomes an
           // apparently collision-free death on the following interval.
           console.error('Run simulation stopped before an unsafe tick:', error);
+          // CE-5: this is the loudest thing that can happen to a run in
+          // progress — the engine halted and the player is looking at a dead
+          // board — and until now it existed only in a console the production
+          // build strips. It is captured as an exception (the stack names the
+          // invariant that threw) with the run's live instrument state
+          // attached, because "which tick, at what jitter, at what tier"
+          // is the difference between an engine bug and a starved main thread.
+          reportTelemetry({
+            channel: 'engine-tick',
+            message: 'run simulation stopped before an unsafe tick',
+            level: 'error',
+            error,
+            tags: {
+              dynasty: selectedDynastyRef.current,
+              render_tier: renderTierLedgerRef.current.summary().finalTier,
+            },
+            data: {
+              tick: tickJitterRef.current.tickCount,
+              jitter: tickJitterRef.current.summary(),
+              inputLatency: inputLatencyRef.current.summary(),
+              renderTiers: renderTierLedgerRef.current.summary(),
+              sessionId: currentSessionIdRef.current,
+            },
+          });
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
@@ -6588,7 +6795,13 @@ export default function GamePage() {
       )}
 
       {/* Input instrumentation (?debug=input only) */}
-      {inputDebugEnabled && <InputDebugOverlay debugRef={inputDebugRef} />}
+      {inputDebugEnabled && (
+        <InputDebugOverlay
+          debugRef={inputDebugRef}
+          latencyRef={inputLatencyRef}
+          deathForensics={deathForensics}
+        />
+      )}
 
       {/* Pause Menu */}
       {!HUD_COCKPIT_V1_ENABLED && isPaused && !awaitingResumeInput && isPlaying && !isGameOver && (
@@ -7751,7 +7964,7 @@ export default function GamePage() {
         />
 
         {/* Dev-only render stats (?perf) */}
-        {perfEnabled && <PerfHUD />}
+        {perfEnabled && <PerfHUD jitterRef={tickJitterRef} />}
 
         {/* Bloom postprocessing - desktop only, to protect mobile framerate.
             The threshold keeps the lifted floor/grid out of the bloom while

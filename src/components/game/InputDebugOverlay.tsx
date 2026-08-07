@@ -17,6 +17,11 @@ import {
   debugEventsInOrder,
   type InputDebugState,
 } from '@/lib/input/flickControl';
+import {
+  formatSummary,
+  type DeathForensics,
+  type InputLatencyMeter,
+} from '@/lib/game/runInstruments';
 
 const REFRESH_MS = 150;
 
@@ -26,8 +31,14 @@ function formatTime(ms: number): string {
 
 export function InputDebugOverlay({
   debugRef,
+  latencyRef,
+  deathForensics,
 }: {
   debugRef: RefObject<InputDebugState | null>;
+  /** ET-0 input-to-effect histogram, read live off the running meter. */
+  latencyRef?: RefObject<InputLatencyMeter>;
+  /** Last death's forensics, including the coyote-zone verdict. */
+  deathForensics?: DeathForensics | null;
 }) {
   const queuedDirections = useGameStore((s) => s.queuedDirections);
   const direction = useGameStore((s) => s.direction);
@@ -67,6 +78,46 @@ export function InputDebugOverlay({
           ? `${debug.lastExec.dir} @ ${formatTime(debug.lastExec.time)}`
           : '-'}
       </div>
+      {/*
+        ET-0: input-to-effect latency. Percentiles, not a mean — a fixed-tick
+        game spreads honest latency across the whole interval by design, so
+        the mean tells you the tick rate and the TAIL tells you the overhead
+        ET-3 and ET-4 are trying to remove.
+      */}
+      <div className="mt-1 text-venom-orange">input to effect</div>
+      <div data-testid="input-debug-latency">
+        {latencyRef?.current
+          ? formatSummary(latencyRef.current.summary())
+          : 'no samples'}
+      </div>
+      {/*
+        The coyote-zone counter. THE number ET-2's ruling is sized against:
+        an admissible turn that landed inside the observation window AFTER the
+        tick that killed the run — "I thought I had that", counted.
+      */}
+      {deathForensics ? (
+        <>
+          <div className="mt-1 text-venom-orange">last death</div>
+          <div data-testid="input-debug-forensics">
+            {deathForensics.cause}
+            {deathForensics.coyoteZone
+              ? ` · COYOTE +${deathForensics.turnAfterFatalTickMs?.toFixed(0)}ms`
+              : ' · no coyote turn'}
+          </div>
+          <div>
+            alpha{' '}
+            {deathForensics.alphaAtLastInput === null
+              ? '-'
+              : deathForensics.alphaAtLastInput.toFixed(2)}
+            {' · dist '}
+            {deathForensics.cellDistanceAtInput ?? '-'}
+            {' · in->tick '}
+            {deathForensics.inputToFatalTickMs === null
+              ? '-'
+              : `${deathForensics.inputToFatalTickMs.toFixed(0)}ms`}
+          </div>
+        </>
+      ) : null}
       <div className="mt-1 text-beige/80">
         {debugEventsInOrder(debug).map((e, i) => (
           <div key={i}>

@@ -13,8 +13,9 @@
  * through a ref (no React state, no reconciliation).
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
+import type { TickJitterMeter } from '@/lib/game/runInstruments';
 
 /** Frames kept for the p95 window (~4s at 60fps). */
 const RING_SIZE = 240;
@@ -23,7 +24,16 @@ const EMA_ALPHA = 0.05;
 /** Minimum ms between DOM writes. */
 const REPORT_INTERVAL_MS = 1000;
 
-export function PerfHUD() {
+export function PerfHUD({
+  jitterRef,
+}: {
+  /**
+   * ET-0 tick-jitter meter. Optional so the HUD still renders on surfaces
+   * that have no engine loop (the cockpit fixtures), where frame stats are
+   * the only thing there is to show.
+   */
+  jitterRef?: RefObject<TickJitterMeter>;
+} = {}) {
   const gl = useThree((state) => state.gl);
 
   const ringRef = useRef<Float32Array | null>(null);
@@ -102,9 +112,26 @@ export function PerfHUD() {
     window.sort();
     const p95 = window[Math.min(filled - 1, Math.floor(filled * 0.95))];
 
+    // ET-0 tick jitter. The frame numbers above describe the RENDERER; these
+    // describe the appointment the game is actually kept by. They are read
+    // from the meter rather than measured here on purpose - the engine's tick
+    // does not happen on a frame, and sampling it from useFrame would measure
+    // the sampler.
+    const jitter = jitterRef?.current?.summary();
+    const jitterLine =
+      jitter && jitter.count > 0
+        ? `tick +${(jitter.p50Ms ?? 0).toFixed(1)}/${(jitter.p99Ms ?? 0).toFixed(
+            1
+          )}/${(jitter.maxMs ?? 0).toFixed(1)}ms p50/p99/max\n` +
+          `tps ${(jitter.realizedTicksPerSecond ?? 0).toFixed(2)}  worst gap ${(
+            jitter.worstGapMs ?? 0
+          ).toFixed(0)}ms @${(jitter.worstGapScheduledMs ?? 0).toFixed(0)}ms\n`
+        : 'tick: no samples\n';
+
     el.textContent =
       `draws ${lastCallsRef.current}  tris ${lastTrianglesRef.current}\n` +
       `frame ${emaRef.current.toFixed(1)}ms  p95 ${p95.toFixed(1)}ms\n` +
+      jitterLine +
       `fps ~${(1000 / Math.max(emaRef.current, 0.001)).toFixed(0)}  dpr ${gl
         .getPixelRatio()
         .toFixed(2)}`;

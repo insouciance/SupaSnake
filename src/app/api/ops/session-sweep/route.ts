@@ -73,6 +73,7 @@ import {
   settlementErrorClass,
   settlementErrorMessage,
 } from '@/lib/server/strandedTerminalRun';
+import { reportSweepPass } from '@/lib/server/runTelemetry';
 // The settlement fold lives in the game-session route and is invoked, never
 // copied: a second implementation of what a run pays is exactly the divergence
 // the Constitution's one-source-of-truth rule forbids. This is an in-process
@@ -120,6 +121,22 @@ interface AttentionRow {
   sessionId: string;
   attempts: number;
 }
+
+/**
+ * WHY THE SWEEP REPORTS COUNTS AND NOT PER-RUN AGES.
+ *
+ * The obvious way to measure settlement latency here is to read the rows this
+ * pass settled and subtract their terminal timestamps. This route may not: it
+ * is deliberately TABLE-FREE — every stage goes through an audited RPC, and
+ * `route.test.ts` enforces it with a `from()` that throws. That invariant is
+ * worth more than the convenience, so the per-run ages are reported from the
+ * one place that already holds the row for its own reasons: the settlement
+ * fold in `/api/game/session`, which knows whether a client or this sweep
+ * drove it and stamps the path accordingly.
+ *
+ * What belongs here is what only this route knows — how much a pass got
+ * through, and what it could not touch.
+ */
 
 function isOrderedProgressionDebt(error: unknown): boolean {
   return /GAME_PROGRESSION_EARLIER_(?:SESSION|CLAN|SIGNAL)_PENDING/i.test(
@@ -352,10 +369,38 @@ export async function GET(request: NextRequest) {
     if (pending.length < PROGRESSION_BATCH_LIMIT) break;
   }
 
+  // A pending end the adopter could not take because the row is held for
+  // review. Principle 7 says every such state has a named exit; counting them
+  // per pass is how anyone finds out one has been entered without waiting for
+  // the player to notice their run never paid.
+  const quarantined = pendingEndAdoption.failures.filter(
+    (failure) => failure.state === 'quarantined'
+  ).length;
+
+  const terminalAgeDistribution = reportSweepPass({
+    settled: strandedSettled + progressionSettled,
+    staged: strandedStaged,
+    strandedTerminalScanned: strandedScanned,
+    strandedTerminalFailed: strandedFailed,
+    strandedTerminalRejected: strandedRejected,
+    quarantined,
+    deferred: progressionDeferred,
+    failed: progressionFailed + pendingEndAdoption.failed + strandedFailed,
+    attentionRows: attention.length,
+    // Empty by construction, not by accident — see the note above the GET.
+    terminalAges: [],
+    elapsedMs: Date.now() - startedAt,
+    budgetExhausted: budgetRemaining() <= 0,
+  });
+
   const body = {
     ok: true,
     expired: result.expired ?? 0,
     skipped: result.skipped,
+    // The operator-readable half of the measurement package. The same numbers
+    // reach Sentry above; this is what a human reads when they curl the cron.
+    quarantined,
+    terminalAgeDistribution,
     strandedScanned,
     strandedSettled,
     strandedStaged,
