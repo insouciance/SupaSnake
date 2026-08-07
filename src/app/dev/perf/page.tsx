@@ -17,6 +17,9 @@
  * - ?length=20..360  body pressure (default 160)
  * - ?speed=50..400   stress tick in ms (default 100)
  * - ?terrain=0..400  sourced blocked cells (default 80)
+ * - ?arrival=classic|front   ET-1 arrival-timing A/B (default: the shipped
+ *                   front-loaded arrival). Two windows on the same ?speed=
+ *                   and ?length= are the deterministic side-by-side.
  *
  * Production: notFound() - this page never ships to players.
  */
@@ -47,6 +50,11 @@ import {
   resetInterpolationBuffer,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
+import {
+  applyArrivalModeFromSearch,
+  DEFAULT_ARRIVAL_MODE,
+  type ArrivalMode,
+} from '@/lib/game/arrivalEasing';
 import {
   SnakeModel,
   SnakeSegmentFallback,
@@ -197,6 +205,10 @@ export default function PerfHarnessPage() {
   } | null>(null);
   const [direction, setDirection] = useState<Direction>('RIGHT');
   const [headCell, setHeadCell] = useState<Position>({ x: 0, y: 0, z: 0 });
+  /** Which arrival timing this window is showing (ET-1 A/B), for the caption. */
+  const [arrivalLabel, setArrivalLabel] = useState<ArrivalMode>(
+    DEFAULT_ARRIVAL_MODE
+  );
 
   const bufferRef = useRef<InterpolationBuffer | null>(null);
   if (bufferRef.current === null) {
@@ -213,6 +225,10 @@ export default function PerfHarnessPage() {
     const params = new URLSearchParams(window.location.search);
     const dynastyParam = params.get('dynasty');
     const aimParam = params.get('aim');
+    // ET-1 arrival A/B. This harness is the deterministic moving rig: one
+    // scripted cell per tick, no player, no engine - the honest place to put
+    // classic and front-loaded side by side on the same path and speed.
+    setArrivalLabel(applyArrivalModeFromSearch(window.location.search));
     setConfig({
       mode: params.get('mode') === 'legacy' ? 'legacy' : 'instanced',
       dynasty: isDynastyId(dynastyParam) ? dynastyParam : 'PRIMAL',
@@ -288,6 +304,13 @@ export default function PerfHarnessPage() {
         <p>
           {config.length} segments · {config.tickMs}ms · {config.terrain} terrain
           · ?length= ?speed= ?terrain=
+        </p>
+        <p>
+          arrival:{' '}
+          {arrivalLabel === 'front'
+            ? 'FRONT-LOADED (lands at α 0.45, settles)'
+            : 'CLASSIC (lands at α 1.0 — the old lie)'}{' '}
+          · ?arrival=classic|front
         </p>
       </div>
       <Canvas

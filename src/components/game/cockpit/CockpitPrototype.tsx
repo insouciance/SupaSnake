@@ -9,6 +9,7 @@ import {
 } from '@/components/game/screen/gameScreenTokens';
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { ArenaPrototypeCanvas } from '@/components/game/arena/ArenaPrototypeCanvas';
+import type { ArrivalMode } from '@/lib/game/arrivalEasing';
 import type { RenderTier } from '@/components/game/screen/renderQuality';
 import type { BoardThemeSelection } from '@/components/game/screen/boardThemes';
 import { GeneGlyph as CatalogGeneGlyph } from './CockpitGlyphs';
@@ -36,6 +37,8 @@ interface CockpitPrototypeProps {
   arenaBoardTheme?: BoardThemeSelection;
   /** THE COMPARE TOGGLE; see ArenaPrototypeCanvas.boardSeamLines. */
   arenaBoardSeamLines?: boolean;
+  /** ET-1 arrival A/B; see ArenaPrototypeCanvas.arrivalMode. */
+  arenaArrivalMode?: ArrivalMode | null;
 }
 
 type TokenStyle = CSSProperties & Record<`--${string}`, string>;
@@ -209,6 +212,7 @@ function ArenaPreview({
   arenaPitchDeg,
   arenaBoardTheme,
   arenaBoardSeamLines,
+  arenaArrivalMode,
 }: {
   state: CockpitPrototypeState;
   dynasty: DynastyId;
@@ -220,6 +224,7 @@ function ArenaPreview({
   arenaPitchDeg?: number;
   arenaBoardTheme?: BoardThemeSelection;
   arenaBoardSeamLines?: boolean;
+  arenaArrivalMode?: ArrivalMode | null;
 }) {
   const portalLive = state === 'portal' || state === 'apex';
   return (
@@ -252,6 +257,7 @@ function ArenaPreview({
                   pitchDeg={arenaPitchDeg}
                   boardThemeSelection={arenaBoardTheme}
                   boardSeamLines={arenaBoardSeamLines}
+                  arrivalMode={arenaArrivalMode}
                 />
               </div>
             </div>
@@ -322,6 +328,7 @@ export function CockpitPrototype({
   arenaPitchDeg,
   arenaBoardTheme,
   arenaBoardSeamLines,
+  arenaArrivalMode,
 }: CockpitPrototypeProps) {
   const theme = getDynastyScreenTokens(dynasty);
   const normalizedGeneCount = Math.max(0, Math.min(6, Math.floor(geneCount)));
@@ -457,6 +464,7 @@ export function CockpitPrototype({
             arenaPitchDeg={arenaPitchDeg}
             arenaBoardTheme={arenaBoardTheme}
             arenaBoardSeamLines={arenaBoardSeamLines}
+            arenaArrivalMode={arenaArrivalMode}
           />
         </div>
       </div>

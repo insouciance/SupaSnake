@@ -34,11 +34,16 @@
  * original flicker and missing-face defect.
  *
  * Cell-persistence contract:
- * - The head follows exact tick-alpha interpolation. The body renders BOARD
+ * - The head follows exact tick-alpha interpolation, RE-TIMED by ET-1's
+ *   front-loaded arrival (arrivalEasing.ts): the traversal completes by
+ *   ARRIVAL_ALPHA and settles, so the picture shows the simulation's true
+ *   cell for the majority of every interval instead of arriving there at the
+ *   instant the next tick makes it wrong. The body renders BOARD
  *   OCCUPANCY, not segment identity: established cells stay planted; only the
  *   cell deposited behind the head grows in and vacated tail cells sink out.
  *   A tight long coil therefore reads as settled terrain instead of a conveyor
- *   of 150 equally animated boxes.
+ *   of 150 equally animated boxes. Head and body share one clock - a body on
+ *   the old symmetric curve under a landed head would accordion.
  * - ZERO per-frame allocations: all scratch objects (Vector3/Quaternion/
  *   Matrix4) live at module scope; the loop only writes. The fusion metric's
  *   working set is preallocated typed arrays in a ref.
@@ -70,6 +75,11 @@ import {
   getInterpolatedZ,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
+import {
+  arrivalMotion,
+  arrivalTransition,
+  getArrivalMode,
+} from '@/lib/game/arrivalEasing';
 import {
   createTrailFusionState,
   FUSION_NEIGHBOUR_DX,
@@ -502,6 +512,12 @@ function writeTrailCell(
  * Tick alpha drives only enter/leave scale; persistent coil cells remain on
  * their authoritative centres while segment identities pass through them.
  *
+ * ET-1: the trail runs on the head's clock, not on its own. `eased` is the
+ * arrival transition, so the cell deposited behind the head finishes growing
+ * in at the same instant the head finishes arriving, and the vacancy taper
+ * resolves with it. A body on a symmetric curve under a front-loaded head is
+ * exactly the accordion this contract exists to prevent.
+ *
  * Allocation-free: every vector, quaternion, matrix and colour it touches is
  * module scratch, and the sink is expected to copy on write (InstancedMesh
  * does).
@@ -519,7 +535,7 @@ export function writeTrailInstances(
   const count = buffer.count;
   let n = 0;
 
-  const eased = alpha * alpha * (3 - 2 * alpha);
+  const eased = arrivalTransition(alpha, getArrivalMode());
 
   // Persistent cells never translate. A newly deposited cell grows into the
   // previous head tile as the head leaves it; nothing else in the coil moves.
@@ -616,7 +632,8 @@ export function writeCoilSealInstances(
   elapsed: number
 ): number {
   let instance = 0;
-  const eased = alpha * alpha * (3 - 2 * alpha);
+  // Same clock as the trail it sits on top of (ET-1).
+  const eased = arrivalTransition(alpha, getArrivalMode());
 
   for (let index = 0; index < cells.currentCount; index += 1) {
     const cell = cells.currentCells[index];
@@ -807,6 +824,10 @@ function InstancedSnakeCore({
 
     const count = buffer.count;
     const alpha = getAlpha(buffer, performance.now());
+    // ET-1: elapsed-time alpha is the truth; `motion` is WHEN inside the
+    // interval that truth is drawn. The head lands by ARRIVAL_ALPHA and
+    // settles; the trail below reads the same clock.
+    const motion = arrivalMotion(alpha, getArrivalMode());
     elapsedRef.current += delta;
     const elapsed = elapsedRef.current;
 
@@ -882,9 +903,9 @@ function InstancedSnakeCore({
     if (count > 0) {
       head.visible = true;
       head.position.set(
-        getInterpolatedX(buffer, 0, alpha) + 0.5,
+        getInterpolatedX(buffer, 0, motion) + 0.5,
         SNAKE_HEAD_CENTER_Y,
-        getInterpolatedZ(buffer, 0, alpha) + 0.5
+        getInterpolatedZ(buffer, 0, motion) + 0.5
       );
       const target = HEAD_FACE_YAW[direction];
       // Shortest-path wrap into [-PI, PI), then exponential damp

@@ -40,6 +40,7 @@ import {
   getInterpolatedX,
   getInterpolatedZ,
 } from '@/lib/game/interpolationBuffer';
+import { arrivalMotion, getArrivalMode } from '@/lib/game/arrivalEasing';
 import {
   DIRECTION_DELTAS,
   DIRECTION_YAW,
@@ -234,7 +235,10 @@ export function readLeadHeadSample(
   _headSample.snapX = head.x;
   _headSample.snapZ = head.z;
   if (buffer && buffer.count > 0) {
-    const alpha = getAlpha(buffer, now);
+    // ET-1: the same front-loaded arrival the head itself is drawn with. THE
+    // LEAD is glued to the head; sampling it on a different curve would drag
+    // the telegraph a cell behind the creature it belongs to.
+    const alpha = arrivalMotion(getAlpha(buffer, now), getArrivalMode());
     _headSample.smoothX = getInterpolatedX(buffer, 0, alpha);
     _headSample.smoothZ = getInterpolatedZ(buffer, 0, alpha);
     _headSample.snapX = buffer.curr[0];
@@ -625,7 +629,11 @@ function Gridlock({ head, targets, gridSize, bufferRef, color, laneColor }: Grid
     let snapX = head.x;
     let snapZ = head.z;
     if (buffer && buffer.count > 0) {
-      const alpha = getAlpha(buffer, performance.now());
+      // Rails ride the head's own ET-1 arrival curve (see readLeadHeadSample).
+      const alpha = arrivalMotion(
+        getAlpha(buffer, performance.now()),
+        getArrivalMode()
+      );
       smoothX = getInterpolatedX(buffer, 0, alpha);
       smoothZ = getInterpolatedZ(buffer, 0, alpha);
       snapX = buffer.curr[0];
@@ -918,7 +926,12 @@ function Firefly({ head, targets, bufferRef }: FireflyProps) {
     } else {
       const buffer = bufferRef.current;
       if (buffer && buffer.count > 0) {
-        const alpha = getAlpha(buffer, performance.now());
+        // The drone drifts home to where the head IS drawn, not to where a
+        // symmetric blend would have put it (ET-1).
+        const alpha = arrivalMotion(
+          getAlpha(buffer, performance.now()),
+          getArrivalMode()
+        );
         _pursuit.set(
           getInterpolatedX(buffer, 0, alpha) + 0.5,
           FIREFLY_HOVER + 0.4,

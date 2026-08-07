@@ -13,6 +13,9 @@
  * - ?tier=0..4 (pin the render-quality governor to one tier - measurement only)
  * - ?contrast=high
  * - ?motion=reduced
+ * - ?arrival=classic|front  ET-1 arrival-timing A/B. Turns the posed fixture
+ *   into a scripted walker (a still life cannot show a motion change) and
+ *   forces the WebGL arena, so one URL is the whole experiment.
  * - ?renderer=static|webgl
  * - ?arena=released|cockpit (WebGL renderer only)
  * - ?effects=off (raw scene-cost comparison)
@@ -65,6 +68,7 @@ import {
   type CockpitPrototypeState,
 } from '@/components/game/cockpit/CockpitPrototype';
 import type { DynastyId } from '@/shared/types/game';
+import { parseArrivalMode } from '@/lib/game/arrivalEasing';
 
 interface CockpitFixturePageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -209,6 +213,9 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
   if (process.env.NODE_ENV === 'production') notFound();
 
   const params = await searchParams;
+  // ET-1: asking for an arrival comparison implies the 3D board. A walker
+  // rendered as CSS cells would be a picture of the fix rather than the fix.
+  const arrivalMode = parseArrivalMode(first(params.arrival));
   return (
     <>
       <CockpitPrototype
@@ -218,7 +225,9 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
         geneCount={parseGeneCount(first(params.genes))}
         highContrast={first(params.contrast) === 'high'}
         reducedMotion={first(params.motion) === 'reduced'}
-        arenaRenderer={first(params.renderer) === 'webgl' ? 'webgl' : 'static'}
+        arenaRenderer={
+          arrivalMode || first(params.renderer) === 'webgl' ? 'webgl' : 'static'
+        }
         arenaVariant={first(params.arena) === 'released' ? 'released' : 'cockpit'}
         arenaEffects={first(params.effects) !== 'off'}
         arenaDensity={first(params.density) === 'extreme' ? 'extreme' : 'standard'}
@@ -226,6 +235,7 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
         arenaPitchDeg={parsePitchDeg(first(params.pitch))}
         arenaBoardTheme={parseBoardThemeSelection(first(params.boardTheme))}
         arenaBoardSeamLines={parseFlag(first(params.gridlines))}
+        arenaArrivalMode={arrivalMode}
       />
       <SnakeStyleSwitcher params={params} active={first(params.snake90s)} />
     </>

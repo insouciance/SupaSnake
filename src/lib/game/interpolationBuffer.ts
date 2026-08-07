@@ -22,6 +22,10 @@
  *   streaking across the board from stale memory.
  * - Pause/late-tick safety: `getAlpha` clamps to [0, 1], so a stalled or
  *   paused loop simply rests at the last authoritative state.
+ * - `getAlpha` is elapsed-time truth and stays that way. WHEN inside the
+ *   interval the head is drawn is a separate, re-timable decision that lives
+ *   in `arrivalEasing.ts` (ET-1): renderers read `getAlpha`, map it through
+ *   `arrivalMotion`/`arrivalTransition`, and pass the result here.
  */
 
 import type { Position } from './SnakeGameLogic';
@@ -146,14 +150,39 @@ export function getAlpha(buffer: InterpolationBuffer, now: number): number {
   return alpha;
 }
 
-/** Interpolated world-grid X of segment `index` at blend `alpha`. */
+/**
+ * How far past `curr` a blend of `alpha > 1` may carry a segment.
+ *
+ * ET-1's settle overshoots the logical cell by a fraction of a cell and
+ * springs back (see arrivalEasing.ts). Expressed as a plain lerp that
+ * overshoot would be a fraction of the prev->curr DELTA, which is one cell
+ * for an ordinary move but nearly the whole board for a COSMIC torus wrap -
+ * 6% of nineteen cells is more than a full cell flung past the far edge.
+ *
+ * So the overshoot is denominated in CELLS along the travel axis and capped
+ * at one: a normal move is bit-for-bit the old lerp, a wrap gets the same
+ * small settle as everything else. For `alpha <= 1` this term is exactly
+ * zero and the expression reduces to the original `p + (c - p) * alpha`.
+ */
+function boundedOvershoot(delta: number, alpha: number): number {
+  if (alpha <= 1) return 0;
+  const unit = delta > 1 ? 1 : delta < -1 ? -1 : delta;
+  return unit * (alpha - 1);
+}
+
+/**
+ * Interpolated world-grid X of segment `index` at blend `alpha`.
+ *
+ * `alpha` above 1 is ET-1's arrival overshoot, bounded as described above.
+ */
 export function getInterpolatedX(
   buffer: InterpolationBuffer,
   index: number,
   alpha: number
 ): number {
   const p = buffer.prev[index * 2];
-  return p + (buffer.curr[index * 2] - p) * alpha;
+  const delta = buffer.curr[index * 2] - p;
+  return p + delta * (alpha < 1 ? alpha : 1) + boundedOvershoot(delta, alpha);
 }
 
 /** Interpolated world-grid Z of segment `index` at blend `alpha`. */
@@ -163,5 +192,6 @@ export function getInterpolatedZ(
   alpha: number
 ): number {
   const p = buffer.prev[index * 2 + 1];
-  return p + (buffer.curr[index * 2 + 1] - p) * alpha;
+  const delta = buffer.curr[index * 2 + 1] - p;
+  return p + delta * (alpha < 1 ? alpha : 1) + boundedOvershoot(delta, alpha);
 }

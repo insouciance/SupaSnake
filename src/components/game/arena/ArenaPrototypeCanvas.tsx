@@ -45,8 +45,14 @@ import type { AimTarget } from '@/components/game/aimUtils';
 import {
   createInterpolationBuffer,
   recordTick,
+  resetInterpolationBuffer,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
+import {
+  resetArrivalMode,
+  setArrivalMode,
+  type ArrivalMode,
+} from '@/lib/game/arrivalEasing';
 import {
   GAME_SCREEN_COLORS,
   getDynastyScreenTokens,
@@ -107,6 +113,19 @@ interface ArenaPrototypeCanvasProps {
    * describes, `?gridlines=1` is the board that was reviewed before it.
    */
   boardSeamLines?: boolean;
+  /**
+   * ET-1 ARRIVAL A/B (dev-fixture only, `/dev/cockpit?arrival=classic|front`).
+   *
+   * Non-null does two things: it pins the render-side arrival timing, and it
+   * turns the fixture's posed snake into a scripted WALKER. Both are needed,
+   * because a still life cannot show a motion change - the whole defect ET-1
+   * fixes is a question of WHEN inside a tick interval the head is drawn.
+   *
+   * Null - which is every verifier run and every other visit - leaves the
+   * fixture exactly as posed. The deterministic screenshots the three cockpit
+   * verifiers measure are therefore untouched by this switch existing.
+   */
+  arrivalMode?: ArrivalMode | null;
 }
 
 const GRID = GAME_CONFIG.board.gridSize;
@@ -213,6 +232,97 @@ function headingOf(cells: readonly Position[]): Direction {
   return 'UP';
 }
 
+/**
+ * ET-1 ARRIVAL WALK - the fixture's motion rig.
+ *
+ * A closed ring one snake-length inside the board: four long straights (where
+ * arrival timing is judged - does the head LAND on its cell, or is it still
+ * sliding when the next tick fires?) and four corners (where the head's damped
+ * yaw follows through after the position has already settled). Closed, so it
+ * runs forever without a reset streak; deterministic, so two windows opened at
+ * the same moment stay in step long enough to compare.
+ *
+ * 120ms is between CYBER's ~100ms floor and PRIMAL's 175ms cap - the middle of
+ * the cadence band the defect was reported in.
+ */
+const ARRIVAL_WALK_TICK_MS = 120;
+
+function buildArrivalWalkPath(): readonly Position[] {
+  const lo = 5;
+  const hi = GRID - 6;
+  const path: Position[] = [];
+  for (let x = lo; x < hi; x += 1) path.push({ x, y: 0, z: lo });
+  for (let z = lo; z < hi; z += 1) path.push({ x: hi, y: 0, z });
+  for (let x = hi; x > lo; x -= 1) path.push({ x, y: 0, z: hi });
+  for (let z = hi; z > lo; z -= 1) path.push({ x: lo, y: 0, z });
+  return path;
+}
+
+const ARRIVAL_WALK_PATH = buildArrivalWalkPath();
+
+interface ArrivalWalk {
+  bufferRef: { readonly current: InterpolationBuffer | null };
+  snake: readonly Position[];
+  heading: Direction;
+  head: Position;
+}
+
+/**
+ * Drive the fixture snake one cell per tick through the REAL interpolation
+ * buffer - the same `recordTick` the game loop calls, with the same
+ * "interval the loop re-arms with" denominator - so what the owner judges here
+ * is the shipped renderer, not a demo of it.
+ */
+function useArrivalWalk(mode: ArrivalMode | null): ArrivalWalk {
+  const bufferRef = useRef<InterpolationBuffer | null>(null);
+  if (bufferRef.current === null) {
+    bufferRef.current = createInterpolationBuffer(STATIC_SNAKE.length);
+  }
+  // Mutated in place every tick: a dev fixture still has no business
+  // allocating a snake per tick into the same heap the renderer runs on.
+  const segmentsRef = useRef<Position[]>(
+    STATIC_SNAKE.map((cell) => ({ ...cell }))
+  );
+  const [heading, setHeading] = useState<Direction>(headingOf(STATIC_SNAKE));
+  const [head, setHead] = useState<Position>(() => ({ ...STATIC_SNAKE[0] }));
+
+  useEffect(() => {
+    if (!mode) return;
+    setArrivalMode(mode);
+    const buffer = bufferRef.current!;
+    const segments = segmentsRef.current;
+    const length = segments.length;
+    resetInterpolationBuffer(buffer);
+    let headIndex = length - 1;
+
+    const tick = () => {
+      headIndex = (headIndex + 1) % ARRIVAL_WALK_PATH.length;
+      for (let i = 0; i < length; i += 1) {
+        const cell =
+          ARRIVAL_WALK_PATH[
+            (headIndex - i + ARRIVAL_WALK_PATH.length) % ARRIVAL_WALK_PATH.length
+          ];
+        segments[i].x = cell.x;
+        segments[i].z = cell.z;
+      }
+      setHeading(headingOf(segments));
+      setHead({ x: segments[0].x, y: 0, z: segments[0].z });
+      recordTick(buffer, segments, ARRIVAL_WALK_TICK_MS, performance.now());
+    };
+
+    tick();
+    const timer = setInterval(tick, ARRIVAL_WALK_TICK_MS);
+    return () => {
+      clearInterval(timer);
+      // The pin is a module singleton shared with every other surface in this
+      // tab; leaving the fixture must not leave `classic` behind on the board.
+      resetArrivalMode();
+    };
+  }, [mode]);
+
+  return { bufferRef, snake: segmentsRef.current, heading, head };
+}
+
 /** UP: the head at (10,13) came from (10,14). Unchanged by the derivation. */
 const STATIC_HEADING = headingOf(STATIC_SNAKE);
 /** LEFT: the head at (3,3) came from (4,3). This is the one that was pi out. */
@@ -281,13 +391,26 @@ function PrototypeScene({
   pitchDeg,
   boardThemeSelection,
   boardSeamLines = false,
+  arrivalMode = null,
 }: ArenaPrototypeCanvasProps & { isMobile: boolean }) {
   const theme = getDynastyScreenTokens(dynasty);
   const boardTheme = useMemo(
     () => resolveBoardTheme(boardThemeSelection ?? FIXTURE_BOARD_DEFAULT, dynasty),
     [boardThemeSelection, dynasty]
   );
-  const snake = density === 'extreme' ? DENSE_SNAKE : STATIC_SNAKE;
+  // The dense fixture is a geometry-cost stress pose and stays posed; the
+  // walker takes over the ordinary one, which is the pose the composition and
+  // the camera were ratified against.
+  const walking = arrivalMode !== null && density !== 'extreme';
+  const walk = useArrivalWalk(walking ? arrivalMode : null);
+  const posedSnake = density === 'extreme' ? DENSE_SNAKE : STATIC_SNAKE;
+  const snake = walking ? walk.snake : posedSnake;
+  const heading = walking
+    ? walk.heading
+    : density === 'extreme'
+      ? DENSE_HEADING
+      : STATIC_HEADING;
+  const headPosition = walking ? walk.head : posedSnake[0];
   // Same defect, same fix as the live board: three's default light target is
   // the world origin, which is a corner of a 0..20 board, so the orthographic
   // shadow frustum was centred off the arena and the light sat on the exact
@@ -320,8 +443,9 @@ function PrototypeScene({
     recordTick(buffer, DENSE_SNAKE, 100, 2);
     return buffer;
   }, [density]);
-  const bufferRef = useRef<InterpolationBuffer | null>(interpolation);
-  bufferRef.current = interpolation;
+  const posedBufferRef = useRef<InterpolationBuffer | null>(interpolation);
+  posedBufferRef.current = interpolation;
+  const bufferRef = walking ? walk.bufferRef : posedBufferRef;
   const portalLive = state === 'portal' || state === 'apex';
   const aimTargets = useMemo<AimTarget[]>(
     () => [
@@ -384,8 +508,8 @@ function PrototypeScene({
         </>
       )}
       <AimRenderer
-        headPosition={snake[0]}
-        direction={density === 'extreme' ? DENSE_HEADING : STATIC_HEADING}
+        headPosition={headPosition}
+        direction={heading}
         queuedDirections={[]}
         snake={snake}
         gridSize={GRID}
@@ -395,15 +519,15 @@ function PrototypeScene({
         color={GAME_SCREEN_COLORS.systemCyan}
         laneColor={theme.primary}
       />
-      {density === 'extreme' ? (
+      {density === 'extreme' || walking ? (
         <AssetGate
           label="the snake model"
           fallback={
             <InstancedSnakeFallback
               bufferRef={bufferRef}
               dynasty={dynasty}
-              direction={DENSE_HEADING}
-              terrain={DENSE_TERRAIN}
+              direction={heading}
+              terrain={density === 'extreme' ? DENSE_TERRAIN : undefined}
               wrapActive={dynasty === 'COSMIC'}
               loadout={FIXTURE_LOADOUT}
             />
@@ -412,8 +536,8 @@ function PrototypeScene({
           <InstancedSnake
             bufferRef={bufferRef}
             dynasty={dynasty}
-            direction={DENSE_HEADING}
-            terrain={DENSE_TERRAIN}
+            direction={heading}
+            terrain={density === 'extreme' ? DENSE_TERRAIN : undefined}
             wrapActive={dynasty === 'COSMIC'}
             loadout={FIXTURE_LOADOUT}
           />
@@ -525,6 +649,7 @@ export function ArenaPrototypeCanvas({
   pitchDeg,
   boardThemeSelection,
   boardSeamLines = false,
+  arrivalMode = null,
 }: ArenaPrototypeCanvasProps) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -548,6 +673,7 @@ export function ArenaPrototypeCanvas({
           ?.id ?? 'stone'
       }
       data-fixture-seam-lines={boardSeamLines ? 'on' : 'off'}
+      data-fixture-arrival={arrivalMode ?? 'posed'}
       style={{ width: '100%', height: '100%', overflow: 'hidden' }}
     >
       <Canvas
@@ -577,6 +703,7 @@ export function ArenaPrototypeCanvas({
           pitchDeg={pitchDeg}
           boardThemeSelection={boardThemeSelection}
           boardSeamLines={boardSeamLines}
+          arrivalMode={arrivalMode}
         />
         <RenderStatsProbe />
       </Canvas>

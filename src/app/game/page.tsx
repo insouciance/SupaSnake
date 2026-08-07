@@ -172,6 +172,7 @@ import {
   resetInterpolationBuffer,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
+import { applyArrivalModeFromSearch } from '@/lib/game/arrivalEasing';
 import { useToast } from '@/components/ui/Toast';
 import {
   enqueueReward,
@@ -1586,6 +1587,13 @@ export default function GamePage() {
     // which decides whether the code exists at all.
     if (CAMERA_SURVEYOR_AVAILABLE && params.get('cameraTune') === '1') {
       setCameraTuneActive(true);
+    }
+    // ET-1 arrival A/B: dev builds only, opt-in via ?arrival=classic|front.
+    // The pin is a judgement instrument for the owner's feel session - what
+    // ships is one ratified motion grammar, identical for every player, so
+    // production never reads this and a missing flag never changes anything.
+    if (process.env.NODE_ENV !== 'production') {
+      applyArrivalModeFromSearch(window.location.search);
     }
   }, []);
 

@@ -28,8 +28,17 @@ import { render } from '@testing-library/react';
 import * as THREE from 'three';
 import {
   createInterpolationBuffer,
+  getAlpha,
+  getInterpolatedX,
   recordTick,
 } from '@/lib/game/interpolationBuffer';
+import {
+  ARRIVAL_OVERSHOOT,
+  arrivalMotion,
+  getArrivalMode,
+  resetArrivalMode,
+  setArrivalMode,
+} from '@/lib/game/arrivalEasing';
 import {
   AimRenderer,
   countLeadCells,
@@ -233,19 +242,35 @@ describe('countLeadCells', () => {
 });
 
 describe('the glide binding', () => {
-  it('rides the interpolated head while the tile snaps to the current cell', () => {
+  it('rides the head on ET-1 timing while the tile snaps to the current cell', () => {
     const buffer = createInterpolationBuffer(4);
     recordTick(buffer, [segment(4, 6)], 200, 1000);
     recordTick(buffer, [segment(5, 6)], 200, 1200);
     const previousBefore = Array.from(buffer.prev);
     const currentBefore = Array.from(buffer.curr);
 
+    // 1300 is HALF the 200ms interval. Before ET-1 this read 4.5 - the exact
+    // midpoint of the move - because THE LEAD sampled raw elapsed-time alpha
+    // and so did the head. Under front-loaded arrival the head has already
+    // landed on x=5 by alpha 0.45 and is settling, so the correct expectation
+    // is "on the cell, within the settle", not "halfway".
     const sample = readLeadHeadSample(segment(5, 6), buffer, 1300);
-
-    // Halfway from grid x=4 to x=5: the mark and the head move as one rigid
-    // body, so the guide never has to be re-acquired by the eye.
-    expect(sample.smoothX).toBeCloseTo(4.5, 10);
+    expect(sample.smoothX).toBeGreaterThan(5 - 1e-9);
+    expect(sample.smoothX).toBeLessThanOrEqual(5 + ARRIVAL_OVERSHOOT + 1e-9);
     expect(sample.smoothZ).toBeCloseTo(6, 10);
+
+    // The binding itself is the contract that survives the re-timing: the
+    // mark and the head are one rigid body at EVERY instant, so the guide
+    // never has to be re-acquired by the eye. Sampled across the interval
+    // against the same curve the head is drawn with.
+    for (const at of [1000, 1040, 1090, 1150, 1199]) {
+      const alpha = arrivalMotion(getAlpha(buffer, at), getArrivalMode());
+      expect(readLeadHeadSample(segment(5, 6), buffer, at).smoothX).toBeCloseTo(
+        getInterpolatedX(buffer, 0, alpha),
+        10
+      );
+    }
+
     // The tile stays on the authoritative grid cell - the snapped answer to
     // "which cell am I in", which is what a gliding mark cannot give.
     expect(sample.snapX).toBe(5);
@@ -253,6 +278,25 @@ describe('the glide binding', () => {
     // Reading the buffer must never disturb it.
     expect(Array.from(buffer.prev)).toEqual(previousBefore);
     expect(Array.from(buffer.curr)).toEqual(currentBefore);
+  });
+
+  it('lags a full cell behind on the classic leg - the defect, kept comparable', () => {
+    // The A/B is only meaningful if `classic` really is the old build. At the
+    // interval midpoint the old timing puts THE LEAD - and the head it is
+    // bound to - halfway to a cell the engine entered a hundred milliseconds
+    // ago. This is the picture the owner is asked to compare against.
+    setArrivalMode('classic');
+    try {
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [segment(4, 6)], 200, 1000);
+      recordTick(buffer, [segment(5, 6)], 200, 1200);
+      expect(readLeadHeadSample(segment(5, 6), buffer, 1300).smoothX).toBeCloseTo(
+        4.5,
+        10
+      );
+    } finally {
+      resetArrivalMode();
+    }
   });
 
   it('falls back to the supplied head cell before interpolation is available', () => {

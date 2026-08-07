@@ -29,6 +29,7 @@ const stripComments = (source: string) =>
 
 const METRIC = 'src/lib/game/trailFusion.ts';
 const RENDERER = 'src/components/game/InstancedSnake.tsx';
+const AIM = 'src/components/game/AimRenderer.tsx';
 const SHAPE = 'src/components/game/SnakeModel.tsx';
 const PAGE = 'src/app/game/page.tsx';
 
@@ -215,6 +216,39 @@ describe('the failure modes the design named explicitly', () => {
     expect(renderer).toContain('trailCellZ(cells, cell)');
     expect(renderer).toContain('cells.previousRepresentative[cell]');
     expect(renderer).toContain('(count - buffer.prevCount) * eased');
+  });
+
+  /**
+   * ET-1. The unit tests prove the curve; this proves the curve is WIRED - the
+   * same class of gap this file exists for. A front-loaded easing module that
+   * nothing imports would pass every test it owns and change nothing on screen.
+   */
+  it('the head and the trail are both drawn on the front-loaded arrival clock', () => {
+    const renderer = stripComments(read(RENDERER));
+    expect(renderer).toContain("from '@/lib/game/arrivalEasing'");
+    // The head's position blend is the re-timed one, not raw elapsed alpha.
+    expect(renderer).toMatch(
+      /const motion = arrivalMotion\(alpha, getArrivalMode\(\)\)/
+    );
+    expect(renderer).toContain('getInterpolatedX(buffer, 0, motion)');
+    expect(renderer).toContain('getInterpolatedZ(buffer, 0, motion)');
+    // ...and the body runs on that same clock. Both `eased` bindings (trail
+    // and coil seal) come from the arrival transition; a surviving literal
+    // smoothstep here would be a body accordioning under a landed head.
+    expect(renderer).not.toMatch(/alpha \* alpha \* \(3 - 2 \* alpha\)/);
+    expect(
+      renderer.match(/const eased = arrivalTransition\(alpha, getArrivalMode\(\)\)/g)
+    ).toHaveLength(2);
+  });
+
+  it('THE LEAD samples the head on the same clock the head is drawn with', () => {
+    // A telegraph bound to the head must not read a different curve than the
+    // head, or the guide detaches from the creature it belongs to for most of
+    // every interval - which is the ET-1 defect, reintroduced one layer up.
+    const aim = stripComments(read(AIM));
+    expect(aim).toContain("from '@/lib/game/arrivalEasing'");
+    expect(aim.match(/arrivalMotion\(/g)).toHaveLength(3);
+    expect(aim).not.toMatch(/const alpha = getAlpha\(buffer, (now|performance)/);
   });
 
   it('quiet is taken from height, never from contrast', () => {
