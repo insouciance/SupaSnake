@@ -1,13 +1,19 @@
 import * as THREE from 'three';
+import { SNAKE_STYLE_PROFILE } from './snake90s';
 
 /**
  * One inexpensive chamfer pass is enough to catch a readable rim highlight at
  * game-camera distance. More subdivisions add GPU work to 400 body instances
  * without changing the silhouette at that scale.
+ *
+ * The 90s concept keeps this at ONE on purpose rather than smoothing the
+ * bevel: a single wide 45 degree facet takes a different cel band than the
+ * face beside it, so the chamfer draws its own hard highlight line. Smoothing
+ * it would blur that line and cost roughly 3x the triangles to do it.
  */
 export const SNAKE_ROUNDING_SEGMENTS = 1;
-export const SNAKE_HEAD_RADIUS = 0.12;
-export const SNAKE_BODY_RADIUS = 0.085;
+export const SNAKE_HEAD_RADIUS = SNAKE_STYLE_PROFILE.headBevelRadius;
+export const SNAKE_BODY_RADIUS = SNAKE_STYLE_PROFILE.bodyBevelRadius;
 // INK & AMBER: terrain carries a heavier chamfer than the snake so its edge
 // catches a full band of the toon ramp - a wall should read as a machined
 // block, not as a body segment that stopped moving.

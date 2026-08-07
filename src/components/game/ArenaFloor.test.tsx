@@ -1,9 +1,11 @@
 import { render } from '@testing-library/react';
 import * as THREE from 'three';
 import {
+  ARENA_BOARD_FRAGMENT_SHADER,
   ARENA_EDGE_WASH_FRAGMENT_SHADER,
   ArenaFloor,
   centerYFromBase,
+  createArenaBoardMaterial,
   createArenaEdgeWashMaterial,
   createArenaSlabGeometry,
   EDGE_WASH_ON_STONE,
@@ -11,6 +13,8 @@ import {
   FLOOR_GRAPHICS_TOP_Y,
   SLAB_APRON,
 } from './ArenaFloor';
+import { BOARD_THEMES } from './screen/boardThemes';
+import { SEAM_WIDTH } from './screen/boardTiles';
 
 describe('arena floor render geometry', () => {
   it('converts a desired base into the centre of centred Three.js geometry', () => {
@@ -178,5 +182,286 @@ describe('analytic arena edge wash', () => {
     expect(geometry.getAttribute('color')).not.toBeUndefined();
 
     geometry.dispose();
+  });
+});
+
+/**
+ * PASS 5/6 - the tiled board. Every assertion here is about the boundary
+ * between the two boards: the shipped stone one must be untouched, and the
+ * themed one must stop drawing what its real geometry replaced.
+ */
+describe('the tiled neon board (concept)', () => {
+  const theme = BOARD_THEMES.cyanNeon;
+  const build = (tiled: boolean, seamLines = false) =>
+    createArenaBoardMaterial(
+      20,
+      theme.checker,
+      theme.grooveLight,
+      theme.minorDepth,
+      theme.majorDepth,
+      theme,
+      tiled,
+      seamLines
+    );
+
+  it('retires the two shader layers the real blocks now are', () => {
+    const flat = build(false);
+    const tiled = build(true);
+
+    // The checker was orientation information standing in for structure, and
+    // the shader roll was a bevel standing in for a bevel. Both are now real,
+    // and drawing them UNDER the blocks would be drawing them twice.
+    expect(flat.uniforms.uCheckAlpha.value).toBeGreaterThan(0);
+    expect(tiled.uniforms.uCheckAlpha.value).toBe(0);
+    expect(flat.uniforms.uBevelStrength.value).toBeGreaterThan(0);
+    expect(tiled.uniforms.uBevelStrength.value).toBe(0);
+
+    flat.dispose();
+    tiled.dispose();
+  });
+
+  /**
+   * THE LINE-FREE SEAM.
+   *
+   * Owner, 2026-08-07: "we don't need the gridlines now anymore, they are
+   * rather a disturbance. the tiles already provide for proper orientation on
+   * the board."
+   *
+   * Swept over EVERY theme, because "the board draws no gridline" is a
+   * property of the board and a theme that quietly kept one would be one
+   * dynasty playing on a different surface. The carve is included by name: it
+   * is shading rather than a stroke, which makes it the easiest of the three
+   * drawn seams to leave behind, and a shaded 2px channel painted down the
+   * middle of a real 6px one is a gridline by every test but its authoring.
+   */
+  it('draws nothing at all at an interior cell boundary', () => {
+    Object.values(BOARD_THEMES).forEach((each) => {
+      const board = createArenaBoardMaterial(
+        20,
+        each.checker,
+        each.grooveLight,
+        each.minorDepth,
+        each.majorDepth,
+        each,
+        true
+      );
+
+      // The carve - the analytic groove that predates the blocks.
+      expect(board.uniforms.uMinorAlpha.value).toBe(0);
+      expect(board.uniforms.uMajorAlpha.value).toBe(0);
+      // The filament, in the two classes that ARE the grid.
+      expect(board.uniforms.uNeonMinor.value).toBe(0);
+      expect(board.uniforms.uNeonMajor.value).toBe(0);
+      // The perimeter is not a cell boundary - it is where the board ends,
+      // and it is the one line a player judges a distance to. It survives at
+      // its authored strength, or the ruling would have deleted the board's
+      // edge along with its grid.
+      expect(board.uniforms.uNeonEdge.value).toBeGreaterThan(0.3);
+
+      board.dispose();
+    });
+  });
+
+  it('sizes the filament in the world once the seam is a real gap', () => {
+    const flat = build(false);
+    const tiled = build(true);
+
+    // Zero is the screen-space path, which every stone board keeps. The world
+    // sizing still governs the perimeter light on a line-free board, and every
+    // seam again under the compare toggle.
+    expect(flat.uniforms.uNeonWorld.value).toBe(0);
+    expect(tiled.uniforms.uNeonWorld.value).toBeGreaterThan(0);
+    // The core lies INSIDE the channel it lies in - a filament wider than its
+    // groove is a line painted across the tiles.
+    expect(tiled.uniforms.uNeonWorld.value * 2).toBeLessThan(SEAM_WIDTH);
+
+    flat.dispose();
+    tiled.dispose();
+  });
+
+  /**
+   * THE COMPARE TOGGLE RESTORES THE BOARD THAT WAS REVIEWED.
+   *
+   * `?gridlines=1` is not a second concept - it is the A side of an A/B, so it
+   * has to be the board the owner actually saw, down to the class ordering and
+   * the gains. If it drifted, the flip would be comparing the ruling against
+   * something nobody ruled on.
+   *
+   * THE GAINS MAY NOT REORDER A THEME. Swept over every theme, not the one
+   * this file happens to build: a per-class gain is exactly the kind of change
+   * that silently flips one theme's perimeter below its own emphasis grid, and
+   * the first draft of these numbers did that to DARK NEON.
+   */
+  it('restores the reviewed seam, ordering intact, under the compare toggle', () => {
+    Object.values(BOARD_THEMES).forEach((each) => {
+      const flat = createArenaBoardMaterial(
+        20,
+        each.checker,
+        each.grooveLight,
+        each.minorDepth,
+        each.majorDepth,
+        each,
+        false
+      );
+      const lineFree = createArenaBoardMaterial(
+        20,
+        each.checker,
+        each.grooveLight,
+        each.minorDepth,
+        each.majorDepth,
+        each,
+        true
+      );
+      const restored = createArenaBoardMaterial(
+        20,
+        each.checker,
+        each.grooveLight,
+        each.minorDepth,
+        each.majorDepth,
+        each,
+        true,
+        true
+      );
+
+      // The carve comes back at the theme's own authored depth.
+      expect(restored.uniforms.uMinorAlpha.value).toBe(each.minorDepth);
+      expect(restored.uniforms.uMajorAlpha.value).toBe(each.majorDepth);
+      // ...and the filament in its three classes, in order.
+      expect(restored.uniforms.uNeonMinor.value).toBeGreaterThan(
+        flat.uniforms.uNeonMinor.value
+      );
+      expect(restored.uniforms.uNeonMinor.value).toBeLessThan(
+        restored.uniforms.uNeonMajor.value
+      );
+      expect(restored.uniforms.uNeonMajor.value).toBeLessThan(
+        restored.uniforms.uNeonEdge.value
+      );
+      expect(restored.uniforms.uNeonEdge.value).toBeLessThanOrEqual(1);
+      // Compression, not amplification: the loudest class must stay under the
+      // clamp, or two themes would meet at 1.0 and stop being two themes.
+      expect(restored.uniforms.uNeonEdge.value).toBeLessThan(0.95);
+      // The toggle changes the SEAMS and nothing else - the board's edge light
+      // is the same light on both sides of the flip, so what the owner is
+      // comparing is exactly the grid.
+      expect(restored.uniforms.uNeonEdge.value).toBe(
+        lineFree.uniforms.uNeonEdge.value
+      );
+
+      flat.dispose();
+      lineFree.dispose();
+      restored.dispose();
+    });
+  });
+
+  /**
+   * A STONE BOARD HAS NO BLOCKS, SO IT HAS NOTHING TO READ A SEAM FROM.
+   *
+   * The ruling is "the tiles already provide for proper orientation", and the
+   * stone board has no tiles - its grooves are the only boundary it owns. So
+   * the flag may not reach it, which is also what keeps every shipped path
+   * byte-identical through this change.
+   */
+  it('never takes the seam ruling to a board that has no blocks', () => {
+    const stone = createArenaBoardMaterial(20, '#4a6178', '#7d94a8', 0.4, 0.58);
+    const flagged = createArenaBoardMaterial(
+      20,
+      '#4a6178',
+      '#7d94a8',
+      0.4,
+      0.58,
+      null,
+      false,
+      false
+    );
+    expect(flagged.uniforms.uMinorAlpha.value).toBe(
+      stone.uniforms.uMinorAlpha.value
+    );
+    expect(flagged.uniforms.uMajorAlpha.value).toBe(
+      stone.uniforms.uMajorAlpha.value
+    );
+    expect(stone.uniforms.uMinorAlpha.value).toBeGreaterThan(0);
+    stone.dispose();
+    flagged.dispose();
+  });
+
+  it('leaves the stone board byte-identical without a theme', () => {
+    const stone = createArenaBoardMaterial(20, '#4a6178', '#7d94a8', 0.4, 0.58);
+    expect(stone.uniforms.uBevelStrength.value).toBe(0);
+    expect(stone.uniforms.uNeonMinor.value).toBe(0);
+    expect(stone.uniforms.uNeonMajor.value).toBe(0);
+    expect(stone.uniforms.uNeonEdge.value).toBe(0);
+    expect(stone.uniforms.uNeonWorld.value).toBe(0);
+    expect(stone.uniforms.uCheckAlpha.value).toBeGreaterThan(0);
+    stone.dispose();
+  });
+
+  it('keeps the world-width branch uniform-coherent in the fragment shader', () => {
+    // One `bool` decided from a uniform, so the whole draw takes or skips the
+    // branch together - not a per-fragment divergence.
+    expect(ARENA_BOARD_FRAGMENT_SHADER).toContain('uniform float uNeonWorld;');
+    expect(ARENA_BOARD_FRAGMENT_SHADER).toContain('bool worldNeon = uNeonWorld > 0.0;');
+    expect(ARENA_BOARD_FRAGMENT_SHADER).toContain('cellWidth * uNeonWorldFloor');
+  });
+
+  it('mounts the tile field alone, and its ink only for the compare toggle', () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    const stone = render(<ArenaFloor gridSize={4} />);
+    const stoneMeshes = stone.container.querySelectorAll('mesh').length;
+    stone.unmount();
+
+    // ONE more object: the blocks. No line is drawn around a tile, so no
+    // second draw exists to draw one with.
+    const neon = render(<ArenaFloor gridSize={4} neonTheme={theme} />);
+    expect(neon.container.querySelectorAll('mesh').length).toBe(stoneMeshes + 1);
+    neon.unmount();
+
+    const lined = render(
+      <ArenaFloor gridSize={4} neonTheme={theme} seamLines />
+    );
+    expect(lined.container.querySelectorAll('mesh').length).toBe(stoneMeshes + 2);
+    lined.unmount();
+
+    consoleError.mockRestore();
+  });
+
+  it('disposes the field, its material and its ramp - and a hull only if built', () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const disposeMaterial = jest.spyOn(THREE.Material.prototype, 'dispose');
+    const disposeGeometry = jest.spyOn(THREE.BufferGeometry.prototype, 'dispose');
+    const disposeTexture = jest.spyOn(THREE.Texture.prototype, 'dispose');
+
+    const view = render(<ArenaFloor gridSize={4} neonTheme={theme} />);
+    const materialsBefore = disposeMaterial.mock.calls.length;
+    const geometriesBefore = disposeGeometry.mock.calls.length;
+    const texturesBefore = disposeTexture.mock.calls.length;
+    view.unmount();
+
+    // Wash + board pass + slab + halo + tile field. The two ink hull materials
+    // are module singletons and must survive for the next mount.
+    expect(disposeMaterial.mock.calls.length - materialsBefore).toBe(5);
+    // Slab body + tile field. No hull is built on a line-free board, so there
+    // is nothing third to release - an unmount that "disposed" three here
+    // would mean the board had quietly built a hull it never drew.
+    expect(disposeGeometry.mock.calls.length - geometriesBefore).toBe(2);
+    // The theme's own cel ramp. The shared greyscale ramp is not disposed.
+    expect(disposeTexture.mock.calls.length - texturesBefore).toBe(1);
+
+    const lined = render(
+      <ArenaFloor gridSize={4} neonTheme={theme} seamLines />
+    );
+    const linedGeometriesBefore = disposeGeometry.mock.calls.length;
+    lined.unmount();
+    // Slab body + tile field + the hull the toggle asked for.
+    expect(disposeGeometry.mock.calls.length - linedGeometriesBefore).toBe(3);
+
+    disposeMaterial.mockRestore();
+    disposeGeometry.mockRestore();
+    disposeTexture.mockRestore();
+    consoleError.mockRestore();
   });
 });

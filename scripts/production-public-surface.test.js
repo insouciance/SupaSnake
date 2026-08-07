@@ -17,7 +17,7 @@ describe('production public-surface contract', () => {
   }
 
   it('has one stable exact contract covering every production-on surface', () => {
-    expect(PRODUCTION_PUBLIC_FLAGS).toHaveLength(24);
+    expect(PRODUCTION_PUBLIC_FLAGS).toHaveLength(25);
     expect(PRODUCTION_PUBLIC_FLAGS).toEqual(
       [...PRODUCTION_PUBLIC_FLAGS].sort()
     );
@@ -37,6 +37,11 @@ describe('production public-surface contract', () => {
         // arms it and the rollback leg proves the off path — neither state is
         // ever inferred from an omitted flag.
         'NEXT_PUBLIC_SNAKE_COSMETICS',
+        // 90S-A: the ratified 90s composition - the character's cube law and
+        // the neon dynasty board, which are one picture. Named here for the
+        // same reason: the production leg renders it and the rollback leg
+        // renders the INK & AMBER board, and neither is left to inference.
+        'NEXT_PUBLIC_NINETIES_COMPOSITION',
       ])
     );
     expect(PRODUCTION_PUBLIC_SURFACE_HASH).toMatch(/^[0-9a-f]{64}$/);

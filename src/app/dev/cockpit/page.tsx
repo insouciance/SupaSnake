@@ -20,12 +20,41 @@
  * - ?pitch=1..88 (WebGL renderer only - judge board art at a candidate
  *   camera pitch in degrees from zenith. ET-5 ratified one viewpoint for the
  *   played board; this is a judging escape on a route that 404s in
- *   production, never a route back to a movable camera.)
+ *   production, never a route back to a movable camera. Board relief is a
+ *   function of exactly this number - a groove wall projects at sin(polar) -
+ *   which is why the 90s board was judged AT the ratified 28 rather than near
+ *   it.)
+ * - ?boardTheme=cyber|primal|cosmic|stone (NEON DYNASTY THEMES: picks a board
+ *   colour language independently of the scene's dynasty so all three can be
+ *   flipped against one fixed scene; `stone` is the INK & AMBER board, which
+ *   is also what `NEXT_PUBLIC_NINETIES_COMPOSITION=false` ships. Omitted
+ *   follows the flag, then ?dynasty.)
+ * - ?gridlines=1 (THE COMPARE TOGGLE. Owner ruling 2026-08-07: "we don't need
+ *   the gridlines now anymore, they are rather a disturbance. the tiles
+ *   already provide for proper orientation on the board." The board therefore
+ *   renders LINE-FREE by default - no ink around a tile, no filament in a cut,
+ *   no analytic carve - and its seams are read from the recess, the occlusion
+ *   and the authored shadow tone alone. This flag restores the drawn seam
+ *   exactly as it was reviewed, so the instinct can be checked against the two
+ *   boards rather than against a description of them. Themed board only; the
+ *   stone board's grooves are the only boundary it has.)
+ * - ?snake90s=1|guide|0 (the 90s cartoon character style, see
+ *   `src/components/game/screen/snake90s.ts`. Omitted follows
+ *   `NEXT_PUBLIC_NINETIES_COMPOSITION`; `guide` is the RATIFIED style, `1` is
+ *   the dynasty-hued variant that was rendered and not chosen, `0` forces the
+ *   classic snake. Read at module load, so the switcher below uses plain
+ *   anchors - a client-side route change would not re-resolve it.)
+ *
+ * The board and the character are ONE composition and are reviewed together:
+ * the board is the 90s cartoon language applied to the ground the 90s cartoon
+ * snake stands on. `?boardTheme=...&snake90s=guide` is the whole picture, and
+ * it is what the flag ships.
  *
  * Production: notFound() - this page never ships to players.
  */
 
 import { notFound } from 'next/navigation';
+import { parseBoardThemeSelection } from '@/components/game/screen/boardThemes';
 import {
   MAX_RENDER_TIER,
   type RenderTier,
@@ -83,9 +112,97 @@ function parsePitchDeg(value: string | undefined): number | undefined {
   return parsed;
 }
 
+/**
+ * An opt-IN switch, read strictly.
+ *
+ * `1`, `on` and `true` turn it on and anything else - including a missing
+ * value, an empty one and `0` - leaves it off. Never `value !== undefined`:
+ * `?gridlines=0` has to mean off, or the toggle cannot be turned back off from
+ * the address bar, which is the one thing a compare toggle exists to do.
+ */
+function parseFlag(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === '1' || normalized === 'on' || normalized === 'true';
+}
+
 function parseGeneCount(value: string | undefined): number {
   const parsed = Number(value ?? '4');
   return Number.isFinite(parsed) ? Math.max(0, Math.min(6, Math.floor(parsed))) : 4;
+}
+
+const SNAKE_STYLE_CHOICES: readonly { value: string | null; label: string }[] = [
+  { value: null, label: 'FLAG' },
+  { value: '0', label: 'CLASSIC' },
+  { value: '1', label: '90s HUE' },
+  { value: 'guide', label: '90s GUIDE' },
+];
+
+/**
+ * The A/B strip.
+ *
+ * A SIBLING of the prototype, not a child: `verify:cockpit-prototype` audits
+ * everything inside `[data-testid="cockpit-prototype"]` for board overlap,
+ * minimum text size and 44px touch targets, and a dev switcher is none of
+ * that fixture's business. Anchors rather than buttons or `<Link>` because
+ * the style is resolved once per document load by design.
+ *
+ * FLAG is the first choice and it is not a style: it is "whatever
+ * `NEXT_PUBLIC_NINETIES_COMPOSITION` says", which is what a player would get
+ * from this build. The other three force a style regardless, so the strip
+ * compares the shipped answer against the two alternatives and against the
+ * rollback rather than against a description of them.
+ */
+function SnakeStyleSwitcher({
+  params,
+  active,
+}: {
+  params: Record<string, string | string[] | undefined>;
+  active: string | undefined;
+}) {
+  return (
+    <nav
+      data-testid="snake90s-switcher"
+      style={{
+        position: 'fixed',
+        left: 8,
+        bottom: 8,
+        zIndex: 60,
+        display: 'flex',
+        gap: 4,
+        padding: 4,
+        borderRadius: 8,
+        background: 'rgba(6, 9, 13, 0.86)',
+        border: '1px solid rgba(255, 197, 61, 0.4)',
+        fontSize: 14,
+        fontFamily: 'ui-monospace, monospace',
+      }}
+    >
+      {SNAKE_STYLE_CHOICES.map((choice) => {
+        const next = new URLSearchParams();
+        for (const [key, value] of Object.entries(params)) {
+          const single = first(value);
+          if (key !== 'snake90s' && single !== undefined) next.set(key, single);
+        }
+        if (choice.value) next.set('snake90s', choice.value);
+        const selected = (active ?? null) === choice.value;
+        return (
+          <a
+            key={choice.label}
+            href={`/dev/cockpit?${next.toString()}`}
+            style={{
+              padding: '6px 10px',
+              borderRadius: 5,
+              color: selected ? '#12100d' : '#f7f2e6',
+              background: selected ? '#ffc53d' : 'transparent',
+              textDecoration: 'none',
+            }}
+          >
+            {choice.label}
+          </a>
+        );
+      })}
+    </nav>
+  );
 }
 
 export default async function CockpitFixturePage({ searchParams }: CockpitFixturePageProps) {
@@ -93,19 +210,24 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
 
   const params = await searchParams;
   return (
-    <CockpitPrototype
-      dynasty={parseDynasty(first(params.dynasty))}
-      state={parseState(first(params.state))}
-      mode={parseMode(first(params.mode))}
-      geneCount={parseGeneCount(first(params.genes))}
-      highContrast={first(params.contrast) === 'high'}
-      reducedMotion={first(params.motion) === 'reduced'}
-      arenaRenderer={first(params.renderer) === 'webgl' ? 'webgl' : 'static'}
-      arenaVariant={first(params.arena) === 'released' ? 'released' : 'cockpit'}
-      arenaEffects={first(params.effects) !== 'off'}
-      arenaDensity={first(params.density) === 'extreme' ? 'extreme' : 'standard'}
-      arenaRenderTier={parseRenderTier(first(params.tier))}
-      arenaPitchDeg={parsePitchDeg(first(params.pitch))}
-    />
+    <>
+      <CockpitPrototype
+        dynasty={parseDynasty(first(params.dynasty))}
+        state={parseState(first(params.state))}
+        mode={parseMode(first(params.mode))}
+        geneCount={parseGeneCount(first(params.genes))}
+        highContrast={first(params.contrast) === 'high'}
+        reducedMotion={first(params.motion) === 'reduced'}
+        arenaRenderer={first(params.renderer) === 'webgl' ? 'webgl' : 'static'}
+        arenaVariant={first(params.arena) === 'released' ? 'released' : 'cockpit'}
+        arenaEffects={first(params.effects) !== 'off'}
+        arenaDensity={first(params.density) === 'extreme' ? 'extreme' : 'standard'}
+        arenaRenderTier={parseRenderTier(first(params.tier))}
+        arenaPitchDeg={parsePitchDeg(first(params.pitch))}
+        arenaBoardTheme={parseBoardThemeSelection(first(params.boardTheme))}
+        arenaBoardSeamLines={parseFlag(first(params.gridlines))}
+      />
+      <SnakeStyleSwitcher params={params} active={first(params.snake90s)} />
+    </>
   );
 }

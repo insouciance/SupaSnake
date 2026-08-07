@@ -27,16 +27,29 @@ import * as THREE from 'three';
 import type { DynastyId } from '@/shared/types/game';
 import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 import { getSnakeRoundedGeometry } from './screen/gameRenderGeometry';
-import { createInkHullMaterial, getToonGradientMap } from './screen/inkAmber';
+import { getToonGradientMap } from './screen/inkAmber';
+import {
+  applySnakeFaceShading,
+  createSnakeInkHullMaterial,
+  resolveCubeEdge,
+  resolveSnakeBaseColor,
+  resolveSnakeEmissiveColor,
+  resolveSnakeEmissiveIntensity,
+  SNAKE_STYLE_PROFILE,
+} from './screen/snake90s';
 
 export const SNAKE_MODEL_URL = '/assets/3D/snake_voxel.glb';
 
 /** Head is clearly larger than body segments (grid cell = 1 unit); the
  *  head/body gap makes the creature read head-first at a glance. 0.75 is
  *  the eye-comfort compromise: enough gap for head primacy, small enough
- *  that inter-segment gaps don't strobe (accordion) through curves. */
-export const HEAD_SIZE = 0.9;
-export const BODY_SIZE = 0.75;
+ *  that inter-segment gaps don't strobe (accordion) through curves.
+ *
+ *  The 90s concept raises both (see `snake90s.ts` for the head's reasoning
+ *  and its hard sub-one-cell bound); the shipped style resolves to exactly
+ *  the values above. */
+export const HEAD_SIZE = SNAKE_STYLE_PROFILE.headSize;
+export const BODY_SIZE = SNAKE_STYLE_PROFILE.bodySize;
 
 /** Tail taper: the last TAPER_SEGMENTS body segments ease (smoothstep)
  *  from full trunk scale down to TAPER_MIN at the tail tip, so the snake
@@ -94,7 +107,8 @@ export const ENERGY_MIN = 0.94;
  * had this exact overlap and came back clean. Coplanar is the condition that
  * breaks; overlapping is not.
  */
-export const TRAIL_FOOTPRINT: readonly number[] = [0.66, 0.8, 0.9];
+export const TRAIL_FOOTPRINT: readonly number[] =
+  SNAKE_STYLE_PROFILE.trailFootprint;
 
 export function getTrailFootprint(level: number): number {
   if (level <= 0) return TRAIL_FOOTPRINT[0];
@@ -232,6 +246,67 @@ export function getTrailBreathe(index: number, elapsedSeconds: number): number {
   return 1 + TRAIL_BREATHE_AMPLITUDE * decay * Math.sin(phase);
 }
 
+// -----------------------------------------------------------------------------
+// THE CUBE LAW (90s concept, round 2) - two readouts, one edge
+// -----------------------------------------------------------------------------
+
+/**
+ * The cube's edge for one occupied cell, in grid units.
+ *
+ * Everything above says the same three things the shipped renderer says -
+ * FUSION, VACANCY, the live head zone - but says them on ONE axis-symmetric
+ * number instead of two independent ones, because the style guide's first
+ * clause is "true cubes (width = height = depth) ... never flattened into tiles
+ * or slabs" and two independent channels is precisely what a slab is.
+ *
+ *   fusion    -> the base edge (`getTrailFootprint`). Bigger cube, narrower gap.
+ *   head zone -> a small uniform lift that eases out over TRAIL_HEAD_ZONE.
+ *   vacancy   -> a uniform shrink over the last TRAIL_VACANCY_TICKS.
+ *
+ * and then the hard cap, which is the clause that makes "CLEARLY SEPARATED"
+ * true of every cell in every state rather than true on average: whatever
+ * fusion, the head zone and the breathe pulse have agreed between them, no cube
+ * may claim more than `maxEdge` of its tile.
+ *
+ * Returns the shipped FOOTPRINT untouched when no cubic style is active, so
+ * this is the one function both shapes flow through and the classic geometry
+ * cannot drift from it.
+ *
+ * Pure and allocation-free: called per cell per frame.
+ */
+export function getTrailCubeEdge(
+  level: number,
+  index: number,
+  length: number
+): number {
+  const cube = SNAKE_STYLE_PROFILE.cube;
+  const base = getTrailFootprint(level);
+  if (!cube) return base;
+  return resolveCubeEdge(
+    cube,
+    base,
+    index,
+    length,
+    TRAIL_HEAD_ZONE,
+    TRAIL_VACANCY_TICKS
+  );
+}
+
+/**
+ * How tall one occupied cell stands, whichever shape law is active. The coil
+ * seal hangs its highlight on the top of the body, and the top of the body is
+ * a different number under the two laws.
+ */
+export function getTrailCellHeight(
+  level: number,
+  index: number,
+  length: number
+): number {
+  return SNAKE_STYLE_PROFILE.cube
+    ? getTrailCubeEdge(level, index, length)
+    : getTrailHeight(index, length);
+}
+
 export interface SnakeSegmentMeshProps {
   position: [number, number, number];
   isHead: boolean;
@@ -317,15 +392,23 @@ export function getSnakeSegmentMaterial(
     // and the no-travelling-sparkle rule is now STRUCTURAL - a toon material
     // has no specular term for a moving light to race down a 400-cell coil.
     material = new THREE.MeshToonMaterial({
-      color: surface.baseColor,
-      emissive: surface.emissiveColor,
-      emissiveIntensity: isHead
-        ? surface.headEmissiveIntensity
-        : surface.bodyEmissiveIntensity,
+      color: resolveSnakeBaseColor(surface.baseColor, isHead ? 'head' : 'body'),
+      emissive: resolveSnakeEmissiveColor(surface.emissiveColor),
+      emissiveIntensity: resolveSnakeEmissiveIntensity(
+        isHead ? surface.headEmissiveIntensity : surface.bodyEmissiveIntensity,
+        isHead ? 'head' : 'body'
+      ),
       gradientMap: getToonGradientMap(),
       transparent: false,
       opacity: 1,
       depthWrite: true,
+    });
+    // 90s CARTOON: replaces the lit toon shading with the guide's authored
+    // tones, keyed to face orientation, and draws the segment's cuff. A no-op
+    // under the shipped style.
+    applySnakeFaceShading(material, {
+      role: isHead ? 'head' : 'body',
+      cacheKey: key,
     });
     materialCache.set(key, material);
   }
@@ -333,7 +416,7 @@ export function getSnakeSegmentMaterial(
 }
 
 /** INK & AMBER: the outline pass for the non-instanced segment paths. */
-const segmentHullMaterial = createInkHullMaterial();
+const segmentHullMaterial = createSnakeInkHullMaterial();
 
 /** Rounded procedural stand-ins used while (or if) the GLB is unavailable. */
 const fallbackHeadGeometry = getSnakeRoundedGeometry('head');

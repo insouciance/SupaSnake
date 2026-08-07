@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { LinearToneMapping } from 'three';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { DynastyId } from '@/shared/types/game';
-import type { Position } from '@/lib/game/SnakeGameLogic';
+import type { Direction, Position } from '@/lib/game/SnakeGameLogic';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { CANONICAL_FOV } from '@/components/game/canonicalViewpoint';
 import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
@@ -51,6 +51,17 @@ import {
   GAME_SCREEN_COLORS,
   getDynastyScreenTokens,
 } from '@/components/game/screen/gameScreenTokens';
+import {
+  BOARD_THEME_STONE,
+  resolveBoardTheme,
+  type BoardThemeSelection,
+} from '@/components/game/screen/boardThemes';
+import { IS_SNAKE_90S } from '@/components/game/screen/snake90s';
+import { NINETIES_COMPOSITION_ENABLED } from '@/lib/features/ninetiesComposition';
+import {
+  EMPTY_SNAKE_LOADOUT,
+  type SnakeCosmeticLoadout as CosmeticLoadout,
+} from '@/lib/cosmetics/snakeCosmetics';
 
 type PrototypeState = 'ready' | 'active' | 'portal' | 'apex';
 
@@ -77,12 +88,65 @@ interface ArenaPrototypeCanvasProps {
    * silhouettes against a candidate angle before anyone proposes amending the
    * ruling. `/dev/cockpit` 404s in production, so nothing here can reach a
    * player. Undefined - the default, and what every verifier measures - means
-   * the ratified pitch.
+   * the ratified pitch, which is also the pitch the 90s board was ratified at.
    */
   pitchDeg?: number;
+  /**
+   * NEON DYNASTY THEMES, dev-fixture only. A dynasty name picks that dynasty's
+   * board theme regardless of which dynasty the scene is showing, so all three
+   * themes can be flipped against one fixed scene; `'stone'` selects the INK &
+   * AMBER board for an A/B - which is also what the composition flag ships
+   * when it is off. Omitted follows the flag, then `dynasty`.
+   */
+  boardThemeSelection?: BoardThemeSelection;
+  /**
+   * THE COMPARE TOGGLE (dev-fixture only). Restores the drawn seam the
+   * line-free ruling retired - the tiles' ink hull, the analytic carve and the
+   * neon filament in every interior cut. It exists so the ruling can be flipped
+   * live rather than described: default false is the board the ruling
+   * describes, `?gridlines=1` is the board that was reviewed before it.
+   */
+  boardSeamLines?: boolean;
 }
 
 const GRID = GAME_CONFIG.board.gridSize;
+
+/**
+ * WHICH BOARD THE FIXTURE SHOWS WHEN NOBODY ASKED FOR ONE: whichever one this
+ * build ships.
+ *
+ * `?boardTheme=` still overrides in either direction, which is what the A/B is
+ * for. But an unqualified `/dev/cockpit?renderer=webgl` has to be a picture of
+ * the product, or every verifier that measures the fixture - draw calls, the
+ * canonical pose, the tier table - would be measuring a board no player is
+ * getting. `undefined` here means "follow `?dynasty`", which is the themed
+ * board; `'stone'` is the INK & AMBER board the rollback leg builds.
+ */
+const FIXTURE_BOARD_DEFAULT: BoardThemeSelection | undefined =
+  NINETIES_COMPOSITION_ENABLED ? undefined : BOARD_THEME_STONE;
+
+/**
+ * WHAT THE FIXTURE'S SNAKE IS WEARING, and why a fixture may say so at all.
+ *
+ * The character sheet's creature wears the shades and the braids in all five
+ * of its views - they are "part of the identity" (style guide sections 5 and
+ * 6) - and the round-3 review shots were argued from a head that had both. A
+ * fixture that posed a bare head would be a picture of a different character.
+ *
+ * This is a POSE, not a default. `/dev/cockpit` mounts no session and asks no
+ * server, so there is no loadout to respect here; on the played board and in
+ * the chamber the answer comes from `read_snake_loadout` (migration 069) and
+ * from nowhere else, and an unequipped player gets a bare head. The keys are
+ * the server's own component keys so the fixture cannot drift from the
+ * catalog that would supply them.
+ *
+ * Empty under the classic style: the rollback leg's fixture must show the
+ * snake it shipped, and that one wore nothing by default either.
+ */
+const FIXTURE_LOADOUT: CosmeticLoadout = IS_SNAKE_90S
+  ? { face: 'shades_deadpan', crown: 'braids_amber', food_skin: null }
+  : EMPTY_SNAKE_LOADOUT;
+
 const STATIC_SNAKE: readonly Position[] = [
   { x: 10, y: 0, z: 13 },
   { x: 10, y: 0, z: 14 },
@@ -111,6 +175,48 @@ function buildDenseSnake(): readonly Position[] {
 }
 
 const DENSE_SNAKE = buildDenseSnake();
+
+/**
+ * THE HEADING A FIXTURE SNAKE IS ACTUALLY TRAVELLING ON - derived from its own
+ * cells, never restated beside them.
+ *
+ * OWNER NOTE, ROUND 3, 2026-08-07: on the crowded board "the head's face
+ * (shades + braids) looks BACKWARD, toward its first tail segment, so the face
+ * is invisible in play."
+ *
+ * The renderer was innocent. `InstancedSnake` mounts the cosmetics at head-local
+ * z = +0.5 and yaws the head by `HEAD_FACE_YAW`, which maps DOWN(+Z) to 0,
+ * RIGHT(+X) to +pi/2, UP(-Z) to pi and LEFT(-X) to -pi/2 - and three's
+ * `rotation.y` sends (0,0,1) to (sin t, 0, cos t), so every one of those four
+ * lands the face on the direction of travel. The live board passes the engine's
+ * own `direction` into it and is therefore correct in all four.
+ *
+ * THIS FIXTURE WAS NOT. `buildDenseSnake` lays a boustrophedon starting at
+ * (3,3) and walking +X, so cell 0 - the HEAD, by the engine's own convention
+ * that `snake[0]` is the head - sits at the LEFT end of the first row with its
+ * first tail segment at (4,3). A snake whose previous cell is to its east is
+ * travelling WEST. The fixture declared `direction="RIGHT"`, which is exactly
+ * pi out, so the head yawed to face the segment behind it and buried its own
+ * face in the coil. `AimRenderer` was reading the same wrong constant and
+ * drawing the aim lane backward with it.
+ *
+ * So the constant is deleted rather than corrected: a heading typed next to a
+ * cell list is a second source for one fact, and this is what the second source
+ * being wrong looks like. Deriving it means a future fixture pose cannot
+ * disagree with itself.
+ */
+function headingOf(cells: readonly Position[]): Direction {
+  const head = cells[0];
+  const behind = cells[1] ?? head;
+  if (head.x !== behind.x) return head.x > behind.x ? 'RIGHT' : 'LEFT';
+  if (head.z !== behind.z) return head.z > behind.z ? 'DOWN' : 'UP';
+  return 'UP';
+}
+
+/** UP: the head at (10,13) came from (10,14). Unchanged by the derivation. */
+const STATIC_HEADING = headingOf(STATIC_SNAKE);
+/** LEFT: the head at (3,3) came from (4,3). This is the one that was pi out. */
+const DENSE_HEADING = headingOf(DENSE_SNAKE);
 const TERRAIN_SOURCES: readonly TerrainSource[] = [
   'cyber',
   'fortress',
@@ -173,8 +279,14 @@ function PrototypeScene({
   density = 'standard',
   forceRenderTier,
   pitchDeg,
+  boardThemeSelection,
+  boardSeamLines = false,
 }: ArenaPrototypeCanvasProps & { isMobile: boolean }) {
   const theme = getDynastyScreenTokens(dynasty);
+  const boardTheme = useMemo(
+    () => resolveBoardTheme(boardThemeSelection ?? FIXTURE_BOARD_DEFAULT, dynasty),
+    [boardThemeSelection, dynasty]
+  );
   const snake = density === 'extreme' ? DENSE_SNAKE : STATIC_SNAKE;
   // Same defect, same fix as the live board: three's default light target is
   // the world origin, which is a corner of a 0..20 board, so the orthographic
@@ -255,6 +367,8 @@ function PrototypeScene({
           gridSize={GRID}
           dynasty={dynasty}
           torus={dynasty === 'COSMIC'}
+          boardTheme={boardTheme}
+          boardSeamLines={boardSeamLines}
         />
       ) : (
         <>
@@ -271,7 +385,7 @@ function PrototypeScene({
       )}
       <AimRenderer
         headPosition={snake[0]}
-        direction={density === 'extreme' ? 'RIGHT' : 'UP'}
+        direction={density === 'extreme' ? DENSE_HEADING : STATIC_HEADING}
         queuedDirections={[]}
         snake={snake}
         gridSize={GRID}
@@ -288,18 +402,20 @@ function PrototypeScene({
             <InstancedSnakeFallback
               bufferRef={bufferRef}
               dynasty={dynasty}
-              direction="RIGHT"
+              direction={DENSE_HEADING}
               terrain={DENSE_TERRAIN}
               wrapActive={dynasty === 'COSMIC'}
+              loadout={FIXTURE_LOADOUT}
             />
           }
         >
           <InstancedSnake
             bufferRef={bufferRef}
             dynasty={dynasty}
-            direction="RIGHT"
+            direction={DENSE_HEADING}
             terrain={DENSE_TERRAIN}
             wrapActive={dynasty === 'COSMIC'}
+            loadout={FIXTURE_LOADOUT}
           />
         </AssetGate>
       ) : (
@@ -407,6 +523,8 @@ export function ArenaPrototypeCanvas({
   density = 'standard',
   forceRenderTier,
   pitchDeg,
+  boardThemeSelection,
+  boardSeamLines = false,
 }: ArenaPrototypeCanvasProps) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -425,6 +543,11 @@ export function ArenaPrototypeCanvas({
       data-fixture-density={density}
       data-fixture-snake-cells={density === 'extreme' ? DENSE_SNAKE.length : STATIC_SNAKE.length}
       data-fixture-terrain-cells={density === 'extreme' ? DENSE_TERRAIN.length : 0}
+      data-fixture-board-theme={
+        resolveBoardTheme(boardThemeSelection ?? FIXTURE_BOARD_DEFAULT, dynasty)
+          ?.id ?? 'stone'
+      }
+      data-fixture-seam-lines={boardSeamLines ? 'on' : 'off'}
       style={{ width: '100%', height: '100%', overflow: 'hidden' }}
     >
       <Canvas
@@ -452,6 +575,8 @@ export function ArenaPrototypeCanvas({
           density={density}
           forceRenderTier={forceRenderTier}
           pitchDeg={pitchDeg}
+          boardThemeSelection={boardThemeSelection}
+          boardSeamLines={boardSeamLines}
         />
         <RenderStatsProbe />
       </Canvas>

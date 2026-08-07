@@ -23,7 +23,8 @@ import {
   INTERPOLATION_CAPACITY,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
-import type { Position } from '@/lib/game/SnakeGameLogic';
+import type { Direction, Position } from '@/lib/game/SnakeGameLogic';
+import { COSMETIC_ANCHORS } from '@/components/home/SnakeCosmetics';
 import {
   createTrailFusionState,
   type TrailFusionState,
@@ -36,6 +37,7 @@ import {
 import {
   COIL_SEAL_DURATION_SECONDS,
   getInstancedBodyMaterial,
+  HEAD_FACE_YAW,
   SNAKE_HEAD_CENTER_Y,
   TRAIL_STRAIN_LUMINANCE_FLOOR,
   writeCoilSealInstances,
@@ -603,5 +605,67 @@ describe('selective interpolation: expressive front, settled interior', () => {
     expect(late.instances[0].position.z).toBeCloseTo(5.5, 10);
     expect(late.instances[0].scale.y).toBeGreaterThan(early.instances[0].scale.y);
     expect(getAlpha(buffer, 1150)).toBeCloseTo(0.5, 10);
+  });
+});
+
+/**
+ * WHICH WAY THE CHARACTER IS LOOKING - round 3, owner note.
+ *
+ * "On the crowded board the head's face (shades + braids) looks BACKWARD,
+ * toward its first tail segment, so the face is invisible in play."
+ *
+ * The head's face is not geometry: it is the `face` cosmetic anchor, at
+ * head-local z = +0.5, plus the eyes just outside it. The only thing that
+ * turns it toward the world is `HEAD_FACE_YAW`. That table was correct and the
+ * fixture that fed it was not - which is precisely why the join now has a test
+ * rather than two files that happen to agree.
+ */
+describe('the head faces where it is going', () => {
+  const forward = (yaw: number) => ({
+    x: Math.sin(yaw),
+    z: Math.cos(yaw),
+  });
+
+  it('sends the face anchor down the direction of travel, in all four', () => {
+    // The face lives on +Z in head-local space, so the yaw has to rotate +Z
+    // onto the travel axis. Asserted against the anchor rather than against a
+    // remembered number: moving the cosmetic and not the table breaks here.
+    expect(COSMETIC_ANCHORS.face.position[2]).toBeGreaterThan(0);
+    expect(COSMETIC_ANCHORS.face.position[0]).toBe(0);
+
+    const travel: Record<Direction, { x: number; z: number }> = {
+      UP: { x: 0, z: -1 },
+      DOWN: { x: 0, z: 1 },
+      LEFT: { x: -1, z: 0 },
+      RIGHT: { x: 1, z: 0 },
+    };
+    for (const direction of Object.keys(travel) as Direction[]) {
+      const face = forward(HEAD_FACE_YAW[direction]);
+      expect(face.x).toBeCloseTo(travel[direction].x, 10);
+      expect(face.z).toBeCloseTo(travel[direction].z, 10);
+      // And never the reverse, which is the failure that was reported: a table
+      // pi out passes an "axis" check and fails this one.
+      expect(face.x * travel[direction].x + face.z * travel[direction].z)
+        .toBeCloseTo(1, 10);
+    }
+  });
+
+  it('turns the crown away from the lead, so braids trail and shades lead', () => {
+    // The crown sits on top and is symmetric in plan, so the assertion that
+    // carries the owner's note is about the FACE and the segment behind the
+    // head: they must never point the same way. `snake[1]` is where the head
+    // was a tick ago, so "behind" is the negation of travel.
+    for (const direction of ['UP', 'DOWN', 'LEFT', 'RIGHT'] as Direction[]) {
+      const face = forward(HEAD_FACE_YAW[direction]);
+      const behind =
+        direction === 'UP'
+          ? { x: 0, z: 1 }
+          : direction === 'DOWN'
+            ? { x: 0, z: -1 }
+            : direction === 'LEFT'
+              ? { x: 1, z: 0 }
+              : { x: -1, z: 0 };
+      expect(face.x * behind.x + face.z * behind.z).toBeCloseTo(-1, 10);
+    }
   });
 });

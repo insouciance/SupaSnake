@@ -93,6 +93,11 @@ import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { GAME_SCREEN_COLORS } from '@/components/game/screen/gameScreenTokens';
+import {
+  boardThemeForDynasty,
+  type BoardTheme,
+} from '@/components/game/screen/boardThemes';
+import { NINETIES_COMPOSITION_ENABLED } from '@/lib/features/ninetiesComposition';
 import { createLightTarget } from '@/components/game/screen/inkAmber';
 import { useRenderQuality } from '@/components/game/screen/useRenderQuality';
 import type { RenderQuality } from '@/components/game/screen/renderQuality';
@@ -8124,6 +8129,28 @@ export default function GamePage() {
  */
 const GLYPH_COLORS = ['#22d3ee', '#f0abfc', '#fbbf24'];
 
+/**
+ * NEON DYNASTY THEMES on the LIVE board (90S-A).
+ *
+ * ONE gate, and it is the composition flag: the board and the character are one
+ * picture and they were ratified as one, so they cannot be armed separately.
+ * `NEXT_PUBLIC_NINETIES_COMPOSITION=false` returns null and `ArenaAssembly`
+ * renders the INK & AMBER stone board it always did.
+ *
+ * The theme FOLLOWS THE RUN'S DYNASTY. There is no per-run theme choice and
+ * this package does not invent one; the mapping is the single constant in
+ * `boardThemes.ts`, which is also the only line that changes if the pairing is
+ * ever re-ruled.
+ *
+ * No dev query escape here on purpose. `/dev/cockpit` mounts the same arena
+ * with `?boardTheme=` and `?snake90s=` for A/B work, and it can hold the two
+ * halves apart; the PLAYED board may only ever show a composition somebody
+ * approved, and half of one is not that.
+ */
+function boardThemeForRun(dynasty: DynastyId): BoardTheme | null {
+  return NINETIES_COMPOSITION_ENABLED ? boardThemeForDynasty(dynasty) : null;
+}
+
 interface GameBoardProps {
   dynasty: DynastyId;
   /** Tick-alpha interpolation buffer - the snake's per-frame position source. */
@@ -8196,6 +8223,8 @@ function GameBoard({
 }: GameBoardProps) {
   const theme = themeManager.getTheme(dynasty);
   const materialProfile = getGameMaterialProfile(dynasty);
+  // 90S-A: see boardThemeForRun. Null on the rollback leg. One per dynasty.
+  const neonBoardTheme = useMemo(() => boardThemeForRun(dynasty), [dynasty]);
   // COSMIC foods carry their constellation glyph color; other dynasties
   // keep the dynasty accent
   const foodColor =
@@ -8254,6 +8283,7 @@ function GameBoard({
           gridSize={GAME_CONFIG.board.gridSize}
           dynasty={dynasty}
           torus={torus}
+          boardTheme={neonBoardTheme}
         />
       ) : (
         <>

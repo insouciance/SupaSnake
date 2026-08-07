@@ -62,6 +62,16 @@ import {
   createInkHullMaterial,
   getToonGradientMap,
 } from '@/components/game/screen/inkAmber';
+import {
+  applyFaceKeyedShading,
+  BRAID_TONES,
+  FLAT_TONES,
+  IS_SNAKE_90S,
+  SHADE_TONES,
+  SNAKE_FACE_TONES,
+  SNAKE_STYLE_PROFILE,
+  type SnakeFaceToneSet,
+} from '@/components/game/screen/snake90s';
 import type { SnakeCosmeticSlot } from '@/shared/game/cosmeticSlots';
 import type { SnakeCosmeticLoadout } from '@/lib/cosmetics/snakeCosmetics';
 
@@ -119,14 +129,38 @@ export function SnakeCosmetic({
 // Shared material / geometry vocabulary
 // -----------------------------------------------------------------------------
 
+/** The active style's cosmetic vocabulary, or null under the shipped style. */
+const STYLE_COSMETICS = SNAKE_STYLE_PROFILE.cosmetics;
+
 /** Voxel family: chunky rounding, same construction as the snake's own box. */
 const partGeometry = createExactUnitRoundedBoxGeometry(0.14);
 /** Flat plates (lenses, glints) round less so their edge stays a hard line. */
 const plateGeometry = createExactUnitRoundedBoxGeometry(0.06);
+/**
+ * Braid blocks round LESS than the rest of the voxel family, and the reason is
+ * the highlight rather than the shape.
+ *
+ * The 90s concept paints its bright edge onto the outer part of a chamfer, so
+ * the chamfer's width IS the highlight's weight. On a body cube that reads as a
+ * line. On a braid block, which is a fifth of the size and near-black, a
+ * proportionally identical chamfer means the gold edge is most of what is left
+ * of the block on screen and the braids come out grey-gold instead of black
+ * with a lit edge. A tighter radius keeps the highlight a line on a black block
+ * - which is what the sheet draws.
+ */
+const braidGeometry = createExactUnitRoundedBoxGeometry(
+  STYLE_COSMETICS ? 0.09 : 0.14
+);
 
-/** Ink widths, in world cells. The head carries 0.058; detail carries less. */
-const SHADE_INK = 0.03;
-const BEAD_INK = 0.018;
+/**
+ * Ink widths, in world cells. The head carries 0.058; detail carries less.
+ *
+ * 90s CARTOON, round 2: the sheet inks the shades and the braid blocks as
+ * boldly as it inks the head, because between them they are most of the
+ * character's silhouette - so under the concept these step up with it.
+ */
+const SHADE_INK = STYLE_COSMETICS?.shadeInk ?? 0.03;
+const BEAD_INK = STYLE_COSMETICS?.beadInk ?? 0.018;
 
 const shadeHull = createInkHullMaterial(SHADE_INK);
 const beadHull = createInkHullMaterial(BEAD_INK);
@@ -191,17 +225,34 @@ function crownDepth(rise: number): { y: number; depth: number } {
   return { y: rise - depth / 2, depth };
 }
 
-function toonPart(color: string, emissiveIntensity = 0): THREE.MeshToonMaterial {
-  return new THREE.MeshToonMaterial({
+/**
+ * One cosmetic material.
+ *
+ * `tones` is the 90s concept's face-keyed treatment for this part - the same
+ * shader the creature itself wears, so a bead and a body cube are lit by the
+ * same authored decision rather than by two rigs that happen to agree today.
+ * Ignored entirely under the shipped style, which keeps its lit toon material.
+ */
+function toonPart(
+  color: string,
+  emissiveIntensity = 0,
+  tones: SnakeFaceToneSet | null = null,
+  cacheKey = ''
+): THREE.MeshToonMaterial {
+  const material = new THREE.MeshToonMaterial({
     color,
     emissive: emissiveIntensity > 0 ? color : '#000000',
     emissiveIntensity,
     gradientMap: getToonGradientMap(),
   });
+  if (tones && IS_SNAKE_90S) {
+    applyFaceKeyedShading(material, { tones, cacheKey });
+  }
+  return material;
 }
 
 /** Cosmetics stay inside the ink-and-amber palette. No new hues. */
-const COSMETIC_COLORS = {
+const SHIPPED_COSMETIC_COLORS = {
   /** Frame stock - lifted off pure ink so the outline still separates it. */
   frame: '#1a2432',
   /** Lens glass - the deepest value on the character. */
@@ -216,14 +267,52 @@ const COSMETIC_COLORS = {
   band: '#f2a03f',
 } as const;
 
-const frameMaterial = toonPart(COSMETIC_COLORS.frame);
-const lensMaterial = toonPart(COSMETIC_COLORS.lens);
+/**
+ * 90s CARTOON, round 2. The guide details both cosmetics by name, so they stop
+ * being INK & AMBER props and become the sheet's own:
+ *
+ *   "Shades - disproportionately large, thick BLACK frames, angular/blocky,
+ *    white pixel-style reflections."   -> the frame stops being slate.
+ *   "Braids - chunky simplified block segments, NEAR-BLACK, strong upper-edge
+ *    highlights, small cubic orange/gold BEADS at the ends."
+ *
+ * The braid's near-black is the value round 1's shipped cosmetic deliberately
+ * avoided ("at near-void value the beads lost their own shading"). That defect
+ * is fixed at its cause rather than by lifting the colour: `BRAID_TONES` puts
+ * an authored bone-gold line on every upper bevel, so a near-black block has a
+ * shape again without being anything other than near-black.
+ */
+const COSMETIC_COLORS = STYLE_COSMETICS
+  ? {
+      frame: STYLE_COSMETICS.frame,
+      lens: STYLE_COSMETICS.lens,
+      glint: STYLE_COSMETICS.glint,
+      braid: STYLE_COSMETICS.braid,
+      band: STYLE_COSMETICS.bead,
+    }
+  : SHIPPED_COSMETIC_COLORS;
+
+const frameMaterial = toonPart(
+  COSMETIC_COLORS.frame,
+  0,
+  SHADE_TONES,
+  'shade-frame'
+);
+const lensMaterial = toonPart(COSMETIC_COLORS.lens, 0, FLAT_TONES, 'shade-lens');
 const glintMaterial = new THREE.MeshBasicMaterial({
   color: COSMETIC_COLORS.glint,
   toneMapped: false,
 });
-const braidMaterial = toonPart(COSMETIC_COLORS.braid);
-const bandMaterial = toonPart(COSMETIC_COLORS.band, 0.25);
+const braidMaterial = toonPart(COSMETIC_COLORS.braid, 0, BRAID_TONES, 'braid');
+// The beads are the creature's own material language: cubic, orange/gold, and
+// carrying the same bright bevel the body cubes carry. The sheet draws them as
+// small body segments worn as jewellery, and that is exactly what they are.
+const bandMaterial = toonPart(
+  COSMETIC_COLORS.band,
+  STYLE_COSMETICS ? 0.14 : 0.25,
+  SNAKE_FACE_TONES,
+  'bead'
+);
 
 /** One outlined part. `ink` selects the line weight for its size class. */
 function Part({
@@ -265,7 +354,7 @@ function Part({
 // -----------------------------------------------------------------------------
 
 /** Lens centres, mirrored. */
-const LENS_X = 0.235;
+const LENS_X = STYLE_COSMETICS ? 0.245 : 0.235;
 /**
  * The pixel checker. Four bone squares zig-zagging across each lens - the one
  * detail that carries the whole "unbothered" read, and it is four boxes. The
@@ -273,15 +362,30 @@ const LENS_X = 0.235;
  * which is exactly why it survives being shrunk: a checker degrades into a
  * dot, a gradient degrades into mud.
  *
+ * ROUND 2 measured this off the sheet rather than inferring it, and the answer
+ * was that pass 3 already had it right: four squares per lens on a half-offset
+ * two-row checker, reading left to right as low-high-low-high. What was wrong
+ * was the SIZE - the sheet's squares are about a fifth of the lens width and
+ * touch at their corners, where these sat with air around them. So the
+ * positions are the same shape, scaled up with the lens.
+ *
  * Dropped entirely at board detail - each square would be under a pixel, and
  * a sub-pixel white speck on a moving head is scintillation, not sparkle.
  */
-const GLINT_STEPS: [number, number][] = [
-  [-0.088, 0.032],
-  [-0.03, -0.03],
-  [0.028, 0.032],
-  [0.086, -0.03],
-];
+const GLINT_STEPS: [number, number][] = STYLE_COSMETICS
+  ? [
+      [-0.105, 0.038],
+      [-0.035, -0.038],
+      [0.035, 0.038],
+      [0.105, -0.038],
+    ]
+  : [
+      [-0.088, 0.032],
+      [-0.03, -0.03],
+      [0.028, 0.032],
+      [0.086, -0.03],
+    ];
+const GLINT_SIZE = STYLE_COSMETICS ? 0.084 : 0.052;
 
 /**
  * A dark rounded-box lens bar sitting ON the face plane, overhanging the
@@ -301,6 +405,32 @@ const GLINT_STEPS: [number, number][] = [
 const BROW_PROUD = 0.11;
 const LENS_PROUD = 0.105;
 
+/**
+ * 90s CARTOON, round 2 - "DISPROPORTIONATELY LARGE, thick black frames,
+ * angular/blocky".
+ *
+ * The shape on the sheet is not a frame with two lenses in it. It is ONE black
+ * mass with a STEPPED bottom edge: a straight bar across the brow, and below it
+ * two blocks that hang lower, leaving a notch between them where the head's
+ * orange shows through. That notch is the only thing standing in for a nose,
+ * and it is what makes the bar read as worn rather than painted on.
+ *
+ * So the two "lenses" are modelled as part of the same black mass rather than
+ * as glass set into a frame: same value, overlapping the bar, no seam. The
+ * white checker is the only thing that says "lens" - which is exactly how the
+ * sheet says it.
+ *
+ * `overhang` past 1.0 is the guide's word "disproportionately" made literal:
+ * the bar is wider than the head it is on.
+ */
+const SHADE_BROW_HEIGHT = STYLE_COSMETICS?.browHeight ?? 0.1;
+const SHADE_OVERHANG = STYLE_COSMETICS?.shadeOverhang ?? 1.02;
+const SHADE_LENS_HEIGHT = STYLE_COSMETICS?.lensHeight ?? 0.19;
+const SHADE_LENS_WIDTH = STYLE_COSMETICS ? 0.46 : 0.4;
+/** The bar rides above centre; the lens blocks step down from it. */
+const SHADE_BROW_Y = STYLE_COSMETICS ? 0.075 : 0.055;
+const SHADE_LENS_Y = STYLE_COSMETICS ? -0.045 : -0.05;
+
 export function ShadesCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail }) {
   const board = detail === 'board';
   const brow = faceDepth(BROW_PROUD);
@@ -310,8 +440,12 @@ export function ShadesCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail })
       {/* Brow bar: the full-width frame, proud of the face plane and sunk into
           it. The front face is where it always was; only the buried half grew. */}
       <Part
-        position={[0, 0.055, brow.z]}
-        scale={[1.02, board ? 0.13 : 0.1, brow.depth]}
+        position={[0, SHADE_BROW_Y, brow.z]}
+        scale={[
+          SHADE_OVERHANG,
+          board ? SHADE_BROW_HEIGHT * 1.3 : SHADE_BROW_HEIGHT,
+          brow.depth,
+        ]}
         material={frameMaterial}
         ink="shade"
       />
@@ -319,9 +453,13 @@ export function ShadesCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail })
       {[-1, 1].map((side) => (
         <group key={side}>
           <Part
-            position={[side * LENS_X, -0.05, lens.z]}
-            scale={[0.4, board ? 0.22 : 0.19, lens.depth]}
-            rotation={[0, 0, side * -0.06]}
+            position={[side * LENS_X, SHADE_LENS_Y, lens.z]}
+            scale={[
+              SHADE_LENS_WIDTH,
+              board ? SHADE_LENS_HEIGHT * 1.15 : SHADE_LENS_HEIGHT,
+              lens.depth,
+            ]}
+            rotation={STYLE_COSMETICS ? undefined : [0, 0, side * -0.06]}
             material={lensMaterial}
             geometry={plateGeometry}
             ink="shade"
@@ -331,8 +469,12 @@ export function ShadesCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail })
             GLINT_STEPS.map(([gx, gy], i) => (
               <Part
                 key={i}
-                position={[side * LENS_X + side * gx, -0.05 + gy, 0.112]}
-                scale={[0.052, 0.052, 0.02]}
+                position={[
+                  side * LENS_X + side * gx,
+                  SHADE_LENS_Y + gy,
+                  LENS_PROUD + 0.007,
+                ]}
+                scale={[GLINT_SIZE, GLINT_SIZE, 0.02]}
                 material={glintMaterial}
                 geometry={plateGeometry}
                 ink="none"
@@ -344,8 +486,12 @@ export function ShadesCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail })
       {[-1, 1].map((side) => (
         <Part
           key={side}
-          position={[side * 0.5, 0.02, board ? -0.12 : -0.22]}
-          scale={[0.07, board ? 0.1 : 0.08, board ? 0.32 : 0.52]}
+          position={[side * 0.5, SHADE_BROW_Y - 0.035, board ? -0.12 : -0.22]}
+          scale={[
+            0.07,
+            board ? SHADE_BROW_HEIGHT : SHADE_BROW_HEIGHT * 0.8,
+            board ? 0.32 : 0.52,
+          ]}
           material={frameMaterial}
           ink="bead"
         />
@@ -361,7 +507,23 @@ export function ShadesCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail })
 /** Cornrows: chunky bars lying front-to-back along the head's top plane.
  *  This is the single highest-value cosmetic detail on the BOARD, because the
  *  arena camera sits at ~69 degrees and the crown is most of what it sees. */
-const CORNROW_X = [-0.33, -0.11, 0.11, 0.33];
+const CORNROW_X = STYLE_COSMETICS
+  ? [-0.345, -0.115, 0.115, 0.345]
+  : [-0.33, -0.11, 0.11, 0.33];
+
+/**
+ * 90s CARTOON, round 2 - "CHUNKY SIMPLIFIED BLOCK SEGMENTS ... never realistic
+ * hair", and the sheet means it literally: the crown is a FIELD of separate
+ * rounded blocks in rows, not four smooth bars. Every block has its own
+ * silhouette and its own bone-gold top edge, and the gaps between them are what
+ * make the crown read as braided rather than as a ridged helmet.
+ *
+ * Rows run front to back. Board detail keeps the front two: at 17px the back
+ * rows are behind the head's own horizon and cost two draw calls each to say
+ * nothing.
+ */
+const CORNROW_Z = [0.3, 0.06, -0.18, -0.4];
+const BOARD_CORNROW_ROWS = 2;
 
 interface StrandDef {
   /** Where the strand leaves the head, in crown-anchor space. */
@@ -396,27 +558,72 @@ const STRANDS: StrandDef[] = [
  * stops reading as segmented - which is the whole difference between a
  * voxel braid and a lump of hair.
  */
-const BEAD_PITCH = 0.21;
+const BEAD_PITCH = STYLE_COSMETICS?.braidPitch ?? 0.21;
 
 /**
  * How far a strand may fall at board detail.
  *
- * The board head's centre sits 0.45 cells above the plane and the head is
- * 0.9 cells, so a crown-anchored bead at head-local y = -0.06 is already at
- * the board plane. Three beads puts the amber tip at -0.055 - just clear -
- * and four would bury it in the floor. This is a derived limit, not a taste
- * call: raise the head and it can have more.
+ * The board head is `HEAD_SIZE` cells and its centre sits half of that above
+ * the plane, so head-local y = -0.5 IS the board plane and the crown anchor
+ * sits at head-local +0.5 - which puts the limit at crown-space y = -1.0. A
+ * strand's piece `i` sits at `origin.y - 0.055 - i * BEAD_PITCH`, so with the
+ * worst origin (-0.06) and the concept's wider pitch:
+ *
+ *      i = 2  ->  -0.605   clear (its underside reaches -0.71)
+ *      i = 3  ->  -0.850   its underside reaches -0.95, inside the plane
+ *
+ * Three pieces is the honest limit at this pitch, and it is derived rather
+ * than chosen: widen the pitch or shrink the head and this has to move.
  */
 const BOARD_STRAND_BEADS = 3;
 
-/** Bead size falls from the scalp to the tip; the band beads are chunkier. */
+/**
+ * Piece size along the strand.
+ *
+ * The shipped braid tapers from scalp to tip, which is how hair behaves. The
+ * sheet's braid does not: it is a stack of near-identical chunky blocks that
+ * stops at a bead, because "chunky simplified block segments" is a shape
+ * language and a taper is a simulation. So under the concept the taper is
+ * nearly flat and the last piece changes MATERIAL rather than size.
+ */
 function beadScale(index: number, count: number): number {
   const t = index / Math.max(1, count - 1);
-  return 0.195 - t * 0.07;
+  return STYLE_COSMETICS
+    ? STYLE_COSMETICS.braidBlock - t * 0.025
+    : 0.195 - t * 0.07;
 }
 
 /** How far a cornrow rises above the crown plane. See `crownDepth`. */
-const CORNROW_RISE = 0.12;
+const CORNROW_RISE = STYLE_COSMETICS ? 0.15 : 0.12;
+
+/** One row of the crown, at the active style: a chain of blocks, or one bar. */
+function CrownRow({ x, row, board }: { x: number; row: { y: number; depth: number }; board: boolean }) {
+  if (!STYLE_COSMETICS) {
+    return (
+      <Part
+        position={[x, row.y, 0.0]}
+        scale={[0.15, row.depth, 0.84]}
+        material={braidMaterial}
+        ink="bead"
+      />
+    );
+  }
+  const rows = board ? CORNROW_Z.slice(0, BOARD_CORNROW_ROWS) : CORNROW_Z;
+  return (
+    <>
+      {rows.map((z, i) => (
+        <Part
+          key={i}
+          position={[x, row.y, z]}
+          scale={[STYLE_COSMETICS.braidBlock, row.depth, 0.205]}
+          material={braidMaterial}
+          geometry={braidGeometry}
+          ink="bead"
+        />
+      ))}
+    </>
+  );
+}
 
 export function BraidsCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail }) {
   const board = detail === 'board';
@@ -429,13 +636,7 @@ export function BraidsCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail })
           the hull's underside surfaced through the crown for the same reason
           the brow fringed. `crownDepth` buries it. */}
       {CORNROW_X.map((x, i) => (
-        <Part
-          key={`row-${i}`}
-          position={[x, row.y, 0.0]}
-          scale={[0.15, row.depth, 0.84]}
-          material={braidMaterial}
-          ink="bead"
-        />
+        <CrownRow key={`row-${i}`} x={x} row={row} board={board} />
       ))}
       {/* Falling strands */}
       {strands.map((strand, s) => {
@@ -444,8 +645,10 @@ export function BraidsCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail })
           <group key={`strand-${s}`}>
             {Array.from({ length: beads }, (_, i) => {
               const size = beadScale(i, beads);
-              // The last bead (two, at hero detail) is the amber band.
-              const isBand = i >= beads - (board ? 1 : 2);
+              // The last bead (two, at hero detail) is the amber band. Under
+              // the concept only the final piece is gold: the sheet hangs ONE
+              // cubic bead at the end of each braid, and two makes a bracelet.
+              const isBand = i >= beads - (STYLE_COSMETICS || board ? 1 : 2);
               return (
                 <Part
                   key={i}
@@ -456,10 +659,14 @@ export function BraidsCosmetic({ detail = 'hero' }: { detail?: CosmeticDetail })
                   ]}
                   scale={
                     isBand
-                      ? [size * 1.08, size * 0.78, size * 1.08]
+                      ? STYLE_COSMETICS
+                        ? // A true cube, like every other bead on the creature.
+                          [size * 0.82, size * 0.82, size * 0.82]
+                        : [size * 1.08, size * 0.78, size * 1.08]
                       : [size, size, size]
                   }
                   material={isBand ? bandMaterial : braidMaterial}
+                  geometry={isBand ? partGeometry : braidGeometry}
                   ink="bead"
                 />
               );

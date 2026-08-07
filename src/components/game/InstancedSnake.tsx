@@ -88,7 +88,14 @@ import {
 } from '@/lib/game/trailCells';
 import { getGameMaterialProfile } from './screen/gameMaterialProfiles';
 import { getSnakeRoundedGeometry } from './screen/gameRenderGeometry';
-import { createInkHullMaterial } from './screen/inkAmber';
+import {
+  applySnakeFaceShading,
+  createSnakeInkHullMaterial,
+  GUIDE_PALETTE,
+  IS_SNAKE_90S,
+  resolveSnakeBaseColor,
+  SNAKE_STYLE_PROFILE,
+} from './screen/snake90s';
 import {
   EquippedCosmetics,
   occludesFeature,
@@ -105,6 +112,8 @@ import {
   getSnakeGeometries,
   getSnakeSegmentMaterial,
   getTrailBreathe,
+  getTrailCellHeight,
+  getTrailCubeEdge,
   getTrailFootprint,
   getTrailHeight,
   getTrailTone,
@@ -161,10 +170,24 @@ const _matrix = new THREE.Matrix4();
 const _energyColor = new THREE.Color();
 const _whiteColor = new THREE.Color(1, 1, 1);
 
+/** Per-instance colour for trunk and trail cells - the BODY swatch, which the
+ *  guide draws a value step below the head. */
 const TRAIL_BASE_COLORS: Record<DynastyId, THREE.Color> = {
-  CYBER: new THREE.Color(getGameMaterialProfile('CYBER').snake.baseColor),
-  PRIMAL: new THREE.Color(getGameMaterialProfile('PRIMAL').snake.baseColor),
-  COSMIC: new THREE.Color(getGameMaterialProfile('COSMIC').snake.baseColor),
+  CYBER: new THREE.Color(
+    resolveSnakeBaseColor(getGameMaterialProfile('CYBER').snake.baseColor, 'body')
+  ),
+  PRIMAL: new THREE.Color(
+    resolveSnakeBaseColor(
+      getGameMaterialProfile('PRIMAL').snake.baseColor,
+      'body'
+    )
+  ),
+  COSMIC: new THREE.Color(
+    resolveSnakeBaseColor(
+      getGameMaterialProfile('COSMIC').snake.baseColor,
+      'body'
+    )
+  ),
 };
 
 const TRAIL_STRAIN_COLORS: Record<StrainId, THREE.Color> = {
@@ -279,6 +302,13 @@ export function getInstancedBodyMaterial(
           '#endif'
       );
     };
+    // 90s CARTOON. Applied AFTER the emissive patch and composing with it:
+    // `Material.copy()` does not clone `onBeforeCompile`, so the clone above
+    // arrived bare and both patches have to be re-hung here.
+    applySnakeFaceShading(material, {
+      role: 'body',
+      cacheKey: `instanced:${dynasty}`,
+    });
     instancedBodyMaterialCache.set(dynasty, material);
   }
   return material;
@@ -291,8 +321,12 @@ const fallbackBodyGeometry = getSnakeRoundedGeometry('body');
 
 /** Eye pieces - the SpecimenChamber pattern, shared across mounts. */
 const eyeGeometry = new THREE.BoxGeometry(1, 1, 1);
-const eyeDarkMaterial = new THREE.MeshBasicMaterial({ color: '#06090d' });
-const eyeGlintMaterial = new THREE.MeshBasicMaterial({ color: '#e6edf3' });
+const eyeDarkMaterial = new THREE.MeshBasicMaterial({
+  color: IS_SNAKE_90S ? GUIDE_PALETTE.ink : '#06090d',
+});
+const eyeGlintMaterial = new THREE.MeshBasicMaterial({
+  color: IS_SNAKE_90S ? GUIDE_PALETTE.white : '#e6edf3',
+});
 const revivePhaseMaterial = new THREE.MeshBasicMaterial({
   color: '#f4d58d',
   transparent: true,
@@ -312,8 +346,8 @@ const revivePhaseMaterial = new THREE.MeshBasicMaterial({
  * does not) would force three to keep re-resolving one material against two
  * program variants every frame.
  */
-const trailHullMaterial = createInkHullMaterial();
-const headHullMaterial = createInkHullMaterial();
+const trailHullMaterial = createSnakeInkHullMaterial();
+const headHullMaterial = createSnakeInkHullMaterial();
 const REVIVE_PHASE_HEAD_SCALE = HEAD_SIZE * 1.14;
 const REVIVE_PHASE_HEAD_Y = (REVIVE_PHASE_HEAD_SCALE - HEAD_SIZE) / 2;
 
@@ -348,7 +382,21 @@ function getCoilSealMaterial(dynasty: DynastyId): THREE.MeshBasicMaterial {
  * Yaw that points the head's face (+Z local: the eyes' side) along each
  * grid heading. rotation.y = t maps local +Z to (sin t, 0, cos t).
  */
-const HEAD_FACE_YAW: Record<Direction, number> = {
+/**
+ * The yaw that puts the head's FACE on the direction of travel.
+ *
+ * Exported for one reason: it is half of a contract whose other half lives in
+ * `SnakeCosmetics` (`COSMETIC_ANCHORS.face` sits at head-local z = +0.5, and
+ * `SnakeEyes` at z = +0.51), and a contract split across two files with nothing
+ * asserting the join is a contract that drifts. Round 3's owner note - "the
+ * head's face looks backward" - was that failure arriving from a THIRD place, a
+ * fixture that declared a heading its own cells contradicted. The renderer was
+ * right; there was simply nothing that said so out loud.
+ *
+ * Three's `rotation.y = t` sends (0,0,1) to (sin t, 0, cos t), which is what
+ * makes each of these four land the +Z face on its own axis.
+ */
+export const HEAD_FACE_YAW: Record<Direction, number> = {
   UP: Math.PI, // -Z
   DOWN: 0, // +Z
   LEFT: -Math.PI / 2, // -X
@@ -414,14 +462,20 @@ function writeTrailCell(
     return instance;
   }
   const level = fusion.committed[cell];
-  const footprint =
-    getTrailFootprint(level) *
-    getSegmentScale(representative, length) *
-    transition;
-  const height =
-    getTrailHeight(representative, length) *
-    getTrailBreathe(representative, elapsed) *
-    transition;
+  const taper = getSegmentScale(representative, length) * transition;
+  const breathe = getTrailBreathe(representative, elapsed);
+  // THE CUBE LAW. Under the 90s concept one edge carries fusion, vacancy and
+  // the live head zone together, so the segment is a true cube at every state
+  // (see `getTrailCubeEdge`). Under the shipped style the two channels stay
+  // independent and these are exactly the lines that always ran.
+  const cubic = SNAKE_STYLE_PROFILE.cube !== null;
+  const edge = cubic
+    ? getTrailCubeEdge(level, representative, length) * taper * breathe
+    : 0;
+  const footprint = cubic ? edge : getTrailFootprint(level) * taper;
+  const height = cubic
+    ? edge
+    : getTrailHeight(representative, length) * breathe * transition;
   _position.set(
     trailCellX(cells, cell) + 0.5,
     centerYFromBase(FLOOR_CLEARANCE, height),
@@ -588,7 +642,7 @@ export function writeCoilSealInstances(
       ? buffer.prevCount + (buffer.count - buffer.prevCount) * eased
       : buffer.count;
     const bodyHeight =
-      getTrailHeight(representative, length) *
+      getTrailCellHeight(fusion.committed[cell], representative, length) *
       getTrailBreathe(representative, elapsed);
     const progress = age / COIL_SEAL_DURATION_SECONDS;
     const flare = Math.sin(progress * Math.PI);
@@ -657,12 +711,20 @@ function SnakeEyes() {
     <group>
       {[-1, 1].map((side) => (
         <group key={side} position={[side * 0.22, 0.16, 0.51]}>
-          <mesh geometry={eyeGeometry} material={eyeDarkMaterial} scale={0.16} />
+          <mesh
+            geometry={eyeGeometry}
+            material={eyeDarkMaterial}
+            scale={SNAKE_STYLE_PROFILE.eyePupilScale}
+          />
+          {/* 90s CARTOON: the guide's eye is a blunt WHITE pixel inside a
+              black block, not a specular glint on a dark bead. Same two
+              meshes, different proportions - the concept adds no draw call
+              to the head. */}
           <mesh
             geometry={eyeGeometry}
             material={eyeGlintMaterial}
-            scale={0.055}
-            position={[0.035, 0.04, 0.045]}
+            scale={SNAKE_STYLE_PROFILE.eyeGlintScale}
+            position={[...SNAKE_STYLE_PROFILE.eyeGlintOffset]}
           />
         </group>
       ))}
