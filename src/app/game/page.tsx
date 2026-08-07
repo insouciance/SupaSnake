@@ -6733,7 +6733,13 @@ export default function GamePage() {
       )}
 
       {/* Input instrumentation (?debug=input only) */}
-      {inputDebugEnabled && <InputDebugOverlay debugRef={inputDebugRef} />}
+      {inputDebugEnabled && (
+        <InputDebugOverlay
+          debugRef={inputDebugRef}
+          latencyRef={inputLatencyRef}
+          deathForensics={deathForensics}
+        />
+      )}
 
       {/* Pause Menu */}
       {!HUD_COCKPIT_V1_ENABLED && isPaused && !awaitingResumeInput && isPlaying && !isGameOver && (
@@ -7896,7 +7902,7 @@ export default function GamePage() {
         />
 
         {/* Dev-only render stats (?perf) */}
-        {perfEnabled && <PerfHUD />}
+        {perfEnabled && <PerfHUD jitterRef={tickJitterRef} />}
 
         {/* Bloom postprocessing - desktop only, to protect mobile framerate.
             The threshold keeps the lifted floor/grid out of the bloom while
