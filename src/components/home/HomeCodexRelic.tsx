@@ -39,9 +39,15 @@ export function HomeCodexRelic() {
       data-testid="home-codex-relic"
       className="pointer-events-auto group absolute right-[max(0.6rem,env(safe-area-inset-right,0px))] top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cosmic-glow sm:right-5 sm:h-14 sm:w-14"
     >
+      {/* A DRAWN RELIC, not a glass one. This was the last blurred object on
+          Home: a translucent void fill behind a 25%-alpha keyline under an
+          18px violet bloom and a backdrop blur, sitting one screen-width from
+          four chips that are printed. It keeps its diamond, its rotation and
+          its five runes, and gives up every mechanism that was lighting it -
+          flat cosmic fill, ink contour at the card weight, one hard block. */}
       <span
         aria-hidden="true"
-        className="absolute inset-[7px] rotate-45 rounded-[0.55rem] border border-cosmic-glow/25 bg-void-deep/55 shadow-[0_0_18px_rgba(166,66,245,0.16)] backdrop-blur-sm transition-[border-color,box-shadow,transform] duration-300 group-hover:rotate-[135deg] group-hover:border-cosmic-glow/65 group-hover:shadow-[0_0_24px_rgba(166,66,245,0.38)]"
+        className="absolute inset-[7px] rotate-45 rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink bg-cosmic shadow-[var(--ink-drop-2)] transition-transform duration-300 group-hover:rotate-[135deg]"
       />
       <span aria-hidden="true" className="absolute inset-0">
         {STRAIN_IDS.map((strain, index) => (
@@ -56,7 +62,7 @@ export function HomeCodexRelic() {
       </span>
       <span
         aria-hidden="true"
-        className="relative h-2.5 w-2.5 rotate-45 border border-bone-white/70 bg-cosmic-glow/30 shadow-[0_0_10px_rgba(166,66,245,0.8)]"
+        className="relative h-2.5 w-2.5 rotate-45 border-[length:var(--ink-w-1)] border-ink bg-venom-orange"
       />
       <NotificationBadge
         kind={badge.kind}
