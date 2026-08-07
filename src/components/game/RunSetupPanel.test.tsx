@@ -1,12 +1,21 @@
 /**
- * Run Setup — the constitutional shape (§5).
+ * Run Setup — THREE ELEMENTS (owner ruling, 2026-08-07).
  *
- * "First-time players see it fully preset: START is the only emphasized
- * action, zero required configuration. Everything adjustable, nothing
- * demanded." These assertions hold that line.
+ *   "Dynasty Favorites, Energy Reactor (zero is free play), and the Play
+ *    button. Everything else is noise."
+ *
+ * These assertions hold that shape from both sides: the three elements are
+ * present and in order, and the surfaces the ruling removed stay removed. The
+ * second half matters more than it looks — every one of those surfaces was
+ * added by a work package that had a good reason at the time, so the pressure
+ * to put one back is real and recurring, and a test is the only thing that
+ * makes the ruling survive it.
+ *
+ * §5's older line still governs and is unchanged by the cut: "START is the
+ * only emphasized action, zero required configuration."
  */
 
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { RunSetupPanel, type RunSetupPanelProps } from './RunSetupPanel';
 
 jest.mock('next/link', () => ({
@@ -27,51 +36,37 @@ function props(overrides: Partial<RunSetupPanelProps> = {}): RunSetupPanelProps 
     snake: { id: 'cyber-active', name: 'Ouro', generation: 1, dynasty: 'CYBER' },
     noSnakeAvailable: false,
     rulesetExplainer: 'CYBER accelerates as you eat.',
-    masteryLevel: 2,
-    modeLabel: 'Earning run',
-    aimLabel: 'Deadeye',
     startLabel: 'Play',
     startTestId: 'earn-start',
     isStarting: false,
     onStart: jest.fn(),
     onChooseSnake: jest.fn(),
     startError: null,
-    modeToggle: <div data-testid="mode-toggle" />,
-    aimSelector: <div data-testid="aim-selector" />,
+    energySelector: <div data-testid="energy-reactor" />,
     ...overrides,
   };
 }
 
-describe('RunSetupPanel', () => {
-  /**
-   * GENERATION IS PLAYER-MEANINGFUL IDENTITY, AND `game.spec.ts` PINS IT.
-   *
-   * The pre-game screen must always say which generation the equipped snake
-   * is; `e2e/game.spec.ts` asserts `/gen \d+/i` on it. That e2e leg needs
-   * auth and an isolated database, so it cannot run in a focused suite - and
-   * an assertion that can only be checked in the slowest gate is one that
-   * breaks late. This pins the same fact where a styling change is actually
-   * made, so a restyle that drops the label fails in seconds rather than in a
-   * 30-minute e2e leg.
-   *
-   * Both breakpoint variants are asserted because only one of them is ever
-   * displayed: the launch-chamber badge above `sm`, the inline lineage line
-   * below it. A change that keeps one and drops the other would still fail
-   * the e2e locator on half the viewports.
-   */
-  it('always names the equipped snake\'s generation, at both breakpoints', () => {
-    render(<RunSetupPanel {...props({
-      snake: { id: 'primal-active', name: 'Moss', generation: 7, dynasty: 'PRIMAL' },
-    })} />);
+describe('RunSetupPanel — the three elements', () => {
+  it('renders exactly the three elements, in order', () => {
+    render(<RunSetupPanel {...props()} />);
 
-    const labels = screen.getAllByText(/gen 7/i);
-    expect(labels.length).toBeGreaterThanOrEqual(2);
-    // The wide badge and the compact lineage line are different elements, and
-    // neither may be the only one that survives a restyle.
-    expect(labels.some((node) => node.textContent?.trim() === 'Gen 7')).toBe(true);
+    const favorites = screen.getByTestId('run-setup-favorites');
+    const reactor = screen.getByTestId('energy-reactor');
+    const play = screen.getByTestId('earn-start');
+
+    expect(favorites).toBeInTheDocument();
+    expect(reactor).toBeInTheDocument();
+    expect(play).toBeInTheDocument();
+
+    // (a) who is flying → (b) how much it costs → (c) go.
     expect(
-      labels.some((node) => /PRIMAL\s*·\s*Gen 7/.test(node.textContent ?? ''))
-    ).toBe(true);
+      favorites.compareDocumentPosition(reactor) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      reactor.compareDocumentPosition(play) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it('is one consolidated surface with one primary action', () => {
@@ -82,64 +77,34 @@ describe('RunSetupPanel', () => {
     expect(screen.getByTestId('earn-start')).toHaveClass('btn-go');
   });
 
-  it('presets the whole run: nothing is required before START', () => {
+  /**
+   * THE REMOVED SURFACES STAY REMOVED.
+   *
+   * Each of these was a real element with a real work package behind it. The
+   * ruling moved the aim picker to the Lab and the anomaly entry to Home, and
+   * deleted the difficulty ladder, the mode toggle (free play is the reactor
+   * at zero), the mission readouts, the mastery chip, the portal rail, the
+   * run summary and the "Tune run" disclosure that hid four of them.
+   */
+  it('carries none of the surfaces the ruling removed', () => {
     render(<RunSetupPanel {...props()} />);
-    const summary = screen.getByTestId('run-setup-summary');
-    expect(summary).toHaveTextContent('Earning run');
-    expect(summary).toHaveTextContent('Deadeye');
-    expect(summary).toHaveTextContent('Mastery M2');
+    for (const testId of [
+      'run-setup-adjust',
+      'run-setup-mode-control',
+      'run-setup-summary',
+      'setup-portal-rail',
+      'ladder-selector',
+      'ladder-readout',
+      'mastery-chip',
+    ]) {
+      expect(screen.queryByTestId(testId)).toBeNull();
+    }
+  });
+
+  it('presets the whole run: nothing is required before PLAY', () => {
+    render(<RunSetupPanel {...props()} />);
     expect(screen.getByTestId('earn-start')).toBeEnabled();
-  });
-
-  it('keeps ordinary mode direct while folding advanced controls into one disclosure', () => {
-    const { container } = render(<RunSetupPanel {...props()} />);
-    const disclosures = container.querySelectorAll(
-      '[data-testid="run-setup-adjust"]'
-    );
-    expect(disclosures).toHaveLength(1);
-    expect((disclosures[0] as HTMLDetailsElement).open).toBe(false);
-    expect(screen.getByTestId('run-setup-mode-control')).toContainElement(
-      screen.getByTestId('mode-toggle')
-    );
-    expect(disclosures[0]).not.toContainElement(screen.getByTestId('mode-toggle'));
-    expect(disclosures[0]).toContainElement(screen.getByTestId('aim-selector'));
-  });
-
-  it('names the equipped snake, its dynasty and its ruleset', () => {
-    render(<RunSetupPanel {...props()} />);
-    expect(screen.getByTestId('ruleset-explainer')).toHaveTextContent(
-      'CYBER accelerates as you eat.'
-    );
-    expect(screen.getByText('Ouro')).toBeInTheDocument();
-    expect(screen.getByTestId('run-setup-yield-multiplier')).toHaveTextContent(
-      'Payout ×1.00'
-    );
-  });
-
-  it('states the portal deal in the words the portal uses', () => {
-    // This hint is the first time a player meets the extraction, and it is
-    // the string `e2e/game.spec.ts` reads on the shipped flag shape. The
-    // legacy pre-game screen in `app/game/page.tsx` carries its own copy of
-    // it; both must say the same thing, because they are the same sentence.
-    render(<RunSetupPanel {...props()} />);
-    expect(
-      screen.getByText(/BANK at a portal pays \+25% · crash and you keep 60%/)
-    ).toBeInTheDocument();
-  });
-
-  it('opens a local snake chooser while keeping full Lab management contextual', () => {
-    const onChooseSnake = jest.fn();
-    const labHref =
-      '/lab?returnTo=%2Fgame%3FsetupMode%3Dearn%26setupEnergy%3D4%26setupRung%3D2';
-    render(<RunSetupPanel {...props({ onChooseSnake, labHref })} />);
-
-    fireEvent.click(screen.getByTestId('run-setup-snake-picker-trigger'));
-    expect(onChooseSnake).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('link', { name: /Snake Lab/i })).toHaveAttribute(
-      'href',
-      labHref
-    );
-    expect(screen.getByRole('link', { name: /Snake Lab/i })).not.toHaveClass('underline');
+    expect(screen.getByTestId('earn-start')).toHaveTextContent('Play');
   });
 
   it('starts through its callback', () => {
@@ -148,86 +113,76 @@ describe('RunSetupPanel', () => {
     fireEvent.click(screen.getByTestId('earn-start'));
     expect(onStart).toHaveBeenCalledTimes(1);
   });
+});
 
-  it('carries no commercial surface (Rule 7)', () => {
-    const { container } = render(<RunSetupPanel {...props()} />);
-    for (const anchor of Array.from(container.querySelectorAll('a[href]'))) {
-      expect(anchor.getAttribute('href')).not.toMatch(/shop|premium|checkout/i);
+describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
+  it('exposes exactly one dock per dynasty', () => {
+    render(<RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />);
+    expect(screen.getByTestId('run-setup-favorites').children).toHaveLength(3);
+    for (const dynasty of ['cyber', 'primal', 'cosmic']) {
+      expect(screen.getByTestId(`run-setup-favorite-${dynasty}`)).toBeInTheDocument();
     }
   });
 
-  it('offers a recovery path instead of START when no snake resolved', () => {
-    render(
-      <RunSetupPanel {...props({ snake: null, noSnakeAvailable: true })} />
-    );
-    expect(screen.queryByTestId('earn-start')).toBeNull();
-    expect(screen.queryByTestId('run-setup-adjust')).toBeNull();
-    expect(screen.getByText(/Return Home to Retry/i)).toBeInTheDocument();
-  });
-
-  it('surfaces a start error without hiding START', () => {
-    render(<RunSetupPanel {...props({ startError: 'Rate limited. Wait 5s' })} />);
-    expect(screen.getByText('Rate limited. Wait 5s')).toBeInTheDocument();
-    expect(screen.getByTestId('earn-start')).toBeInTheDocument();
-  });
-
   /**
-   * WP-2.07a. What the snake brings to the run is not an adjustable setting:
-   * a trait that removes every mutation food is something the player has to
-   * know BEFORE pressing START, so it sits outside the closed disclosure
-   * while everything tunable stays inside it.
+   * THE DOCK ALWAYS ANSWERS "WHO IS FLYING".
+   *
+   * Selection used to be `favorite.id === snake.id`, which is false in two
+   * ordinary situations — a player with no saved favorite, and a player flying
+   * a snake of that house that is not the saved one. In both, every dock
+   * rendered unselected and the panel silently stopped naming the snake about
+   * to launch. The flying DYNASTY is the equipped snake's, always.
    */
-  it('shows the heirloom block outside the disclosure, without a second emphasis', () => {
-    const { container } = render(
-      <RunSetupPanel
-        {...props({ heirloom: <div data-testid="heirloom-summary" /> })}
-      />
-    );
-    const heirloom = screen.getByTestId('heirloom-summary');
-    const disclosure = screen.getByTestId('run-setup-adjust');
-
-    expect(screen.getByTestId('run-setup')).toContainElement(heirloom);
-    expect(disclosure).not.toContainElement(heirloom);
-    // Still exactly one emphasised action (§5).
-    expect(container.querySelectorAll('.btn-go')).toHaveLength(1);
-  });
-
-  it('drops the heirloom block when no snake resolved', () => {
+  it('marks the equipped snake\'s dynasty as flying even with no saved favorite', () => {
     render(
       <RunSetupPanel
         {...props({
-          snake: null,
-          noSnakeAvailable: true,
-          heirloom: <div data-testid="heirloom-summary" />,
+          snake: { id: 'primal-active', name: 'Moss', generation: 7, dynasty: 'PRIMAL' },
+          favorites: { CYBER: null, PRIMAL: null, COSMIC: null },
+          onFavoriteDock: jest.fn(),
         })}
       />
     );
-    expect(screen.queryByTestId('heirloom-summary')).toBeNull();
+    expect(screen.getByTestId('run-setup-favorite-primal')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.getByText('Moss')).toBeInTheDocument();
   });
 
-  it('is character-first and exposes exactly one compact favorite dock per dynasty', () => {
+  it('shows the equipped snake, not the bookmark, in the flying dock', () => {
     render(
       <RunSetupPanel
         {...props({
+          snake: { id: 'primal-active', name: 'Moss', generation: 7, dynasty: 'PRIMAL' },
           favorites: {
-            CYBER: { id: 'cyber-active', name: 'Ouro', generation: 1, dynasty: 'CYBER' },
-            PRIMAL: { id: 'primal-favorite', name: 'Moss', generation: 4, dynasty: 'PRIMAL' },
-            COSMIC: null,
+            PRIMAL: { id: 'primal-other', name: 'Fern', generation: 2, dynasty: 'PRIMAL' },
           },
           onFavoriteDock: jest.fn(),
         })}
       />
     );
-
-    expect(screen.getByRole('img', { name: /Ouro, Generation 1, ready to launch/i })).toBeInTheDocument();
-    expect(screen.getByTestId('run-setup-favorites').children).toHaveLength(3);
-    expect(screen.getByTestId('run-setup-favorite-cyber')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('run-setup-favorite-cosmic')).toHaveAccessibleName(
-      'Choose COSMIC favorite snake'
-    );
+    expect(screen.getByText('Moss')).toBeInTheDocument();
+    expect(screen.queryByText('Fern')).toBeNull();
   });
 
-  it('uses favorite docks for direct equip and an empty-dock pick flow', () => {
+  /**
+   * GENERATION IS PLAYER-MEANINGFUL IDENTITY, AND `game.spec.ts` PINS IT.
+   * That e2e leg needs auth and an isolated database, so this pins the same
+   * fact where a styling change is actually made.
+   */
+  it('always names the equipped snake\'s generation', () => {
+    render(
+      <RunSetupPanel
+        {...props({
+          snake: { id: 'primal-active', name: 'Moss', generation: 7, dynasty: 'PRIMAL' },
+        })}
+      />
+    );
+    expect(screen.getByText(/gen 7/i)).toBeInTheDocument();
+  });
+
+  it('switches house through the dock callback, and opens the picker on your own', () => {
     const onFavoriteDock = jest.fn();
     const primal = { id: 'primal-favorite', name: 'Moss', generation: 4, dynasty: 'PRIMAL' };
     render(
@@ -243,42 +198,89 @@ describe('RunSetupPanel', () => {
     fireEvent.click(screen.getByTestId('run-setup-favorite-cosmic'));
     expect(onFavoriteDock).toHaveBeenNthCalledWith(1, 'PRIMAL', primal);
     expect(onFavoriteDock).toHaveBeenNthCalledWith(2, 'COSMIC', null);
+
+    // CYBER is the flying dynasty here. Its dock is NOT dead — a dead 92px
+    // target on the surface whose job is choosing a snake would strand a
+    // player who wants a different snake of the house they already fly — so
+    // it asks for a pick instead of re-equipping what is already equipped.
+    fireEvent.click(screen.getByTestId('run-setup-favorite-cyber'));
+    expect(onFavoriteDock).toHaveBeenNthCalledWith(3, 'CYBER', null);
   });
 
-  it('places the Energy reactor before inherited build detail and protects narrow labels', () => {
+  it('names the selected house and its ruleset, and nobody else\'s', () => {
+    render(<RunSetupPanel {...props()} />);
+    const explainer = screen.getByTestId('ruleset-explainer');
+    expect(explainer).toHaveTextContent('CYBER accelerates as you eat.');
+    expect(explainer).toHaveTextContent('CYBER');
+  });
+
+  /**
+   * WP-2.07a survives the cut, inside element (a). What the snake BRINGS is
+   * not a setting — it is a property of the snake you are flying — so it sits
+   * in the same section, and it must be visible before PLAY: a stake against
+   * unseen rules is the thing this rule exists to prevent.
+   */
+  it('shows what the flying snake brings, without a second emphasis', () => {
+    const { container } = render(
+      <RunSetupPanel
+        {...props({ heirloom: <div data-testid="heirloom-summary" /> })}
+      />
+    );
+    const heirloom = screen.getByTestId('heirloom-summary');
+    expect(screen.getByTestId('run-setup-favorites').parentElement).toContainElement(
+      heirloom
+    );
+    expect(container.querySelectorAll('.btn-go')).toHaveLength(1);
+  });
+
+  it('drops what the snake brings when no snake resolved', () => {
     render(
       <RunSetupPanel
         {...props({
-          energySelector: <div data-testid="energy-reactor" />,
+          snake: null,
+          noSnakeAvailable: true,
           heirloom: <div data-testid="heirloom-summary" />,
         })}
       />
     );
-    const energy = screen.getByTestId('energy-reactor');
-    const heirloom = screen.getByTestId('heirloom-summary');
-    expect(energy.compareDocumentPosition(heirloom) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByTestId('earn-start')).toHaveClass('whitespace-nowrap');
-    expect(screen.getByRole('link', { name: 'Snake Lab' })).toHaveClass('whitespace-nowrap');
+    expect(screen.queryByTestId('heirloom-summary')).toBeNull();
+  });
+
+  it('keeps the full roster and the Lab one tap away without emphasising either', () => {
+    const onChooseSnake = jest.fn();
+    const labHref =
+      '/lab?returnTo=%2Fgame%3FsetupMode%3Dearn%26setupEnergy%3D4';
+    const { container } = render(
+      <RunSetupPanel {...props({ onChooseSnake, labHref })} />
+    );
+
+    fireEvent.click(screen.getByTestId('run-setup-snake-picker-trigger'));
+    expect(onChooseSnake).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('link', { name: /Snake Lab/i })).toHaveAttribute(
+      'href',
+      labHref
+    );
+    expect(container.querySelectorAll('.btn-go')).toHaveLength(1);
   });
 });
 
-describe('portal rail explanations (WP-D)', () => {
-  it('lets a touch player pull the full rule for each portal verb', () => {
-    render(<RunSetupPanel {...props()} />);
-    const rail = screen.getByTestId('setup-portal-rail');
-    for (const verb of ['BANK', 'RIDE ON', 'TRADE UP']) {
-      expect(within(rail).getByText(verb)).toBeInTheDocument();
-    }
-    // The words are the lexicon's, so a rules change moves this surface too.
-    expect(
-      screen.getByTestId('info-popover-portal-rail-extraction_bank')
-    ).toHaveAttribute('aria-label', 'BANK: what it does');
+describe('RunSetupPanel — failure and recovery', () => {
+  it('offers a recovery path instead of PLAY when no snake resolved', () => {
+    render(<RunSetupPanel {...props({ snake: null, noSnakeAvailable: true })} />);
+    expect(screen.queryByTestId('earn-start')).toBeNull();
+    expect(screen.getByText(/Return Home to Retry/i)).toBeInTheDocument();
   });
 
-  it('keeps the shipped headline sentence exactly as it was', () => {
-    render(<RunSetupPanel {...props()} />);
-    expect(
-      screen.getByText(/BANK at a portal pays \+25% · crash and you keep 60%/)
-    ).toBeInTheDocument();
+  it('surfaces a start error without hiding PLAY', () => {
+    render(<RunSetupPanel {...props({ startError: 'Rate limited. Wait 5s' })} />);
+    expect(screen.getByText('Rate limited. Wait 5s')).toBeInTheDocument();
+    expect(screen.getByTestId('earn-start')).toBeInTheDocument();
+  });
+
+  it('carries no commercial surface (Rule 7)', () => {
+    const { container } = render(<RunSetupPanel {...props()} />);
+    for (const anchor of Array.from(container.querySelectorAll('a[href]'))) {
+      expect(anchor.getAttribute('href')).not.toMatch(/shop|premium|checkout/i);
+    }
   });
 });

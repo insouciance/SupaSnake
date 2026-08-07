@@ -179,7 +179,18 @@ export function PortalChoiceOverlay({
   // two names is the thing this deletes, not a rollout branch worth keeping.
   const continueLabel = 'RIDE ON';
   const mutateLabel = 'TRADE UP';
-  const option = 'min-h-11 rounded-[12px] border p-3 text-left transition-colors sm:p-4';
+  /*
+   * THE THREE CARDS ARE PRINTED OBJECTS (90S-PATH).
+   *
+   * Each option used to be a translucent wash behind a 60%-alpha hairline in
+   * its own hue - the pale-keyline pattern the global law retires, wearing
+   * three different colours. The hue moves OFF the line and INTO the fill,
+   * where it is the thing being read, and the line becomes the one contour
+   * the product draws. A hard block underneath makes the three read as cards
+   * lying on the dock rather than regions cut out of it.
+   */
+  const option =
+    'ink-outline-2 min-h-11 rounded-[var(--radius-card)] p-3 text-left shadow-[var(--ink-drop-void-2)] transition-colors sm:p-4';
 
   if (inspectingMutation && mutationLoom) {
     return (
@@ -213,20 +224,20 @@ export function PortalChoiceOverlay({
           measure, and the cockpit dock's own centring override agrees with it
           instead of contradicting it. */}
       <div className="panel-elevated modal-frame modal-tray flex max-h-full flex-col overflow-hidden p-3 [--glow:#f2a03f] animate-pop-in sm:h-[min(72dvh,45rem)] sm:p-5">
-        <header className="shrink-0 border-b border-scale-blue-light/20 pb-3">
+        <header className="shrink-0 border-b-[length:var(--ink-w-1)] border-b-[color:var(--void-stroke)] pb-3">
           <div className="flex items-start justify-between gap-3">
             {/* `min-w-0` on both children: without it a flex item refuses to
                 shrink below its longest word, and this row is the one piece
                 of the panel that cannot scroll. */}
             <div className="min-w-0">
               <p className="font-body text-sm font-bold uppercase tracking-[0.18em] text-[#7df9ff]">Paused for your choice</p>
-              <h2 id="portal-choice-title" className="heading-display text-xl text-[#7df9ff] text-glow sm:text-2xl">Portal Decision</h2>
+              <h2 id="portal-choice-title" className="heading-display heading-ink text-xl text-[#7df9ff] sm:text-2xl">Portal Decision</h2>
             </div>
             <p className="min-w-0 text-right font-body text-sm text-beige/50">{doorsPassed} ridden · {mutation.actionOrdinal - 1}/{mutation.actionLimit} trades</p>
           </div>
           {/* A REGION, NOT A SECOND TRAY: fill and radius, no border. The
               single bold outline belongs to the panel around all of this. */}
-          <div className="mt-3 grid grid-cols-2 gap-2 rounded-[12px] bg-void-deep/50 p-2" data-testid="portal-current-stake">
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-[var(--radius-card)] bg-[#132234] p-2" data-testid="portal-current-stake">
             <div className="min-w-0">
               <p className="font-body text-sm uppercase tracking-[0.1em] text-beige/45">Secure now</p>
               <p className="truncate font-mono text-base font-bold text-rarity-uncommon">{bankOutcomeLabel ?? `${formatAmount(bankDna)} DNA`}</p>
@@ -251,7 +262,7 @@ export function PortalChoiceOverlay({
               onClick={bank}
               aria-keyshortcuts="1 B"
               data-testid="portal-bank"
-              className={`${option} border-rarity-uncommon/60 bg-rarity-uncommon/10 disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
+              className={`${option} bg-[#17402f] disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
             >
               <span className="font-display text-sm text-rarity-uncommon">1 · BANK</span>
               <p className="mt-1 font-body text-sm text-beige">Secure {bankOutcomeLabel ?? `${formatAmount(bankDna)} DNA`} and end this run.</p>
@@ -264,7 +275,7 @@ export function PortalChoiceOverlay({
               onClick={() => onPass(activateMirror)}
               aria-keyshortcuts="2 C P"
               data-testid="portal-pass"
-              className={`${option} border-scale-blue-light/55 bg-void/55 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
+              className={`${option} bg-[#132234] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
             >
               <span className="font-display text-sm text-bone-white">2 · {continueLabel}</span>
               <p className="mt-1 font-body text-sm text-beige">Next portal in {cadence.intervalBase}±{cadence.intervalJitter} foods.</p>
@@ -281,7 +292,7 @@ export function PortalChoiceOverlay({
               onClick={inspectMutation}
               aria-keyshortcuts="3 M I"
               data-testid="portal-infuse"
-              className={`${option} border-cosmic/55 bg-cosmic/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
+              className={`${option} bg-[#2f2352] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7df9ff]`}
             >
               <span className="font-display text-sm text-cosmic">3 · {mutateLabel}</span>
               <p className="mt-1 font-body text-sm text-beige">
@@ -339,7 +350,7 @@ export function PortalChoiceOverlay({
               `infuseGrowth` segments onto the tail, because under Rule 15
               length is the difficulty clock and removing it would be a second
               reward, not a cost. The copy now says which way the body moves. */}
-          <p className="mt-3 rounded-[10px] bg-void-deep/45 px-3 py-2 font-body text-sm leading-snug text-beige/60">
+          <p className="mt-3 rounded-[var(--radius-card)] bg-[#132234] px-3 py-2 font-body text-sm leading-snug text-beige/60">
             BANK ends the run and pays out. {continueLabel} keeps playing — the payout grows, but crashing keeps less. {mutateLabel} takes a power and grows you to carry it.
           </p>
         </div>

@@ -161,7 +161,7 @@ export function WorldReportCard({ token }: WorldReportCardProps) {
           onClick={() => setDismissed(true)}
           data-testid="world-report-close"
           aria-label="Hide the world report"
-          className="label-arcade shrink-0 rounded border border-bone-white/20 px-2 py-1 text-xs text-bone-white/70 transition-colors hover:text-venom-orange-light"
+          className="btn-neutral label-arcade shrink-0 px-2 py-1 text-xs"
         >
           Hide
         </button>

@@ -48,6 +48,7 @@ import {
 import { StarterSelection } from '@/components/ftue/StarterSelection';
 import { SignalSurface } from '@/components/signal/SignalSurface';
 import { WorldReportCard } from '@/components/report/WorldReportCard';
+import { HomeAnomalyFlash } from '@/components/home/HomeAnomalyFlash';
 import { onAnalyticsReady, trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
 import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
@@ -898,6 +899,8 @@ export default function Home() {
             cannot stand in front of it (§7.5's "never blocking Launch", Rule
             10). Same authentication gate as the Signal below — a first run is
             never made to compete with a meta surface. */}
+        {isAuthenticated && !needsStarter && <HomeAnomalyFlash token={token} />}
+
         {isAuthenticated &&
           !needsStarter &&
           (!FTUE_V2_ENABLED || stats?.hasCompletedFirstRun === true) && (
@@ -924,7 +927,7 @@ export default function Home() {
               <button
                 key={mission.id}
                 onClick={mission.onSelect}
-                className="animate-fade-up flex items-center gap-2 label-arcade text-bone-white/90 hover:text-venom-orange-light transition-colors"
+                className="animate-fade-up flex items-center gap-2 label-arcade text-ink hover:text-venom-orange-dark transition-colors"
               >
                 {mission.beacon && (
                   <span
@@ -937,7 +940,7 @@ export default function Home() {
             ) : (
               <p
                 key={mission.id}
-                className="animate-fade-up label-arcade text-beige/80"
+                className="animate-fade-up label-arcade text-ink/70"
               >
                 {mission.text}
               </p>

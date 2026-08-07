@@ -63,7 +63,79 @@
      `src/components/game/screen/inkAmber.ts`.
      --------------------------------------------------------------------- */
   --ink-stroke: #0b1118;
-  --paper-stroke: #eef3f7;
+
+  /* ---------------------------------------------------------------------
+     THE WHITE LINE IS DEAD. (Owner ruling, 2026-08-07 — the global law.)
+
+       "the white tray borderlines need to go from everywhere in the game,
+        looks cheap."
+
+     The block above described a two-colour outline system: INK on light
+     grounds, PAPER (bone white) on dark ones. The PAPER half is retired.
+     It was never doing the work it claimed. A tray on the scrimmed board is
+     ALREADY a value step up from its ground; the white ring was decoration
+     laid on top of a separation the fill had already made, and a bright
+     hairline drawn at a uniform width around a soft dark rectangle is the
+     single most reliable way to make a surface read as a browser widget
+     instead of a drawn object.
+
+     ONE LINE COLOUR REMAINS, and it is always the DARKEST value in the
+     composition — never the lightest:
+
+       on light grounds   near-black ink            (--ink-stroke)
+       on dark grounds    darker-than-the-ground    (--void-stroke)
+
+     `--paper-stroke` survives ONLY as an alias so that every file still
+     naming it inherits the law without being touched. Do not write it in
+     new code; write `--contour`.
+
+     WHAT SEPARATES SURFACES NOW — four devices, and an outline is the last
+     of them, not the first:
+
+       1 FILL STEP   every surface is one flat authored fill, a step in
+                     value from what it sits on, inside its own hue family
+                     (a shadow is a darker, MORE saturated member of the
+                     hue — never a desaturated grey). See the fill ladders.
+       2 THE DROP    one hard displaced block, no blur (--ink-drop-*).
+       3 THE GAP     a FIELD of repeated elements separates by the gaps
+                     between its cells and never by drawn lines (T-3).
+       4 THE CONTOUR bold ink, and only where it earns its place: on the
+                     silhouette of an object the player treats as a thing.
+                     Never a hairline, never pale, never a keyline around a
+                     region that a fill step already separated.
+     --------------------------------------------------------------------- */
+  --void-stroke: #05090d;
+  --contour: var(--ink-stroke);
+  --paper-stroke: var(--void-stroke);
+
+  /* ---------------------------------------------------------------------
+     THE FILL LADDERS — device 1, and the reason the line could go.
+
+     Two grounds are legal (T-6): the home/chamber PAPER room and the
+     game's dark DECK. They are not two styles. Each ladder steps the same
+     way — the surface a player acts on steps UP from its ground, a recess
+     cut into that surface steps DOWN — so one recipe describes every panel
+     in the product and only the family changes with the room.
+
+     PAPER is warm and never neutral: `SpecimenChamber.tsx` already rules
+     that "a shadow on warm paper is warm, not neutral". DECK is cool and
+     low-chroma so that the board's neon stays the only saturated light on
+     the screen.
+     --------------------------------------------------------------------- */
+  --fill-paper-0: #fffaf1; /* the room: the chamber sweep */
+  --fill-paper-1: #fff3df; /* a card lying ON the room */
+  --fill-paper-2: #f3e2c4; /* a recess cut INTO a card */
+  --fill-paper-3: #e2cba4; /* a deep recess / an empty socket */
+  --fill-paper-shadow: #c0a887; /* the warm shade under paper */
+
+  /* The deck steps are SATURATED blue, not neutral slate. A desaturated
+     grey step is the "brushed metal" read the cel rule already threw out
+     once; a shadow is a darker, more saturated member of the hue family.
+     The gap between 0 and 1 is deliberately large - it is the only thing
+     separating a plate from the night sky now that no line does. */
+  --fill-deck-0: #0d1a26; /* a recess cut INTO an instrument */
+  --fill-deck-1: #22384f; /* the instrument plate: steps up off the sky */
+  --fill-deck-2: #2d4763; /* a raised / live region on that plate */
 
   --ink-w-1: 1.5px;
   --ink-w-2: 2.5px;
@@ -78,36 +150,23 @@
   --paper-border-3: var(--ink-w-3) solid var(--paper-stroke);
 
   /* ---------------------------------------------------------------------
-     THE DRAWN SHADE - the paper variant's companion line.
+     THE DRAWN SHADE - RETIRED with the white line it companioned.
 
-     A bold white frame with a single hard edge on both sides is a UI
-     KEYLINE: it reads as a border property, because nothing a hand draws
-     has two identical edges. Every paper frame therefore carries a thin
-     grey line immediately outside it, which is the shaded side of the
-     stroke - the same reason the ink hull exists on the board, expressed in
-     CSS.
+     It existed to answer one objection: a bold white frame with a single
+     hard edge on both sides reads as a UI KEYLINE, "because nothing a hand
+     draws has two identical edges". The grey companion was the correct fix
+     for the wrong premise. The premise was the white frame.
 
-     OUTSIDE, not inside, and that is measured rather than taste: these
-     frames sit on the near-void backdrop (#06090d..#0b1118), so a grey
-     companion inside the white would be a third value stacked between two
-     lights and read as a double border. Outside, the grey is the value
-     BETWEEN the white line and the room, which is exactly what the shaded
-     edge of a drawn stroke is.
-
-     It is deliberately one flat pixel at every tier. The shade is not a
-     second weight in the system - scaling it with the tier would turn a
-     modal's frame into a two-tone band - so tier 1, 2 and 3 all wear the
-     same hairline and only the white core steps.
-
-     Composition, not a variant: `--paper-shade-ring` sits OUTSIDE a
-     border-drawn paper outline, while `--paper-ring-*` draws the whole
-     stroke (white core plus shade) as spread rings for the surfaces that
-     may not change their border-width. Those surfaces are pixel-invariance
-     protected and `box-sizing: border-box` means a heavier border would
-     shrink the content box and move every child inside it.
+     Retired by WIDTH rather than by deletion, deliberately. Setting the
+     width to zero collapses `--paper-shade-ring` to a zero-spread ring and
+     each `--paper-ring-N` to a single stroke, so every one of the ~30
+     surfaces that composes these tokens loses its pale line and its grey
+     companion in one place, with no file touched and — this is the part
+     that matters on the cockpit — NOT ONE PIXEL MOVED. Every ring is still
+     a ring; only its colour and its spread changed.
      --------------------------------------------------------------------- */
-  --paper-shade: #93a6b6;
-  --paper-shade-w: 1px;
+  --paper-shade: transparent;
+  --paper-shade-w: 0px;
   --paper-shade-ring: 0 0 0 var(--paper-shade-w) var(--paper-shade);
 
   --paper-ring-1:
@@ -177,18 +236,20 @@
 }
 
 /* -----------------------------------------------------------------------
-   Outline utilities. Every element that carries the product line uses one
-   of these, so the whole system can be reweighted from the tokens above.
-   The paper tiers carry the drawn shade; the ink tiers do not, because ink
-   IS the shade - a near-black line on a light surface already has the
-   darkest value in the composition.
+   Outline utilities. One line colour, three role weights, so the product's
+   contour can be reweighted from the tokens above.
+
+   The `.paper-outline-*` names are kept as aliases of the ink tiers rather
+   than deleted: they now draw the dark-ground contour, which is what every
+   surface wearing them should have been drawing. New code writes
+   `.ink-outline-*`.
    ----------------------------------------------------------------------- */
 .ink-outline-1 { border: var(--ink-border-1); }
 .ink-outline-2 { border: var(--ink-border-2); }
 .ink-outline-3 { border: var(--ink-border-3); }
-.paper-outline-1 { border: var(--paper-border-1); box-shadow: var(--paper-shade-ring); }
-.paper-outline-2 { border: var(--paper-border-2); box-shadow: var(--paper-shade-ring); }
-.paper-outline-3 { border: var(--paper-border-3); box-shadow: var(--paper-shade-ring); }
+.paper-outline-1 { border: var(--paper-border-1); }
+.paper-outline-2 { border: var(--paper-border-2); }
+.paper-outline-3 { border: var(--paper-border-3); }
 
 /* Card presence: the outline plus the flat displaced block beneath it. */
 .ink-card { border: var(--ink-border-2); box-shadow: var(--ink-drop-2); }
@@ -234,10 +295,17 @@
    takes this class; everything inside it becomes a region, with fills and
    spacing but no second border, no second radius and no second glow.
 
-   PAPER, not ink, and that follows the adaptive rule rather than taste:
-   these panels are filled with the near-void gradient, whose dark stop is
-   #06090d - within a couple of values of --ink-stroke itself. An ink line
-   on that is a black line on black. Same call the arena tray makes.
+   The line used to be PAPER here, argued from "an ink line on a near-void
+   fill is a black line on black". True, and beside the point: it is not the
+   LINE's job to separate this tray from the room. The tray is a lit fill
+   sitting on an 86%-scrimmed board — the value step already separated it,
+   and the white ring only announced that a stylesheet had drawn a border.
+
+   So the ring goes dark and the tray gets what a printed panel actually
+   has: a contour that reads as the object's own edge, and a hard displaced
+   block underneath it. The 48px blurred shadow is retired for the same
+   reason the glow was — a soft shadow is a lighting effect, and this is a
+   printed object.
 
    --ink-w-3 because the tier is chosen by ROLE, and tier 3 is literally
    "modals, panels, trays".
@@ -254,7 +322,27 @@
   border-radius: var(--radius-tray);
   box-shadow:
     var(--paper-ring-3),
-    0 18px 48px rgba(0, 0, 0, 0.55);
+    var(--ink-drop-void-3);
+}
+
+/* The PAPER TRAY - the light-ground member of the same object.
+   Home is a paper room and Setup is a panel that arrives on top of the
+   game; both are the product talking to the player between runs, so both
+   wear paper and the path between them stops changing material. Ink
+   contour, warm authored fill, hard block. */
+.paper-tray {
+  background: var(--fill-paper-1);
+  border: var(--ink-border-3);
+  border-radius: var(--radius-tray);
+  box-shadow: var(--ink-drop-3);
+  color: var(--ink-stroke);
+}
+
+/* A region cut INTO a paper surface. No border: a recess is a fill step,
+   which is exactly the case device 4 exists to refuse. */
+.paper-recess {
+  background: var(--fill-paper-2);
+  border-radius: var(--radius-card);
 }
 
 /* -----------------------------------------------------------------------
@@ -448,74 +536,120 @@ canvas {
     min-height: 100dvh;
   }
 
-  /* Standard panel: gradient surface, hard 4px edge, elevation over the void */
+  /* THE PANEL - the card role, re-drawn.
+
+     Was: a 1px `scale-blue-light/60` keyline and a blurred drop. On the
+     #16202b panel gradient that translucent keyline lands LIGHTER than the
+     fill it edges, which is the pale-line failure wearing a different
+     colour - a hairline that announces a CSS border rather than drawing an
+     object. It goes the same way the white did: flat fill, ink contour at
+     the card weight, one hard displaced block. */
   .panel {
-    @apply bg-panel-gradient border border-scale-blue-light/60 rounded-arcade shadow-panel;
+    background-color: var(--fill-deck-1);
+    border: var(--ink-border-2);
+    border-radius: var(--radius-card);
+    box-shadow: var(--ink-drop-void-2);
   }
 
-  /* Elevated/hero panel with a soft top edge light */
+  /* Elevated/hero panel. The former "soft top edge light" was an 8%-white
+     inset - a specular highlight, which is a lighting effect on a printed
+     object. Elevation is now what elevation IS here: a bigger block. */
   .panel-elevated {
     @apply panel;
-    box-shadow:
-      inset 0 1px 0 rgba(230, 237, 243, 0.08),
-      0 4px 24px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--ink-drop-void-3);
   }
 
-  /* Dynasty-glow panel: set --glow via utility (e.g. [--glow:#00FFFF]) */
+  /* Dynasty panel: set --glow via utility (e.g. [--glow:#00FFFF]).
+     The blurred halo is retired; the accent is spent where it can be read
+     as information instead of atmosphere - a solid bar along the panel's
+     top edge, inside the contour. The variable name stays so no call site
+     has to change. */
   .panel-glow {
     @apply panel;
-    border-color: color-mix(in srgb, var(--glow, #f2a03f) 45%, transparent);
-    box-shadow:
-      0 0 18px -6px var(--glow, #f2a03f),
-      inset 0 1px 0 rgba(230, 237, 243, 0.06),
-      0 4px 24px rgba(0, 0, 0, 0.5);
+    background-image: linear-gradient(var(--glow, #f2a03f), var(--glow, #f2a03f));
+    background-repeat: no-repeat;
+    background-size: 100% 4px;
+    background-position: top left;
   }
 
   /* ==========================================================================
      Buttons - styleguide hierarchy (GO / STOP / NEUTRAL), now with glow
      ========================================================================== */
 
+  /* A BUTTON IS A PRESSED OBJECT.
+
+     Every button in the product used the same three ingredients as every
+     other surface: a light-ish 2px keyline and a coloured blur behind it.
+     Both are retired. A button is now a flat authored fill, the card
+     radius (T-9: "buttons, cards, list rows, HUD instruments"), an ink
+     contour at the card weight, and a hard displaced block.
+
+     THE PRESS IS THE BLOCK, NOT THE BUTTON. On :active the block collapses
+     and the object travels the same distance down-right into the space it
+     vacates, so the button's own edge lands exactly where the block's edge
+     was. That is a physical press, and it is also why the press cannot be
+     `scale()` any more - a drawn object does not get smaller when you
+     touch it. */
   .btn-arcade {
     font-family: var(--font-display), 'Russo One', Impact, sans-serif;
     text-transform: uppercase;
     letter-spacing: -0.02em;
-    border-radius: 4px;
-    border-width: 2px;
-    border-style: solid;
-    transition: transform 0.1s ease-out, box-shadow 0.15s ease-out, filter 0.15s ease-out;
+    border-radius: var(--radius-card);
+    border: var(--ink-border-2);
+    box-shadow: var(--ink-drop-2);
+    transition: transform 0.1s ease-out, box-shadow 0.1s ease-out, background-color 0.15s ease-out;
     -webkit-tap-highlight-color: transparent;
   }
 
-  .btn-arcade:hover { transform: scale(1.02); }
-  .btn-arcade:active { transform: scale(0.97); }
-
-  /* GO: primary action */
-  .btn-go {
-    @apply btn-arcade bg-cta-gradient text-ink border-venom-orange-light;
-    text-shadow: 0 1px 0 rgba(255, 233, 200, 0.3);
-    box-shadow: 0 0 14px -4px #f2a03f;
+  .btn-arcade:hover { box-shadow: var(--ink-drop-3); transform: translate(-1px, -1px); }
+  .btn-arcade:active {
+    box-shadow: 0 0 0 var(--ink-stroke);
+    transform: translate(3px, 3px);
   }
-  .btn-go:hover { box-shadow: 0 0 22px -2px #ffc247; }
+
+  /* GO: the primary action, and on Setup the single boldest object in the
+     product. Flat Venom Orange - the cta gradient is retired here because
+     a gradient is a lit surface and this one is printed. */
+  .btn-go {
+    @apply btn-arcade text-ink;
+    background-color: var(--venom-orange);
+    border-width: var(--ink-w-3);
+  }
+  .btn-go:hover { background-color: var(--venom-orange-light); }
   .btn-go:disabled {
     @apply opacity-40 cursor-not-allowed;
-    box-shadow: none;
+    box-shadow: var(--ink-drop-1);
     transform: none;
   }
 
+  /* PAPER: the neutral button ON A PAPER SURFACE. `.btn-neutral` carries the
+     deck plate value, which is correct on the board and foreign on the
+     chamber's stock - a slate-blue slab in the middle of a printed panel. Same
+     object, same contour, same block; the family follows the room. */
+  .btn-paper {
+    @apply btn-arcade text-ink;
+    background-color: #fffdf8;
+  }
+  .btn-paper:hover { background-color: var(--fill-paper-2); }
+
   /* STOP: destructive/exit */
   .btn-stop {
-    @apply btn-arcade bg-danger-gradient text-bone-white border-strike-red;
-    box-shadow: 0 0 12px -5px #a3324a;
+    @apply btn-arcade text-bone-white;
+    background-color: var(--strike-red);
   }
 
-  /* NEUTRAL: secondary */
+  /* NEUTRAL: secondary. On the deck it is the plate value; the contour and
+     the block are what make it a button rather than a region. */
   .btn-neutral {
-    @apply btn-arcade bg-scale-blue/80 text-bone-white border-scale-blue-light;
+    @apply btn-arcade text-bone-white;
+    background-color: var(--fill-deck-2);
+    box-shadow: var(--ink-drop-void-2);
   }
   .btn-neutral:hover {
-    @apply border-beige/60;
-    box-shadow: 0 0 10px -4px rgba(148, 163, 184, 0.7);
+    background-color: var(--scale-blue-light);
+    box-shadow: var(--ink-drop-void-3);
   }
+  .btn-neutral:active { box-shadow: 0 0 0 rgba(0, 0, 0, 0.72); }
 
   /* ==========================================================================
      Typography & effects
@@ -570,10 +704,13 @@ canvas {
     letter-spacing: 0.12em;
   }
 
-  /* Divider that fades out at the edges */
+  /* A RULE, not a fade. A line that dissolves at both ends is an airbrush
+     effect; a drawn divider is a stroke that starts and stops. Same weight
+     as a chip's contour so it reads as part of the same hand. */
   .divider-glow {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(242, 160, 63, 0.5), transparent);
+    height: var(--ink-w-1);
+    background: var(--ink-stroke);
+    border-radius: 0;
   }
 
   /* Shimmer sweep for celebratory highlights (pair with animate-shimmer) */

@@ -99,13 +99,13 @@ function ClanHero({ view }: { view: ClanFullView }) {
     >
       <div className="p-5 sm:p-6">
         <div className="flex items-start gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-arcade border border-white/25 bg-void/45 text-2xl text-bone-white">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-[color:var(--fill-deck-0)] text-2xl text-bone-white shadow-[var(--ink-drop-void-2)]">
             {emblem?.glyph ?? <IconShield size={24} />}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate heading-display text-3xl text-bone-white">{readString(clan, 'name')}</h1>
-              <span className="rounded-arcade border border-white/25 bg-void/35 px-2 py-1 font-display text-xs text-bone-white">[{readString(clan, 'tag')}]</span>
+              <span className="rounded-[var(--radius-chip)] border-[length:var(--ink-w-1)] border-ink bg-[color:var(--fill-deck-0)] px-2 py-1 font-display text-xs text-bone-white">[{readString(clan, 'tag')}]</span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
               <p className="font-body text-sm text-bone-white/70">
@@ -123,15 +123,15 @@ function ClanHero({ view }: { view: ClanFullView }) {
         </div>
 
         <div className="mt-5 grid grid-cols-3 gap-2">
-          <div className="rounded-arcade border border-white/15 bg-void/40 p-2.5 text-center">
+          <div className="rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] p-2.5 text-center">
             <p className="text-[10px] uppercase tracking-wide text-bone-white/55">Members</p>
             <p className="font-display text-lg text-bone-white">{memberCount}/{maxMembers || 12}</p>
           </div>
-          <div className="rounded-arcade border border-white/15 bg-void/40 p-2.5 text-center">
+          <div className="rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] p-2.5 text-center">
             <p className="text-[10px] uppercase tracking-wide text-bone-white/55">Best battle</p>
             <p className="font-display text-lg text-bone-white">{formatAmount(bestBattle)}</p>
           </div>
-          <div className="rounded-arcade border border-white/15 bg-void/40 p-2.5 text-center">
+          <div className="rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] p-2.5 text-center">
             <p className="text-[10px] uppercase tracking-wide text-bone-white/55">Lifetime</p>
             <p className="font-display text-lg text-bone-white">{formatAmount(lifetimeDepth)}</p>
           </div>

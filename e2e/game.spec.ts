@@ -9,7 +9,8 @@
 
 import { test, expect } from '@playwright/test';
 import {
-  openRunSetupControls,
+  chooseFreePlay,
+  runSetupReady,
   seedConsent,
   signInAsGuest,
   startRunIfSetupPresent,
@@ -74,9 +75,7 @@ test.describe('Home page', () => {
     await expect(page.getByTestId('first-movement-prompt')).toHaveText(
       'Swipe or press an arrow to move'
     );
-    await expect(
-      page.getByRole('heading', { name: /ready to (?:play|launch)/i })
-    ).not.toBeVisible();
+    await expect(runSetupReady(page).first()).not.toBeVisible();
     await expect(page.getByTestId('contracts-board')).not.toBeVisible();
     await expect(page.getByTestId('account-upgrade-modal')).not.toBeVisible();
 
@@ -94,9 +93,7 @@ test.describe('Equipped-snake game flow', () => {
     await signInAsGuest(page);
 
     await expect(page.getByText(/you need a snake before you can play/i)).not.toBeVisible();
-    await expect(page.getByRole('heading', { name: /ready to (?:play|launch)/i })).toBeVisible({
-      timeout: 30000,
-    });
+    await expect(runSetupReady(page).first()).toBeVisible({ timeout: 30000 });
     await expect(page.getByText(/primal/i).first()).toBeVisible();
     await expect(page.getByRole('link', { name: /choose your snake in the lab/i })).not.toBeVisible();
   });
@@ -106,9 +103,7 @@ test.describe('Equipped-snake game flow', () => {
     await signInAsGuest(page);
 
     // Pre-game screen: ready state with the equipped snake
-    await expect(
-      page.getByRole('heading', { name: /ready to (?:play|launch)/i })
-    ).toBeVisible({ timeout: 20000 });
+    await expect(runSetupReady(page).first()).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/gen \d+/i).first()).toBeVisible();
     // /^play\b/ matches the Play button ("Play" / "Play Again") but
     // not the AccountChip's "Playing as guest - save progress" label, which
@@ -121,26 +116,34 @@ test.describe('Equipped-snake game flow', () => {
     await expect(page.getByText(/^score$/i)).toBeVisible();
     await expect(page.getByText(/^dna$/i).first()).toBeVisible();
 
-    // Design v2: the equipped dynasty's ruleset identity line + the
-    // extraction banking hint are on the pre-game screen
+    // The equipped dynasty's ruleset identity line is on the pre-game screen.
     await expect(page.getByTestId('ruleset-explainer')).toBeVisible();
-    await expect(
-      page.getByText(/bank at a portal pays \+25%/i)
-    ).toBeVisible();
+    /*
+     * The extraction hint — "BANK at a portal pays +25% · crash and you keep
+     * 60%" — is no longer asserted here, and that is the 2026-08-07 ruling
+     * rather than a dropped requirement. Setup is three elements, and this
+     * sentence was a pre-run restatement of a rule the player meets, in full
+     * and with live numbers, at the portal itself: the decision dock spells
+     * out what BANK, RIDE ON and TRADE UP each do at the moment the choice is
+     * actually in front of them.
+     *
+     * Explaining a decision twice, once abstractly before the run and once
+     * concretely during it, is what the ruling calls noise. The concrete one
+     * stays.
+     */
+
   });
 
   test('mode toggle offers EARN and FREE PLAY; free play consumes no charge', async ({ page }) => {
     await seedConsent(page);
     await signInAsGuest(page);
 
-    // Pre-game overlay: both mode chips present. EARN is always the default
-    // and is never disabled (§8.6: the envelope gates no mode).
-    // WP-1.06 moves the chips behind the Run Setup disclosure; flag-off this
-    // is a no-op.
-    await openRunSetupControls(page);
-    await expect(page.getByTestId('mode-earn')).toBeVisible({ timeout: 20000 });
-    await expect(page.getByTestId('mode-free')).toBeVisible();
-    await expect(page.getByTestId('mode-earn')).toHaveAttribute('aria-pressed', 'true');
+    // THE MODE COLLAPSE (owner ruling 2026-08-07). There are no mode chips on
+    // Run Setup any more: `gameMode` is DERIVED from the Energy Reactor, so a
+    // seated rod IS an earning run and a cold core IS a free one. §8.6 still
+    // holds and is now structural rather than asserted — the envelope cannot
+    // gate a mode that no control selects. The rollback screen keeps the
+    // shipped chips, which is why the gesture lives in `chooseFreePlay`.
 
     // FREE PLAY remains a deliberate choice, never a demotion (§7.4).
     //
@@ -151,10 +154,7 @@ test.describe('Equipped-snake game flow', () => {
     // coordinates, and land the click on empty space - the reported flake.
     // The default actionability wait rides the shift out, and additionally
     // proves the chip is genuinely pressable rather than merely present.
-    await page.getByTestId('mode-free').click();
-    await expect(page.getByTestId('mode-free')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('mode-free-hint')).toHaveText(/no rewards — pure practice/i);
-    await expect(page.getByTestId('training-lab-link')).toHaveAttribute('href', '/training');
+    await chooseFreePlay(page);
 
     // The primary CTA becomes Free Play, which consumes no charge
     const freeStart = page.getByTestId('free-play-start');

@@ -189,7 +189,7 @@ export function HomeIdentityHud({
 
         {specimen ? (
           <p
-            className="mt-2 flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap font-display text-xs uppercase text-bone-white text-glow sm:text-base"
+            className="mt-2 flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap font-display text-xs uppercase text-ink sm:text-base"
             aria-label={specimenLabel ?? undefined}
             title={specimenLabel ?? undefined}
             data-testid="home-specimen-identity"
@@ -217,7 +217,7 @@ export function HomeIdentityHud({
         {clan ? (
           <Link
             href="/clan"
-            className="pointer-events-auto mt-1 inline-flex min-h-5 min-w-0 max-w-full items-center gap-1.5 overflow-hidden text-rarity-legendary transition-colors hover:text-rarity-legendary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rarity-legendary"
+            className="ink-chip pointer-events-auto mt-2 inline-flex min-h-7 min-w-0 max-w-full items-center gap-1.5 overflow-hidden rounded-full px-2.5 text-ink hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
             aria-label={clanLabel ?? undefined}
             title={clanLabel ?? undefined}
             data-testid="home-clan-identity"
@@ -234,22 +234,22 @@ export function HomeIdentityHud({
 
         {authenticated ? (
         <div
-          className="pointer-events-auto mx-auto mt-2 inline-flex min-h-9 items-center overflow-hidden rounded-full border border-scale-blue-light/40 bg-void-deep/55 px-3 shadow-panel backdrop-blur-sm"
+          className="ink-chip pointer-events-auto mx-auto mt-2 inline-flex min-h-9 items-center overflow-hidden rounded-full px-3"
           aria-label={`Wallet: ${dna === null ? 'DNA loading' : `${formatAmount(dna)} DNA`}${energy?.visible ? ` and ${energy.available} of ${energy.capacity} Energy` : ''}`}
           data-testid="home-wallet"
         >
           <span className="inline-flex items-center gap-1.5" title="DNA">
-            <IconDna size={14} className="text-rarity-uncommon" />
-            <span className="font-mono text-[10px] font-bold text-bone-white">
+            <IconDna size={14} className="text-[#1d6b3f]" />
+            <span className="font-mono text-[10px] font-bold text-ink">
               {dna === null ? '—' : formatAmount(dna)}
             </span>
           </span>
           {energy?.visible ? (
             <>
-              <span className="mx-2 h-4 w-px bg-scale-blue-light/55" aria-hidden="true" />
+              <span className="mx-2 h-4 w-[length:var(--ink-w-1)] bg-ink" aria-hidden="true" />
               <span className="inline-flex items-center gap-1.5" title="Recovered Energy">
-                <IconBolt size={14} className="text-venom-orange" />
-                <span className="font-mono text-[10px] font-bold text-bone-white">
+                <IconBolt size={14} className="text-venom-orange-dark" />
+                <span className="font-mono text-[10px] font-bold text-ink">
                   {energy.available}/{energy.capacity}
                 </span>
               </span>
@@ -263,7 +263,7 @@ export function HomeIdentityHud({
         href="/settings"
         aria-label="Settings"
         title="Settings"
-        className="pointer-events-auto col-start-3 row-start-1 inline-flex h-11 w-11 items-center justify-center justify-self-end self-start rounded-full text-beige/55 transition-[color,background-color] hover:bg-scale-blue/25 hover:text-venom-orange focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
+        className="ink-chip pointer-events-auto col-start-3 row-start-1 inline-flex h-11 w-11 items-center justify-center justify-self-end self-start rounded-full text-ink hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
         data-testid="home-settings"
       >
         <IconGear size={18} />

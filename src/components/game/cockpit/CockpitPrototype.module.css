@@ -38,7 +38,23 @@
    * until the field counts at a glance. That is the same trade the board makes
    * between a tile's top face and the shadow in its groove.
    */
-  --tray-fill: rgba(14, 25, 35, 0.97);
+  /*
+   * THE PLATE STEPS UP (90S-PATH).
+   *
+   * The white ring around each instrument is gone, so the tray's own value
+   * now has to do the job the ring was pretending to do. It could, all
+   * along: the difference between an instrument and the night sky was
+   * always going to be read as a value step, and 14/25/35 against a
+   * #030609 ground was a step the ring let us underspend on.
+   *
+   * Raised to the deck ladder's plate value. The recess is UNCHANGED, so
+   * the tray-to-recess step - "the whole model", the only thing telling a
+   * player there are six gene sockets and five strain gauges - gets wider
+   * rather than narrower. The small alpha stays for the reason it was
+   * given: a tray you can see a star through is seated in the picture
+   * rather than laid on top of it.
+   */
+  --tray-fill: rgba(34, 56, 79, 0.97);
   --cell-recess: rgba(2, 6, 10, 0.9);
   isolation: isolate;
   overflow: hidden;
@@ -171,9 +187,12 @@
   overflow: hidden;
   /* The 1px box the tray always had, now COLOURED rather than resized. It is
      the outermost 1px of the tier-2 stroke; the inset ring below supplies the
-     remaining 1.5px, so the white core is one contiguous 2.5px line with the
-     shade sitting directly against its outer edge and no fill showing between
-     them. Never widen this: the width is the geometry, the colour is the art. */
+     remaining 1.5px, so the line is one contiguous 2.5px stroke. Never widen
+     this: the width is the geometry, the colour is the art — and the colour
+     is now the ground's own darkest value, because `--paper-stroke` resolves
+     to `--void-stroke` under the global law. The companion shade collapsed to
+     zero spread with it; the ring below is doing nothing it was not doing
+     before except being dark. */
   border: 1px solid var(--paper-stroke);
   border-radius: var(--radius-card);
   background: var(--tray-fill);
@@ -406,9 +425,13 @@
   background: color-mix(in srgb, var(--dynasty-primary) 26%, #070d13);
 }
 
+/* Spent reads by VALUE, not by fading. `opacity` + `saturate` dropped the
+   whole cell toward its ground, which is the one thing that must keep
+   working here: the field is counted by the tray-to-recess step. The socket
+   keeps its tint and loses its charge. */
 .geneSocketSpent {
-  opacity: 0.42;
-  filter: saturate(0.35);
+  opacity: 0.62;
+  filter: saturate(0.5);
 }
 
 /* A struck-through socket. This mark is allowed to be drawn where the socket's
@@ -421,7 +444,11 @@
   width: 130%;
   height: 3px;
   transform: rotate(-45deg);
-  background: var(--bone);
+  /* Was bone. A pale bar is the white line in its last hiding place - the
+     one mark on the deck that was lighter than everything around it. A
+     strike is a drawn mark, and a drawn mark is ink. It reads because the
+     socket beneath it is a lit dynasty tint, not because the bar glows. */
+  background: var(--void-stroke);
 }
 
 .geneSocket svg {
@@ -499,7 +526,13 @@
   height: 42px;
   margin: 0 auto;
   place-items: center;
-  border: var(--ink-w-1) solid rgba(143, 163, 182, 0.42);
+  /* The dial is a ROUND OBJECT, so it keeps its contour (T-9: roundness is
+     its shape, not a radius decision) - but the contour was a pale steel
+     hairline, which is the white line wearing a grey coat. Ink, at the card
+     weight, so `.portalDialLive` below changes only the COLOUR: the dial no
+     longer thickens by a pixel when the portal arrives, which was a geometry
+     change standing in for an event. */
+  border: var(--ink-w-2) solid var(--void-stroke);
   border-radius: 50%;
   color: rgba(120, 151, 174, 0.55);
   background: var(--cell-recess);
@@ -513,7 +546,7 @@
 .portalProgress {
   position: absolute;
   inset: -4px;
-  border: 2px solid rgba(99, 131, 153, 0.24);
+  border: 2px solid var(--void-stroke);
   border-top-color: transparent;
   border-radius: 50%;
 }
@@ -1044,8 +1077,14 @@
    *
    * Neither touches layout: `verify:cockpit-decisions` measures this panel's
    * rectangle and its tray width, and a fill and a shadow move neither.
+   *
+   * THE DOCK STEPS ABOVE THE DECK (90S-PATH). With the ring dark, the panel
+   * needed a value of its own or it would have read as an instrument-coloured
+   * rectangle among instruments. It takes the deck ladder's RAISED value, one
+   * step above every tray around it, so the hierarchy a player reads is the
+   * hierarchy the composition has: sky, plate, decision.
    */
-  background: rgba(9, 17, 25, 0.985) !important;
+  background: rgba(45, 71, 99, 0.985) !important;
   box-shadow:
     var(--paper-ring-3),
     var(--ink-drop-void-3) !important;

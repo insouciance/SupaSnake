@@ -16,7 +16,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-import { seedConsent, signInAsGuest } from './helpers';
+import { dismissTarget, seedConsent, signInAsGuest } from './helpers';
 
 const PHONE = { width: 390, height: 844 } as const;
 const GENOME_V2_ENABLED = process.env.NEXT_PUBLIC_GENOME_V2 === 'true';
@@ -134,13 +134,14 @@ test.describe('Run Setup explains the snake on touch', () => {
     await expect(panel).toBeHidden();
     await trigger.tap();
     await expect(panel).toBeVisible();
-    // Dismiss on a neutral heading that exists in both flag branches. The
-    // panel can legitimately cover part of its own heirloom block when space
-    // is tight; an "outside" test must target a point that is actually
-    // outside, and must not click through onto a setup control.
-    await page
-      .getByRole('heading', { name: /ready to (?:play|launch)/i })
-      .dispatchEvent('touchstart');
+    // Dismiss on a neutral point that exists in both flag branches. Run Setup
+    // has no heading since the 2026-08-07 three-element ruling, so the target
+    // is the "who is flying" label on the production leg and the rollback
+    // screen's own heading on the other. The panel can legitimately cover part
+    // of its own heirloom block when space is tight, so an "outside" test must
+    // target a point that is actually outside and must not click through onto
+    // a setup control — a label is inert on both legs.
+    await dismissTarget(page).first().dispatchEvent('touchstart');
     await expect(panel).toBeHidden();
   });
 

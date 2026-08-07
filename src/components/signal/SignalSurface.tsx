@@ -242,7 +242,7 @@ export function SignalSurface({
         aria-expanded={open}
         aria-controls="signal-card"
         data-testid="signal-chip"
-        className="label-arcade relative flex items-center gap-2 rounded-full border border-bone-white/20 px-3 py-1 text-bone-white/80 transition-colors hover:text-venom-orange-light"
+        className="ink-chip label-arcade relative flex items-center gap-2 rounded-full px-3 py-1 text-ink transition-colors hover:bg-venom-orange-light"
       >
         {/* A beacon, never a badge with a number counting down. The day is
             open; nothing about it is running out on the player (Rule 5). */}
@@ -283,7 +283,7 @@ export function SignalSurface({
                   setState('loading');
                   setReloads((n) => n + 1);
                 }}
-                className="label-arcade rounded border border-bone-white/30 px-4 py-2 text-sm text-bone-white/80 transition-colors hover:text-venom-orange-light"
+                className="btn-neutral label-arcade px-4 py-2 text-sm"
                 data-testid="signal-retry"
               >
                 Try again
@@ -348,7 +348,7 @@ export function SignalSurface({
                       disabled={taking}
                       onClick={() => void handleTake(objective.id)}
                       data-testid={`signal-objective-${objective.id}`}
-                      className="w-full rounded border border-bone-white/20 px-4 py-3 text-left transition-colors hover:border-venom-orange disabled:cursor-wait disabled:opacity-60"
+                      className="w-full rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] px-4 py-3 text-left transition-colors hover:bg-[color:var(--fill-deck-2)] disabled:cursor-wait disabled:opacity-60"
                     >
                       <span className="label-arcade block text-venom-orange">
                         {objective.label}

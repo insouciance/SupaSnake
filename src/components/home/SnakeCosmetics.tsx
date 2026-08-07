@@ -794,62 +794,25 @@ export function EquippedCosmetics({
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
-// GENOME COLOUR CODE - not a cosmetic; this one carries information
+// GENOME COLOUR CODE - REMOVED (owner ruling, 2026-08-07)
 // -----------------------------------------------------------------------------
-
-/**
- * The owner's call: a whole tail painted in strain colour is too heavy on
- * the eyes. So the code is an ACCENT - one band per coded segment, and the
- * body keeps its dynasty fill underneath.
- *
- * The band must clear the segment's own ink hull or the outline swallows
- * it: the segment surface sits at 0.5, its hull at 0.5 + 0.045/scale, so a
- * band at 0.60 half-extent reads as a raised collar at every body scale.
- */
-export const GENOME_CODED_SEGMENTS = 3;
-const BAND_HALF_EXTENT = 1.16;
-/** Thin: this is a stripe of information, not a second body colour. */
-const BAND_THICKNESS = 0.15;
-
-/** Concept mock: plausible strain colours, taken from `strains.ts` verbatim. */
-export const CONCEPT_GENOME_CODE: readonly string[] = [
-  '#f5c542', // AURUM  - Gold
-  '#42e0f5', // VOLT   - Pulse
-  '#f54263', // UMBRA  - Risk
-];
-
-/**
- * The colour a body segment's band carries, or null past the coded window -
- * those segments stay muted slate, which is the whole point of the rule.
- */
-export function genomeBandColor(bodyIndex: number): string | null {
-  return bodyIndex < GENOME_CODED_SEGMENTS
-    ? CONCEPT_GENOME_CODE[bodyIndex] ?? null
-    : null;
-}
-
-const bandMaterialCache = new Map<string, THREE.MeshToonMaterial>();
-const genomeBandHull = createInkHullMaterial(0.022);
-
-function getGenomeBandMaterial(color: string): THREE.MeshToonMaterial {
-  let material = bandMaterialCache.get(color);
-  if (!material) {
-    material = toonPart(color, 0.22);
-    bandMaterialCache.set(color, material);
-  }
-  return material;
-}
-
-/** One coded band, parented to a body segment (segment-local units). */
-export function SegmentGenomeBand({ color }: { color: string }) {
-  return (
-    <mesh
-      scale={[BAND_HALF_EXTENT, BAND_THICKNESS, BAND_HALF_EXTENT]}
-      position={[0, 0.04, 0]}
-      geometry={plateGeometry}
-      material={getGenomeBandMaterial(color)}
-    >
-      <mesh geometry={plateGeometry} material={genomeBandHull} renderOrder={-1} />
-    </mesh>
-  );
-}
+//
+// "the segments should be NORMAL - in contrast to the snake displayed now,
+//  that has colored bands around its 3 segments."
+//
+// What stood here was a raised collar mesh per body segment, coloured from a
+// three-entry table of literal hexes marked "Concept mock". It carried no
+// player data at all: no strain, no lineage, no `read_snake_loadout` - the
+// home specimen wore three fixed stripes that meant nothing and that the
+// in-game snake never wore, so the same creature changed identity the moment
+// Play was pressed. That is precisely what the chamber's own contract forbids
+// ("CHAMBER = GAME LAW").
+//
+// It also re-introduced, as geometry, a thing that had already been ruled out
+// as shader: `snake90s.ts` records "THE CUFF IS GONE - owner ruling, round 3",
+// and `snake90s.test.ts` locks it - but that test can only see the shader, so
+// the collar survived where the lock could not reach. Deleting it restores the
+// existing ruling rather than making a new one.
+//
+// A body segment is now exactly what an in-game body cell is: one flat dynasty
+// swatch under face-keyed toon shading, inside the shared ink hull.
