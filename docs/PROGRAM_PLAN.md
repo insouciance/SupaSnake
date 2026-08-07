@@ -126,7 +126,15 @@ engine work. Order (visibility × IP, audit-derived, sequencing-corrected):
    package's migration) —
    Highest commercial value in the audit; pairs with runway mode (#42) and
    supporter-item seeding when the owner calls them.
-6. **90S-2 Chrome Law** (L) → **90S-4 Pickups** (M) → **90S-3 Extraction** (L)
+6. **90S-2a The Path** (owner-ordered 2026-08-07 evening, CONCEPT IN BUILD):
+   home + setup redesigned in 90s grammar as ONE coherent path (home→setup→
+   game); these two contain every UI archetype, so the approved concept
+   BECOMES the pattern library the rest extrapolates from ("do these and then
+   extrapolate" — owner methodology ruling). Locked: wordmark geometry,
+   behavior/copy/routing, chamber, single-frame modal law. Concept-first on
+   dev server, owner judges.
+7. **90S-2 Chrome Law** (L, now = extrapolation of the approved Path patterns)
+   → **90S-4 Pickups** (M) → **90S-3 Extraction** (L)
    → 90S-5 Instruments → 90S-7 Effects → 90S-8 Room → 90S-6 Collection →
    90S-9 Outward Artifacts → 90S-H Housekeeping — per audit order; DROP
    styling stays inside Wave 6's redesign, Results/Workbench inside Wave 7.
