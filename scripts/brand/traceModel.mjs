@@ -154,6 +154,32 @@ const BURST_CLOSE = 0.9;
  *     band between the colour and the outside of the contour therefore breathes
  *     between its full weight and a little more, and can never thin. A fat
  *     marker wavering, not a pencil running out.
+ *
+ *   RULE 3 — WHERE TWO LETTERS OVERLAP, THE CROSSING IS A CUT.
+ *
+ *     *"The way the S cuts in the U, the P cuts in the A and the A cuts in the
+ *     K looks strange. It doesn't look like the prior letter merely overlaps
+ *     the following letter, but like the 'following' letter has a weird shape
+ *     at that point. The overlaps should be clean."* And then: *"S->N too, so
+ *     apply that to all letters."*
+ *
+ *     Rule 2 was running over the letter-vs-letter junctions, and that is the
+ *     one place amplification cannot read as a torn edge. A torn edge is only
+ *     legible as an edge of the SHAPE IT BOUNDS; at a crossing, the outline
+ *     the tear moves belongs to the letter BEHIND, and moving it does not say
+ *     "hand-drawn", it says the rear letter is dented. The model draws these
+ *     clean — the front letter's silhouette and its bold contour run across
+ *     the letter behind as a straight cut — and this now does too.
+ *
+ *     The test is directional, not positional, which is what makes it a rule
+ *     rather than a list of pairs. Each vertex looks out along its own away-
+ *     normal for `JUNCTION_REACH`: if it meets another glyph it is one side of
+ *     an overlap and the traced vertex stands; if it meets nothing it faces
+ *     the purple, the plate or its own counter — all outside, all torn. It is
+ *     symmetric, so both letters of a crossing go clean together and the band
+ *     between them stays parallel, and it needs no notion of which letter is
+ *     in front. Every overlap in SUPASNAKE is covered because every overlap is
+ *     found, not enumerated.
  */
 
 /** The lit band on the outward normal, degrees off north (negative = west). */
@@ -188,6 +214,28 @@ const TEAR_CAP = 1.95;
 const TEAR_CAP_INK = 2.95;
 /** The same inside a counter, which has far less room to give. */
 const TEAR_CAP_COUNTER = 0.85;
+/**
+ * How far a glyph's outline may look before it decides it is facing ANOTHER
+ * glyph rather than the outside, model px. See `facingProbe`.
+ *
+ * It is the width of a crossing, and that is already measured: the near-black
+ * band between a letter and what surrounds it runs 3.0px above, 3.75 left,
+ * 4.5 right and 9 below — the same measurement `PLATE_DILATE` is set from —
+ * and both masks have had `LETTER_ERODE` taken off them before the probe runs,
+ * which adds 1.8. The widest crossing the drawing can hold is therefore the
+ * 9px drop plus 1.8, and 11 covers it with nothing spare for a letter that is
+ * merely nearby.
+ *
+ * Opening the reach to 40px and recording all 168 hits agrees from the data's
+ * side: 52% land under 11px, the density collapses immediately above it, and a
+ * second mass appears from 26px out — an outline looking ACROSS a gap at a
+ * letter it does not touch, the E seeing the A2 past the K, the A1 seeing the
+ * S2. Those edges face the plate and the purple and must keep their tear. But
+ * the two populations do not separate cleanly (the largest interior gap in the
+ * distribution is 3.6px, at 22 to 25.6), which is why the constant is set from
+ * the measured band and not from a valley in the counts.
+ */
+const JUNCTION_REACH = 11;
 /**
  * The purple keyline is already large-featured; it tears wider but gentler.
  *
@@ -275,13 +323,57 @@ async function main() {
     capCounter: K * TEAR_CAP_COUNTER,
   };
   const NAMES = ['S1', 'U', 'P', 'A1', 'S2', 'N', 'A2', 'K', 'E'];
+
+  /**
+   * Which glyph owns each pixel, so an outline can ask what it is looking at.
+   *
+   * The glyphs are separate components — the model's own near-black band keeps
+   * them apart — so this is a partition, not an overlap test, and it is built
+   * once for all nine rather than per pair.
+   */
+  const owner = new Int8Array(W * H).fill(-1);
+  glyphComponents.forEach((c, i) => {
+    for (const p of c.pixels) owner[p] = i;
+  });
+
+  /**
+   * Rule 3's probe: does this vertex face ANOTHER letter?
+   *
+   * It walks outward along the vertex's own away-normal and reports the first
+   * thing it meets. Meeting another glyph means the two are overlapping here
+   * and the crossing must stay clean; meeting nothing within `JUNCTION_REACH`
+   * means the vertex faces the purple, the plate or its own counter, all of
+   * which are the outside and all of which tear.
+   *
+   * The direction is what makes it an OVERLAP test rather than a proximity
+   * test: a stroke that merely passes near a neighbour sideways is not facing
+   * it, and keeps its tear.
+   */
+  const facingProbe = (self) => {
+    const reach = Math.round(K * JUNCTION_REACH);
+    return (p, nx, ny) => {
+      for (let t = 1; t <= reach; t++) {
+        const x = Math.round(p[0] + nx * t);
+        const y = Math.round(p[1] + ny * t);
+        if (x < 0 || y < 0 || x >= W || y >= H) return false;
+        const g = owner[y * W + x];
+        if (g >= 0 && g !== self) return true;
+      }
+      return false;
+    };
+  };
+
+  const cleaned = [];
   const glyphs = glyphComponents.map((c, i) => {
+    let n = 0;
+    const hand = { ...letterHand, facing: facingProbe(i), onClean: () => { n += 1; } };
     const [d, ink] = pathsOf(ctx, c, {
       ...toUnits,
       eps: EPS,
       minArea: K * K * 3,
-      hands: [letterHand, { ...letterHand, gainOut: TEAR_GAIN_INK, capOut: K * TEAR_CAP_INK }],
+      hands: [hand, { ...hand, gainOut: TEAR_GAIN_INK, capOut: K * TEAR_CAP_INK }],
     });
+    cleaned.push(`${NAMES[i]} ${n / 2}`); // both hands walk the same ring
     return { name: NAMES[i], d, ink, box: boxOf(c, toUnits) };
   });
 
@@ -330,6 +422,7 @@ async function main() {
   await writeFile(TARGET, source, 'utf8');
   console.log(`traced 9 glyphs + shape + plate from ${path.relative(ROOT, MODEL)} (${meta.width}x${meta.height})`);
   console.log(`  shape box ${box.join(' ')} design units`);
+  console.log(`  junction vertices held clean (rule 3): ${cleaned.join('  ')}`);
   console.log(`  wrote ${path.relative(ROOT, TARGET)} (${(source.length / 1024).toFixed(1)} kB)`);
 }
 
@@ -620,10 +713,23 @@ function awayFrom(a, b, outer) {
  * @param {boolean} opts.outer      Outer ring (as opposed to a counter).
  * @param {boolean} [opts.rule]     Apply rule 1. Off for the purple and plate.
  * @param {number} [opts.gainOut]   Outward-only gain; the ink contour's breath.
+ * @param {Function} [opts.facing]  `(p, nx, ny) => boolean` — rule 3's probe.
  */
 function drawnRing(ring, opts) {
-  const { outer, rule = false, ruleEps, ruleMin, gain, gainDown, cap, capCounter, gainOut, capOut } =
-    opts;
+  const {
+    outer,
+    rule = false,
+    ruleEps,
+    ruleMin,
+    gain,
+    gainDown,
+    cap,
+    capCounter,
+    gainOut,
+    capOut,
+    facing,
+    onClean,
+  } = opts;
   const n = ring.length;
   if (n < 6) return ring;
   const ceiling = outer ? cap : Math.min(cap, capCounter ?? cap);
@@ -691,6 +797,17 @@ function drawnRing(ring, opts) {
     const dx = p[0] - (a[0] + abx * t);
     const dy = p[1] - (a[1] + aby * t);
     const [nx, ny] = awayFrom(a, b, outer);
+    // ---- rule 3: an occluded junction is a CUT, not a torn edge
+    // Where this vertex looks out onto another letter rather than onto the
+    // outside, it is one side of an overlap. The model draws those crossings
+    // clean — the front letter's contour runs across the letter behind it as a
+    // straight cut — and amplifying the trace there does not read as a torn
+    // edge, it reads as the REAR letter having a dent in it. So the traced
+    // vertex stands, on both sides of the crossing.
+    if (facing && facing(p, nx, ny)) {
+      if (onClean) onClean();
+      continue;
+    }
     const swells = gainOut != null && dx * nx + dy * ny > 0;
     let g = ny > 0.25 ? gainDown : gain;
     let lim = ceiling;
