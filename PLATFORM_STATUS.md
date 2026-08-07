@@ -24,33 +24,35 @@
 | Language | Plain-language vocabulary live across the game, with a mounted glossary |
 | Engine rules | `snake-rules-2026-08-05.2` |
 | Player Evolution | **Live.** New players receive the seven-Gene starter curriculum; trials run in THE DROP and unlocks are revealed on Results |
-| Public surface | **Deployed:** 24 flags, contract hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`; health reports 24/24 with no disabled flags. **Checked in:** 25 flags at `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, adding `NEXT_PUBLIC_NINETIES_COMPOSITION` (90S-A) — not deployed; the 90S-A release is that cutover |
+| Public surface | 25 flags, contract hash `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`; health reports 25/25 with no disabled flags |
 | Wardrobe | Server-held; `NEXT_PUBLIC_SNAKE_COSMETICS` live, two cosmetic definitions in the catalog (face + crown) and no food skins by design |
-| Presentation | INK & AMBER; amber `#f2a03f` on ink `#0b1118`, verified in the served stylesheet |
-| Player-feature baseline | `fb25918d731e8f292a106e168728ca0782b78c94` |
-| Current deployment | `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` (`supasnake-6wigb55k0-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`59fb580`); same rules version so no continuity boundary, but it predates migration 069 and serves the 23-flag surface. 069 stays applied on rollback — it is additive and the outgoing app was proven healthy against it |
+| Presentation | The ratified 90s composition, live behind `NEXT_PUBLIC_NINETIES_COMPOSITION`; board themes SUPA SNAKE ORANGE / CYAN NEON / DARK NEON, HUD in 90s ink |
+| Camera | ET-5 canonical framing: pinned azimuth 0, pitch 28, fit 1.00, fov 44, with a four-wall fairness gate and OrbitControls off the live board |
+| Player-feature baseline | `fc6fdf34e50c73d9a43df5577e4c82a82d888928` |
+| Current deployment | `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` (`supasnake-7nw4vbjja-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` (`fb25918`); same schema and rules version so no continuity boundary, but serves the 24-flag surface and gives up the 90s composition. To drop the composition alone, prefer the flag-off forward release |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release is Wave-2: the server-held wardrobe and migration 069
-(PR 90), the modal and polish batch (PR 91), the LF-D closure (PR 94), and a
-mobile hotfix (PR 95), carrying the previous release record with it. It moved
-the hosted schema to **001–069** and the public surface to **24 flags**, and it
-is the first release to exercise the `snake-cosmetic-loadout` rollout contract.
-The engine rules version is deliberately untouched at
-`snake-rules-2026-08-05.2` — the third consecutive release to leave it alone —
-so open runs crossed the cutover seamlessly.
+The current release is the 90s cutover — the largest visual change in the
+product's history: Wave-3 measurement work (PR 97), the ET-5 canonical camera
+with its Constitution v1.16 §15 row (PR 98), the ratified 90s composition behind
+`NEXT_PUBLIC_NINETIES_COMPOSITION` (PR 99) and the HUD in 90s ink (PR 100). It
+carried **no migration** — the hosted schema stays 001–069 — and moved the
+public surface to **25 flags**. The engine rules version is untouched at
+`snake-rules-2026-08-05.2`, so open runs crossed the cutover seamlessly.
 
 The release passed all ten protected-PR checks including the four
-isolated-Supabase E2E flag shapes, its post-main push workflows on the exact
+isolated-Supabase E2E flag shapes — among them the `rollback` leg, which builds
+and runs the INK & AMBER stone board, so the composition's off path is tested
+rather than assumed — plus its post-main push workflows on the exact
 main SHA, full type checking, lint, `verify:constitution`, the production build,
 the deterministic cockpit verifications, local migrations 001–069 from zero,
 ordinary and two-session SQL
 integration, the production runtime dependency audit, staged and canonical
 health, the 16-key `cohesive_release_read_only_v5` schema probe, exact cron
 ownership, and focused public-production smoke. Production workflow
-`31158876485` deployed it and applied migration 069. Detailed evidence is
+`31196323574` deployed it. Detailed evidence is
 maintained in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -136,6 +138,14 @@ maintained in `docs/ops/QA_CHECKLIST.md`.
   RIDE ON, TRADE UP, GOLDEN HOUR, and GOLD, PULSE, COILS, WARP and RISK. A
   mounted glossary is available wherever the terms appear, so a term is never
   the thing standing between a player and the decision.
+- The board is drawn in the ratified 90s composition, with three board themes —
+  SUPA SNAKE ORANGE, CYAN NEON and DARK NEON — and a HUD in matching 90s ink.
+  The whole composition sits behind `NEXT_PUBLIC_NINETIES_COMPOSITION`, and the
+  INK & AMBER stone board remains the tested off path.
+- The camera is canonical and no longer drifts between sessions or devices:
+  azimuth 0, pitch 28, fit 1.00, fov 44, with a four-wall fairness gate so no
+  wall is privileged, and OrbitControls off the live board. Board-adjacent art
+  is therefore judged at the angle the game is actually played at.
 - The wardrobe is server-held. What a player has equipped lives on the server
   rather than in a client constant, so a cosmetic choice survives the browser
   and follows the account. The catalog ships two definitions — a face and a

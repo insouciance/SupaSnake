@@ -27,22 +27,23 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `fb25918d731e8f292a106e168728ca0782b78c94` — Wave-2: server-held wardrobe with migration 069, modal/polish batch, LF-D closure, and the mobile hotfix |
-| Current deployment | `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` (`supasnake-6wigb55k0-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`59fb580`); same rules version so no continuity boundary, but predates 069 and serves the 23-flag surface; 069 stays applied on rollback |
+| Production behavior commit | `fc6fdf34e50c73d9a43df5577e4c82a82d888928` — the 90s cutover: Wave-3 measurement, ET-5 canonical camera, the 90s composition and the 90s HUD |
+| Current deployment | `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` (`supasnake-7nw4vbjja-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` (`fb25918`); same schema and rules version, serves the 24-flag surface; to drop the composition alone prefer the flag-off forward release |
 | Engine rules version | `snake-rules-2026-08-05.2` |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–069 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
-| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 24/24 deployed manifest flags enabled |
+| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 25/25 deployed manifest flags enabled |
 | Player Evolution flag | `NEXT_PUBLIC_PLAYER_EVOLUTION_V1=true`; the 23rd flag, live since `4e51e81` |
 | 90s composition flag | `NEXT_PUBLIC_NINETIES_COMPOSITION` — the 25th flag, checked into the manifest but **not deployed**. Production still serves the INK & AMBER stone board and the classic creature; there is no live QA surface for the 90s composition until the 90S-A release cuts over. Judge it on a dev server (`/dev/cockpit?renderer=webgl&state=active`) or on a preview build, never against production |
-| Public surface | **Deployed:** 24 flags, hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`. **Checked in:** 25 flags at `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a` |
+| Public surface | 25 flags, hash `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a` |
+| Composition flag | `NEXT_PUBLIC_NINETIES_COMPOSITION=true`; the 25th flag, live since `fc6fdf3`. The off-leg is the INK & AMBER stone board, exercised by the `rollback` E2E leg |
 | Wardrobe flag | `NEXT_PUBLIC_SNAKE_COSMETICS=true`; the 24th flag, live since `fb25918` |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `fb25918d731e8f292a106e168728ca0782b78c94` |
+| Canonical source | `main`; canonical health reports exact SHA `fc6fdf34e50c73d9a43df5577e4c82a82d888928` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
@@ -83,6 +84,50 @@ retired pre-v2 application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### The 90s cutover production evidence
+
+- Exact main SHA `fc6fdf34e50c73d9a43df5577e4c82a82d888928` — Wave-3
+  Measurement CE-5×ET-0 (PR 97), the ET-5 canonical camera and Constitution
+  v1.16 §15 row 38 (PR 98), the ratified 90s composition behind
+  `NEXT_PUBLIC_NINETIES_COMPOSITION` (PR 99, 90S-A) and the HUD in 90s ink
+  (PR 100, 90S-B). Production workflow `31196323574` verified 16:11–16:27 UTC
+  and deployed 16:27–16:36:17 UTC on 7 August 2026 with
+  `expected_migrations=none`, as `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8`
+  (`supasnake-7nw4vbjja-josef-bells-projects.vercel.app`). The outgoing anchor
+  was `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` on `fb25918`.
+- **Public surface 24 → 25 flags** with `NEXT_PUBLIC_NINETIES_COMPOSITION`;
+  `contractHash` equals `declaredHash` at
+  `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, computed
+  independently at the merge SHA. No migration: hosted schema stays 001–069.
+  Probe `cohesive_release_read_only_v5`, 16 keys, verified at the SHA; cron
+  definition hash unchanged.
+- **Design runtime proof.** The board-theme literals `SUPA SNAKE ORANGE`,
+  `CYAN NEON` and `DARK NEON` were baselined **absent** from the outgoing bundle
+  and are present in `8368-ecaa95e1b2172365.js` after the deploy. Baselining the
+  absence first is what makes the presence evidence rather than coincidence.
+- **A moved rules chunk is not a rules change.** The version string is unchanged
+  at `snake-rules-2026-08-05.2`, so there is no continuity boundary and open
+  runs crossed seamlessly. But unlike the previous three releases, the rules
+  *chunk* moved: `2894-433978b3ede14d00.js` becomes
+  `2894-38b54650201f7905.js`, consistent with PR 97's telemetry touching
+  engine-adjacent files. The version string is present in the new chunk and the
+  old version is absent from all 39. The pinning contract keys on the **version
+  string**, not the chunk filename — so do not read a changed chunk hash as a
+  boundary. Schema changes, flag changes and moved chunks are each not
+  boundaries on their own; only the version string is.
+- **Honest observability gap — record it as a gap, not a pass.** PR 98's
+  canonical camera has no clean runtime observable: its numeric constants are
+  folded by minification, and grepping the served bundle for `canonical` matches
+  unrelated settlement copy. The camera is correct by construction and pinned by
+  its verifier, but nothing in the served artifact independently proves it. If
+  runtime proof is ever needed, the cheapest honest fix is a data attribute
+  carrying the pinned values, which minification will not fold.
+- **Rollback shape.** No migration this train, so a rollback is deployment-level
+  only: return the alias to `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt`. Dropping the
+  composition alone is a *different* lever — a forward release with the flag off
+  — and that path is tested rather than inferred, because the `rollback` E2E leg
+  builds and runs the INK & AMBER stone board on every PR.
 
 ### Wave-2 production evidence
 
