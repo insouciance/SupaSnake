@@ -2129,8 +2129,11 @@
     justify-items: center;
     padding: 3px 4px;
     border-left: 0;
-    border-bottom: 2px solid color-mix(in srgb, var(--strain) 68%, transparent);
-    background: linear-gradient(0deg, color-mix(in srgb, var(--strain) 8%, transparent), transparent 84%);
+    /* Same footing as the desktop gauge - the portrait rule restates the whole
+       declaration, so the flat bar and the flat tint have to be restated with
+       it or this breakpoint silently keeps the old lit pair. */
+    border-bottom: 3px solid var(--strain);
+    background: color-mix(in srgb, var(--strain) 9%, transparent);
   }
 
   .strainIcon {
