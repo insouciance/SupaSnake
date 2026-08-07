@@ -172,9 +172,6 @@ ${inkLayer()}
 </svg>`;
 }
 
-/** The mark's own boxes, for surfaces that need to reason about its footprint. */
-export const MARK_BOXES = Object.freeze({ shape: SHAPE_BOX, letters: LETTERS_BOX });
-
 /**
  * THE MONOGRAM — the mark at sizes the wordmark cannot survive.
  *
