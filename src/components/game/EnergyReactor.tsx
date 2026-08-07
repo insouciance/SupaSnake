@@ -139,14 +139,14 @@ export function EnergyReactor({
           The rods are separated by the GAP between them, because six
           identical cells are a FIELD and a field is never drawn with lines
           (T-3); the housing itself is a recess, which is a fill step. */}
-      <div className="mt-2 flex items-stretch gap-2">
+      <div className="mt-1.5 flex items-stretch gap-1.5 sm:mt-2 sm:gap-2">
         <button
           type="button"
           aria-label="Release one Energy"
           onClick={() => requestCommitment(value - 1)}
           disabled={value <= 0}
           data-testid="energy-decrease"
-          className="btn-paper inline-flex min-h-[60px] w-12 shrink-0 items-center justify-center text-xl disabled:opacity-25"
+          className="btn-paper inline-flex min-h-[54px] w-11 shrink-0 items-center justify-center text-xl disabled:opacity-25 sm:min-h-[60px] sm:w-12"
         >
           −
         </button>
@@ -165,7 +165,7 @@ export function EnergyReactor({
                 aria-hidden="true"
                 data-seated={seated ? 'true' : 'false'}
                 data-testid={`energy-rod-${index + 1}`}
-                className={`min-h-[48px] flex-1 rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink transition-colors ${
+                className={`min-h-[42px] flex-1 rounded-[var(--radius-chip)] sm:min-h-[48px] border-[length:var(--ink-w-2)] border-ink transition-colors ${
                   seated
                     ? 'bg-venom-orange shadow-[inset_0_-6px_0_rgba(180,102,28,0.55)]'
                     : reachable
@@ -195,14 +195,14 @@ export function EnergyReactor({
           onClick={() => requestCommitment(value + 1)}
           disabled={value >= available}
           data-testid="energy-increase"
-          className="btn-go inline-flex min-h-[60px] w-16 shrink-0 items-center justify-center text-2xl disabled:opacity-25"
+          className="btn-go inline-flex min-h-[54px] w-14 shrink-0 items-center justify-center text-2xl disabled:opacity-25 sm:min-h-[60px] sm:w-16"
         >
           +
         </button>
       </div>
 
       {/* FUEL REMAINING, under the housing where a supply reads. */}
-      <p className="mt-1.5 px-1 text-left font-body text-[11px] leading-snug text-ink/60">
+      <p className="mt-1 px-1 text-left font-body text-[10px] leading-snug text-ink/60 sm:mt-1.5 sm:text-[11px]">
         <span data-testid="energy-stock">
           Stock {available}/{capacity}
         </span>
@@ -216,7 +216,7 @@ export function EnergyReactor({
           rather than as a second way to set the middle. `energy-run-lean` and
           `energy-commit-6` keep their names: they are the same two decisions
           the released control offered, and the e2e legs read them. */}
-      <div className="mt-1.5 flex items-center justify-between gap-2">
+      <div className="mt-1 flex items-center justify-between gap-2 sm:mt-1.5">
         <button
           type="button"
           onClick={() => requestCommitment(0)}

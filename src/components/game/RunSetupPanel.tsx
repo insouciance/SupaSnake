@@ -120,7 +120,7 @@ function FavoriteDock({
             : `Choose a ${dynasty} favorite`
       }
       data-testid={`run-setup-favorite-${dynasty.toLowerCase()}`}
-      className={`relative flex min-h-[92px] min-w-0 flex-col items-center justify-center gap-1 rounded-[var(--radius-card)] border-[length:var(--ink-w-3)] border-ink px-1.5 py-2 text-center transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 disabled:cursor-wait ${
+      className={`relative flex min-h-[76px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-card)] sm:min-h-[92px] sm:gap-1 border-[length:var(--ink-w-3)] border-ink px-1.5 py-2 text-center transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 disabled:cursor-wait ${
         selected
           ? 'bg-ink text-bone-white shadow-[var(--ink-drop-3)]'
           : 'text-bone-white shadow-[var(--ink-drop-2)]'
@@ -204,7 +204,7 @@ export function RunSetupPanel({
       onClick={onStart}
       disabled={isStarting || !snake}
       data-testid={startTestId}
-      className="btn-go inline-flex min-h-[68px] w-full items-center justify-center gap-3 px-4 py-3 text-xl sm:min-h-[76px] sm:text-2xl"
+      className="btn-go inline-flex min-h-[60px] w-full items-center justify-center gap-3 px-4 py-2.5 text-lg sm:min-h-[76px] sm:py-3 sm:text-2xl"
     >
       <IconPlay size={26} className="shrink-0" />
       <span className="truncate">{isStarting ? 'Starting…' : startLabel}</span>
@@ -213,7 +213,7 @@ export function RunSetupPanel({
 
   return (
     <section
-      className="relative mx-auto w-full min-w-0 p-1 text-center sm:p-2"
+      className="relative mx-auto w-full min-w-0 p-0.5 text-center sm:p-2"
       data-testid="run-setup"
     >
       {/* The Mark, small, at the head of the tray. Setup is the one surface
@@ -221,6 +221,13 @@ export function RunSetupPanel({
           where a logo belongs — it is what makes the tray read as a made
           object rather than a dialog. Sized off the same measured constant
           Home uses, so the two can never drift. */}
+      {/* THE MARK, ABOVE THE SHORT VIEWPORTS ONLY.
+
+          At 320x568 the reactor is the element that must survive, and the
+          wordmark is the only thing on this tray that carries no decision.
+          The chamber the player just came from showed the Mark two seconds
+          ago, so hiding it here costs the brand nothing and buys the
+          commitment control its place above the fold. */}
       <picture>
         <source
           type="image/webp"
@@ -232,7 +239,7 @@ export function RunSetupPanel({
           height={HOME_WORDMARK.intrinsicHeight}
           alt="SUPASNAKE"
           decoding="async"
-          className="mx-auto -mt-1 mb-1 w-[132px] max-w-full -rotate-[2deg] select-none sm:w-[168px]"
+          className="mx-auto mb-1 hidden w-[132px] max-w-full -rotate-[2deg] select-none sm:block sm:w-[168px]"
           data-testid="run-setup-mark"
         />
       </picture>
@@ -240,7 +247,7 @@ export function RunSetupPanel({
       {snake ? (
         <>
           {/* ---------- (a) DYNASTY FAVORITES ---------- */}
-          <section aria-labelledby="run-favorites-title" className="mt-2">
+          <section aria-labelledby="run-favorites-title" className="mt-1 sm:mt-2">
             <p
               id="run-favorites-title"
               className="label-arcade text-[10px] text-ink/55"
@@ -248,7 +255,7 @@ export function RunSetupPanel({
               Who is flying
             </p>
             <div
-              className="mt-1.5 grid grid-cols-3 gap-2"
+              className="mt-1 grid grid-cols-3 gap-1.5 sm:mt-1.5 sm:gap-2"
               data-testid="run-setup-favorites"
             >
               {SETUP_DYNASTIES.map((dynasty) => {
@@ -290,16 +297,16 @@ export function RunSetupPanel({
                 the pick — it is what the dynasty IS — and not a fourth
                 element; there is no explainer for the two you did not pick. */}
             <p
-              className="mt-1.5 px-1 font-body text-[11px] leading-snug text-ink/70"
+              className="mt-1 px-1 font-body text-[11px] leading-snug text-ink/70 sm:mt-1.5"
               data-testid="ruleset-explainer"
             >
               {selectedDynasty ? `${selectedDynasty} · ` : ''}
               {rulesetExplainer}
             </p>
 
-            {heirloom ? <div className="mt-1.5">{heirloom}</div> : null}
+            {heirloom ? <div className="mt-1 sm:mt-1.5">{heirloom}</div> : null}
 
-            <div className="mt-1 flex items-center justify-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <button
                 type="button"
                 onClick={onChooseSnake}
@@ -320,7 +327,7 @@ export function RunSetupPanel({
           </section>
 
           {/* ---------- (b) ENERGY REACTOR ---------- */}
-          {energySelector ? <div className="mt-3">{energySelector}</div> : null}
+          {energySelector ? <div className="mt-1.5 sm:mt-3">{energySelector}</div> : null}
 
           {challengeNote && (
             <p
@@ -341,7 +348,7 @@ export function RunSetupPanel({
           )}
 
           {/* ---------- (c) PLAY ---------- */}
-          <div className="mt-3">{playButton}</div>
+          <div className="mt-2 sm:mt-3">{playButton}</div>
         </>
       ) : noSnakeAvailable ? (
         <div className="mt-5 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-strike-red p-5">

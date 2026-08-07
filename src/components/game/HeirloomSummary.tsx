@@ -78,7 +78,7 @@ export function HeirloomSummary({
        * the tray already drew the only frame this surface gets (one tray, one
        * frame).
        */
-      className={`paper-recess mx-auto max-w-lg space-y-2 p-3 text-left ${className}`}
+      className={`paper-recess mx-auto max-w-lg space-y-1 p-2 text-left sm:space-y-2 sm:p-3 ${className}`}
       data-testid="heirloom-summary"
     >
       <p className="label-arcade text-ink/60">Heirlooms</p>

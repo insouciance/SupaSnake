@@ -634,7 +634,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     // `setupMode` is DERIVED from the reactor now, so four seated rods make
     // this an earning run: the draft cannot carry a mode the core contradicts.
     expect(labUrl.searchParams.get('returnTo')).toBe(
-      '/game?seed=e2eSetupSeed&target=4200&challenge=signal%3A214&by=CoilAce&setupMode=earn&setupEnergy=4&setupRung=1'
+      '/game?seed=e2eSetupSeed&target=4200&challenge=signal%3A214&by=CoilAce&setupMode=earn&setupEnergy=4&setupRung=0'
     );
     const backToSetup = page.getByRole('link', { name: 'Back to Setup' });
     await expect(backToSetup).toBeVisible({ timeout: 60_000 });
@@ -656,7 +656,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     expect(restoredUrl.searchParams.get('challenge')).toBe('signal:214');
     expect(restoredUrl.searchParams.get('by')).toBe('CoilAce');
     expect(restoredUrl.searchParams.get('setupEnergy')).toBe('2');
-    expect(restoredUrl.searchParams.get('setupRung')).toBe('1');
+    expect(restoredUrl.searchParams.get('setupRung')).toBe('0');
 
     const setupStorageKeys = await page.evaluate(() => [
       ...Object.keys(window.localStorage),
