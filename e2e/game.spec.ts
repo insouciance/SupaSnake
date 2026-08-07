@@ -10,6 +10,7 @@
 import { test, expect } from '@playwright/test';
 import {
   chooseFreePlay,
+  runSetupReady,
   seedConsent,
   signInAsGuest,
   startRunIfSetupPresent,
@@ -74,9 +75,7 @@ test.describe('Home page', () => {
     await expect(page.getByTestId('first-movement-prompt')).toHaveText(
       'Swipe or press an arrow to move'
     );
-    await expect(
-      page.getByRole('heading', { name: /ready to (?:play|launch)/i })
-    ).not.toBeVisible();
+    await expect(runSetupReady(page).first()).not.toBeVisible();
     await expect(page.getByTestId('contracts-board')).not.toBeVisible();
     await expect(page.getByTestId('account-upgrade-modal')).not.toBeVisible();
 
@@ -94,9 +93,7 @@ test.describe('Equipped-snake game flow', () => {
     await signInAsGuest(page);
 
     await expect(page.getByText(/you need a snake before you can play/i)).not.toBeVisible();
-    await expect(page.getByRole('heading', { name: /ready to (?:play|launch)/i })).toBeVisible({
-      timeout: 30000,
-    });
+    await expect(runSetupReady(page).first()).toBeVisible({ timeout: 30000 });
     await expect(page.getByText(/primal/i).first()).toBeVisible();
     await expect(page.getByRole('link', { name: /choose your snake in the lab/i })).not.toBeVisible();
   });
@@ -106,9 +103,7 @@ test.describe('Equipped-snake game flow', () => {
     await signInAsGuest(page);
 
     // Pre-game screen: ready state with the equipped snake
-    await expect(
-      page.getByRole('heading', { name: /ready to (?:play|launch)/i })
-    ).toBeVisible({ timeout: 20000 });
+    await expect(runSetupReady(page).first()).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/gen \d+/i).first()).toBeVisible();
     // /^play\b/ matches the Play button ("Play" / "Play Again") but
     // not the AccountChip's "Playing as guest - save progress" label, which

@@ -91,6 +91,25 @@ export function runSetupReady(page: Page): Locator {
 }
 
 /**
+ * A neutral, INERT point on the pre-run screen, on either flag leg.
+ *
+ * Specs that prove "tapping outside closes the popover" need a target that is
+ * genuinely outside the panel and that cannot be clicked THROUGH onto a
+ * control — a mis-aimed dismissal that silently equips a snake or seats a rod
+ * would pass the assertion and corrupt the rest of the test.
+ *
+ * It used to be the "Ready to play/launch" heading. Run Setup has no heading
+ * at all since the 2026-08-07 three-element ruling, so the production leg uses
+ * the dynasty's ruleset line — a paragraph, always present once a snake has
+ * resolved, and inert — while the rollback screen keeps its own heading.
+ */
+export function dismissTarget(page: Page): Locator {
+  return RUN_FLOW_ENABLED
+    ? page.getByTestId('ruleset-explainer')
+    : page.getByRole('heading', { name: /ready to play/i });
+}
+
+/**
  * Set up a FREE run — no Energy staked, no rewards.
  *
  * THE MODE COLLAPSE (owner ruling 2026-08-07). Run Setup has no Earn/Free

@@ -125,12 +125,26 @@ test.describe('Genome capability UI', () => {
     // regression it guards is unchanged: traits sliding back behind a ramp is
     // what made Ascetic unknowable on a phone.
     await expect(page.getByTestId('heirloom-summary')).toContainText(/heirlooms/i);
-    const researchLink = page.getByRole('link', {
-      name: 'Open Genome Research',
-      exact: true,
-    });
-    await expect(researchLink).toBeVisible();
-    await expect(researchLink).toHaveAttribute('href', '/codex');
+    /*
+     * THE GENOME RESEARCH DOORWAY MOVED, IT DID NOT CLOSE.
+     *
+     * The "Open Genome Research" link lived inside `build-seed`, which the
+     * 2026-08-07 three-element ruling removed from Run Setup along with the
+     * disclosure that hid it. The doorway itself is untouched: Home's codex
+     * relic is the canonical entry and has been all along, which is exactly
+     * why the Setup copy read as a duplicate.
+     *
+     * Asserted on Home rather than deleted, because the CLAIM this line makes
+     * — a player at 20 banked runs with splices unlocked can reach /codex —
+     * is still one worth failing on, and it is now checked where the entry
+     * actually lives.
+     */
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const researchRelic = page.getByTestId('home-codex-relic');
+    await expect(researchRelic).toBeVisible({ timeout: 60_000 });
+    await expect(researchRelic).toHaveAttribute('href', '/codex');
+    await page.goto('/game', { waitUntil: 'domcontentloaded' });
+    await expect(runSetupReady(page).first()).toBeVisible({ timeout: 60_000 });
 
     await chooseFreePlay(page);
     const freePlayStart = page.getByTestId('free-play-start');

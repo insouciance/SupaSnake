@@ -11,7 +11,7 @@
  */
 
 import { test, expect, type Page, type Request } from '@playwright/test';
-import { seedConsent, startRunIfSetupPresent } from './helpers';
+import { runSetupReady, seedConsent, startRunIfSetupPresent } from './helpers';
 
 // Serial, and budgeted for the flag-on build. Step 1 alone can spend 45s
 // waiting for the bootstrap round trip, 45s on the route change and another
@@ -88,9 +88,7 @@ test.describe('Engagement hook loop (fresh anonymous player)', () => {
 
     // The one-click route has no second Play screen and remains held until
     // the player's deliberate first direction.
-    await expect(
-      page.getByRole('heading', { name: /ready to (?:play|launch)/i })
-    ).not.toBeVisible();
+    await expect(runSetupReady(page).first()).not.toBeVisible();
     await expect(page.getByTestId('resume-gate')).toBeVisible();
   });
 
