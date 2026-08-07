@@ -791,8 +791,18 @@ export class GenomeV2Runtime {
   private refuse(method: string, error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
     this.lastRefusal = `${method}: ${message}`;
+    // The original line stays exactly as it was. It is the wording developers
+    // know, `genomeV2Runtime.test.ts` proves the reason reaches it rather than
+    // being discarded, and CE-5's job was to ADD a production channel — not to
+    // move the one that already worked. `quiet` keeps the pair from printing
+    // the same refusal twice in development.
+    console.error(
+      `[genomeV2Runtime] ${method} refused by the reducer: ${message}`,
+      error
+    );
     reportTelemetry({
       channel: 'engine-reducer',
+      quiet: true,
       message: `genomeV2 reducer refused ${method}`,
       level: 'warning',
       error,

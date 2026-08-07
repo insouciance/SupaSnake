@@ -73,13 +73,7 @@ import {
   settlementErrorClass,
   settlementErrorMessage,
 } from '@/lib/server/strandedTerminalRun';
-import {
-  ageMsBetween,
-  reportSettlementAge,
-  reportSweepPass,
-  type SettlementPath,
-} from '@/lib/server/runTelemetry';
-import { reportTelemetry } from '@/lib/telemetry/report';
+import { reportSweepPass } from '@/lib/server/runTelemetry';
 // The settlement fold lives in the game-session route and is invoked, never
 // copied: a second implementation of what a run pays is exactly the divergence
 // the Constitution's one-source-of-truth rule forbids. This is an in-process
@@ -129,97 +123,20 @@ interface AttentionRow {
 }
 
 /**
- * One run this pass actually settled, kept so its age can be read back in a
- * single batch below rather than with a per-session round trip inside the
- * settlement loop — which is where the budget is, and where an extra query per
- * row would come straight out of how many runs a pass can rescue.
- */
-interface SettledRow {
-  stage: SettlementPath;
-  playerId: string;
-  sessionId: string;
-  attempts: number;
-}
-
-/** Only what the age arithmetic reads. */
-const SETTLEMENT_AGE_SELECT =
-  'id, dynasty, started_at, server_started_at, continuity_terminal_at, continuity_checkpoint_saved_at, ended_at';
-
-/**
- * Read back how old the runs this pass settled were, and report each one.
+ * WHY THE SWEEP REPORTS COUNTS AND NOT PER-RUN AGES.
  *
- * CE-2 ratified that the sweep is the primary settler and the browser only an
- * accelerator; nothing has ever measured whether that holds. `terminalAgeMs` —
- * how long a finished run waited between the server terminalising it and the
- * value actually landing — is the number that says so, and it is the sweep's
- * to report because the sweep is the path with no player watching it.
+ * The obvious way to measure settlement latency here is to read the rows this
+ * pass settled and subtract their terminal timestamps. This route may not: it
+ * is deliberately TABLE-FREE — every stage goes through an audited RPC, and
+ * `route.test.ts` enforces it with a `from()` that throws. That invariant is
+ * worth more than the convenience, so the per-run ages are reported from the
+ * one place that already holds the row for its own reasons: the settlement
+ * fold in `/api/game/session`, which knows whether a client or this sweep
+ * drove it and stamps the path accordingly.
  *
- * Fail-open throughout: a failed read costs the pass its telemetry, never a
- * settlement. The sweep has already done its durable work by the time this
- * runs.
+ * What belongs here is what only this route knows — how much a pass got
+ * through, and what it could not touch.
  */
-async function reportSettledAges(settled: SettledRow[]): Promise<number[]> {
-  if (settled.length === 0) return [];
-  const { data, error } = await supabase
-    .from('game_sessions')
-    .select(SETTLEMENT_AGE_SELECT)
-    .in(
-      'id',
-      settled.map((row) => row.sessionId)
-    );
-  if (error || !Array.isArray(data)) {
-    // Checked, reported, and then deliberately not propagated: this is the
-    // observability read, and CLAUDE.md's rule is that the error is never
-    // ignored — not that a diagnostic may fail a cron that has already
-    // settled real value.
-    reportTelemetry({
-      channel: 'run-settlement',
-      message: 'sweep could not read settled run ages',
-      level: 'warning',
-      error: error ?? new Error('invalid settled age response'),
-      data: { requested: settled.length },
-    });
-    return [];
-  }
-  const rows = new Map(
-    data.map((entry) => [String((entry as Record<string, unknown>).id), entry as Record<string, unknown>])
-  );
-  const now = Date.now();
-  const terminalAges: number[] = [];
-  for (const item of settled) {
-    const row = rows.get(item.sessionId);
-    if (!row) continue;
-    const settledAtIso = typeof row.ended_at === 'string' ? row.ended_at : null;
-    const settledAtMs = settledAtIso ? Date.parse(settledAtIso) : NaN;
-    const settledAt = Number.isFinite(settledAtMs) ? settledAtMs : now;
-    const terminalAgeMs = ageMsBetween(
-      typeof row.continuity_terminal_at === 'string' ? row.continuity_terminal_at : null,
-      settledAt
-    );
-    if (terminalAgeMs !== null) terminalAges.push(terminalAgeMs);
-    reportSettlementAge({
-      path: item.stage,
-      sessionId: item.sessionId,
-      playerId: item.playerId,
-      dynasty: typeof row.dynasty === 'string' ? row.dynasty : null,
-      outcome: 'settled',
-      runAgeMs: ageMsBetween(
-        (typeof row.server_started_at === 'string' ? row.server_started_at : null) ??
-          (typeof row.started_at === 'string' ? row.started_at : null),
-        settledAt
-      ),
-      terminalAgeMs,
-      checkpointAgeMs: ageMsBetween(
-        typeof row.continuity_checkpoint_saved_at === 'string'
-          ? row.continuity_checkpoint_saved_at
-          : null,
-        settledAt
-      ),
-      attempts: item.attempts,
-    });
-  }
-  return terminalAges;
-}
 
 function isOrderedProgressionDebt(error: unknown): boolean {
   return /GAME_PROGRESSION_EARLIER_(?:SESSION|CLAN|SIGNAL)_PENDING/i.test(
@@ -245,7 +162,6 @@ export async function GET(request: NextRequest) {
 
   const failures: SettlementFailure[] = [];
   const attention: AttentionRow[] = [];
-  const settledRows: SettledRow[] = [];
 
   // -----------------------------------------------------------------
   // Stage 1 — the state nothing covered: stranded terminal runs
@@ -304,15 +220,8 @@ export async function GET(request: NextRequest) {
         playerId: candidate.playerId,
         serviceRole: true,
       });
-      if (outcome.status === 'settled') {
-        strandedSettled += 1;
-        settledRows.push({
-          stage: 'sweep_stranded_terminal',
-          playerId: candidate.playerId,
-          sessionId: candidate.sessionId,
-          attempts: candidate.recoveryAttempts,
-        });
-      } else if (outcome.status === 'staged') strandedStaged += 1;
+      if (outcome.status === 'settled') strandedSettled += 1;
+      else if (outcome.status === 'staged') strandedStaged += 1;
       else {
         // The absorb already logged and reported this with its body. Record
         // it here so the count is in the response the operator reads.
@@ -424,15 +333,8 @@ export async function GET(request: NextRequest) {
       const resumedError =
         thrown ?? (resumed && 'error' in resumed ? resumed.error : null);
 
-      if (resumed?.status === 'found') {
-        progressionSettled += 1;
-        settledRows.push({
-          stage: 'sweep_progression_resume',
-          playerId: item.playerId,
-          sessionId: item.sessionId,
-          attempts: item.recoveryAttempts,
-        });
-      } else if (
+      if (resumed?.status === 'found') progressionSettled += 1;
+      else if (
         resumed?.status === 'pending' ||
         (resumed?.status === 'unavailable' &&
           isOrderedProgressionDebt(resumedError))
@@ -475,7 +377,6 @@ export async function GET(request: NextRequest) {
     (failure) => failure.state === 'quarantined'
   ).length;
 
-  const terminalAges = await reportSettledAges(settledRows);
   const terminalAgeDistribution = reportSweepPass({
     settled: strandedSettled + progressionSettled,
     staged: strandedStaged,
@@ -486,7 +387,8 @@ export async function GET(request: NextRequest) {
     deferred: progressionDeferred,
     failed: progressionFailed + pendingEndAdoption.failed + strandedFailed,
     attentionRows: attention.length,
-    terminalAges,
+    // Empty by construction, not by accident — see the note above the GET.
+    terminalAges: [],
     elapsedMs: Date.now() - startedAt,
     budgetExhausted: budgetRemaining() <= 0,
   });

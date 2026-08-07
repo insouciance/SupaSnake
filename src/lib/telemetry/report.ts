@@ -62,6 +62,15 @@ export interface TelemetryReport {
   fingerprint?: string[];
   /** When present the report is captured as an exception, keeping the stack. */
   error?: unknown;
+  /**
+   * Suppress this module's development console line.
+   *
+   * For the handful of sites that already write their own, carefully worded
+   * console line and are adding Sentry capture beside it — the genomeV2
+   * reducer's `refuse()` is the one. Without this they print twice in
+   * development, and the site's own wording is the one a developer knows.
+   */
+  quiet?: boolean;
 }
 
 /** Sentry tags must be primitives; anything else is dropped rather than sent. */
@@ -102,7 +111,7 @@ function devLog(level: TelemetryLevel, channel: string, message: string, data?: 
 export function reportTelemetry(report: TelemetryReport): void {
   const level = report.level ?? 'error';
   try {
-    devLog(level, report.channel, report.message, report.data);
+    if (!report.quiet) devLog(level, report.channel, report.message, report.data);
   } catch {
     // A console that rejects its own arguments must not stop the capture below.
   }

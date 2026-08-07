@@ -3658,16 +3658,21 @@ export async function POST(request: NextRequest) {
       // Results layer's default is simply that the Take is not offered.
       const takeSlot = await describeDailyTakeSlot(supabase, player.id);
 
-      // SETTLEMENT AGE (Wave 3). Reported only when a real client drove this
-      // call: the sweep reaches the same fold through `absorbStrandedTerminalRun`
-      // and reports its own settlements with its own path, so reporting here
-      // unconditionally would double-count every sweep rescue and make the
-      // client look like the primary settler — the exact question CE-2 wants
-      // measured. The split is therefore load-bearing, not cosmetic.
-      if (!serviceRoleAbsorb) {
+      // SETTLEMENT AGE (Wave 3). Every settlement is reported from here,
+      // because this is the single fold BOTH drivers reach: a real client
+      // POSTing its run end, and the sweep calling in through
+      // `absorbStrandedTerminalRun`. The sweep itself cannot measure this —
+      // it is deliberately table-free and never reads a session row — and one
+      // reporter at the shared fold is also the only arrangement in which the
+      // two paths cannot be counted twice or drift apart.
+      //
+      // The path split is the load-bearing part: CE-2 ratified that the sweep
+      // is the primary settler and the browser only an accelerator, and this
+      // field is what will say whether that is true in production.
+      {
         const settledAt = Date.now();
         reportSettlementAge({
-          path: 'client_accelerated',
+          path: serviceRoleAbsorb ? 'sweep_stranded_terminal' : 'client_accelerated',
           sessionId,
           playerId: player.id,
           dynasty: typeof session.dynasty === 'string' ? session.dynasty : null,
