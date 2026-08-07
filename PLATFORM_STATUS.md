@@ -12,7 +12,7 @@
 |---|---|
 | Application | Healthy |
 | Database | Healthy, Supabase `eu-central-1` |
-| Schema | Migrations 001–068 deployed and aligned; migration 069 is merged to `main` and awaits its own deploy |
+| Schema | Migrations 001–069 deployed and aligned; no pending migration |
 | FTUE | v2 enabled; one-click anonymous PRIMAL bootstrap |
 | Run UI | Refined cockpit enabled |
 | Practice | Training Lab enabled; deterministic and rewardless |
@@ -24,31 +24,34 @@
 | Language | Plain-language vocabulary live across the game, with a mounted glossary |
 | Engine rules | `snake-rules-2026-08-05.2` |
 | Player Evolution | **Live.** New players receive the seven-Gene starter curriculum; trials run in THE DROP and unlocks are revealed on Results |
-| Public surface | Live: 23 flags, contract hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`; health reports 23/23 with no disabled flags. Checked in and pending: 24 flags at `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, adding `NEXT_PUBLIC_SNAKE_COSMETICS`; it becomes the live contract only when the LF-B release cuts over |
+| Public surface | 24 flags, contract hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`; health reports 24/24 with no disabled flags |
+| Wardrobe | Server-held; `NEXT_PUBLIC_SNAKE_COSMETICS` live, two cosmetic definitions in the catalog (face + crown) and no food skins by design |
 | Presentation | INK & AMBER; amber `#f2a03f` on ink `#0b1118`, verified in the served stylesheet |
-| Player-feature baseline | `59fb58014464bcf0ca7143847c934b13e2cc5101` |
-| Current deployment | `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`supasnake-cs8vx9fu0-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`03d185a`); same schema, surface **and rules version**, so a rollback crosses no continuity boundary — it only gives up the design and the quality governor |
+| Player-feature baseline | `fb25918d731e8f292a106e168728ca0782b78c94` |
+| Current deployment | `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` (`supasnake-6wigb55k0-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`59fb580`); same rules version so no continuity boundary, but it predates migration 069 and serves the 23-flag surface. 069 stays applied on rollback — it is additive and the outgoing app was proven healthy against it |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release is INK & AMBER, the LF-A game screen (PR 89), carrying the
-previous release record with it. It is a **presentation release**: no migration,
-no schema change, no public-surface change, and — deliberately — no rules
-change. The hosted schema stays 001–068, the 23-flag contract hash is unchanged,
-and `snake-rules-2026-08-05.2` is untouched, so open runs crossed the cutover
-seamlessly. It also ships the adaptive-quality governor.
+The current release is Wave-2: the server-held wardrobe and migration 069
+(PR 90), the modal and polish batch (PR 91), the LF-D closure (PR 94), and a
+mobile hotfix (PR 95), carrying the previous release record with it. It moved
+the hosted schema to **001–069** and the public surface to **24 flags**, and it
+is the first release to exercise the `snake-cosmetic-loadout` rollout contract.
+The engine rules version is deliberately untouched at
+`snake-rules-2026-08-05.2` — the third consecutive release to leave it alone —
+so open runs crossed the cutover seamlessly.
 
 The release passed all ten protected-PR checks including the four
 isolated-Supabase E2E flag shapes, its post-main push workflows on the exact
 main SHA, full type checking, lint, `verify:constitution`, the production build,
-the deterministic cockpit verifications, local migrations from zero, ordinary
-and two-session SQL
+the deterministic cockpit verifications, local migrations 001–069 from zero,
+ordinary and two-session SQL
 integration, the production runtime dependency audit, staged and canonical
 health, the 16-key `cohesive_release_read_only_v5` schema probe, exact cron
 ownership, and focused public-production smoke. Production workflow
-`31041034171` deployed it. Detailed evidence is maintained
-in `docs/ops/QA_CHECKLIST.md`.
+`31158876485` deployed it and applied migration 069. Detailed evidence is
+maintained in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
 
@@ -133,6 +136,16 @@ in `docs/ops/QA_CHECKLIST.md`.
   RIDE ON, TRADE UP, GOLDEN HOUR, and GOLD, PULSE, COILS, WARP and RISK. A
   mounted glossary is available wherever the terms appear, so a term is never
   the thing standing between a player and the decision.
+- The wardrobe is server-held. What a player has equipped lives on the server
+  rather than in a client constant, so a cosmetic choice survives the browser
+  and follows the account. The catalog ships two definitions — a face and a
+  crown — and deliberately no food skins.
+- The playtest-wave polish batch is closed: tray widths, the HUD suffix, modal
+  close-button discipline, portal text fit, and the REPLAY label.
+- Mobile steering, lighting and brightness are fixed: flick input steers again,
+  lighting holds across zoom levels rather than shifting with it, and the
+  quality governor gained a luminance-neutral floor (T4) so dropping a tier no
+  longer changes how bright the board reads.
 - The game screen is drawn in INK & AMBER: amber `#f2a03f` on ink `#0b1118`,
   with ink outlines and role-chosen stroke weights rather than the previous
   cyan. The palette is the styleguide's, recovered rather than invented.

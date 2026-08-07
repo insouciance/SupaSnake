@@ -27,21 +27,22 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `59fb58014464bcf0ca7143847c934b13e2cc5101` — INK & AMBER game screen (LF-A) plus the adaptive-quality governor |
-| Current deployment | `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`supasnake-cs8vx9fu0-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`03d185a`); same schema, surface and rules version, so a rollback crosses no continuity boundary |
+| Production behavior commit | `fb25918d731e8f292a106e168728ca0782b78c94` — Wave-2: server-held wardrobe with migration 069, modal/polish batch, LF-D closure, and the mobile hotfix |
+| Current deployment | `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` (`supasnake-6wigb55k0-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`59fb580`); same rules version so no continuity boundary, but predates 069 and serves the 23-flag surface; 069 stays applied on rollback |
 | Engine rules version | `snake-rules-2026-08-05.2` |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
-| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–068 deployed and aligned; no pending migration |
+| Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–069 deployed and aligned; no pending migration |
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
-| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 23/23 deployed manifest flags enabled |
+| Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 24/24 deployed manifest flags enabled |
 | Player Evolution flag | `NEXT_PUBLIC_PLAYER_EVOLUTION_V1=true`; the 23rd flag, live since `4e51e81` |
 | Snake cosmetics flag | `NEXT_PUBLIC_SNAKE_COSMETICS` — the 24th flag, checked into the manifest but **not deployed**. There is no live QA surface for the home cosmetics menu until the LF-B release cuts over; do not go looking for a wardrobe on production |
-| Public surface | Live: 23 flags, hash `ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. Checked in and pending: 24 flags, hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`; the LF-B release is the cutover |
+| Public surface | 24 flags, hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017` |
+| Wardrobe flag | `NEXT_PUBLIC_SNAKE_COSMETICS=true`; the 24th flag, live since `fb25918` |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `59fb58014464bcf0ca7143847c934b13e2cc5101` |
+| Canonical source | `main`; canonical health reports exact SHA `fb25918d731e8f292a106e168728ca0782b78c94` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
@@ -82,6 +83,63 @@ retired pre-v2 application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Wave-2 production evidence
+
+- Exact main SHA `fb25918d731e8f292a106e168728ca0782b78c94` — the mobile hotfix
+  (PR 95) atop the server-held wardrobe and migration 069 (PR 90), the modal and
+  polish batch (PR 91), the previous release record (PR 93) and the LF-D closure
+  (PR 94). Production workflow `31158876485` verified 07:44–08:01 UTC and
+  deployed 08:01–08:08:53 UTC on 7 August 2026 with
+  `expected_migrations=069_snake_cosmetic_loadout.sql`, as
+  `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt`
+  (`supasnake-6wigb55k0-josef-bells-projects.vercel.app`). The outgoing anchor
+  was `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` on `59fb580`.
+- **Schema 001–068 → 001–069.** `069_snake_cosmetic_loadout.sql` applied under
+  the reviewed `snake-cosmetic-loadout` classifier — the sixth rollout contract,
+  exercised end to end for the first time. Its notice recorded “2 snake cosmetic
+  definitions now in the catalog (face + crown), 0 food skins by design”.
+- **Public surface 23 → 24 flags** with `NEXT_PUBLIC_SNAKE_COSMETICS`;
+  `contractHash` equals `declaredHash` at
+  `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, computed
+  independently from the manifest at the release SHA before dispatch.
+- **Wardrobe runtime proof, with the right discriminator.**
+  `/api/player/cosmetics` and `/api/player/cosmetics/equip` both answer 401
+  rather than 404; neither route existed at `59fb580`. Note carefully that the
+  cosmetics *chamber* predates this release and ran off a client-side
+  `EQUIPPED_LOADOUT` constant — so "the chamber renders" proves nothing about
+  this release. What shipped is the **server-held** wardrobe, and the two routes
+  are the evidence for it.
+- **No continuity boundary.** `SNAKE_RULES_VERSION` is unchanged at
+  `snake-rules-2026-08-05.2` and the rules chunk `2894-433978b3ede14d00.js` kept
+  a byte-identical filename hash for the third consecutive release, so open runs
+  crossed the cutover seamlessly. A schema and flag change is not by itself a
+  continuity boundary — only the rules version is.
+- Probe `cohesive_release_read_only_v5`, 16 keys, green; PR 90 and PR 94 did not
+  change the probe, verified at the release SHA. Cron definition hash
+  `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf` unchanged,
+  cron hosts on the new deployment, enabled.
+- **Rollback shape — a migration boundary, not a rules one.** Migration 069
+  stays applied on any rollback: it is additive, and the workflow proved the
+  outgoing application healthy against the post-069 bridge schema before
+  cutover. A rollback is therefore deployment-level only. Removing the wardrobe
+  from players is a different operation — a reviewed forward release with the
+  flag off, which removes the wardrobe only.
+- This release closes the playtest-wave **polish batch** (task #29): tray
+  widths, the HUD suffix, modal close-button discipline, portal text fit, and
+  the REPLAY label, all shipped in PR 91.
+- It also carries the **mobile incident fixes** (PR 95): flick steering works
+  again, lighting holds constant across zoom, and the quality governor gained a
+  luminance-neutral floor (T4) so a tier drop no longer changes board
+  brightness.
+- Recorded correction: the header of `069_snake_cosmetic_loadout.sql` says
+  “Release order is DEPLOY THE APP FIRST, THEN APPLY THIS”, which is not what
+  the workflow does — `deploy-production.yml` applies the migration, verifies
+  the outgoing app against the bridge schema, then cuts over. Migration-first
+  was
+  safe here because 069 is purely additive, and the run proved it. The migration
+  file was **not** edited, because `AGENTS.md` forbids editing an applied
+  migration; the correction lives in the runbook instead.
 
 ### INK & AMBER design release production evidence
 

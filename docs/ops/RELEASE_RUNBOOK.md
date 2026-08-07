@@ -1,49 +1,92 @@
 # Production Release Runbook
 
-Current production baseline: the INK & AMBER design release
-`59fb58014464bcf0ca7143847c934b13e2cc5101` — the LF-A game-screen merge
-`6e7cf01` plus the previous release record — independently verified on
-5 August 2026 by successful production workflow `31041034171` (verify
-19:47–20:00 UTC, deploy 20:00–20:06 UTC, `expected_migrations=none`) as
-deployment `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB`
-(`supasnake-cs8vx9fu0-josef-bells-projects.vercel.app`). The outgoing anchor was
-`dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` on `03d185a`.
+Current production baseline: the Wave-2 release
+`fb25918d731e8f292a106e168728ca0782b78c94` — the mobile hotfix (PR 95) atop the
+server-held wardrobe and migration 069 (PR 90), the modal and polish batch
+(PR 91), the previous release record (PR 93) and the LF-D closure (PR 94) —
+independently verified on 7 August 2026 by successful production workflow
+`31158876485` (verify 07:44–08:01 UTC, deploy 08:01–08:08:53 UTC,
+`expected_migrations=069_snake_cosmetic_loadout.sql`) as deployment
+`dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt`
+(`supasnake-6wigb55k0-josef-bells-projects.vercel.app`). The outgoing anchor was
+`dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` on `59fb580`.
 
-**This is a presentation release.** It carried no migration, so hosted
-migrations remain aligned through **068**. The public surface is
-unchanged at 23 flags, with `contractHash` equal to `declaredHash` at
-`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. Canonical
-health reports the exact release SHA, healthy database, project ref
+**This release moved both the schema and the public surface.** Hosted migrations
+went from 001–068 to **001–069**: `069_snake_cosmetic_loadout.sql` applied under
+the reviewed `snake-cosmetic-loadout` rollout classifier, and its notice
+recorded “2 snake cosmetic definitions now in the catalog (face + crown),
+0 food skins by design”. The public surface went from 23 flags to **24** with
+`NEXT_PUBLIC_SNAKE_COSMETICS`, and `contractHash` equals `declaredHash` at
+`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, computed
+independently from the checked-in manifest before dispatch. Canonical health
+reports the exact release SHA, healthy database, project ref
 `gmpwyzqafoyowndbvlma`, and Genome schema/catalog/Ascendance 2/2/2 with eight
 Splices, rules version 2, and neutral 2/3/4 Strain thresholds.
 
-The design cutover was proved at runtime, not merely deployed: the served
-stylesheet `fb473e8894e4c3e1.css` carries `--venom-orange: #f2a03f` in 11
-occurrences alongside the `--ink: #0b1118` and `--ink-stroke` tokens, while the
-pre-cutover baseline served `--venom-orange: #22d3ee` and contained no
-`f2a03f` at all. The cyan token is absent from every served stylesheet after
-the deploy.
+The wardrobe was proved at runtime: `/api/player/cosmetics` and its `/equip`
+child both answer 401 rather than 404, so the routes exist and are merely
+unauthenticated; neither route existed at `59fb580`. **Name the discriminator
+correctly** — the cosmetics chamber itself predates this release and ran off a
+client-side `EQUIPPED_LOADOUT` constant. What shipped here is the *server-held*
+wardrobe, so "the chamber renders" is not evidence of this release and the two
+routes are.
 
 The dedicated read-only probe remains `cohesive_release_read_only_v5` and came
-back green on all 16 sentinels, including `settlementBoundsAligned` and
-`geneEligibilityContractValid`. Canonical alias, cron owner, and every cron host
-name the same READY production deployment; cron is enabled and its normalized
-definition hash remains
+back green on all 16 sentinels; PR 90 and PR 94 did not change the probe, which
+was verified at the release SHA. Canonical alias, cron owner, and every cron
+host name the same READY production deployment; cron is enabled and its
+normalized definition hash remains
 `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
 Stripe remains in sandbox/test mode. The deploy workflow's reviewed rollout
 allowlist holds six contracts — `genome-v2-initial`, `genome-v2-resume`,
 `settlement-payload-bounds`, `player-gene-eligibility`,
-`settlement-sweep-primary` and `snake-cosmetic-loadout`. The sixth is checked in
-for the upcoming Wave-2 migration and has not been exercised in production yet.
+`settlement-sweep-primary` and `snake-cosmetic-loadout` — the sixth exercised
+end to end for the first time by this run.
 
 **The engine rules version is unchanged at `snake-rules-2026-08-05.2`**, and the
 rules chunk `2894-433978b3ede14d00.js` kept a byte-identical filename hash
-across the cutover. That means this train has **no run-continuity
-boundary**: open runs
-crossed it seamlessly, with no `incompatible` phase and no recovery path. The
-sequencing was deliberate — the two preceding releases each moved the rules
-version and therefore each interrupted runs in flight, so the design cutover was
-kept off that path rather than compounding it.
+across the cutover for the **third consecutive release**. This train therefore
+has no run-continuity boundary: open runs crossed it seamlessly, with no
+`incompatible` phase and no recovery path. A schema and flag change is not by
+itself a continuity boundary; only the rules version is.
+
+### Rollback shape for a migration-bearing release
+
+This release has a **migration boundary**, and it behaves differently from the
+flag and rules boundaries described elsewhere in this runbook.
+
+Migration 069 **stays applied** on any rollback. It is purely additive, and the
+workflow proved the outgoing application healthy against the post-069 schema at
+its "Verify outgoing application on final bridge schema" step before cutover —
+so the previous artifact is known to run correctly on 001–069, not merely
+assumed to. A rollback here is therefore **deployment-level only**: return the
+alias to `dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` and leave the schema alone. Never
+attempt to reverse 069; migrations are forward-only.
+
+Removing the wardrobe from players is a *different* operation from rolling back
+the deployment: it is a reviewed forward release with the flag off, per the
+flag-off caveat below, and it removes the wardrobe only.
+
+### The 069 header's release-order note is wrong
+
+`supabase/migrations/069_snake_cosmetic_loadout.sql` carries a header stating
+“Release order is DEPLOY THE APP FIRST, THEN APPLY THIS”. That is **not** what
+this repository's deploy workflow does, and not what happened.
+
+`deploy-production.yml` is migration-first: it applies the reviewed migration
+rollout, then verifies the outgoing application against the resulting bridge
+schema, and only then creates the Production deployment and cuts over. The
+header describes an app-first order that the automated sequence does not offer.
+
+Migration-first was safe here because 069 is purely additive — the outgoing app
+neither reads nor writes the new objects — and the run proved it: the
+bridge-schema health check passed with the outgoing artifact still canonical.
+The header is a stale instruction, not a live hazard.
+
+**The correction lives here rather than in the migration.** `AGENTS.md` forbids
+editing a migration that is already merged or deployed, and 069 is both; a
+docs-only record is not the place to make an exception to that rule. Read the
+header as superseded by this section.
 
 ### What a rules bump does to a run in flight
 
@@ -73,13 +116,16 @@ item (FM-12), and it is a known gap rather than a property of this release.
 The live interaction-v2 contract uses optional physical Gene relics on a
 deterministic 8 ± 2-food cadence; already-issued or omitted interaction stamps
 retain automatic-offer v1 compatibility. The now-previous deployment
-`dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na` (`03d185a`) is the artifact-level rollback
-candidate, and it is an unusually cheap one: it shares hosted schema 001–068,
-the same 23-flag public surface and contract hash, **and the same rules
-version**, so rolling back crosses no run-continuity boundary and interrupts no
-run in flight. What it gives up is the INK & AMBER presentation and the
-adaptive-quality governor. The artifact before it
-(`dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1`, `4e51e81`) serves
+`dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`59fb580`) is the artifact-level rollback
+candidate. It shares the same rules version, so rolling back crosses no
+run-continuity boundary and interrupts no run in flight — but it predates
+migration 069 and serves the **23-flag** surface at hash `ac678998…e2be`. As set
+out above, 069 stays applied and the outgoing artifact was proven healthy
+against it, so the rollback is deployment-level only; what it gives up is the
+server-held wardrobe, the modal and polish batch, and the mobile hotfix. The
+artifact before it (`dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na`, `03d185a`) additionally
+gives up the INK & AMBER presentation and the adaptive-quality governor. Going
+back to (`dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1`, `4e51e81`) serves
 `snake-rules-2026-08-05.1`, so a rollback that far *is* a rules change: runs
 checkpointed under `.2` would resolve as `incompatible` and be routed to
 recovery, exactly as described above, while terminal and settling outcomes stay
@@ -319,13 +365,17 @@ dashboard that omits that filter is reading noise, not players.
 
 ## Addendum: the LF-B home-chamber cosmetics release
 
-This addendum governs the release that first ships `NEXT_PUBLIC_SNAKE_COSMETICS`
+This addendum governed the release that first ships
+`NEXT_PUBLIC_SNAKE_COSMETICS`
 — the home cosmetics menu, or wardrobe — as a live public surface. **That
-release has not happened yet.** The flag and `069_snake_cosmetic_loadout.sql`
-are checked in; the deployed artifact still serves the 23-flag surface and hash
-`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. Until the
-cutover, every 24-flag statement in this repository describes the checked-in
-contract and never a live fact.
+release has now happened** (`fb25918d731e8f292a106e168728ca0782b78c94`, workflow
+`31158876485`): migration 069 is applied, the deployed artifact serves the
+24-flag surface at hash
+`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, and every
+24-flag statement in this repository is now a live fact rather than a checked-in
+intention. The flag is an ordinary manifest entry from here on and the standard
+sequence applies again; the addendum is kept as the record of the second
+public-surface contract change.
 
 ### What changes, and what does not
 
@@ -381,6 +431,10 @@ Canonical `/api/health` must report `publicSurface.status = healthy`,
 is wrong — treat it as a failed release health check under "Failure and
 recovery" and do not roll back the application. *Before* cutover, 23/23 and
 `ac678998…e2be` are the correct and expected answers, and neither is a defect.
+
+This passed on the actual cutover: 24/24 at
+`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, with the
+wardrobe routes answering 401 rather than 404.
 
 ### Rollback: flag-off is a forward release, and it removes the wardrobe only
 
@@ -472,7 +526,7 @@ and exercise fixture state.
 The A/B/C state machine below records the completed first Genome v2 cutover and
 remains the recovery and incident-classification contract for a linked project
 that genuinely lacks migration 065. It is not the ordinary state machine for
-later application-only releases. Future releases start from the current 001–068
+later application-only releases. Future releases start from the current 001–069
 baseline and follow the Release law and Automated sequence in this runbook;
 their linked migration plan is `none` unless an exact reviewed suffix is named
 at dispatch.
@@ -495,7 +549,7 @@ If any check fails here, stop. No hosted migration has been attempted.
 
 ### B. Post-migration, pre-production
 
-- Hosted schema: 001–068, or the recognized forward-only partial state while a
+- Hosted schema: 001–069, or the recognized forward-only partial state while a
   failed push is being investigated.
 - Canonical alias and cron state: still exactly outgoing.
 - Outgoing application: healthy on the bridge schema.
@@ -525,7 +579,7 @@ never operator memory, decides.
 
 ### C. Post-cutover
 
-- Hosted schema: 001–068.
+- Hosted schema: 001–069.
 - Canonical alias: exact deployment ID and host returned by the deliberate
   Production deployment.
 - Canonical health: exact Git SHA, exact project ref/public-surface hash,
