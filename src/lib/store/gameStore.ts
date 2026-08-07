@@ -166,6 +166,17 @@ export interface GameStore {
   revive: GenomeRevive | null;
   /** Remaining self/body-wall phase moves after a revive (renderer). */
   revivePhaseTicksRemaining: number;
+  /**
+   * The engine's movement-tick counter, mirrored for the surfaces that draw
+   * time: a Scar's forming fill, an exclusive target's remaining moves.
+   *
+   * It lives in the store rather than in the page (where it used to be a
+   * `useState`) because it is the ONE value that genuinely changes on every
+   * tick. Held on the page it re-rendered eight thousand lines of run route
+   * per movement; held here, only the leaves that draw a countdown subscribe
+   * to it (ET-3).
+   */
+  simulationTick: number;
 
   // Audio state
   isMuted: boolean;
@@ -228,6 +239,7 @@ export interface GameStore {
   setSurgeChoicePending: (pending: boolean) => void;
   setRevive: (revive: GenomeRevive | null) => void;
   setRevivePhaseTicks: (ticks: number) => void;
+  setSimulationTick: (tick: number) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -277,6 +289,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   surgeChoicePending: false,
   revive: null,
   revivePhaseTicksRemaining: 0,
+  simulationTick: 0,
   isMuted: false,
 
   // Actions
@@ -319,6 +332,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       surgeChoicePending: false,
       revive: null,
       revivePhaseTicksRemaining: 0,
+      simulationTick: 0,
     });
   },
 
@@ -392,6 +406,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       surgeChoicePending: false,
       revive: null,
       revivePhaseTicksRemaining: 0,
+      simulationTick: 0,
     });
   },
 
@@ -585,5 +600,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setRevivePhaseTicks: (ticks: number) => {
     set({ revivePhaseTicksRemaining: Math.max(0, Math.trunc(ticks)) });
+  },
+
+  setSimulationTick: (tick: number) => {
+    set({ simulationTick: Math.max(0, Math.trunc(tick)) });
   },
 }));

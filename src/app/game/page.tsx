@@ -1,8 +1,8 @@
 'use client';
 
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
-import { LinearToneMapping } from 'three';
+import { LinearToneMapping, type Group } from 'three';
 import dynamic from 'next/dynamic';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import {
@@ -67,6 +67,16 @@ import {
 } from '@/shared/game/codex';
 import { isAnomalyId, type AnomalyId } from '@/shared/game/anomalies';
 import { useGameStore, type GameMode } from '@/lib/store/gameStore';
+import {
+  sameDirections,
+  sameFusedSplices,
+  sameGildedCells,
+  samePosition,
+  samePositions,
+  sameRevive,
+  sameStrainMap,
+  sameTerrain,
+} from '@/lib/game/tickSyncDiff';
 import { useCollectionStore } from '@/lib/stores/collectionStore';
 import type { DynastyId } from '@/shared/types/game';
 import { GAME_CONFIG } from '@/shared/config/game';
@@ -104,7 +114,7 @@ import type { RenderQuality } from '@/components/game/screen/renderQuality';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 import { RunCockpit } from '@/components/game/cockpit/RunCockpit';
 import type { RunCockpitModel } from '@/components/game/cockpit/types';
-import { AimRenderer } from '@/components/game/AimRenderer';
+import { AimRenderer, type AimRendererProps } from '@/components/game/AimRenderer';
 import type { AimTarget } from '@/components/game/aimUtils';
 import { AimSystemSelector } from '@/components/game/AimSystemSelector';
 import { RunInsightCard } from '@/components/game/RunInsightCard';
@@ -136,8 +146,9 @@ import {
   buildGenomeV2RuntimeSignals,
   latestGenomeV2BoardFeedback,
   projectGenomeV2Board,
+  genomeV2OccupiedCells,
   type GenomeV2BoardFeedback,
-  type GenomeV2BoardProjection,
+  type GenomeV2RuntimeSignal,
 } from '@/components/game/genome/genomeV2BoardPresentation';
 import {
   PortalChoiceOverlay,
@@ -160,6 +171,7 @@ import {
   TickJitterMeter,
   buildDeathForensics,
   COYOTE_OBSERVATION_MS,
+  renderCommits,
   type DeathForensics,
 } from '@/lib/game/runInstruments';
 import { reportTelemetry } from '@/lib/telemetry/report';
@@ -534,10 +546,40 @@ function equippedViewFromRunManifest(
   };
 }
 
+/**
+ * The cockpit model as the PAGE can honestly build it: every field whose value
+ * changes on an event, and the event-scoped inputs the three live fields are
+ * derived from.
+ *
+ * ET-3 split it here. `statusText`, `constellation` and `portalTicksRemaining`
+ * are the only parts of the cockpit that move on a movement tick, so they are
+ * resolved one component lower, against subscriptions of their own. The
+ * cockpit's own prop contract is untouched — `RunCockpit` still receives a
+ * complete `RunCockpitModel`.
+ */
+type CockpitBaseModel = Omit<
+  RunCockpitModel,
+  'statusText' | 'constellation' | 'portalTicksRemaining'
+> & {
+  /**
+   * The status rail when an EVENT has claimed it, else null — which hands the
+   * rail to the genome's runtime signals, whose labels count moves down.
+   */
+  statusOverride: string | null;
+  /** Genome state for this run's rules version, or null. */
+  genomeState: GenomeV2State | null;
+  /** The whole food wave, which the genome projection reads. */
+  litFoods: readonly Position[];
+  /** COSMIC's calcification window length; 0 when no window is open. */
+  constellationWindowTicks: number;
+  /** Stars in the live wave, for the constellation readout. */
+  constellationStars: number;
+};
+
 interface BoardViewportShellProps {
   cockpitEnabled: boolean;
   isPlaying: boolean;
-  model: RunCockpitModel;
+  model: CockpitBaseModel;
   onPause: () => void;
   onAbandon?: () => void;
   onOverclock?: (source: GenomeV2OverclockSource) => void;
@@ -573,6 +615,44 @@ function FloorExposure({ exposure }: { exposure: number }) {
   return null;
 }
 
+/** Nothing to draw, and one allocation instead of one per tick. */
+const NO_RUNTIME_SIGNALS: GenomeV2RuntimeSignal[] = [];
+
+/**
+ * Does the status rail have a label that COUNTS DOWN this run?
+ *
+ * `buildGenomeV2RuntimeSignals` reads exactly one tick-dependent thing: the
+ * status label of a live exclusive target, which says how many moves are
+ * left. Every other signal it emits is a fact about genome state and changes
+ * only when that state changes.
+ *
+ * So this predicate is what earns the cockpit its subscription to the
+ * simulation tick. Without it the shell would re-render on every movement of
+ * every genome run — the exact cost ET-3 exists to remove — to redraw a
+ * string that had not changed. The filter mirrors `projectGenomeV2Board`:
+ * active or armed, not the crown's future ghost (which the rail skips), not
+ * an ordinary food.
+ */
+function statusRailCountsDown(state: GenomeV2State | null): boolean {
+  if (!state) return false;
+  return Object.values(state.targets).some(
+    (target) =>
+      (target.lifecycle === 'active' || target.lifecycle === 'armed') &&
+      target.crownRole !== 'future' &&
+      target.kind !== 'ordinary'
+  );
+}
+
+/**
+ * The cockpit's live tail: the three model fields that move on a movement
+ * tick, subscribed here so the page above never has to.
+ *
+ * Everything this reads is a countdown the player is watching — the portal's
+ * remaining window, COSMIC's calcification clock, an exclusive target's
+ * remaining moves. During ORDINARY movement none of them is open, every
+ * selector returns the value it returned last tick, and this component does
+ * not commit at all. That is ET-3's exit criterion, stated as a component.
+ */
 function BoardViewportShell({
   cockpitEnabled,
   isPlaying,
@@ -589,10 +669,58 @@ function BoardViewportShell({
   rateCallout,
   children,
 }: BoardViewportShellProps) {
+  useCommitCount('cockpit');
+  const {
+    statusOverride,
+    genomeState,
+    litFoods,
+    constellationWindowTicks,
+    constellationStars,
+    ...baseModel
+  } = model;
+  const exitTicksRemaining = useGameStore((state) => state.exitTicksRemaining);
+  // Both of these return a CONSTANT while their window is shut, so the
+  // subscription cannot fire during ordinary movement. That is the whole
+  // mechanism: a countdown costs a commit only while it is counting.
+  const constellationTicksRemaining = useGameStore((state) =>
+    constellationWindowTicks > 0 ? state.constellationTicksRemaining : 0
+  );
+  const countsDown = statusRailCountsDown(genomeState);
+  const simulationTick = useGameStore((state) =>
+    countsDown ? state.simulationTick : 0
+  );
+
+  // The rail's only tick-dependent label is a live target's remaining moves.
+  // The projection's heading argument is deliberately left at its default:
+  // it exists for the GATES, which the rail does not read.
+  const runtimeSignals = useMemo(
+    () => (genomeState
+      ? buildGenomeV2RuntimeSignals(
+          genomeState,
+          projectGenomeV2Board(genomeState, litFoods, simulationTick)
+        )
+      : NO_RUNTIME_SIGNALS),
+    [genomeState, litFoods, simulationTick]
+  );
+  const liveModel: RunCockpitModel = {
+    ...baseModel,
+    statusText: statusOverride
+      ?? (runtimeSignals.length > 0
+        ? runtimeSignals.map((signal) => signal.label).join(' · ')
+        : 'Run stable'),
+    constellation: constellationWindowTicks > 0
+      ? {
+          stars: constellationStars,
+          fraction: constellationTicksRemaining / constellationWindowTicks,
+        }
+      : null,
+    portalTicksRemaining: Math.max(0, exitTicksRemaining),
+  };
+
   if (cockpitEnabled && isPlaying) {
     return (
       <RunCockpit
-        model={model}
+        model={liveModel}
         onPause={onPause}
         onAbandon={onAbandon}
         onOverclock={onOverclock}
@@ -627,6 +755,41 @@ function BoardViewportShell({
       <div className="relative min-h-0 flex-1" data-testid="game-board-viewport">
         {children}
       </div>
+    </div>
+  );
+}
+
+/**
+ * COSMIC constellation window - stars left, and how long they have before
+ * they calcify where they sit. Always visible on COSMIC while playing: the
+ * abandonment has to be a CHOICE.
+ *
+ * The percentage falls on every tick, which is why this is a component and
+ * not four lines of the rollback HUD: the countdown belongs to the leaf that
+ * draws it, and the run route above stays off the movement path (ET-3).
+ */
+function ConstellationChip({
+  stars,
+  windowTicks,
+}: {
+  stars: number;
+  windowTicks: number;
+}) {
+  const ticksRemaining = useGameStore(
+    (state) => state.constellationTicksRemaining
+  );
+  return (
+    <div
+      data-testid="constellation-chip"
+      className="flex h-7 shrink-0 items-center gap-1 px-2 rounded-arcade border border-[#f0abfc]/60 bg-void/80 backdrop-blur-md"
+    >
+      <span className="text-[#f0abfc] font-bold">
+        ★{stars}
+      </span>
+      <span className="text-beige/60">
+        {Math.max(0, Math.round((ticksRemaining / windowTicks) * 100))}
+        %
+      </span>
     </div>
   );
 }
@@ -706,7 +869,27 @@ function directionCanRelease(result: SetDirectionResult): boolean {
   return result === 'accepted' || result === 'duplicate';
 }
 
+/**
+ * ET-3's meter, read from inside the surfaces it judges.
+ *
+ * The empty dependency list is the whole mechanism: React runs this effect
+ * after EVERY commit of the calling component, so the tally counts commits
+ * rather than render attempts a bailout threw away. `?perf` divides it by the
+ * tick count and prints "commits/tick", which is the package's exit criterion
+ * expressed as a number.
+ *
+ * Dev builds only. In production it is a branch that returns immediately —
+ * the instrument may never become a cost on the thread it exists to protect.
+ */
+function useCommitCount(channel: string): void {
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    renderCommits.record(channel);
+  });
+}
+
 export default function GamePage() {
+  useCommitCount('page');
   const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
   /**
@@ -749,7 +932,15 @@ export default function GamePage() {
   const [particleTrigger, setParticleTrigger] = useState(0);
   const [deathPos, setDeathPos] = useState<[number, number, number] | null>(null);
   const [showDeathExplosion, setShowDeathExplosion] = useState(false);
-  const [cameraShake, setCameraShake] = useState<[number, number, number]>([0, 0, 0]);
+  /**
+   * Live screen-shake offset.
+   *
+   * A REF, because `ScreenShakeManager` reports on its own rAF loop: as a
+   * `useState` this committed the whole run route on every animation frame
+   * for the length of every shake, which is a food, a collision or a death.
+   * `ShakeGroup` reads it per frame and moves the object (ET-3).
+   */
+  const cameraShakeRef = useRef<[number, number, number]>([0, 0, 0]);
   const [isMobile, setIsMobile] = useState(false);
   // A pause or build decision never releases directly into movement. The
   // engine stays frozen until the player's next deliberate direction input.
@@ -919,7 +1110,6 @@ export default function GamePage() {
   const [genomeFtue, setGenomeFtue] = useState<GenomeFtueCapability | null>(null);
   const [genomeRulesVersion, setGenomeRulesVersion] = useState<1 | 2>(1);
   const [genomeV2State, setGenomeV2State] = useState<GenomeV2State | null>(null);
-  const [genomeV2SimulationTick, setGenomeV2SimulationTick] = useState(0);
   const [genomeV2BoardFeedback, setGenomeV2BoardFeedback] =
     useState<GenomeV2BoardFeedback | null>(null);
   const [genomeV2Activation, setGenomeV2Activation] =
@@ -1107,49 +1297,65 @@ export default function GamePage() {
     equippedSnakeRef.current = equippedSnake;
   }, [equippedSnake]);
 
+  // -------------------------------------------------------------------
+  // ET-3 — THE PAGE SUBSCRIBES TO EVENTS, NEVER TO MOVEMENT.
+  //
+  // This was one `useGameStore()` call, which subscribes to the WHOLE store:
+  // any write woke it, and `syncState` wrote ~20 fields on every movement
+  // tick, so eight thousand lines of run route reconciled per tick on the
+  // same thread the next tick needed.
+  //
+  // Each value below is now its own selector, compared with Object.is, so the
+  // page commits only when a field it actually draws changes. The fields that
+  // change on EVERY tick are deliberately absent from this list — the body,
+  // the portal and mutation countdowns, the constellation clock, the buffered
+  // heading, the simulation tick. Those are read by the leaves that draw
+  // them, further down this file.
+  //
+  // Two of them are read here as PRIMITIVES rather than as collections: the
+  // page needs the snake's LENGTH (the portal card's body figure) and the
+  // terrain's COUNT (the Loom's spatial line), and a number changes on growth
+  // and on terrain, not on movement.
+  // -------------------------------------------------------------------
+  const isPlaying = useGameStore((state) => state.isPlaying);
+  const isGameOver = useGameStore((state) => state.isGameOver);
+  const isPaused = useGameStore((state) => state.isPaused);
+  const isDeathSequence = useGameStore((state) => state.isDeathSequence);
+  const isReady = useGameStore((state) => state.isReady);
+  const score = useGameStore((state) => state.score);
+  const dnaCollected = useGameStore((state) => state.dnaCollected);
+  const foodEaten = useGameStore((state) => state.foodEaten);
+  const endReason = useGameStore((state) => state.endReason);
+  const exitTile = useGameStore((state) => state.exitTile);
+  const anomalyRun = useGameStore((state) => state.anomalyRun);
+  const runCondition = useGameStore((state) => state.runCondition);
+  const charge = useGameStore((state) => state.charge);
+  const selectedDynasty = useGameStore((state) => state.selectedDynasty);
+  const snakeLength = useGameStore((state) => state.snake.length);
+  const terrainCount = useGameStore((state) => state.terrain.length);
+  const food = useGameStore((state) => state.food);
+  const extraFoods = useGameStore((state) => state.extraFoods);
+  const constellationWindowTicks = useGameStore(
+    (state) => state.constellationWindowTicks
+  );
+  const heldMutations = useGameStore((state) => state.heldMutations);
+  const choiceOptions = useGameStore((state) => state.choiceOptions);
+  const phoenixTriggered = useGameStore((state) => state.phoenixTriggered);
+  const genomeRun = useGameStore((state) => state.genomeRun);
+  const strainCounts = useGameStore((state) => state.strainCounts);
+  const strainTiers = useGameStore((state) => state.strainTiers);
+  const choiceSource = useGameStore((state) => state.choiceSource);
+  const portalChoicePending = useGameStore((state) => state.portalChoicePending);
+  const surgeChoicePending = useGameStore((state) => state.surgeChoicePending);
+  const infusesCount = useGameStore((state) => state.infusesCount);
+  const revive = useGameStore((state) => state.revive);
+  const aimSystem = useGameStore((state) => state.aimSystem);
+  const gameMode = useGameStore((state) => state.gameMode);
+
+  // Actions are created once when the store is created and are never
+  // replaced, so they are READ rather than subscribed to: selecting them
+  // would add thirty subscriptions that can never fire.
   const {
-    isPlaying,
-    isGameOver,
-    isPaused,
-    isDeathSequence,
-    isReady,
-    score,
-    dnaCollected,
-    foodEaten,
-    endReason,
-    exitTile,
-    exitTile2,
-    exitTicksRemaining,
-    anomalyRun,
-    runCondition,
-    charge,
-    selectedDynasty,
-    snake,
-    food,
-    direction,
-    queuedDirections,
-    extraFoods,
-    constellationGlyph,
-    constellationTicksRemaining,
-    constellationWindowTicks,
-    mutationTile,
-    mutationTicksRemaining,
-    heldMutations,
-    choiceOptions,
-    phoenixTriggered,
-    torus,
-    genomeRun,
-    strainCounts,
-    strainTiers,
-    gildedCells,
-    terrain,
-    setTerrain,
-    choiceSource,
-    portalChoicePending,
-    surgeChoicePending,
-    infusesCount,
-    revive,
-    revivePhaseTicksRemaining,
     startGame: storeStartGame,
     endGame,
     setSnake,
@@ -1174,22 +1380,22 @@ export default function GamePage() {
     setStrains,
     setFusedSplices,
     setGildedCells,
+    setTerrain,
     setInfusesCount,
     setPortalChoicePending,
     setSurgeChoicePending,
     setRevive,
     setRevivePhaseTicks,
+    setSimulationTick,
     setSelectedDynasty,
-    aimSystem,
     setAimSystem,
-    gameMode,
     setGameMode,
     resetGame,
     setPaused,
     setDeathSequence,
     setReady,
     syncChargeFromServer,
-  } = useGameStore();
+  } = useGameStore.getState();
 
   const applyFreePlaySettlement = useCallback((
     result: FreePlaySettlementResult
@@ -1606,10 +1812,10 @@ export default function GamePage() {
     };
   }, []);
 
-  // Screen shake callback
+  // Screen shake callback. Writes a ref; the board reads it per frame.
   useEffect(() => {
     screenShake.setUpdateCallback((offset) => {
-      setCameraShake([offset.x, offset.y, offset.z]);
+      cameraShakeRef.current = [offset.x, offset.y, offset.z];
     });
     return () => screenShake.clearCallback();
   }, []);
@@ -2089,28 +2295,16 @@ export default function GamePage() {
     () => [food, ...extraFoods].filter((cell) => cell != null),
     [food, extraFoods]
   );
-  const genomeV2Board = useMemo(
-    () => projectGenomeV2Board(
-      genomeRulesVersion === 2 ? genomeV2State : null,
-      litFoods,
-      genomeV2SimulationTick,
-      direction
-    ),
-    [
-      direction,
-      genomeRulesVersion,
-      genomeV2SimulationTick,
-      genomeV2State,
-      litFoods,
-    ]
-  );
-  const genomeV2RuntimeSignals = useMemo(
-    () => buildGenomeV2RuntimeSignals(
-      genomeRulesVersion === 2 ? genomeV2State : null,
-      genomeV2Board
-    ),
-    [genomeRulesVersion, genomeV2Board, genomeV2State]
-  );
+  /**
+   * The genome state this run is actually played under, or null.
+   *
+   * ET-3: the BOARD PROJECTION built from it used to live here, and it takes
+   * the simulation tick — so the page recomputed it, and re-rendered, on every
+   * movement. The projection now lives in the two surfaces that draw it (the
+   * board's genome layer and the cockpit's status rail), each of which
+   * subscribes to the tick itself. This is the shared, event-scoped input.
+   */
+  const activeGenomeV2State = genomeRulesVersion === 2 ? genomeV2State : null;
 
   // Reconnects baseline their restored journal silently; only events that
   // happen after this client sees the run receive a short acknowledgement.
@@ -2157,9 +2351,9 @@ export default function GamePage() {
   selectedDynastyRef.current = selectedDynasty;
 
   const genomeV2Spatial = useMemo(() => ({
-    bodyLength: snake.length,
-    occupiedSpace: `${snake.length + terrain.length} / ${GAME_CONFIG.board.gridSize ** 2} cells`,
-  }), [snake.length, terrain.length]);
+    bodyLength: snakeLength,
+    occupiedSpace: `${snakeLength + terrainCount} / ${GAME_CONFIG.board.gridSize ** 2} cells`,
+  }), [snakeLength, terrainCount]);
   const genomeV2OfferPresentation = useMemo(() => {
     if (
       genomeRulesVersion !== 2
@@ -2393,9 +2587,9 @@ export default function GamePage() {
     const bridge = genomeV2RuntimeBridge(gameRef.current);
     const next = bridge ? parseGenomeV2State(bridge.getState().genomeV2) : null;
     setGenomeV2State(next);
-    setGenomeV2SimulationTick(gameRef.current?.getSimulationTick() ?? 0);
+    setSimulationTick(gameRef.current?.getSimulationTick() ?? 0);
     return next;
-  }, []);
+  }, [setSimulationTick]);
 
   const revealGenomeV2Commit = useCallback((
     before: GenomeV2State | null,
@@ -2640,7 +2834,7 @@ export default function GamePage() {
       setGenomeV2State(parseGenomeV2State(
         (state as typeof state & { genomeV2?: unknown }).genomeV2
       ));
-      setGenomeV2SimulationTick(gameRef.current?.getSimulationTick() ?? 0);
+      setSimulationTick(gameRef.current?.getSimulationTick() ?? 0);
       setStrains(state.strainCounts, state.strainTiers);
       setFusedSplices(state.fusedSplices);
       setGildedCells(state.gildedCells);
@@ -3565,6 +3759,7 @@ export default function GamePage() {
     setRevivePhaseTicks,
     setRevive,
     setScore,
+    setSimulationTick,
     setStrains,
     setSurgeChoicePending,
     setQueuedDirections,
@@ -3595,33 +3790,89 @@ export default function GamePage() {
         });
       }
       prevQueueLengthRef.current = queued.length;
-      setSnake(state.snake);
-      setFood(state.food);
-      setScore(state.score);
-      setDnaCollected(state.dnaCollected);
-      setDirection(state.direction);
-      setQueuedDirections(queued);
-      setFoodEaten(state.foodEaten);
-      setHoldsUsed(state.holdsUsed);
-      setHoldsTotal(state.holdBudget);
-      setChoicePityStrain(state.pendingChoicePity);
-      setExitTile(state.exitTile, state.exitTicksRemaining);
+
+      // ET-3 — WRITE ONLY WHAT MOVED.
+      //
+      // `getState()` deep-clones every collection it returns (see the note at
+      // SnakeGameLogic.getState), so before this guard EVERY one of these
+      // fields arrived with a fresh identity on every tick and every `set`
+      // woke every subscriber in the app. The clone is correct and stays; the
+      // change detection moves onto the VALUE, where it belongs.
+      //
+      // The comparators are in tickSyncDiff.ts and each one names the drawn
+      // fields it covers — an equality that misses a change is the
+      // invisible-terrain bug (WP-3.05) with a new cause.
+      const prev = useGameStore.getState();
+      if (!samePositions(prev.snake, state.snake)) setSnake(state.snake);
+      if (!samePosition(prev.food, state.food)) setFood(state.food);
+      if (prev.score !== state.score) setScore(state.score);
+      if (prev.dnaCollected !== state.dnaCollected) {
+        setDnaCollected(state.dnaCollected);
+      }
+      if (prev.direction !== state.direction) setDirection(state.direction);
+      if (!sameDirections(prev.queuedDirections, queued)) {
+        setQueuedDirections(queued);
+      }
+      if (prev.foodEaten !== state.foodEaten) setFoodEaten(state.foodEaten);
+      // These three are page state rather than store state, and the updater
+      // form is how a page-state write says "only if it moved": returning the
+      // current value is React's own bail-out, and it does not depend on the
+      // eager-state fast path being available on the tick it happens to run.
+      setHoldsUsed((held) => (held === state.holdsUsed ? held : state.holdsUsed));
+      setHoldsTotal((total) => (
+        total === state.holdBudget ? total : state.holdBudget
+      ));
+      setChoicePityStrain((pity) => (
+        pity === state.pendingChoicePity ? pity : state.pendingChoicePity
+      ));
+      if (
+        !samePosition(prev.exitTile, state.exitTile) ||
+        prev.exitTicksRemaining !== (state.exitTile ? state.exitTicksRemaining : 0)
+      ) {
+        setExitTile(state.exitTile, state.exitTicksRemaining);
+      }
       // Twin Exits (anomaly): the second portal of the pair
-      setExitTile2(state.exitTile2);
+      if (!samePosition(prev.exitTile2, state.exitTile2)) {
+        setExitTile2(state.exitTile2);
+      }
       // Phase 2 mirrors: extra foods (Splitter pairs, COSMIC's other stars),
       // the constellation window, and the mutation beacon
-      setExtraFoods(state.foods.slice(1));
-      setConstellation(
-        state.constellationGlyph,
-        state.constellationTicksRemaining,
-        state.constellationWindowTicks
-      );
-      setMutationTile(state.mutationTile, state.mutationTicksRemaining);
+      const extraFoodCells = state.foods.slice(1);
+      if (!samePositions(prev.extraFoods, extraFoodCells)) {
+        setExtraFoods(extraFoodCells);
+      }
+      if (
+        prev.constellationGlyph !== state.constellationGlyph ||
+        prev.constellationTicksRemaining !== state.constellationTicksRemaining ||
+        prev.constellationWindowTicks !== state.constellationWindowTicks
+      ) {
+        setConstellation(
+          state.constellationGlyph,
+          state.constellationTicksRemaining,
+          state.constellationWindowTicks
+        );
+      }
+      if (
+        !samePosition(prev.mutationTile, state.mutationTile) ||
+        prev.mutationTicksRemaining !==
+          (state.mutationTile ? state.mutationTicksRemaining : 0)
+      ) {
+        setMutationTile(state.mutationTile, state.mutationTicksRemaining);
+      }
       // WP-3.05: OUTSIDE the genome gate on purpose. Terrain belongs to a
       // ruleset's arena, not to buildcraft, so gating it here would recreate
       // the invisible-block bug for every non-genome run.
-      setTerrain(state.terrain);
-      setRevivePhaseTicks(state.revivePhaseTicksRemaining);
+      if (!sameTerrain(prev.terrain, state.terrain)) setTerrain(state.terrain);
+      // Compared against what the store WOULD hold, not against the raw
+      // reading: both setters normalise, and comparing the un-normalised
+      // value would write an identical number on every tick forever.
+      const revivePhaseTicks = Math.max(
+        0,
+        Math.trunc(state.revivePhaseTicksRemaining)
+      );
+      if (prev.revivePhaseTicksRemaining !== revivePhaseTicks) {
+        setRevivePhaseTicks(state.revivePhaseTicksRemaining);
+      }
       const genomeRevision = gameRef.current.getGenomeV2Revision();
       if (genomeV2RevisionRef.current !== genomeRevision) {
         genomeV2RevisionRef.current = genomeRevision;
@@ -3629,15 +3880,37 @@ export default function GamePage() {
           gameRef.current.getGenomeV2State()
         ));
       }
-      setGenomeV2SimulationTick(gameRef.current.getSimulationTick());
+      const simulationTick = Math.max(
+        0,
+        Math.trunc(gameRef.current.getSimulationTick())
+      );
+      if (prev.simulationTick !== simulationTick) {
+        setSimulationTick(simulationTick);
+      }
       if (gameRef.current.hasGenome()) {
-        setStrains(state.strainCounts, state.strainTiers);
-        setFusedSplices(state.fusedSplices);
-        setGildedCells(state.gildedCells);
-        setInfusesCount(state.infuses.length);
-        setPortalChoicePending(state.pendingPortalChoice !== null);
-        setSurgeChoicePending(state.pendingSurgeChoice);
-        setRevive(state.revive);
+        if (
+          !sameStrainMap(prev.strainCounts, state.strainCounts) ||
+          !sameStrainMap(prev.strainTiers, state.strainTiers)
+        ) {
+          setStrains(state.strainCounts, state.strainTiers);
+        }
+        if (!sameFusedSplices(prev.fusedSplices, state.fusedSplices)) {
+          setFusedSplices(state.fusedSplices);
+        }
+        if (!sameGildedCells(prev.gildedCells, state.gildedCells)) {
+          setGildedCells(state.gildedCells);
+        }
+        if (prev.infusesCount !== state.infuses.length) {
+          setInfusesCount(state.infuses.length);
+        }
+        const portalPending = state.pendingPortalChoice !== null;
+        if (prev.portalChoicePending !== portalPending) {
+          setPortalChoicePending(portalPending);
+        }
+        if (prev.surgeChoicePending !== state.pendingSurgeChoice) {
+          setSurgeChoicePending(state.pendingSurgeChoice);
+        }
+        if (!sameRevive(prev.revive, state.revive)) setRevive(state.revive);
       }
 
       // ET-0 instruments, read BEFORE recordTick overwrites the buffer.
@@ -3670,7 +3943,7 @@ export default function GamePage() {
         tickAtMs
       );
     }
-  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setStrains, setFusedSplices, setGildedCells, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setRevivePhaseTicks, setTerrain]);
+  }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setStrains, setFusedSplices, setGildedCells, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setRevivePhaseTicks, setSimulationTick, setTerrain]);
 
   // Sync only heading + input buffer - called on every direction input so
   // the aim telegraph reacts on the keypress, not on the next tick
@@ -3680,8 +3953,12 @@ export default function GamePage() {
       // Keep the debug exec-watch baseline current: inputs only grow the
       // queue, so tracking here prevents false "consumed" reads on ticks.
       prevQueueLengthRef.current = queued.length;
-      setDirection(gameRef.current.getState().direction);
-      setQueuedDirections(queued);
+      const prev = useGameStore.getState();
+      const direction = gameRef.current.getState().direction;
+      if (prev.direction !== direction) setDirection(direction);
+      if (!sameDirections(prev.queuedDirections, queued)) {
+        setQueuedDirections(queued);
+      }
     }
   }, [setDirection, setQueuedDirections]);
 
@@ -3876,7 +4153,7 @@ export default function GamePage() {
     setGenomeRulesVersion(startedRulesVersion);
     setGenomeV2Activation(startedActivation);
     setGenomeV2State(null);
-    setGenomeV2SimulationTick(0);
+    setSimulationTick(0);
     setGenomeV2BoardFeedback(null);
     genomeV2FeedbackRunSeedRef.current = null;
     genomeV2FeedbackEventRef.current = null;
@@ -3976,6 +4253,7 @@ export default function GamePage() {
     setPortalChoicePending,
     setReady,
     setSelectedDynasty,
+    setSimulationTick,
     setSurgeChoicePending,
     setTorus,
     storeStartGame,
@@ -4711,7 +4989,7 @@ export default function GamePage() {
       (state as typeof state & { genomeV2?: unknown }).genomeV2
     );
     setGenomeV2State(restoredGenomeV2);
-    setGenomeV2SimulationTick(game.getSimulationTick());
+    setSimulationTick(game.getSimulationTick());
     setChoiceOptions(
       restoredGenomeV2?.offer ? null : state.pendingChoice,
       restoredGenomeV2?.offer ? null : state.choiceSource
@@ -4748,6 +5026,7 @@ export default function GamePage() {
     setPaused,
     setPortalChoicePending,
     setReady,
+    setSimulationTick,
     setSurgeChoicePending,
     syncState,
   ]);
@@ -5855,7 +6134,7 @@ export default function GamePage() {
   const activeDynasty = normalizeDynastyName(selectedDynasty);
   const growthFoodIndex = Math.max(1, foodEaten + 1);
   const modelledLength =
-    gameRef.current?.getModelledLength() ?? Math.max(3, snake.length);
+    gameRef.current?.getModelledLength() ?? Math.max(3, snakeLength);
   const growthPerFood = baseGrowthForFood(
     activeGrowth,
     growthFoodIndex,
@@ -5997,7 +6276,17 @@ export default function GamePage() {
     : lastRunFree
       ? 'free'
       : 'standard';
-  const cockpitStatus = runContinuityPhase === 'activating'
+  /**
+   * The status rail, minus its live tail.
+   *
+   * Every branch here is an EVENT — a hold, a recovery, a flourish, an open
+   * portal — and the page is entitled to re-render for those. `null` means
+   * "nothing has claimed the rail", which is where the genome's runtime
+   * signals speak; those recompute on every movement tick, so the cockpit
+   * binding resolves that branch against its own subscription rather than
+   * dragging the page along with it (ET-3).
+   */
+  const cockpitStatusOverride: string | null = runContinuityPhase === 'activating'
     ? 'Securing Energy commitment · direction held'
     : runEngineFault
       ? 'Simulation protected · secured recovery available'
@@ -6027,9 +6316,7 @@ export default function GamePage() {
                 ? `${STRAINS[expressionFlourish.strain].name} ${expressionFlourish.tier === 3 ? 'apex' : 'expression'} online`
                 : exitTile
                   ? 'Extraction window open'
-                  : genomeV2RuntimeSignals.length > 0
-                    ? genomeV2RuntimeSignals.map((signal) => signal.label).join(' · ')
-                    : 'Run stable';
+                  : null;
   const cockpitGenes = genomeRulesVersion === 2 && genomeV2State
     ? genomeV2State.slots.flatMap((slot): RunCockpitModel['genes'][number][] => {
         const occupant = slot.occupant;
@@ -6080,7 +6367,16 @@ export default function GamePage() {
         ])
       ) as Partial<Record<StrainId, number>>
     : undefined;
-  const cockpitModel: RunCockpitModel = {
+  /**
+   * The cockpit model, minus the three values that move every tick.
+   *
+   * ET-3: `statusText`, `constellation.fraction` and `portalTicksRemaining`
+   * are the only fields on this model that change on a movement tick, and
+   * they are resolved by `BoardViewportShell` from its own subscriptions.
+   * Everything below changes on an EVENT — an eat, a spawn, a hold, a
+   * decision — which is exactly when the page is entitled to commit.
+   */
+  const cockpitModel: CockpitBaseModel = {
     dynasty: selectedDynasty,
     state: cockpitState,
     mode: cockpitMode,
@@ -6094,7 +6390,6 @@ export default function GamePage() {
         : genomeRun
           ? 'Genome run'
           : 'Classic run',
-    statusText: cockpitStatus,
     isFirstMovementPrompt: minimalFirstRunPrompt && isReady,
     score,
     dna: dnaCollected,
@@ -6124,13 +6419,8 @@ export default function GamePage() {
     bankOutcomeLabel: genomeV2LiveOutcome?.bankBare,
     crashOutcomeLabel: genomeV2LiveOutcome?.crashBare,
     outcomeUnitLabel: genomeV2LiveOutcome?.label,
-    constellation:
-      isPlaying && constellationWindowTicks > 0
-        ? {
-            stars: 1 + extraFoods.length,
-            fraction: constellationTicksRemaining / constellationWindowTicks,
-          }
-        : null,
+    constellationWindowTicks: isPlaying ? constellationWindowTicks : 0,
+    constellationStars: 1 + extraFoods.length,
     genes: cockpitGenes,
     strains: STRAIN_IDS.map((id) => ({
       id,
@@ -6143,7 +6433,9 @@ export default function GamePage() {
     })),
     showGenome: cockpitGenomeVisible,
     portalLive: Boolean(exitTile),
-    portalTicksRemaining: Math.max(0, exitTicksRemaining),
+    statusOverride: cockpitStatusOverride,
+    genomeState: activeGenomeV2State,
+    litFoods,
   };
   const genomeV2OfferNode = genomeV2OfferPresentation && isPlaying && !isGameOver
     ? (
@@ -6163,7 +6455,7 @@ export default function GamePage() {
         <PortalChoiceOverlay
           canInfuse={genomeV2PortalPresentation.mutateState.unlocked}
           infusesUsed={genomeV2State?.portalGenomeActions ?? 0}
-          snakeLength={snake.length}
+          snakeLength={snakeLength}
           bankDna={0}
           crashDna={0}
           bankOutcomeLabel={genomeV2PortalPresentation.outcomeProjection.bankBare}
@@ -6307,7 +6599,7 @@ export default function GamePage() {
                 <PortalChoiceOverlay
                   canInfuse={portalCanInfuse}
                   infusesUsed={infusesCount}
-                  snakeLength={snake.length}
+                  snakeLength={snakeLength}
                   bankDna={previewOutcome(true, activeAnomalyId)}
                   crashDna={previewOutcome(false, activeAnomalyId)}
                   doorsPassed={portalDoorsPassed}
@@ -6693,27 +6985,11 @@ export default function GamePage() {
               </span>
             </div>
           )}
-          {/* COSMIC constellation window - stars left, and how long they
-              have before they calcify where they sit. Always visible on
-              COSMIC while playing: the abandonment has to be a CHOICE. */}
           {isPlaying && constellationWindowTicks > 0 && (
-            <div
-              data-testid="constellation-chip"
-              className="flex h-7 shrink-0 items-center gap-1 px-2 rounded-arcade border border-[#f0abfc]/60 bg-void/80 backdrop-blur-md"
-            >
-              <span className="text-[#f0abfc] font-bold">
-                ★{1 + extraFoods.length}
-              </span>
-              <span className="text-beige/60">
-                {Math.max(
-                  0,
-                  Math.round(
-                    (constellationTicksRemaining / constellationWindowTicks) * 100
-                  )
-                )}
-                %
-              </span>
-            </div>
+            <ConstellationChip
+              stars={1 + extraFoods.length}
+              windowTicks={constellationWindowTicks}
+            />
           )}
           {/* Anomaly run chip - the week's modifier, always visible while
               playing the board (§7.2) */}
@@ -6918,7 +7194,7 @@ export default function GamePage() {
         <PortalChoiceOverlay
           canInfuse={portalCanInfuse}
           infusesUsed={infusesCount}
-          snakeLength={snake.length}
+          snakeLength={snakeLength}
           bankDna={previewOutcome(true, activeAnomalyId)}
           crashDna={previewOutcome(false, activeAnomalyId)}
           doorsPassed={portalDoorsPassed}
@@ -7983,36 +8259,26 @@ export default function GamePage() {
         />
 
         <Suspense fallback={null}>
+          {/* ET-3: the board's per-tick inputs — the body, the countdowns,
+              the genome projection — are subscribed INSIDE it now, by the
+              layers that draw them. What crosses this boundary changes on an
+              event. */}
           <GameBoard
             quality={renderQuality}
             dynasty={selectedDynasty}
             bufferRef={interpBufferRef}
             isMobile={isMobile}
-            snake={snake}
             strainBands={snakeStrainBands}
-            food={food}
-            extraFoods={extraFoods}
-            gildedCells={gildedCells}
-            genomeV2Board={genomeV2Board}
-            terrain={terrain}
-            revivePhaseTicksRemaining={revivePhaseTicksRemaining}
+            genomeState={activeGenomeV2State}
+            litFoods={litFoods}
             cosmetics={runCosmetics}
-            constellationGlyph={constellationGlyph}
-            exitTile={exitTile}
-            exitTile2={exitTile2}
             anomalyId={isPlaying ? activeAnomalyId : null}
-            exitTicksRemaining={exitTicksRemaining}
-            mutationTile={mutationTile}
-            mutationTicksRemaining={mutationTicksRemaining}
-            torus={torus}
-            direction={direction}
-            queuedDirections={queuedDirections}
             aimSystem={aimSystem}
             particlePos={particlePos}
             particleTrigger={particleTrigger}
             deathPos={deathPos}
             showDeathExplosion={showDeathExplosion}
-            cameraShake={cameraShake}
+            shakeRef={cameraShakeRef}
           />
         </Suspense>
 
@@ -8151,80 +8417,242 @@ function boardThemeForRun(dynasty: DynastyId): BoardTheme | null {
   return NINETIES_COMPOSITION_ENABLED ? boardThemeForDynasty(dynasty) : null;
 }
 
+/**
+ * The screen-shake group.
+ *
+ * `ScreenShakeManager` drives its own rAF loop, and its offset used to land
+ * in a `useState` on the run page — one full React commit of eight thousand
+ * lines per animation frame, for the whole length of every shake. The offset
+ * now lands in a ref and is applied here, per frame, on the object itself.
+ * Same picture, no reconciliation (ET-3).
+ */
+function ShakeGroup({
+  shakeRef,
+  children,
+}: {
+  shakeRef: { readonly current: [number, number, number] };
+  children: ReactNode;
+}) {
+  const groupRef = useRef<Group>(null);
+  useFrame(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    const offset = shakeRef.current;
+    group.position.set(offset[0], offset[1], offset[2]);
+  });
+  return <group ref={groupRef}>{children}</group>;
+}
+
+/**
+ * The aim telegraph, bound to the body.
+ *
+ * The body is the one board value that genuinely changes on every movement
+ * tick, and this is the only layer that draws from it — the snake itself
+ * reaches the screen through the interpolation buffer. Subscribing here means
+ * a movement redraws a telegraph instead of an arena.
+ */
+function AimLayer(
+  props: Omit<
+    AimRendererProps,
+    'headPosition' | 'direction' | 'queuedDirections' | 'snake'
+  >
+) {
+  const snake = useGameStore((state) => state.snake);
+  const direction = useGameStore((state) => state.direction);
+  const queuedDirections = useGameStore((state) => state.queuedDirections);
+  return (
+    <AimRenderer
+      headPosition={snake[0] ?? null}
+      direction={direction}
+      queuedDirections={queuedDirections}
+      snake={snake}
+      {...props}
+    />
+  );
+}
+
+/** Blackout's visibility mask, which follows the head and nothing else. */
+function BlackoutLayer() {
+  const head = useGameStore((state) => state.snake[0] ?? null);
+  return (
+    <BlackoutMask
+      headPosition={head}
+      gridSize={GAME_CONFIG.board.gridSize}
+    />
+  );
+}
+
+/**
+ * Extraction portals, with the despawn window they spin up against.
+ *
+ * `exitTicksRemaining` counts down on every tick — but only while a portal is
+ * open, which is a small fraction of a run. Outside that window every
+ * selector here returns what it returned last tick and this layer is silent.
+ */
+function PortalLayer({ isMobile }: { isMobile: boolean }) {
+  const exitTile = useGameStore((state) => state.exitTile);
+  const exitTile2 = useGameStore((state) => state.exitTile2);
+  const exitTicksRemaining = useGameStore((state) => state.exitTicksRemaining);
+  return (
+    <>
+      {exitTile && (
+        <ExitPortal
+          position={[exitTile.x + 0.5, 0, exitTile.z + 0.5]}
+          ticksRemaining={exitTicksRemaining}
+          isMobile={isMobile}
+          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.08 : 1}
+        />
+      )}
+      {/* Twin Exits (anomaly §7.2): the pair's second doorway - same
+          shared despawn window, either one banks the run */}
+      {exitTile2 && (
+        <ExitPortal
+          position={[exitTile2.x + 0.5, 0, exitTile2.z + 0.5]}
+          ticksRemaining={exitTicksRemaining}
+          isMobile={isMobile}
+          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.08 : 1}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Mutation food - violet double helix. It participates in Gridlock's
+ * alignment inventory at the lowest priority, but never steers Deadeye or
+ * Pathline - it stays an optional detour. Its despawn window is the same
+ * shape of countdown as the portal's, and is bound the same way.
+ */
+function MutationBeaconLayer() {
+  const mutationTile = useGameStore((state) => state.mutationTile);
+  const mutationTicksRemaining = useGameStore(
+    (state) => state.mutationTicksRemaining
+  );
+  if (!mutationTile) return null;
+  return (
+    <MutationBeacon
+      position={[mutationTile.x + 0.5, 0, mutationTile.z + 0.5]}
+      ticksRemaining={mutationTicksRemaining}
+      visualScale={HUD_COCKPIT_V1_ENABLED ? 1.3 : 1}
+    />
+  );
+}
+
+/**
+ * The genome's board effects: AURUM's gilded wake, and the Scars and seals
+ * whose forming fill is a countdown.
+ *
+ * This is the one place that still needs the full board projection, because
+ * the fill it draws IS the simulation tick. It subscribes to that tick alone
+ * — on a run with no genome terrain and no gilded wake, every input here is
+ * constant and the layer never commits.
+ */
+function GenomeEffectsLayer({
+  genomeState,
+  litFoods,
+}: {
+  genomeState: GenomeV2State | null;
+  litFoods: readonly Position[];
+}) {
+  const gildedCells = useGameStore((state) => state.gildedCells);
+  const direction = useGameStore((state) => state.direction);
+  const needsTick = genomeState !== null
+    && (genomeState.permanentTerrain.length > 0
+      || Object.keys(genomeState.targets).length > 0);
+  const simulationTick = useGameStore((state) =>
+    needsTick ? state.simulationTick : 0
+  );
+  const projection = useMemo(
+    () => projectGenomeV2Board(genomeState, litFoods, simulationTick, direction),
+    [direction, genomeState, litFoods, simulationTick]
+  );
+  return <GenomeBoardEffects gildedCells={gildedCells} genomeV2={projection} />;
+}
+
 interface GameBoardProps {
   dynasty: DynastyId;
   /** Tick-alpha interpolation buffer - the snake's per-frame position source. */
   bufferRef: { readonly current: InterpolationBuffer | null };
   /** Mobile perf profile (portal draw fallback etc.) */
   isMobile: boolean;
-  snake: Position[];
   strainBands: readonly StrainId[];
-  food: Position | null;
-  extraFoods: Position[];
-  gildedCells: readonly { x: number; z: number; ticks: number }[];
-  genomeV2Board: GenomeV2BoardProjection;
-  terrain: readonly TerrainBlock[];
-  revivePhaseTicksRemaining: number;
+  /** Genome state for this run's rules version, or null. Event-scoped. */
+  genomeState: GenomeV2State | null;
+  /** The whole food wave, which the genome projection reads. */
+  litFoods: readonly Position[];
   /** The run's cosmetic loadout, fixed at start by the session manifest. */
   cosmetics: CosmeticLoadout;
-  constellationGlyph: number | null;
-  exitTile: Position | null;
-  /** Second portal of the Twin Exits anomaly pair (§7.2), null otherwise. */
-  exitTile2: Position | null;
   /** Active anomaly modifier while playing (drives the Blackout mask). */
   anomalyId: AnomalyId | null;
-  exitTicksRemaining: number;
-  mutationTile: Position | null;
-  mutationTicksRemaining: number;
-  /** True on a dynasty whose edges wrap instead of killing (COSMIC). */
-  torus: boolean;
-  direction: Direction;
-  queuedDirections: Direction[];
   aimSystem: AimSystemId;
   particlePos: [number, number, number] | null;
   particleTrigger: number;
   deathPos: [number, number, number] | null;
   showDeathExplosion: boolean;
-  cameraShake: [number, number, number];
+  /**
+   * Live screen-shake offset.
+   *
+   * A REF, not a value: `ScreenShakeManager` runs its own rAF loop, so as a
+   * `useState` this drove a full React commit of the run route on every
+   * animation frame for the length of every shake — a food, a collision, a
+   * death. The group reads it per frame instead (ET-3).
+   */
+  shakeRef: { readonly current: [number, number, number] };
   /** Adaptive-quality tier, resolved by the governor on the page. */
   quality: RenderQuality;
 }
 
+/**
+ * The board scene.
+ *
+ * ET-3 moved this component's per-tick inputs INSIDE it. What arrives as a
+ * prop changes on an event; what changes on a movement tick — the body, the
+ * two countdowns, the genome projection's forming fills — is subscribed by
+ * the small layers below, so a movement redraws a countdown rather than
+ * reconciling an arena.
+ */
 function GameBoard({
   dynasty,
   bufferRef,
   isMobile,
-  snake,
   strainBands,
-  food,
-  extraFoods,
-  gildedCells,
-  genomeV2Board,
-  terrain,
-  revivePhaseTicksRemaining,
+  genomeState,
+  litFoods,
   cosmetics,
-  constellationGlyph,
-  exitTile,
-  exitTile2,
   anomalyId,
-  exitTicksRemaining,
-  mutationTile,
-  mutationTicksRemaining,
-  torus,
-  direction,
-  queuedDirections,
   aimSystem,
   quality,
   particlePos,
   particleTrigger,
   deathPos,
   showDeathExplosion,
-  cameraShake,
+  shakeRef,
 }: GameBoardProps) {
+  useCommitCount('board');
   const theme = themeManager.getTheme(dynasty);
   const materialProfile = getGameMaterialProfile(dynasty);
   // 90S-A: see boardThemeForRun. Null on the rollback leg. One per dynasty.
   const neonBoardTheme = useMemo(() => boardThemeForRun(dynasty), [dynasty]);
+
+  // Board state this component draws itself. Every one of these changes on an
+  // EVENT — a spawn, an eat, a turn, a terrain block forming — never on the
+  // bare movement of the head, which reaches the screen through `bufferRef`.
+  const food = useGameStore((state) => state.food);
+  const extraFoods = useGameStore((state) => state.extraFoods);
+  const exitTile = useGameStore((state) => state.exitTile);
+  const exitTile2 = useGameStore((state) => state.exitTile2);
+  const mutationTile = useGameStore((state) => state.mutationTile);
+  const terrain = useGameStore((state) => state.terrain);
+  const torus = useGameStore((state) => state.torus);
+  const direction = useGameStore((state) => state.direction);
+  const constellationGlyph = useGameStore((state) => state.constellationGlyph);
+  // The snake is drawn from WHETHER the phase is live, not from how many
+  // moves are left in it — and a boolean stops changing the moment the phase
+  // begins, where the count would change on every one of those moves.
+  const revivePhaseActive = useGameStore(
+    (state) => state.revivePhaseTicksRemaining > 0
+  );
+
   // COSMIC foods carry their constellation glyph color; other dynasties
   // keep the dynasty accent
   const foodColor =
@@ -8234,9 +8662,9 @@ function GameBoard({
         ? materialProfile.lighting.objectiveColor
         : theme.accent;
 
-  // Target-bearing cells for the aim systems, rebuilt per tick (Gridlock
-  // alignment + Firefly pursuit). Food outranks portal outranks mutation
-  // on Gridlock ties - the priority lives in aimUtils; this is inventory.
+  // Target-bearing cells for the aim systems (Gridlock alignment + Firefly
+  // pursuit). Food outranks portal outranks mutation on Gridlock ties - the
+  // priority lives in aimUtils; this is inventory.
   const aimTargets = useMemo<AimTarget[]>(() => {
     const list: AimTarget[] = [];
     if (food) list.push({ x: food.x, z: food.z, kind: 'food' });
@@ -8250,10 +8678,17 @@ function GameBoard({
     }
     return list;
   }, [food, extraFoods, exitTile, exitTile2, mutationTile]);
+  // The genome's CLAIMED cells, which the trail metric and the aim telegraph
+  // need. Deliberately not the full board projection: that one takes the
+  // simulation tick, and neither of these two consumers draws a forming fill.
+  const genomeOccupiedCells = useMemo(
+    () => genomeV2OccupiedCells(genomeState),
+    [genomeState]
+  );
   const snakeTerrain = useMemo<TerrainBlock[]>(() => {
     const cells = new Set(terrain.map((cell) => `${cell.x}:${cell.z}`));
     const combined = [...terrain];
-    for (const cell of genomeV2Board.occupiedCells) {
+    for (const cell of genomeOccupiedCells) {
       const key = `${cell.x}:${cell.z}`;
       if (cells.has(key)) continue;
       cells.add(key);
@@ -8267,7 +8702,7 @@ function GameBoard({
       });
     }
     return combined;
-  }, [genomeV2Board.occupiedCells, terrain]);
+  }, [genomeOccupiedCells, terrain]);
   const aimObstacles = useMemo(
     () => snakeTerrain
       .filter((cell) => cell.solid)
@@ -8276,7 +8711,7 @@ function GameBoard({
   );
 
   return (
-    <group position={cameraShake}>
+    <ShakeGroup shakeRef={shakeRef}>
       {/* The released arena remains byte-for-byte the default rollback. */}
       {HUD_COCKPIT_V1_ENABLED ? (
         <ArenaAssembly
@@ -8301,12 +8736,11 @@ function GameBoard({
       )}
 
       {/* Aim telegraph - one renderer per selected aim system
-          (deadeye/gridlock/pathline/firefly meta-progression) */}
-      <AimRenderer
-        headPosition={snake[0] ?? null}
-        direction={direction}
-        queuedDirections={queuedDirections}
-        snake={snake}
+          (deadeye/gridlock/pathline/firefly meta-progression).
+
+          The BODY is its only per-tick input, so it subscribes to the body
+          itself rather than letting the whole board reconcile behind it. */}
+      <AimLayer
         obstacles={aimObstacles}
         gridSize={GAME_CONFIG.board.gridSize}
         aimSystem={aimSystem}
@@ -8326,7 +8760,9 @@ function GameBoard({
         torus={torus}
       />
 
-      <GenomeBoardEffects gildedCells={gildedCells} genomeV2={genomeV2Board} />
+      {/* Gilded wake and the genome's forming Scars: both are countdowns, so
+          both subscribe to the tick from inside this one layer. */}
+      <GenomeEffectsLayer genomeState={genomeState} litFoods={litFoods} />
       <TerrainBlocks terrain={terrain} castShadow={quality.terrainCastsShadow} />
 
       {/* Snake - one instanced body draw + a head mesh with eyes, both
@@ -8361,7 +8797,7 @@ function GameBoard({
             strainBands={strainBands}
             terrain={snakeTerrain}
             wrapActive={torus}
-            revivePhaseActive={revivePhaseTicksRemaining > 0}
+            revivePhaseActive={revivePhaseActive}
             loadout={cosmetics}
           />
         }
@@ -8373,7 +8809,7 @@ function GameBoard({
           strainBands={strainBands}
           terrain={snakeTerrain}
           wrapActive={torus}
-          revivePhaseActive={revivePhaseTicksRemaining > 0}
+          revivePhaseActive={revivePhaseActive}
           loadout={cosmetics}
         />
       </AssetGate>
@@ -8396,47 +8832,17 @@ function GameBoard({
         />
       ))}
 
-      {/* Exit portal - the champagne extraction beam (categorically
-          distinct from food; urgency spin-up/flicker as the window closes) */}
-      {exitTile && (
-        <ExitPortal
-          position={[exitTile.x + 0.5, 0, exitTile.z + 0.5]}
-          ticksRemaining={exitTicksRemaining}
-          isMobile={isMobile}
-          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.08 : 1}
-        />
-      )}
-      {/* Twin Exits (anomaly §7.2): the pair's second doorway - same
-          shared despawn window, either one banks the run */}
-      {exitTile2 && (
-        <ExitPortal
-          position={[exitTile2.x + 0.5, 0, exitTile2.z + 0.5]}
-          ticksRemaining={exitTicksRemaining}
-          isMobile={isMobile}
-          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.08 : 1}
-        />
-      )}
+      {/* Exit portal(s) and the mutation beacon: both draw a despawn window
+          spinning up as it closes, so both live in layers that subscribe to
+          their own countdown and to nothing else. */}
+      <PortalLayer isMobile={isMobile} />
 
       {/* Blackout (anomaly §7.2): render-layer visibility mask - the
           world fades to void beyond 6 cells of the head. Never engine
           logic; payout math is untouched. */}
-      {anomalyId === 'blackout' && (
-        <BlackoutMask
-          headPosition={snake[0] ?? null}
-          gridSize={GAME_CONFIG.board.gridSize}
-        />
-      )}
+      {anomalyId === 'blackout' && <BlackoutLayer />}
 
-      {/* Mutation food - violet double helix. It participates in Gridlock's
-          alignment inventory at the lowest priority, but never steers
-          Deadeye or Pathline - it stays an optional detour. */}
-      {mutationTile && (
-        <MutationBeacon
-          position={[mutationTile.x + 0.5, 0, mutationTile.z + 0.5]}
-          ticksRemaining={mutationTicksRemaining}
-          visualScale={HUD_COCKPIT_V1_ENABLED ? 1.3 : 1}
-        />
-      )}
+      <MutationBeaconLayer />
 
       {/* Particle Effects */}
       <CollectEffect
@@ -8451,6 +8857,6 @@ function GameBoard({
         dynasty={dynasty}
         active={showDeathExplosion}
       />
-    </group>
+    </ShakeGroup>
   );
 }

@@ -120,7 +120,13 @@ describe('the game scene threads what the metric needs', () => {
     // every run, while the model streams. The combined inventory also includes
     // reducer-authored Genome seals/scars, which are just as solid.
     const page = read(PAGE);
-    expect(page).toContain('for (const cell of genomeV2Board.occupiedCells)');
+    // ET-3 moved the claimed-cell list off the per-tick board projection and
+    // onto `genomeV2OccupiedCells`, which reads the same permanent terrain
+    // without needing the simulation tick. Both halves are asserted so the
+    // inventory cannot silently become empty: the source of the cells, and
+    // their arrival in the combined list.
+    expect(page).toContain('genomeV2OccupiedCells(genomeState)');
+    expect(page).toContain('for (const cell of genomeOccupiedCells)');
     expect(page).toMatch(/<InstancedSnake[\s\S]{0,400}terrain=\{snakeTerrain\}/);
     expect(page).toMatch(
       /<InstancedSnakeFallback[\s\S]{0,400}terrain=\{snakeTerrain\}/
@@ -144,13 +150,21 @@ describe('the game scene threads what the metric needs', () => {
     // mercy. Both the streamed model and its fallback must show the same head
     // shell, or the rule appears/disappears while the GLB loads.
     const page = read(PAGE);
-    expect(page).toMatch(
-      /<InstancedSnake[\s\S]{0,500}revivePhaseActive=\{revivePhaseTicksRemaining > 0\}/
-    );
-    expect(page).toMatch(
-      /<InstancedSnakeFallback[\s\S]{0,500}revivePhaseActive=\{revivePhaseTicksRemaining > 0\}/
-    );
+    // ET-3 binds the same predicate one line earlier, as a store selector, so
+    // that the board subscribes to the BOOLEAN rather than to a countdown that
+    // moves every tick. The chain is asserted end to end — engine mirror,
+    // selector, both render paths — which is stricter than pinning the
+    // expression inline was.
     expect(page).toContain('setRevivePhaseTicks(state.revivePhaseTicksRemaining)');
+    expect(page).toMatch(
+      /revivePhaseActive = useGameStore\(\s*\(state\) => state\.revivePhaseTicksRemaining > 0\s*\)/
+    );
+    expect(page).toMatch(
+      /<InstancedSnake[\s\S]{0,500}revivePhaseActive=\{revivePhaseActive\}/
+    );
+    expect(page).toMatch(
+      /<InstancedSnakeFallback[\s\S]{0,500}revivePhaseActive=\{revivePhaseActive\}/
+    );
   });
 
   it('only SOLID terrain packs', () => {

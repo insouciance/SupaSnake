@@ -5,6 +5,7 @@ import {
 } from '@/shared/game/genomeV2';
 import {
   buildGenomeV2RuntimeSignals,
+  genomeV2OccupiedCells,
   latestGenomeV2BoardFeedback,
   projectGenomeV2Board,
 } from './genomeV2BoardPresentation';
@@ -179,6 +180,45 @@ describe('Genome v2 board projection', () => {
     expect(new Set(occupiedKeys)).toEqual(new Set(renderedKeys));
     expect(projection.permanentTerrain.find((cell) => cell.x === 2 && cell.z === 2))
       .toMatchObject({ source: 'phase_gate_scar', terrainId: 'scar:1' });
+  });
+
+  it('splits the claimed cells out of the projection without changing them', () => {
+    // ET-3: the trail metric and the aim telegraph need the CLAIMED cells and
+    // nothing else, so they read `genomeV2OccupiedCells` and subscribe to
+    // genome state instead of to every simulation tick. The two must never
+    // disagree, and they must not disagree at any tick: whether a block is
+    // lethal yet does not change which cell it sits on.
+    const state = stateWithTargets([
+      target('gate', {
+        kind: 'phase_gate',
+        optionalRouteCells: [{ x: 5, z: 5 }, { x: 9, z: 9 }],
+      }),
+    ]);
+    state.permanentTerrain = [
+      {
+        terrainId: 'seal:1',
+        source: 'coilkeeper_seal',
+        cells: [{ x: 1, z: 1 }, { x: 2, z: 2 }, { x: 2, z: 2 }],
+        createdAtFood: 8,
+        permanent: true,
+      },
+      {
+        terrainId: 'scar:1',
+        source: 'phase_gate_scar',
+        cells: [{ x: 2, z: 2 }, { x: 3, z: 3 }],
+        createdAtFood: 12,
+        permanent: true,
+        formingFromTick: 10,
+        formingTotalTicks: 20,
+      },
+    ];
+
+    for (const tick of [0, 10, 19, 20, 400]) {
+      expect(genomeV2OccupiedCells(state)).toEqual(
+        projectGenomeV2Board(state, [], tick).occupiedCells
+      );
+    }
+    expect(genomeV2OccupiedCells(null)).toEqual([]);
   });
 
   it('removes a used Side Door from the live gate inventory once its cells become solid', () => {

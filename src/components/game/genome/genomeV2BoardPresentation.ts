@@ -178,6 +178,34 @@ function liveTargetCell(
  * It does not infer mechanics from held gene IDs, so reconnects and Recode
  * cannot produce a picture that disagrees with the live run.
  */
+/**
+ * The cells a run's permanent terrain claims — the tick-INDEPENDENT half of
+ * the board projection.
+ *
+ * `projectGenomeV2Board` returns the same set in `occupiedCells`, but it also
+ * needs the simulation tick to decide how far each Scar has formed. The trail
+ * renderer and the aim telegraph want only the claimed cells: whether a block
+ * is lethal YET does not change which cell it sits on, and neither does the
+ * fill drawn over it.
+ *
+ * Split out so those two consumers can subscribe to genome state alone
+ * instead of to every movement tick (ET-3). It is verified against the
+ * projection's own `occupiedCells` in genomeV2BoardPresentation.test.ts —
+ * these two must never disagree.
+ */
+export function genomeV2OccupiedCells(
+  state: GenomeV2State | null
+): GenomeV2Cell[] {
+  if (!state) return [];
+  const occupied = new Map<string, GenomeV2Cell>();
+  for (const fact of state.permanentTerrain) {
+    for (const cell of fact.cells) {
+      occupied.set(cellKey(cell), { ...cell });
+    }
+  }
+  return Array.from(occupied.values());
+}
+
 export function projectGenomeV2Board(
   state: GenomeV2State | null,
   foods: readonly GenomeV2Cell[],
