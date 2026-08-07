@@ -98,6 +98,101 @@ const PLATE_DILATE = 5.5;
 /** Closes the JPEG's speckle inside the purple before the shape is traced. */
 const BURST_CLOSE = 0.9;
 
+/**
+ * THE HAND — the two rules that turn a traced raster boundary back into a
+ * DRAWN line. Both are the owner's, and both are keyed to the same thing: the
+ * direction an edge FACES.
+ *
+ * The trace winds an outer ring clockwise with the ink on its right (see
+ * `contours`), so an edge's outward normal is the left of its travel. All the
+ * angles below are that normal, in degrees off NORTH, negative toward west.
+ *
+ *   RULE 1 — THE LIT EDGES ARE RULED DEAD STRAIGHT.
+ *
+ *     *"The top outlines aren't torn, they are pretty perfectly straight — but
+ *     that only concerns those that go towards North-East or North-East-East.
+ *     That gives the whole thing a cool effect."*
+ *
+ *     Measured against the model, the band he names is exactly the band his
+ *     pale lit rim occupies. Sampling the rim's thickness around every glyph
+ *     boundary, binned by the direction the outline travels, gives 0.00px
+ *     everywhere in the western half, 0.04px travelling due north, and a single
+ *     peak travelling east-north-east:
+ *
+ *         travel   NE    NEbE   ENE    EbN    E     EbS
+ *         lit rim  0.16  0.25   0.32   0.22   0.20  0.10   (model px)
+ *
+ *     Those travel directions are outward normals of NW through N — up, and
+ *     slightly left. Which is the one-light law `markGeometry.mjs` already
+ *     states, arrived at from the opposite end. So ONE band places both: the
+ *     edges that are ruled straight are the edges that carry the bevel, and
+ *     the crisp geometry and the crisp light land on the same segments.
+ *
+ *     Expressing the band on the NORMAL rather than on the travel is what makes
+ *     it correct inside a counter, where the winding reverses: the floor of the
+ *     P's counter faces up, so it is lit and ruled, and its ceiling is not.
+ *
+ *   RULE 2 — EVERY OTHER EDGE IS TORN, AND MORE TORN THAN THE MODEL SHOWS.
+ *
+ *     *"What our vector logo still lacks a bit is that sketchy, hand-drawn
+ *     style, so we need to pronounce that a bit more"* — and *"hand-drawn still
+ *     means BOLD lines."*
+ *
+ *     The model is 413px wide. At that size a JPEG flattens the fray of a drawn
+ *     edge into a pixel of chroma, so the trace under-reads a quality that is
+ *     really there. The gain below therefore AMPLIFIES the deviation already in
+ *     the traced ring — each vertex is pushed further along the offset it
+ *     already had from the chord through its neighbours — rather than adding
+ *     noise to it. Nothing is invented, no generator is seeded, and a re-run is
+ *     byte-identical. Vertices that turn more than `TEAR_CORNER` are corners of
+ *     the letterform rather than wobble and are left exactly where they are.
+ *
+ *     The boldness is protected by construction, not by taste. The ink contour
+ *     gets its OWN ring at a heavier gain that may only ever swell OUTWARD
+ *     (`gainOut`): where the letter's edge tears inward the ink follows it
+ *     exactly, and where it tears outward the ink goes further. The near-black
+ *     band between the colour and the outside of the contour therefore breathes
+ *     between its full weight and a little more, and can never thin. A fat
+ *     marker wavering, not a pencil running out.
+ */
+
+/** The lit band on the outward normal, degrees off north (negative = west). */
+const LIT_CORE = Object.freeze([-45, 5]);
+/** Hysteresis: a run may extend this far, but must contain a core edge. */
+const LIT_HOLD = Object.freeze([-58, 20]);
+/** How far a vertex may sit off a ruled chord before the run is cut, model px. */
+const RULE_EPS = 1.6;
+/** Shortest chord worth ruling, model px. Below this it is a jag, not a line. */
+const RULE_MIN = 5;
+/** Turn beyond which a vertex is a CORNER of the letterform and is never moved. */
+const TEAR_CORNER = 60;
+/** Amplification of the drawing's own deviation, on ordinary torn edges. */
+const TEAR_GAIN = 2.35;
+/** The same on down-facing edges — the baselines fray hardest, with the drips. */
+const TEAR_GAIN_DOWN = 2.95;
+/** The ink ring's outward-only gain: the contour breathes heavy, never thin. */
+const TEAR_GAIN_INK = 4.2;
+/** Ceiling on any one displacement, model px, so a letterform cannot deform. */
+const TEAR_CAP = 1.95;
+/**
+ * The ink ring's own ceiling, outward only.
+ *
+ * It has to be its own number rather than inherit `TEAR_CAP`, because on a torn
+ * edge the letter body is usually AT the cap already and a higher gain under a
+ * shared ceiling would then produce no contour at all. Measured, the model's
+ * near-black band is anything but even — scanned outward from the ink edge it
+ * runs 4.7px on average with a standard deviation of 2.5, a tenth percentile of
+ * 1.6 and a ninetieth of 8.8 — so a band that swells by up to 0.75px is a
+ * fraction of the variation he actually drew.
+ */
+const TEAR_CAP_INK = 2.95;
+/** The same inside a counter, which has far less room to give. */
+const TEAR_CAP_COUNTER = 0.85;
+/** The purple keyline is already large-featured; it tears wider but gentler. */
+const SHAPE_TEAR = Object.freeze({ gain: 1.9, gainDown: 2.2, cap: 2.6 });
+/** The plate only shows as a hard violet edge between letters. */
+const PLATE_TEAR = Object.freeze({ gain: 1.75, gainDown: 2.0, cap: 1.85 });
+
 const hsv = (r, g, b) => {
   r /= 255; g /= 255; b /= 255;
   const mx = Math.max(r, g, b);
@@ -160,20 +255,52 @@ async function main() {
   const originY = Math.min(...glyphComponents.map((c) => c.y0));
   const toUnits = { scale: UNITS / K, ox: originX, oy: originY };
 
+  // The letter body and the ink contour are the SAME drawn edge at two
+  // amplitudes; see `TEAR_GAIN_INK`. Both are traced from one pass over the
+  // contours so the ruled segments are bit-identical between them.
+  const letterHand = {
+    rule: true,
+    ruleEps: K * RULE_EPS,
+    ruleMin: K * RULE_MIN,
+    gain: TEAR_GAIN,
+    gainDown: TEAR_GAIN_DOWN,
+    cap: K * TEAR_CAP,
+    capCounter: K * TEAR_CAP_COUNTER,
+  };
   const NAMES = ['S1', 'U', 'P', 'A1', 'S2', 'N', 'A2', 'K', 'E'];
-  const glyphs = glyphComponents.map((c, i) => ({
-    name: NAMES[i],
-    d: pathOf(ctx, c, { ...toUnits, eps: EPS, minArea: K * K * 3 }),
-    box: boxOf(c, toUnits),
-  }));
+  const glyphs = glyphComponents.map((c, i) => {
+    const [d, ink] = pathsOf(ctx, c, {
+      ...toUnits,
+      eps: EPS,
+      minArea: K * K * 3,
+      hands: [letterHand, { ...letterHand, gainOut: TEAR_GAIN_INK, capOut: K * TEAR_CAP_INK }],
+    });
+    return { name: NAMES[i], d, ink, box: boxOf(c, toUnits) };
+  });
 
   const burstFilled = fillHoles(ctx, dilate(ctx, purpleMask, K * BURST_CLOSE));
   const burstComponent = components(ctx, burstFilled, W * H * 0.02).sort((a, b) => b.count - a.count)[0];
-  const burst = pathOf(ctx, burstComponent, { ...toUnits, eps: EPS * 1.4, minArea: K * K * 40, outerOnly: true });
+  // No ruling on the purple: the owner's straight-edge note is about the
+  // LETTERS, and the model's keyline is torn on every side including its top.
+  const burst = pathOf(ctx, burstComponent, {
+    ...toUnits,
+    eps: EPS * 1.4,
+    minArea: K * K * 40,
+    outerOnly: true,
+    hand: { ...SHAPE_TEAR, cap: K * SHAPE_TEAR.cap },
+  });
 
   const plateMask = fillHoles(ctx, dilate(ctx, letters, K * PLATE_DILATE));
   const plate = components(ctx, plateMask, W * H * 0.02)
-    .map((c) => pathOf(ctx, c, { ...toUnits, eps: EPS * 1.2, minArea: K * K * 20, outerOnly: true }))
+    .map((c) =>
+      pathOf(ctx, c, {
+        ...toUnits,
+        eps: EPS * 1.2,
+        minArea: K * K * 20,
+        outerOnly: true,
+        hand: { ...PLATE_TEAR, cap: K * PLATE_TEAR.cap },
+      })
+    )
     .join(' ');
 
   const box = boxOf(burstComponent, toUnits);
@@ -394,7 +521,14 @@ const signedArea = (pts) => {
 
 function rdp(pts, eps) {
   if (pts.length < 4) return pts;
+  const keep = rdpKeep(pts, eps);
+  return pts.filter((_, i) => keep[i]);
+}
+
+/** Ramer-Douglas-Peucker, as a keep mask so a caller can also use the indices. */
+function rdpKeep(pts, eps) {
   const keep = new Uint8Array(pts.length);
+  if (pts.length < 2) return keep.fill(1);
   keep[0] = 1;
   keep[pts.length - 1] = 1;
   const stack = [[0, pts.length - 1]];
@@ -420,7 +554,7 @@ function rdp(pts, eps) {
       stack.push([a, idx], [idx, b]);
     }
   }
-  return pts.filter((_, i) => keep[i]);
+  return keep;
 }
 
 /**
@@ -448,21 +582,156 @@ function simplifyRing(loop, eps) {
   return head.slice(0, -1).concat(tail.slice(0, -1));
 }
 
-function pathOf(ctx, component, { scale, ox, oy, eps, minArea, outerOnly = false }) {
+// ---------------------------------------------------------------- the hand
+
+/** Degrees off NORTH of a vector, negative toward west, in the -180..180 range. */
+const offNorth = (dx, dy) => (((Math.atan2(dx, -dy) * 180) / Math.PI + 540) % 360) - 180;
+
+/**
+ * The unit normal pointing AWAY from the ink, for travel a -> b.
+ *
+ * The trace leaves the ink on the right of travel, so on an outer ring away is
+ * the left; a counter is wound the other way and away is the right.
+ */
+function awayFrom(a, b, outer) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy) || 1;
+  const tx = dx / len;
+  const ty = dy / len;
+  return outer ? [ty, -tx] : [-ty, tx];
+}
+
+/**
+ * Rules the lit edges dead straight and tears every other one wider — the two
+ * rules recorded in `LIT_CORE`/`TEAR_GAIN` above, in that order, because a
+ * ruled vertex is then locked against being torn.
+ *
+ * @param {number[][]} ring   Closed ring, supersampled px, first != last.
+ * @param {object} opts
+ * @param {boolean} opts.outer      Outer ring (as opposed to a counter).
+ * @param {boolean} [opts.rule]     Apply rule 1. Off for the purple and plate.
+ * @param {number} [opts.gainOut]   Outward-only gain; the ink contour's breath.
+ */
+function drawnRing(ring, opts) {
+  const { outer, rule = false, ruleEps, ruleMin, gain, gainDown, cap, capCounter, gainOut, capOut } =
+    opts;
+  const n = ring.length;
+  if (n < 6) return ring;
+  const ceiling = outer ? cap : Math.min(cap, capCounter ?? cap);
+
+  // ---- rule 1: the lit runs, collapsed onto their own chords
+  const locked = new Uint8Array(n);
+  const dropped = new Uint8Array(n);
+  if (rule) {
+    const hold = new Uint8Array(n);
+    const core = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const [nx, ny] = awayFrom(ring[i], ring[(i + 1) % n], outer);
+      const f = offNorth(nx, ny);
+      hold[i] = f >= LIT_HOLD[0] && f <= LIT_HOLD[1] ? 1 : 0;
+      core[i] = f >= LIT_CORE[0] && f <= LIT_CORE[1] ? 1 : 0;
+    }
+    // Runs are cyclic: a ruled edge can straddle the ring's arbitrary origin.
+    for (let s = 0; s < n; s++) {
+      if (!hold[s] || hold[(s - 1 + n) % n]) continue; // only a run's first edge
+      let hasCore = core[s];
+      let len = 1;
+      while (len < n && hold[(s + len) % n]) {
+        hasCore = hasCore || core[(s + len) % n];
+        len += 1;
+      }
+      if (!hasCore) continue;
+      const a = ring[s];
+      const b = ring[(s + len) % n];
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < ruleMin) continue;
+      const idx = Array.from({ length: len + 1 }, (_, k) => (s + k) % n);
+      const keep = rdpKeep(idx.map((k) => ring[k]), ruleEps);
+      for (let k = 0; k < idx.length; k++) {
+        if (keep[k]) locked[idx[k]] = 1;
+        else dropped[idx[k]] = 1;
+      }
+    }
+  }
+
+  const out = [];
+  const lock = [];
+  for (let i = 0; i < n; i++) {
+    if (dropped[i]) continue;
+    out.push(ring[i]);
+    lock.push(locked[i]);
+  }
+  const m = out.length;
+  if (m < 6) return out;
+
+  // ---- rule 2: the tear, as an amplification of the offset already there
+  const torn = out.slice();
+  for (let i = 0; i < m; i++) {
+    if (lock[i]) continue;
+    const a = out[(i - 1 + m) % m];
+    const p = out[i];
+    const b = out[(i + 1) % m];
+    const abx = b[0] - a[0];
+    const aby = b[1] - a[1];
+    const ab = Math.hypot(abx, aby);
+    if (ab < 1e-6) continue;
+    const turn = Math.abs(
+      offNorth(b[0] - p[0], b[1] - p[1]) - offNorth(p[0] - a[0], p[1] - a[1])
+    );
+    if (Math.min(turn, 360 - turn) > TEAR_CORNER) continue;
+    const t = ((p[0] - a[0]) * abx + (p[1] - a[1]) * aby) / (ab * ab);
+    const dx = p[0] - (a[0] + abx * t);
+    const dy = p[1] - (a[1] + aby * t);
+    const [nx, ny] = awayFrom(a, b, outer);
+    const swells = gainOut != null && dx * nx + dy * ny > 0;
+    let g = ny > 0.25 ? gainDown : gain;
+    let lim = ceiling;
+    if (swells) {
+      g = Math.max(g, gainOut);
+      lim = outer ? (capOut ?? ceiling) : ceiling;
+    }
+    let px = dx * (g - 1);
+    let py = dy * (g - 1);
+    const mag = Math.hypot(px, py);
+    if (mag > lim) {
+      px = (px / mag) * lim;
+      py = (py / mag) * lim;
+    }
+    torn[i] = [p[0] + px, p[1] + py];
+  }
+  return torn;
+}
+
+// ------------------------------------------------------------------- paths
+
+/**
+ * One walk of a component's contours, rendered once per `hands` entry.
+ *
+ * The letter body and its ink contour differ only in tear amplitude, so they
+ * must come from the same walk or their ruled segments could disagree.
+ */
+function pathsOf(ctx, component, { scale, ox, oy, eps, minArea, outerOnly = false, hands }) {
   const inside = (x, y) =>
     x >= 0 && y >= 0 && x < ctx.W && y < ctx.H && component.pixels.has(y * ctx.W + x);
-  const parts = [];
+  const parts = hands.map(() => []);
   for (const loop of contours(ctx, inside)) {
     const area = signedArea(loop);
     if (Math.abs(area) < minArea) continue;
     if (outerOnly && area < 0) continue;
     const ring = simplifyRing(loop, eps);
     if (ring.length < 4) continue;
-    const pts = ring.map(([x, y]) => `${round((x - ox) * scale)} ${round((y - oy) * scale)}`);
-    parts.push(`M${pts.join(' L')} Z`);
+    hands.forEach((hand, i) => {
+      const drawn = hand ? drawnRing(ring, { ...hand, outer: area > 0 }) : ring;
+      if (drawn.length < 4) return;
+      const pts = drawn.map(([x, y]) => `${round((x - ox) * scale)} ${round((y - oy) * scale)}`);
+      parts[i].push(`M${pts.join(' L')} Z`);
+    });
   }
-  return parts.join(' ');
+  return parts.map((p) => p.join(' '));
 }
+
+const pathOf = (ctx, component, { hand = null, ...rest }) =>
+  pathsOf(ctx, component, { ...rest, hands: [hand] })[0];
 
 const round = (n) => Math.round(n * 10) / 10;
 const boxOf = (c, { scale, ox, oy }) => [
@@ -492,11 +761,23 @@ function render({ glyphs, burst, plate, box, model }) {
  * Coordinates are DESIGN UNITS, ${UNITS} per model pixel, origin at the top-left of
  * the lettering. Counters are sub-paths wound against their outline, so the
  * default nonzero fill rule turns them into holes.
+ *
+ * Each glyph carries TWO outlines of the same drawn edge. \`d\` is the letter
+ * body. \`ink\` is the same ring torn harder, but only ever OUTWARD, and it is
+ * what the near-black contour is built from: the band between the colour and
+ * the outside of the contour then varies along its length without ever falling
+ * below its full weight. On the ruled edges the two outlines are identical, so
+ * a lit edge keeps a perfectly even ink. See \`traceModel.mjs\`'s header.
  */
 
 /** The lettering, left to right. \`box\` is [x, y, w, h] of the glyph's own ink. */
 export const GLYPHS = Object.freeze([
-${glyphs.map((g) => `  { name: '${g.name}', box: [${g.box.join(', ')}], d: '${g.d}' },`).join('\n')}
+${glyphs
+  .map(
+    (g) =>
+      `  { name: '${g.name}', box: [${g.box.join(', ')}],\n    d: '${g.d}',\n    ink: '${g.ink}' },`
+  )
+  .join('\n')}
 ].map(Object.freeze));
 
 /**

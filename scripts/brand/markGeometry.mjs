@@ -55,6 +55,38 @@
  *   pixels excluded: #FDCE07 at the cap through #FDA402 at mid to #EF6602 at
  *   the baseline. Per ruling T-2 these are LOGO colours and must never enter
  *   the design tokens; they appear in brand artefacts only.
+ *
+ * WHY THE CHARACTER'S SWATCHES ARE NOT REUSED HERE, THOUGH THE LAW IS
+ *
+ *   The obvious coherence move is to paint the mark out of the snake's own
+ *   authored palette (`src/components/game/screen/snake90s.ts`). Measured, they
+ *   are not the same colours and not close enough to swap:
+ *
+ *       mark            snake                              dE*ab
+ *       letterRim  #FFF6A5   rim = top + warm lift #ffd74c   32.7
+ *       letterTop  #FDCE07   GUIDE_PALETTE.highlight #ffc53d 14.8
+ *       letterMid  #FDA402   GUIDE_PALETTE.midtone   #f5811f 21.0
+ *       letterBottom #EF6602 GUIDE_PALETTE.shadow    #8a3d14 42.5
+ *       ink        #0B0410   GUIDE_PALETTE.ink       #12100d  7.5
+ *
+ *   Four of those are a different colour by any standard. The fifth, the ink,
+ *   is the only near miss, and the style guide's own reason for its warm black
+ *   settles it against unifying: a cold outline is ruled out there because it
+ *   "reads cold and fights the palette it is drawn around", and the palette
+ *   THIS ink is drawn around is violet, not orange. Same rule, opposite answer.
+ *
+ *   What IS taken from the character is its grammar, which is the part that
+ *   makes two objects look related:
+ *     - the three-tone law's HARD transitions. The lit rim is a flat fill with
+ *       a hard boundary against the ramp — a facet step, never a soft gradient
+ *       rim — and `traceModel.mjs` now rules the edge under it dead straight,
+ *       so the facet has a facet's geometry as well as its colour.
+ *     - "a thick near-black outline, never a 1px technical edge". Measured, the
+ *       model's own band is 3.63px above the ink at the median, 4.13 left, 4.38
+ *       right and 9.13 below; the contour here is 3.5 uniform with the drop
+ *       making up the bottom, so the weight was already the drawing's and did
+ *       not move. What changed is that it now BREATHES rather than sitting dead
+ *       even — see `inkLayer`.
  */
 
 import { GLYPHS, LETTERS_BOX, SHADE_PLATE, SHAPE, SHAPE_BOX } from './markOutlines.mjs';
@@ -90,8 +122,22 @@ const LETTER_RAMP = Object.freeze([
 const INK_CONTOUR = 7;
 /** The hard drop, below and right. Sized so the dark under a letter matches the model's 9 units. */
 const DROP = Object.freeze([3, 10]);
-/** How far the letter body is laid over its rim — the width of the lit top edge. */
-const BEVEL = Object.freeze([0.6, 1.5]);
+/**
+ * How far the letter body is laid over its rim — the width of the lit edge.
+ *
+ * MEASURED, not chosen. Scanning the model at the true ink edge and counting
+ * the run of pale pixels inside it, the lit rim is 1.25 model px at the median
+ * and 2.0 at the ninetieth percentile, and it appears on 8% of top crossings
+ * and 1% of bottom ones — a real bevel on the edges that face the light and
+ * nothing at all on the ones that do not.
+ *
+ * The offset's DIRECTION is the light and does not move: 20.6° west of north,
+ * which is where the model puts its rim (thick on up-and-left-facing diagonals,
+ * absent on left-facing verticals — the reason a straight-left light would be
+ * wrong). Only its LENGTH changed, by 1.59x, because the previous 1.615 units
+ * put 0.80px of rim on a lit edge against the model's 1.25.
+ */
+const BEVEL = Object.freeze([0.9, 2.4]);
 /** The same construction on the purple: its body over its own lit edge. */
 const SHAPE_BEVEL = Object.freeze([3, 4]);
 /** The shape's outer contour weight. */
@@ -104,17 +150,25 @@ const round = (n) => Math.round(n * 100) / 100;
 const rampStops = () =>
   LETTER_RAMP.map(([offset, color]) => `<stop offset="${offset}" stop-color="${color}"/>`).join('');
 
-const letterPaths = (attrs) => GLYPHS.map((g) => `<path d="${g.d}"${attrs}/>`).join('');
+const letterPaths = (attrs, key = 'd') =>
+  GLYPHS.map((g) => `<path d="${g[key]}"${attrs}/>`).join('');
 
 /**
  * The near-black behind the lettering: the glyphs filled AND stroked, so the
  * contour reads as a band outside the ink rather than eating into it. Round
  * joins because the model's contour is a keyline around the letter, not a set
  * of mitred spikes off a traced polygon.
+ *
+ * It is built from the glyph's `ink` outline rather than its `d`. Those are the
+ * same drawn edge at two tear amplitudes, and the ink's may only swell OUTWARD
+ * (`traceModel.mjs`, `TEAR_GAIN_INK`), so the visible near-black band varies
+ * along its length between its full weight and a little more and can never
+ * thin. That is the whole of "a hand-inked line breathes": the amplitude is in
+ * the outline, the MASS is in the stroke, and the stroke is untouched.
  */
 const inkLayer = (transform = '') =>
   `<g fill="${MARK_PALETTE.ink}" stroke="${MARK_PALETTE.ink}" stroke-width="${INK_CONTOUR * 2}" stroke-linejoin="round"${transform}>` +
-  letterPaths('') +
+  letterPaths('', 'ink') +
   `</g>`;
 
 /**
@@ -219,7 +273,7 @@ export function buildMonogramSvg(opts = {}) {
 <clipPath id="ss-mono-ink"><path transform="${place}" d="${glyph.d}"/></clipPath>
 </defs>
 <rect width="100" height="100" rx="${radius}" fill="${MARK_PALETTE.burst}"/>
-<g transform="${place}" fill="${MARK_PALETTE.ink}" stroke="${MARK_PALETTE.ink}" stroke-width="${contour}" stroke-linejoin="round"><path d="${glyph.d}"/></g>
+<g transform="${place}" fill="${MARK_PALETTE.ink}" stroke="${MARK_PALETTE.ink}" stroke-width="${contour}" stroke-linejoin="round"><path d="${glyph.ink}"/></g>
 <g clip-path="url(#ss-mono-ink)">
 <rect width="100" height="100" fill="${MARK_PALETTE.letterRim}"/>
 <g transform="translate(${round(BEVEL[0] * s)} ${round(BEVEL[1] * s)}) ${place}"><path d="${glyph.d}" fill="url(#ss-mono)"/></g>
