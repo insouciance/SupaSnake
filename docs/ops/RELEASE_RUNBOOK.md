@@ -458,6 +458,109 @@ removes the wardrobe, never the clothes: no owned row in `player_cosmetics` and
 no selection in `player_loadout` is deleted, so re-enabling the flag restores
 every player to exactly the loadout they had.
 
+## Addendum: the 90S-A composition release
+
+This addendum governs the release that first ships
+`NEXT_PUBLIC_NINETIES_COMPOSITION` — the ratified 90s-cartoon composition: the
+character's cube law and authored face tones, the neon dynasty board built from
+400 real blocks, and the guide's shades and braids wherever a player has
+equipped them. It has NOT happened yet; until it does, every 25-flag statement
+in this repository is a checked-in intention and the deployed artifact's 24/24
+is the live fact.
+
+### What changes, and what does not
+
+The manifest goes from 24 flags to 25, so the deterministic public-surface hash
+changes from
+`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017` to
+`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`. Recompute
+rather than copy:
+
+```sh
+node scripts/production-public-surface-cli.mjs hash
+```
+
+**This release carries NO migration**, so `expected_migrations` is empty at
+dispatch and the rollout classifier resolves `rollout=none`. Nothing is added to
+the classifier's allowlist. The engine rules version is untouched: the
+composition changes what the board and the creature LOOK like and nothing about
+what they do, so open runs cross the cutover without a continuity boundary.
+
+Two things the composition does change that are worth naming, because they are
+the ones a health check will not see:
+
+- **The board is now geometry.** The themed floor mounts one baked tile field —
+  400 chamfered blocks in a single draw — where the stone board mounted a
+  shader pass over a flat plane. That is one extra draw call and roughly 8k
+  extra triangles, inside the cockpit's existing 8-call budget, which
+  `verify:cockpit-webgl` measures against the released arena on every run.
+- **The creature's cubes claim more of their cell.** Head 0.90 → 0.98 and the
+  trail's fusion levels 0.66/0.80/0.90 → 0.68/0.76/0.85, all still under one
+  cell and under the cube law's own `maxEdge` cap. No collision rule reads any
+  of these numbers; they are render sizes.
+
+### No dashboard prerequisite — the manifest is still the source of truth
+
+Unchanged, and for the same code reason recorded in the two addenda above. The
+workflow writes every manifest flag and a freshly computed
+`SUPASNAKE_PUBLIC_SURFACE_HASH` into the job environment before
+`verify:production-env` runs. **No operator has to create
+`NEXT_PUBLIC_NINETIES_COMPOSITION=true` in the Vercel dashboard, and no operator
+has to set the new hash there.**
+
+The same inverse check applies: **if a literal `SUPASNAKE_PUBLIC_SURFACE_HASH`
+or a `NEXT_PUBLIC_NINETIES_COMPOSITION` value was ever pinned in the Vercel
+Production dashboard, remove it.** A dashboard hash still holding
+`e60cd71e…8017` would win over the freshly computed one and fail the
+exact-match check against the new 25-flag hash.
+
+### Proof after cutover
+
+Canonical `/api/health` must report `publicSurface.status = healthy`,
+`enabledFlagCount = expectedFlagCount = 25`, and `contractHash` equal to
+`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`.
+`/api/release-contract` must report the same hash from the anonymous surface. A
+24/24 count or the old hash *after* cutover means the environment, not the code,
+is wrong — treat it as a failed release health check under "Failure and
+recovery" and do not roll back the application. *Before* cutover, 24/24 and
+`e60cd71e…8017` are the correct and expected answers, and neither is a defect.
+
+The composition itself has no API surface to probe, so its runtime proof is
+visual and is taken the same way it was ratified: load the board and read
+`data-composition` on `[data-testid="game-hud"]`, which the cockpit publishes as
+`nineties` or `stone`. The home chamber publishes the same attribute on
+`[data-testid="home-specimen-full-stage"]`, which is reachable without starting
+a run and is what the e2e legs assert.
+
+### Rollback: flag-off is a forward release, and it restores INK & AMBER exactly
+
+`NEXT_PUBLIC_NINETIES_COMPOSITION` is a **build-time rollout boundary, not an
+instantaneous kill switch** — the same shape as every flag above it. An
+emergency flag-off is one reviewed forward release:
+
+1. Remove the flag from `config/production-public-surface.json`, which returns
+   the manifest to 24 flags and the hash to `e60cd71e…8017`.
+2. Remove it from the Vercel Production environment if one was ever set there,
+   or set it to a non-`true` value, and leave the contract hash to the workflow
+   rather than pinning the 24-flag literal.
+3. Build and deploy through the ordinary sequence.
+
+With the flag off the board is the INK & AMBER stone slab and the creature is
+the classic snake at its shipped sizes, bevels, ink weight and lit toon ramp —
+not an approximation of them. Every 90s value resolves through a style profile
+whose `classic` entry holds the shipped numbers verbatim and whose shader patch
+is a no-op, and `src/lib/features/ninetiesComposition.test.ts` asserts those
+numbers one by one so the rollback cannot quietly drift toward the composition
+it is supposed to undo. The `rollback` e2e leg builds and runs that
+configuration on every PR.
+
+Two things do NOT come back with a rollback, deliberately, and both are recorded
+where they live: the tray's white frame stays removed (its own owner ruling, and
+about the tray rather than the board), and the dev fixture's head keeps facing
+its direction of travel (a bug fix). Nothing a player owns is touched: cosmetics
+are read from `read_snake_loadout` under either composition, so a rollback
+changes how the snake is drawn and never what it is wearing.
+
 ## SQL evidence boundary
 
 The release has three deliberately different database gates:

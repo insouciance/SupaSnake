@@ -10,6 +10,7 @@ import {
 import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { ArenaPrototypeCanvas } from '@/components/game/arena/ArenaPrototypeCanvas';
 import type { RenderTier } from '@/components/game/screen/renderQuality';
+import type { BoardThemeSelection } from '@/components/game/screen/boardThemes';
 import { GeneGlyph as CatalogGeneGlyph } from './CockpitGlyphs';
 import styles from './CockpitPrototype.module.css';
 
@@ -31,6 +32,10 @@ interface CockpitPrototypeProps {
   arenaRenderTier?: RenderTier;
   /** Dev-fixture-only pitch escape; see ArenaPrototypeCanvas.pitchDeg. */
   arenaPitchDeg?: number;
+  /** NEON DYNASTY THEMES; see ArenaPrototypeCanvas.boardThemeSelection. */
+  arenaBoardTheme?: BoardThemeSelection;
+  /** THE COMPARE TOGGLE; see ArenaPrototypeCanvas.boardSeamLines. */
+  arenaBoardSeamLines?: boolean;
 }
 
 type TokenStyle = CSSProperties & Record<`--${string}`, string>;
@@ -202,6 +207,8 @@ function ArenaPreview({
   arenaDensity,
   arenaRenderTier,
   arenaPitchDeg,
+  arenaBoardTheme,
+  arenaBoardSeamLines,
 }: {
   state: CockpitPrototypeState;
   dynasty: DynastyId;
@@ -211,6 +218,8 @@ function ArenaPreview({
   arenaDensity: 'standard' | 'extreme';
   arenaRenderTier?: RenderTier;
   arenaPitchDeg?: number;
+  arenaBoardTheme?: BoardThemeSelection;
+  arenaBoardSeamLines?: boolean;
 }) {
   const portalLive = state === 'portal' || state === 'apex';
   return (
@@ -241,6 +250,8 @@ function ArenaPreview({
                   density={arenaDensity}
                   forceRenderTier={arenaRenderTier}
                   pitchDeg={arenaPitchDeg}
+                  boardThemeSelection={arenaBoardTheme}
+                  boardSeamLines={arenaBoardSeamLines}
                 />
               </div>
             </div>
@@ -309,6 +320,8 @@ export function CockpitPrototype({
   arenaDensity = 'standard',
   arenaRenderTier,
   arenaPitchDeg,
+  arenaBoardTheme,
+  arenaBoardSeamLines,
 }: CockpitPrototypeProps) {
   const theme = getDynastyScreenTokens(dynasty);
   const normalizedGeneCount = Math.max(0, Math.min(6, Math.floor(geneCount)));
@@ -442,6 +455,8 @@ export function CockpitPrototype({
             arenaDensity={arenaDensity}
             arenaRenderTier={arenaRenderTier}
             arenaPitchDeg={arenaPitchDeg}
+            arenaBoardTheme={arenaBoardTheme}
+            arenaBoardSeamLines={arenaBoardSeamLines}
           />
         </div>
       </div>

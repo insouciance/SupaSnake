@@ -80,11 +80,15 @@ const RIM_EMISSIVE_SCALE = 0.1;
  */
 const RIM_DYNASTY_TINT = 0.09;
 
-/** Slate pulled `RIM_DYNASTY_TINT` toward a dynasty colour, mixed in sRGB. */
-function rimStoneColor(dynastyColor: string): THREE.Color {
-  const stone = new THREE.Color(ARENA_STONE.rim).convertLinearToSRGB();
+/** Slate pulled `tint` toward a dynasty colour, mixed in sRGB. */
+function rimStoneColor(
+  dynastyColor: string,
+  baseStone: string,
+  tint: number
+): THREE.Color {
+  const stone = new THREE.Color(baseStone).convertLinearToSRGB();
   const dynasty = new THREE.Color(dynastyColor).convertLinearToSRGB();
-  return stone.lerp(dynasty, RIM_DYNASTY_TINT).convertSRGBToLinear();
+  return stone.lerp(dynasty, tint).convertSRGBToLinear();
 }
 
 interface ArenaBorderProps {
@@ -102,6 +106,29 @@ interface ArenaBorderProps {
   /** Resting rim pulse values, before RIM_EMISSIVE_SCALE. */
   restingEmissiveIntensity?: number;
   restingPulseAmplitude?: number;
+  /**
+   * NEON DYNASTY THEMES (concept). The curb is cut from the tile, so when the
+   * tile changes stone the curb has to change with it, or the board grows a
+   * cool slate frame around a warm board. `stoneColor` is that stone;
+   * `tintAmount` and `emissiveScale` let a neon theme carry a little more of
+   * its colour in the rim than the shipped stone does - the rim is where the
+   * board's edge light lives, and on a neon board that edge is the boundary a
+   * player is judging. Defaults are the shipped values exactly.
+   */
+  stoneColor?: string;
+  tintAmount?: number;
+  emissiveScale?: number;
+  /**
+   * PASS 5. How far below y = 0 the stone the curb stands on has moved.
+   *
+   * A tiled board recesses its slab by one seam depth so the blocks' tops land
+   * on the shipped play plane (`ArenaFloor`), which leaves the apron - the
+   * stone this curb is a raised piece OF - that far down. The curb grows
+   * DOWNWARD to meet it: its top face stays at `railHeight` exactly, so the
+   * wall a player judges their distance against never moves, and its base
+   * follows the stone rather than floating over a gap. 0 on every other path.
+   */
+  sink?: number;
 }
 
 /**
@@ -146,6 +173,10 @@ export function ArenaBorder({
   railWidth = 0.32,
   restingEmissiveIntensity = 0.4,
   restingPulseAmplitude = 0.15,
+  stoneColor = ARENA_STONE.rim,
+  tintAmount = RIM_DYNASTY_TINT,
+  emissiveScale = RIM_EMISSIVE_SCALE,
+  sink = 0,
 }: ArenaBorderProps) {
   // One shared material - the pulse mutates one material per frame instead
   // of walking every child mesh. Toon, so the rim bands like the tile it is
@@ -153,18 +184,18 @@ export function ArenaBorder({
   const railMaterial = useMemo(
     () =>
       new THREE.MeshToonMaterial({
-        color: rimStoneColor(color),
+        color: rimStoneColor(color, stoneColor, tintAmount),
         emissive: color,
-        emissiveIntensity: emissiveIntensity * RIM_EMISSIVE_SCALE,
+        emissiveIntensity: emissiveIntensity * emissiveScale,
         gradientMap: getToonGradientMap(),
         // transparent so COSMIC's torus can thin the rim out; opacity
         // stays 1 on the dynasties whose walls kill
         transparent: true,
         opacity: 1,
       }),
-    // emissiveIntensity is animated below; only color changes rebuild
+    // emissiveIntensity is animated below; only colour/stone changes rebuild
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [color]
+    [color, stoneColor, tintAmount]
   );
 
   // Precomputed color so the per-frame branch never allocates
@@ -185,16 +216,18 @@ export function ArenaBorder({
       // The edge barely exists, and never stops barely existing.
       railMaterial.opacity = 0.35;
       railMaterial.emissiveIntensity =
-        (0.12 + Math.sin(t * 1.5) * 0.05) * RIM_EMISSIVE_SCALE;
+        (0.12 + Math.sin(t * 1.5) * 0.05) * emissiveScale;
     } else {
       railMaterial.opacity = 1;
       railMaterial.emissiveIntensity =
         (restingEmissiveIntensity + Math.sin(t * 2) * restingPulseAmplitude) *
-        RIM_EMISSIVE_SCALE;
+        emissiveScale;
     }
   });
 
-  const y = railHeight / 2;
+  // Top face pinned at railHeight, base at -sink. See `sink`.
+  const courseHeight = railHeight + Math.max(0, sink);
+  const y = railHeight - courseHeight / 2;
 
   return (
     <group>
@@ -202,28 +235,28 @@ export function ArenaBorder({
       <Rail
         material={railMaterial}
         position={[gridSize / 2, y, -railWidth / 2]}
-        scale={[gridSize + railWidth * 2, railHeight, railWidth]}
+        scale={[gridSize + railWidth * 2, courseHeight, railWidth]}
       />
 
       {/* North course (Z = gridSize) */}
       <Rail
         material={railMaterial}
         position={[gridSize / 2, y, gridSize + railWidth / 2]}
-        scale={[gridSize + railWidth * 2, railHeight, railWidth]}
+        scale={[gridSize + railWidth * 2, courseHeight, railWidth]}
       />
 
       {/* West course (X = 0) */}
       <Rail
         material={railMaterial}
         position={[-railWidth / 2, y, gridSize / 2]}
-        scale={[railWidth, railHeight, gridSize]}
+        scale={[railWidth, courseHeight, gridSize]}
       />
 
       {/* East course (X = gridSize) */}
       <Rail
         material={railMaterial}
         position={[gridSize + railWidth / 2, y, gridSize / 2]}
-        scale={[railWidth, railHeight, gridSize]}
+        scale={[railWidth, courseHeight, gridSize]}
       />
     </group>
   );

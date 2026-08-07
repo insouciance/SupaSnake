@@ -36,10 +36,16 @@ import {
 } from '@/components/game/SnakeModel';
 import { getSnakeRoundedGeometry } from '@/components/game/screen/gameRenderGeometry';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
+import { getToonGradientMap } from '@/components/game/screen/inkAmber';
 import {
-  createInkHullMaterial,
-  getToonGradientMap,
-} from '@/components/game/screen/inkAmber';
+  applyFaceKeyedShading,
+  applySnakeFaceShading,
+  createSnakeInkHullMaterial,
+  FLAT_TONES,
+  GUIDE_PALETTE,
+  IS_SNAKE_90S,
+  SNAKE_STYLE_PROFILE,
+} from '@/components/game/screen/snake90s';
 import { specimenCameraDistance } from '@/components/home/specimenCameraFit';
 import {
   EquippedCosmetics,
@@ -49,6 +55,7 @@ import {
   type CosmeticLoadout,
 } from '@/components/home/SnakeCosmetics';
 import { EMPTY_SNAKE_LOADOUT } from '@/lib/cosmetics/snakeCosmetics';
+import { NINETIES_COMPOSITION_ENABLED } from '@/lib/features/ninetiesComposition';
 
 // -----------------------------------------------------------------------------
 // Look constants
@@ -383,6 +390,15 @@ function getHeroMaterial(
     // material profile. Scale/framing make this a portrait; a second set of
     // ad-hoc emissive values would make the same snake change identity when
     // Play is pressed.
+    //
+    // CHAMBER = GAME LAW, and `Material.copy()` drops `onBeforeCompile`: the
+    // clone above arrives with the guide's palette assigned but its shader
+    // patch missing, which would have shown up as a portrait shaded by the
+    // chamber's lamps beside a board shaded by its own authored faces. Re-hang.
+    applySnakeFaceShading(material, {
+      role: isHead ? 'head' : 'body',
+      cacheKey: `hero:${key}`,
+    });
     heroMaterialCache.set(key, material);
   }
   return material;
@@ -394,12 +410,16 @@ const fallbackBodyGeometry = getSnakeRoundedGeometry('body');
 
 /** Eye geometry/materials - shared across renders. */
 const eyeGeometry = new THREE.BoxGeometry(1, 1, 1);
-const eyeDarkMaterial = new THREE.MeshBasicMaterial({ color: '#0b1118' });
-const eyeGlintMaterial = new THREE.MeshBasicMaterial({ color: '#eef3f7' });
+const eyeDarkMaterial = new THREE.MeshBasicMaterial({
+  color: IS_SNAKE_90S ? GUIDE_PALETTE.ink : '#0b1118',
+});
+const eyeGlintMaterial = new THREE.MeshBasicMaterial({
+  color: IS_SNAKE_90S ? GUIDE_PALETTE.white : '#eef3f7',
+});
 // INK & AMBER: the specimen is the cover of the record, so the ink edge is
 // decided here first. Same material as the board, so the creature does not
 // change identity when Play is pressed.
-const specimenHullMaterial = createInkHullMaterial();
+const specimenHullMaterial = createSnakeInkHullMaterial();
 
 /**
  * Eyes on the head's camera-facing side - the single strongest "this is a
@@ -453,12 +473,16 @@ function SpecimenEyes({ animate }: { animate: boolean }) {
           }}
           position={[side * 0.22, 0.16, 0.51]}
         >
-          <mesh geometry={eyeGeometry} material={eyeDarkMaterial} scale={0.16} />
+          <mesh
+            geometry={eyeGeometry}
+            material={eyeDarkMaterial}
+            scale={SNAKE_STYLE_PROFILE.eyePupilScale}
+          />
           <mesh
             geometry={eyeGeometry}
             material={eyeGlintMaterial}
-            scale={0.055}
-            position={[0.035, 0.04, 0.045]}
+            scale={SNAKE_STYLE_PROFILE.eyeGlintScale}
+            position={[...SNAKE_STYLE_PROFILE.eyeGlintOffset]}
           />
         </group>
       ))}
@@ -469,9 +493,26 @@ function SpecimenEyes({ animate }: { animate: boolean }) {
 /** A muted slate dash below the eye line. Never occluded by a face cosmetic:
  *  the shades take the eyes, the deadpan mouth is the creature's own. */
 const mouthMaterial = new THREE.MeshToonMaterial({
-  color: '#6d8598',
+  // 90s CARTOON: the guide's accent is BLACK and its shadows are dark orange.
+  // A slate dash is the one thing the palette panel rules out by name, and it
+  // is the only cool value left on an otherwise warm character.
+  color: IS_SNAKE_90S ? GUIDE_PALETTE.ink : '#6d8598',
   gradientMap: getToonGradientMap(),
 });
+// "Face - minimal. Shades carry the expression. Minimal mouth, simple
+// geometric treatment." A lit black is a grey that drifts with the board
+// theme; the sheet's mouth is one flat value at every angle.
+if (IS_SNAKE_90S) {
+  applyFaceKeyedShading(mouthMaterial, {
+    tones: FLAT_TONES,
+    cacheKey: 'mouth',
+  });
+}
+
+/** The deadpan bar. Chunkier under the concept - "exaggerated features". */
+const MOUTH_SCALE: [number, number, number] = IS_SNAKE_90S
+  ? [0.26, 0.075, 0.03]
+  : [0.2, 0.055, 0.03];
 
 function SpecimenMouth() {
   return (
@@ -479,7 +520,7 @@ function SpecimenMouth() {
       geometry={eyeGeometry}
       material={mouthMaterial}
       position={[0, -0.16, 0.505]}
-      scale={[0.2, 0.055, 0.03]}
+      scale={MOUTH_SCALE}
     />
   );
 }
@@ -1159,6 +1200,21 @@ export function SpecimenChamber({
   return (
     <div
       className="absolute inset-0"
+      /*
+       * CHAMBER = GAME LAW, made checkable. The portrait and the played head
+       * resolve one style through one flag; publishing it here lets a browser
+       * test assert on BOTH e2e legs that the home creature is the creature
+       * this build ships, without starting a run to find out.
+       *
+       * THE FLAG, NOT `IS_SNAKE_90S`. They are the same value in every built
+       * artifact, and they differ in exactly one place: a dev server where
+       * `?snake90s=` has been used to compare styles. `IS_SNAKE_90S` reads the
+       * URL, which exists only on the client, so publishing it would make the
+       * server's markup and the client's disagree on a dev compare - a
+       * hydration mismatch bought for a fact this attribute is not about. What
+       * it is about is which composition the BUILD shipped.
+       */
+      data-composition={NINETIES_COMPOSITION_ENABLED ? 'nineties' : 'stone'}
       data-testid="home-specimen-full-stage"
     >
       {/*

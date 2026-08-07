@@ -24,6 +24,7 @@ import {
 import type { RunCockpitModel } from './types';
 import type { GenomeV2OverclockSource } from '@/components/game/genome/genomeV2RuntimeAdapter';
 import { formatNonNegativeAmount } from '@/shared/format/amount';
+import { NINETIES_COMPOSITION_ENABLED } from '@/lib/features/ninetiesComposition';
 import styles from './CockpitPrototype.module.css';
 
 interface RunCockpitProps {
@@ -110,6 +111,18 @@ export function RunCockpit({
       data-state={model.state}
       data-input="flick"
       data-decision={decisionDock ? 'true' : 'false'}
+      /*
+       * WHICH COMPOSITION THIS BUILD SHIPPED, published so it can be asserted
+       * rather than assumed.
+       *
+       * `NEXT_PUBLIC_*` is inlined at build time, so nothing at runtime can
+       * read the flag back out of the artifact - and a rollback CI cannot see
+       * is a rollback nobody is testing. The chamber publishes the same fact
+       * for the same reason (see `SpecimenChamber`); this one is here so a
+       * screenshot or a bug report from the played board carries which
+       * composition produced it.
+       */
+      data-composition={NINETIES_COMPOSITION_ENABLED ? 'nineties' : 'stone'}
       data-testid="game-hud"
     >
       <div className={styles.cockpitShell}>

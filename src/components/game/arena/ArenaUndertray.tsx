@@ -10,6 +10,16 @@ import { genomeRuneEngravingStrokes } from '@/components/game/screen/gameRuneStr
 interface ArenaUndertrayProps {
   gridSize: number;
   dynasty: DynastyId;
+  /**
+   * PASS 5. The y of the stone this mark is engraved INTO.
+   *
+   * A tiled board recesses its slab by one seam depth so the tile tops land on
+   * the shipped play plane, and the north rune is cut into the apron - which
+   * went down with it. Engraved means engraved: the mark follows its stone or
+   * it is a floating decal, and the one thing this component exists to be is
+   * unambiguous.
+   */
+  apronY?: number;
 }
 
 const orientationGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -77,7 +87,11 @@ export function arenaOrientationRuneLayout(
  *
  * No lights, no per-frame work; all geometry stays outside the 20x20 bounds.
  */
-export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
+export function ArenaUndertray({
+  gridSize,
+  dynasty,
+  apronY = 0,
+}: ArenaUndertrayProps) {
   const orientationRef = useRef<THREE.InstancedMesh>(null);
   const profile = getGameMaterialProfile(dynasty);
 
@@ -104,16 +118,16 @@ export function ArenaUndertray({ gridSize, dynasty }: ArenaUndertrayProps) {
 
     rune.forEach((stroke, index) => {
       rotation.setFromAxisAngle(yAxis, stroke.yaw);
-      // The apron is at y = 0, so the mark sits ON the stone rather than on a
-      // lip that no longer exists.
-      position.set(stroke.x, 0.018, stroke.z);
+      // The mark sits ON the apron stone rather than on a lip that no longer
+      // exists - at whatever height that stone currently is.
+      position.set(stroke.x, apronY + 0.018, stroke.z);
       scale.set(stroke.length, 0.025, stroke.width);
       transform.compose(position, rotation, scale);
       mesh.setMatrixAt(index, transform);
     });
     mesh.count = rune.length;
     mesh.instanceMatrix.needsUpdate = true;
-  }, [dynasty, gridSize]);
+  }, [dynasty, gridSize, apronY]);
 
   useEffect(() => {
     return () => {

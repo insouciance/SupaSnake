@@ -82,11 +82,13 @@ describe('Player Evolution curriculum rollout flag', () => {
     // The literal stays, and is a feature: the hash is a function of the flag
     // list, so touching the public surface fails here until a human writes the
     // new value down. That is a reviewed contract change, never a silent
-    // drift. Updated for LF-B (23 flags -> 24, adding
-    // NEXT_PUBLIC_SNAKE_COSMETICS); the previous value was
+    // drift. Updated for 90S-A (24 flags -> 25, adding
+    // NEXT_PUBLIC_NINETIES_COMPOSITION); the previous value was
+    // e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017, and
+    // before that, at 23 flags,
     // ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be.
     expect(PRODUCTION_PUBLIC_SURFACE_HASH).toBe(
-      'e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017'
+      '127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a'
     );
   });
 });

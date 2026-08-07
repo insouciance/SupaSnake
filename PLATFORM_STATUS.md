@@ -24,7 +24,7 @@
 | Language | Plain-language vocabulary live across the game, with a mounted glossary |
 | Engine rules | `snake-rules-2026-08-05.2` |
 | Player Evolution | **Live.** New players receive the seven-Gene starter curriculum; trials run in THE DROP and unlocks are revealed on Results |
-| Public surface | 24 flags, contract hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`; health reports 24/24 with no disabled flags |
+| Public surface | **Deployed:** 24 flags, contract hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`; health reports 24/24 with no disabled flags. **Checked in:** 25 flags at `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, adding `NEXT_PUBLIC_NINETIES_COMPOSITION` (90S-A) — not deployed; the 90S-A release is that cutover |
 | Wardrobe | Server-held; `NEXT_PUBLIC_SNAKE_COSMETICS` live, two cosmetic definitions in the catalog (face + crown) and no food skins by design |
 | Presentation | INK & AMBER; amber `#f2a03f` on ink `#0b1118`, verified in the served stylesheet |
 | Player-feature baseline | `fb25918d731e8f292a106e168728ca0782b78c94` |
@@ -259,21 +259,24 @@ NEXT_PUBLIC_CAREER_SPINE_V1=true  # presentation only; never gates settlement
 NEXT_PUBLIC_RUN_FLOW_V1=true  # cockpit Setup and Victory Lap
 NEXT_PUBLIC_GENOME_V2=true  # new starts use physical-interaction v2; stamped v1 remains supported
 NEXT_PUBLIC_PLAYER_EVOLUTION_V1=true  # the starter curriculum; the 23rd flag
-NEXT_PUBLIC_SNAKE_COSMETICS=true  # the home cosmetics menu; the 24th flag, checked in but not yet deployed
+NEXT_PUBLIC_SNAKE_COSMETICS=true  # the home cosmetics menu; the 24th flag, live since fb25918
+NEXT_PUBLIC_NINETIES_COMPOSITION=true  # the 90s composition; the 25th flag, checked in but not yet deployed
 ```
 
 The complete production set is defined only in
 `config/production-public-surface.json`; the list above highlights the
 player-flow flags most relevant to this status summary. The 23rd,
 `NEXT_PUBLIC_PLAYER_EVOLUTION_V1`, was added by WP-F and went live with
-`4e51e817`; the deployed artifact proves that 23/23 contract and hash
-`ac678998f5c58d0a1cab711e759271f426d2fa5b09a503bf20094406ffd8e2be`. The
-checked-in manifest has since gone to **24 flags** and hash
-`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, adding
-`NEXT_PUBLIC_SNAKE_COSMETICS` for the LF-B home cosmetics menu — but that flag is
-**not deployed**. It ships with the LF-B release alongside migration 069, and
-until that cutover live health correctly reports 23/23 and the old hash. Never
-write 24/24 as a live fact before then.
+`4e51e817`. The 24th, `NEXT_PUBLIC_SNAKE_COSMETICS`, was added by LF-B and went
+live with the Wave-2 release (`fb25918`); the deployed artifact proves that
+24/24 contract and hash
+`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`. The
+checked-in manifest has since gone to **25 flags** and hash
+`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, adding
+`NEXT_PUBLIC_NINETIES_COMPOSITION` for the 90S-A composition — but that flag is
+**not deployed**. It ships with the 90S-A release, which carries no migration,
+and until that cutover live health correctly reports 24/24 and the current
+hash. Never write 25/25 as a live fact before then.
 
 ## Known follow-ups
 

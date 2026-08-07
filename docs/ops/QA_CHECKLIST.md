@@ -36,8 +36,8 @@ Design references:
 | FTUE rollout flag | `NEXT_PUBLIC_FTUE_V2=true` in Vercel Production |
 | Genome rollout flag | `NEXT_PUBLIC_GENOME_V2=true`; all 24/24 deployed manifest flags enabled |
 | Player Evolution flag | `NEXT_PUBLIC_PLAYER_EVOLUTION_V1=true`; the 23rd flag, live since `4e51e81` |
-| Snake cosmetics flag | `NEXT_PUBLIC_SNAKE_COSMETICS` — the 24th flag, checked into the manifest but **not deployed**. There is no live QA surface for the home cosmetics menu until the LF-B release cuts over; do not go looking for a wardrobe on production |
-| Public surface | 24 flags, hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017` |
+| 90s composition flag | `NEXT_PUBLIC_NINETIES_COMPOSITION` — the 25th flag, checked into the manifest but **not deployed**. Production still serves the INK & AMBER stone board and the classic creature; there is no live QA surface for the 90s composition until the 90S-A release cuts over. Judge it on a dev server (`/dev/cockpit?renderer=webgl&state=active`) or on a preview build, never against production |
+| Public surface | **Deployed:** 24 flags, hash `e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`. **Checked in:** 25 flags at `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a` |
 | Wardrobe flag | `NEXT_PUBLIC_SNAKE_COSMETICS=true`; the 24th flag, live since `fb25918` |
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |

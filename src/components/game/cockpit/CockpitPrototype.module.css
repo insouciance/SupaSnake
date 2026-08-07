@@ -1066,15 +1066,43 @@
  * point; the tray only has to seat the board, and a tray you can see the sky
  * through is the difference between a frame and a lid.
  *
- * PAPER outline, not ink. This is the system's first real judgement call:
- * the tray sits on the darkest surface in the product, so a near-black
- * outline would be invisible against it. The bone line is what makes the
- * tray an object rather than a slightly lighter patch of night.
+ * THE FRAME IS GONE - OWNER RULING, 2026-08-07.
+ *
+ *   "we remove that white frame from the tray in which the gameboard sits -
+ *    that really doesn't look good. i'm not talking about the gameboard here,
+ *    but about the tray, to be clear."
+ *
+ * The tray wore a 3px bone keyline plus its grey shade companion. Two earlier
+ * rulings had already worked on that line - it was first an ink ring, then a
+ * paper one - and the pattern is the tell: the line kept being restyled
+ * because the line itself was the problem. The board is a drawn object with
+ * its own bold ink silhouette, and a rectangle drawn 1px outside it is a
+ * SECOND boundary competing with the first, which is exactly the defect the
+ * trayless-board note below records for the old chassis. The owner's own
+ * distinction is the rule: the BOARD keeps its outline (it is a character
+ * outline), the TRAY loses its frame.
+ *
+ * WHAT STAYS is the tray as the owner originally specified it: the shaded
+ * area at the composition's own width, transparent enough that the cartoon
+ * night sky comes through, plus the soft cast shadow that lifts it off the
+ * environment. That is a tray you can see - a graded seat under the board -
+ * without any drawn edge. The three fill stops, the radius, the cast shadow
+ * and the opacity are untouched, so the tray's DIMENSIONS and value are
+ * exactly what they were; only the stroke is removed.
+ *
+ * Geometry is unaffected: the element is `inset: 0` on an absolutely
+ * positioned box, so its outer rectangle is the bay with or without a border,
+ * and nothing in the composition was sized against the 3px.
+ *
+ * NOT BEHIND THE 90s COMPOSITION FLAG, deliberately. The ruling names the
+ * TRAY - "i'm not talking about the gameboard here" - and the tray is the same
+ * object under either board, so rolling the composition back must not redraw a
+ * line the owner had just rejected. See
+ * `src/lib/features/ninetiesComposition.ts` for what the flag does gate.
  */
 .arenaQuietZone {
   position: absolute;
   inset: 0;
-  border: var(--paper-border-3);
   border-radius: 14px;
   background:
     linear-gradient(
@@ -1083,23 +1111,7 @@
       rgba(6, 11, 17, 0.24) 46%,
       rgba(11, 17, 24, 0.36)
     );
-  /* THE DRAWN SHADE (owner ruling, production-only refinement).
-     The bone line is the drawn edge. It used to carry a 1px INK ring here,
-     described as "the shadow it casts onto the sky" - but the sky it casts
-     onto is #06090d..#0b1118, so a near-black hairline on it cast nothing
-     the eye could find, and what was left was a white keyline with two
-     identical hard edges. That is the "a bit alien" the ruling names:
-     nothing a hand draws has two identical edges.
-
-     Replaced by `--paper-shade-ring`, the same grey companion every other
-     paper frame in the product wears, so the board frame and the modal
-     outlines read as one hand. Identical geometry - 1px, same offset, same
-     spread - so this is a colour change and nothing measures differently.
-     The soft cast shadow below it is untouched and still does the lifting
-     off the environment that the ink ring was credited with. */
-  box-shadow:
-    var(--paper-shade-ring),
-    0 10px 26px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
   opacity: 0.9;
 }
 
