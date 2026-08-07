@@ -67,10 +67,21 @@ export function HeirloomSummary({
 
   return (
     <div
-      className={`panel mx-auto max-w-lg space-y-2 p-3 text-left ${className}`}
+      /*
+       * A REGION INSIDE THE PAPER TRAY, not a panel on the deck.
+       *
+       * `.panel` is the DECK family — a saturated dark-blue plate with an ink
+       * contour and a void drop — and it was correct while this block sat in a
+       * dark overlay. Setup is printed on the chamber's stock now, so a deck
+       * plate in the middle of it is the one foreign object on the surface.
+       * It becomes a recess cut into the tray: a fill step, no border, because
+       * the tray already drew the only frame this surface gets (one tray, one
+       * frame).
+       */
+      className={`paper-recess mx-auto max-w-lg space-y-2 p-3 text-left ${className}`}
       data-testid="heirloom-summary"
     >
-      <p className="label-arcade text-cosmic">Heirlooms</p>
+      <p className="label-arcade text-ink/60">Heirlooms</p>
 
       <div className="flex flex-wrap items-center gap-1.5">
         {traits.map((id) => (
@@ -82,7 +93,7 @@ export function HeirloomSummary({
       </div>
 
       {traits.length === 0 && (
-        <p className="font-body text-xs text-beige/60" data-testid="heirloom-empty">
+        <p className="font-body text-xs text-ink/70" data-testid="heirloom-empty">
           No heirloom yet — breed in the Lab to fill this slot. Traits are live
           from the first food of every run.
         </p>
@@ -93,7 +104,7 @@ export function HeirloomSummary({
           key={id}
           data-testid={`heirloom-notice-${id}`}
           className={`font-body text-xs ${
-            tone === 'warning' ? 'text-strike-red' : 'text-beige/60'
+            tone === 'warning' ? 'text-strike-red' : 'text-ink/70'
           }`}
         >
           {text}
