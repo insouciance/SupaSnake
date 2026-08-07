@@ -1,9 +1,76 @@
 import { render, screen } from '@testing-library/react';
 import {
   HOME_HEADER_GRID,
+  HOME_WORDMARK,
   HomeIdentityHud,
   homeHeaderGridGeometry,
 } from './HomeIdentityHud';
+
+describe('the mark, under the locked wordmark geometry', () => {
+  const renderHud = () =>
+    render(
+      <HomeIdentityHud
+        specimen={null}
+        clan={null}
+        authenticated={false}
+        dna={null}
+        energy={null}
+      />
+    );
+
+  /**
+   * The wordmark ruling locked a tilt, a top margin and three size steps. The
+   * medium changed from type to an image; these did not, and this is the test
+   * that says so. If somebody restyles the heading, the mark silently changes
+   * size with it — so the classes are asserted literally.
+   */
+  it('keeps the ruling: -2deg tilt, mt-10/sm:mt-14, and the 4xl/6xl/7xl steps', () => {
+    renderHud();
+    const heading = screen.getByRole('heading', { level: 1 });
+    for (const cls of [
+      '-rotate-[2deg]',
+      'mt-10',
+      'sm:mt-14',
+      'text-4xl',
+      'sm:text-6xl',
+      'lg:text-7xl',
+    ]) {
+      expect(heading).toHaveClass(cls);
+    }
+  });
+
+  it('sizes the mark in em off that same type scale, so the box cannot drift', () => {
+    renderHud();
+    const img = screen.getByRole('heading', { level: 1 }).querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img).toHaveStyle({ width: `${HOME_WORDMARK.widthEm}em` });
+
+    // 6.12em is the measured ratio of the old wordmark's width to its
+    // font-size, identical at all three breakpoints. These are the pixel
+    // widths it reproduces; if the constant moves, the footprint moved.
+    expect(HOME_WORDMARK.widthEm * 36).toBeCloseTo(220.3, 1);
+    expect(HOME_WORDMARK.widthEm * 60).toBeCloseTo(367.2, 1);
+    expect(HOME_WORDMARK.widthEm * 72).toBeCloseTo(440.6, 1);
+  });
+
+  it('serves the derived ladder and keeps the name in the accessibility tree', () => {
+    renderHud();
+    const img = screen.getByRole('heading', { level: 1 }).querySelector('img');
+    expect(img).toHaveAttribute('src', '/brand/mark.png');
+    expect(img?.getAttribute('srcSet')).toContain('/brand/mark@3x.png 3x');
+    // The image is decorative; the h1's sr-only span is the only place the
+    // product name exists as a string now that the lettering is drawn.
+    expect(img).toHaveAttribute('alt', '');
+    expect(screen.getByText('SUPASNAKE')).toHaveClass('sr-only');
+  });
+
+  it('declares intrinsic dimensions, so the hero reserves its box before it loads', () => {
+    renderHud();
+    const img = screen.getByRole('heading', { level: 1 }).querySelector('img');
+    expect(img).toHaveAttribute('width', String(HOME_WORDMARK.intrinsicWidth));
+    expect(img).toHaveAttribute('height', String(HOME_WORDMARK.intrinsicHeight));
+  });
+});
 
 describe('HomeIdentityHud', () => {
   it('renders only factual server-fed identity and one unified wallet', () => {

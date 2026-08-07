@@ -44,49 +44,52 @@ const HOME_HEADER_GRID_STYLE = {
 };
 
 /**
- * THE WORDMARK (owner: bigger, moved down off the top edge, and drawn - but
- * SHARP).
+ * THE WORDMARK, NOW AN ASSET.
  *
- * The first pass chased "sketchy" with an SVG turbulence displacement on the
- * glyph contour and was rejected as "unprofessional and cheap". That was the
- * right call and it is worth stating the principle it establishes, because the
- * temptation recurs: a hand-lettered logo does not read as hand-lettered
- * because its edges are degraded. It reads that way because its letters have
- * CHARACTER - they vary in weight, in size, and in how they sit on the line -
- * while every edge stays perfectly crisp. Roughness is a reproduction fault
- * pretending to be craft. There is no filter here, and there must not be one.
+ * What used to live here was nine `<span>`s of Russo One and a frozen table of
+ * per-letter rotation, baseline shift and scale. That table has not been
+ * ported, and deleting it is the point rather than a side effect: it existed
+ * only to give TYPE the character a drawn logo carries natively, and the mark
+ * now carries it. The reasoning it was built on is intact and has simply moved
+ * to where the drawing is - see `scripts/brand/markGeometry.mjs`, which keeps
+ * the same refusals: the letters vary in size, weight and how they sit on the
+ * line, every edge stays exact, there is no filter, and the variation is a
+ * fixed table rather than `Math.random()` because a logo is drawn ONCE and then
+ * it is the logo.
  *
- * So the variation below is deliberately small and structural: a fraction of a
- * degree of tilt, a hair of baseline bounce, and a few percent of size. Enough
- * that no two letters sit identically, never enough to look unsteady.
+ * THE LOCKED GEOMETRY SURVIVES, AND THIS IS THE PROOF.
  *
- * The table is fixed rather than `Math.random()`, and that is a decision, not a
- * shortcut. A random wordmark re-letters itself on every render and every
- * hydration, which reads as a rendering fault. A hand-lettered logo is drawn
- * ONCE and then it is the logo. These values are the drawing.
+ * The ruling this replaces locked the wordmark's tilt, its top margin and its
+ * three size steps. Those are still on the `<h1>` below, verbatim and
+ * unedited - `mt-10 -rotate-[2deg] text-4xl sm:mt-14 sm:text-6xl lg:text-7xl`.
+ * The mark is then sized in `em`, so the SAME font-size that used to set the
+ * type now sets the image, and the box cannot drift from the ruling without the
+ * ruling itself being edited.
  *
- * Rotations are degrees, `shift` is `em` so the bounce scales with the type - a
- * fixed pixel shift would be a wobble at 72px and a collapse at 36px - and
- * `size` is a transform scale, which does not disturb layout, so the letters
- * vary while the spacing stays even.
+ * `WIDTH_EM` is measured, not chosen. The old wordmark was rendered in Chromium
+ * at all three breakpoints and its width divided by its font-size:
+ *
+ *     mobile   220.32px / 36px = 6.120
+ *     tablet   367.25px / 60px = 6.120
+ *     desktop  440.66px / 72px = 6.120
+ *
+ * A single ratio at every step, because the type scaled linearly. Setting the
+ * mark to 6.12em therefore reproduces the old footprint exactly: 220px, 367px
+ * and 441px. `mark.png` is 441px wide for that reason - 1x is the widest box
+ * the mark ever occupies, so the desktop hero is served at native resolution.
+ *
+ * The mark is TALLER than the type it replaces (148px against 102px at the
+ * desktop step) and that is correct: the extra height is burst, and the
+ * LETTERING inside it lands at roughly the cap height the type had. Matching
+ * the outer heights instead would have shrunk the letters by a third.
  */
-const WORDMARK = 'SUPASNAKE';
-
-const WORDMARK_CHARACTER: readonly {
-  rotate: number;
-  shift: number;
-  size: number;
-}[] = [
-  { rotate: 1.0, shift: -0.014, size: 1.03 },
-  { rotate: -1.2, shift: 0.012, size: 0.98 },
-  { rotate: 0.6, shift: -0.006, size: 1.01 },
-  { rotate: -0.8, shift: 0.016, size: 0.97 },
-  { rotate: 1.2, shift: -0.01, size: 1.04 },
-  { rotate: -0.5, shift: 0.008, size: 0.99 },
-  { rotate: 0.9, shift: -0.015, size: 1.02 },
-  { rotate: -1.1, shift: 0.006, size: 0.98 },
-  { rotate: 0.5, shift: -0.012, size: 1.03 },
-];
+export const HOME_WORDMARK = Object.freeze({
+  /** Measured from the ruling's own geometry; see above. */
+  widthEm: 6.12,
+  /** Intrinsic size of the 1x delivery, for aspect-ratio and CLS. */
+  intrinsicWidth: 441,
+  intrinsicHeight: 148,
+});
 
 export interface HomeSpecimenIdentity {
   variantName: string;
@@ -145,31 +148,38 @@ export function HomeIdentityHud({
             stroke is what separates the wordmark from the page now. The tilt
             stays at the established -2 degrees; the per-letter character
             turns against it so the line reads as lettered, not as rotated. */}
-        <h1 className="heading-display heading-lettered mt-10 -rotate-[2deg] text-4xl text-venom-orange sm:mt-14 sm:text-6xl lg:text-7xl">
-          {/* The accessible wordmark. The visible letters are per-glyph spans
-              and therefore have no single text node to announce, so the name
-              is carried here - and it is the ONE place the wordmark exists as
-              a string, which is also what keeps it findable by name. */}
+        <h1 className="heading-display heading-lettered mt-10 -rotate-[2deg] text-4xl sm:mt-14 sm:text-6xl lg:text-7xl">
+          {/* The accessible wordmark. The mark is an image with an empty alt,
+              so the name has to be carried here - and with the lettering now
+              drawn rather than typed, this is the ONLY place the wordmark
+              exists as a string, which is what keeps the page findable by
+              name. */}
           <span className="sr-only">SUPASNAKE</span>
-          <span aria-hidden="true">
-            {WORDMARK.split('').map((glyph, index) => {
-              const { rotate, shift, size } = WORDMARK_CHARACTER[index];
-              return (
-                <span
-                  key={`${glyph}-${index}`}
-                  className="inline-block"
-                  style={{
-                    // Scaled from the baseline, so a larger letter grows
-                    // upward instead of sinking through the line.
-                    transformOrigin: '50% 100%',
-                    transform: `rotate(${rotate}deg) translateY(${shift}em) scale(${size})`,
-                  }}
-                >
-                  {glyph}
-                </span>
-              );
-            })}
-          </span>
+          {/* A <picture> with a pre-derived ladder rather than next/image: the
+              1x/2x/3x PNG and WebP files are generated from the vector by
+              `scripts/build-brand-assets.mjs` and committed, so the most
+              requested image on the site costs no runtime transformation and
+              renders identically everywhere. `max-w-full` is the only guard on
+              the em box - it lets the mark scale down on a phone narrower than
+              the 360px the 6.12em step assumes, instead of overflowing. */}
+          <picture>
+            <source
+              type="image/webp"
+              srcSet="/brand/mark.webp 1x, /brand/mark@2x.webp 2x, /brand/mark@3x.webp 3x"
+            />
+            <img
+              src="/brand/mark.png"
+              srcSet="/brand/mark.png 1x, /brand/mark@2x.png 2x, /brand/mark@3x.png 3x"
+              alt=""
+              aria-hidden="true"
+              width={HOME_WORDMARK.intrinsicWidth}
+              height={HOME_WORDMARK.intrinsicHeight}
+              fetchPriority="high"
+              decoding="async"
+              className="block h-auto max-w-full"
+              style={{ width: `${HOME_WORDMARK.widthEm}em` }}
+            />
+          </picture>
         </h1>
 
         {specimen ? (
