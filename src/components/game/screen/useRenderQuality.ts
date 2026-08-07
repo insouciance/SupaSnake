@@ -31,6 +31,7 @@ import {
   type RenderQuality,
   type RenderTier,
 } from './renderQuality';
+import type { RenderTierLedger } from '@/lib/game/runInstruments';
 
 interface UseRenderQualityOptions {
   /**
@@ -44,6 +45,15 @@ interface UseRenderQualityOptions {
    * surface the player is reading.
    */
   allowStepUp: boolean;
+  /**
+   * Optional per-run accumulator (Wave 3). A tier-change breadcrumb answers
+   * "did THIS device degrade"; it answers nothing about the population, and
+   * tier distribution across devices is the trigger the program plan parks the
+   * engine-in-worker decision behind. The ledger is owned by the caller so the
+   * hook keeps no cross-run state of its own, and stays optional so nothing
+   * that renders a board is obliged to measure one.
+   */
+  ledger?: RenderTierLedger | null;
 }
 
 const WINDOW_MS = RENDER_GOVERNOR.sampleIntervalMs * RENDER_GOVERNOR.windowSamples;
@@ -75,6 +85,7 @@ function reportTierChange(from: number, to: number, retention: number): void {
 export function useRenderQuality({
   active,
   allowStepUp,
+  ledger = null,
 }: UseRenderQualityOptions): RenderQuality {
   const [tier, setTier] = useState<RenderTier>(INITIAL_GOVERNOR_STATE.tier);
 
@@ -99,12 +110,21 @@ export function useRenderQuality({
   const allowStepUpRef = useRef(allowStepUp);
   allowStepUpRef.current = allowStepUp;
 
+  // Same treatment for the ledger: swapping it must not restart the probe,
+  // whose window is the unit the retention ratio is honest over.
+  const ledgerRef = useRef(ledger);
+  ledgerRef.current = ledger;
+
   useEffect(() => {
     if (!active) return;
     if (typeof window === 'undefined') return;
 
     let fired = 0;
     let windowStartedAt = performance.now();
+    // The ledger's clock starts when the governor's does, so time-at-tier
+    // covers exactly the span the governor was responsible for and a run's
+    // menus and loading do not count as tier-0 play.
+    ledgerRef.current?.start(windowStartedAt);
 
     const id = window.setInterval(() => {
       fired += 1;
@@ -127,11 +147,17 @@ export function useRenderQuality({
       stateRef.current = next;
       if (next.tier !== current.tier) {
         reportTierChange(current.tier, next.tier, retention);
+        ledgerRef.current?.recordTierChange(current.tier, next.tier, now);
         setTier(next.tier);
       }
     }, RENDER_GOVERNOR.sampleIntervalMs);
 
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      // Close the open interval so the last tier the run spent time at is not
+      // silently dropped from its own histogram.
+      ledgerRef.current?.mark(performance.now());
+    };
   }, [active]);
 
   return qualityForTier(tier);
