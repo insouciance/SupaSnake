@@ -191,6 +191,7 @@ import {
   resolveInternalAbsorbIdentity,
   INTERNAL_ABSORB_SESSION_HEADER,
 } from '@/lib/server/strandedTerminalRun';
+import { ageMsBetween, reportSettlementAge } from '@/lib/server/runTelemetry';
 
 // Preserve the proven production budget: settlement now contains multiple
 // independent durable stages. The cutover drains the outgoing canonical
@@ -3656,6 +3657,32 @@ export async function POST(request: NextRequest) {
       // collected today. `parseDailyTake` renders null as "no slot", so the
       // Results layer's default is simply that the Take is not offered.
       const takeSlot = await describeDailyTakeSlot(supabase, player.id);
+
+      // SETTLEMENT AGE (Wave 3). Reported only when a real client drove this
+      // call: the sweep reaches the same fold through `absorbStrandedTerminalRun`
+      // and reports its own settlements with its own path, so reporting here
+      // unconditionally would double-count every sweep rescue and make the
+      // client look like the primary settler — the exact question CE-2 wants
+      // measured. The split is therefore load-bearing, not cosmetic.
+      if (!serviceRoleAbsorb) {
+        const settledAt = Date.now();
+        reportSettlementAge({
+          path: 'client_accelerated',
+          sessionId,
+          playerId: player.id,
+          dynasty: typeof session.dynasty === 'string' ? session.dynasty : null,
+          outcome: 'settled',
+          runAgeMs: ageMsBetween(
+            session.server_started_at ?? session.started_at,
+            settledAt
+          ),
+          terminalAgeMs: ageMsBetween(session.continuity_terminal_at, settledAt),
+          checkpointAgeMs: ageMsBetween(
+            session.continuity_checkpoint_saved_at,
+            settledAt
+          ),
+        });
+      }
 
       return progressionJson({
         success: true,
