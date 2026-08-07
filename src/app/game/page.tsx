@@ -2850,6 +2850,44 @@ export default function GamePage() {
         : Promise.resolve();
       const currentSession = sessionRef.current;
       const sessionId = currentSessionIdRef.current;
+
+      // ---------------------------------------------------------------
+      // PER-RUN INSTRUMENT SUMMARY (Wave 3 items 4 + 5)
+      // ---------------------------------------------------------------
+      // One event per finished run carrying what the run's own instruments
+      // saw. This is what makes governor tier distribution across real
+      // devices queryable — the plan parks the engine-in-worker decision
+      // behind exactly that number, and breadcrumbs cannot be charted.
+      //
+      // CLIENT-REPORTED AND ADVISORY, and nothing downstream may change:
+      // every field here is render- or scheduling-side, none of it reaches
+      // the payload the server settles from, and a run whose telemetry is
+      // absent, late or fabricated settles identically. Emitted before the
+      // settlement request is built so a settlement failure still leaves the
+      // measurement behind.
+      renderTierLedgerRef.current.mark(performance.now());
+      const tierSummary = renderTierLedgerRef.current.summary();
+      reportTelemetry({
+        channel: 'run-governor',
+        message: 'run instrument summary',
+        level: 'info',
+        tags: {
+          dynasty: selectedDynastyRef.current,
+          max_render_tier: tierSummary.maxTier,
+          governor_demoted: tierSummary.demotions > 0,
+          end_reason: data.endReason,
+        },
+        fingerprint: ['run-governor', 'run-summary'],
+        data: {
+          sessionId,
+          renderTiers: tierSummary,
+          inputLatency: inputLatencyRef.current.summary(),
+          turnsObserved: inputLatencyRef.current.observed,
+          jitter: tickJitterRef.current.summary(),
+          ticks: tickJitterRef.current.tickCount,
+        },
+      });
+
       pendingTerminalPresentationRef.current = {
         score: data.score,
         dnaCollected: data.dnaCollected,
@@ -3586,6 +3624,30 @@ export default function GamePage() {
           // invariant threw. That is how a hidden position change becomes an
           // apparently collision-free death on the following interval.
           console.error('Run simulation stopped before an unsafe tick:', error);
+          // CE-5: this is the loudest thing that can happen to a run in
+          // progress — the engine halted and the player is looking at a dead
+          // board — and until now it existed only in a console the production
+          // build strips. It is captured as an exception (the stack names the
+          // invariant that threw) with the run's live instrument state
+          // attached, because "which tick, at what jitter, at what tier"
+          // is the difference between an engine bug and a starved main thread.
+          reportTelemetry({
+            channel: 'engine-tick',
+            message: 'run simulation stopped before an unsafe tick',
+            level: 'error',
+            error,
+            tags: {
+              dynasty: selectedDynastyRef.current,
+              render_tier: renderTierLedgerRef.current.summary().finalTier,
+            },
+            data: {
+              tick: tickJitterRef.current.tickCount,
+              jitter: tickJitterRef.current.summary(),
+              inputLatency: inputLatencyRef.current.summary(),
+              renderTiers: renderTierLedgerRef.current.summary(),
+              sessionId: currentSessionIdRef.current,
+            },
+          });
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
