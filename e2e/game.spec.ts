@@ -116,12 +116,22 @@ test.describe('Equipped-snake game flow', () => {
     await expect(page.getByText(/^score$/i)).toBeVisible();
     await expect(page.getByText(/^dna$/i).first()).toBeVisible();
 
-    // Design v2: the equipped dynasty's ruleset identity line + the
-    // extraction banking hint are on the pre-game screen
+    // The equipped dynasty's ruleset identity line is on the pre-game screen.
     await expect(page.getByTestId('ruleset-explainer')).toBeVisible();
-    await expect(
-      page.getByText(/bank at a portal pays \+25%/i)
-    ).toBeVisible();
+    /*
+     * The extraction hint — "BANK at a portal pays +25% · crash and you keep
+     * 60%" — is no longer asserted here, and that is the 2026-08-07 ruling
+     * rather than a dropped requirement. Setup is three elements, and this
+     * sentence was a pre-run restatement of a rule the player meets, in full
+     * and with live numbers, at the portal itself: the decision dock spells
+     * out what BANK, RIDE ON and TRADE UP each do at the moment the choice is
+     * actually in front of them.
+     *
+     * Explaining a decision twice, once abstractly before the run and once
+     * concretely during it, is what the ruling calls noise. The concrete one
+     * stays.
+     */
+
   });
 
   test('mode toggle offers EARN and FREE PLAY; free play consumes no charge', async ({ page }) => {
