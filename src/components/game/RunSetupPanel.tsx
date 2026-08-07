@@ -221,13 +221,17 @@ export function RunSetupPanel({
           where a logo belongs — it is what makes the tray read as a made
           object rather than a dialog. Sized off the same measured constant
           Home uses, so the two can never drift. */}
-      {/* THE MARK, ABOVE THE SHORT VIEWPORTS ONLY.
+      {/* THE MARK, WHERE IT FITS — and the test is HEIGHT, not width.
 
-          At 320x568 the reactor is the element that must survive, and the
-          wordmark is the only thing on this tray that carries no decision.
-          The chamber the player just came from showed the Mark two seconds
-          ago, so hiding it here costs the brand nothing and buys the
-          commitment control its place above the fold. */}
+          The owner's rule is "use it elsewhere if it fits". What it competes
+          with is vertical room, so gating it on a width breakpoint would have
+          dropped it from an ordinary 390x844 phone that has plenty of space
+          while keeping it on a 900x400 landscape one that has none.
+
+          Below 700px of viewport height the reactor is the element that must
+          survive, and the wordmark is the only thing on this tray carrying no
+          decision — and the player saw the Mark in the chamber two seconds
+          ago, so hiding it there costs the brand nothing. */}
       <picture>
         <source
           type="image/webp"
@@ -239,7 +243,7 @@ export function RunSetupPanel({
           height={HOME_WORDMARK.intrinsicHeight}
           alt="SUPASNAKE"
           decoding="async"
-          className="mx-auto mb-1 hidden w-[132px] max-w-full -rotate-[2deg] select-none sm:block sm:w-[168px]"
+          className="mx-auto mb-1 hidden w-[132px] max-w-full -rotate-[2deg] select-none [@media(min-height:700px)]:block sm:w-[168px]"
           data-testid="run-setup-mark"
         />
       </picture>
