@@ -128,9 +128,14 @@
   --fill-paper-3: #e2cba4; /* a deep recess / an empty socket */
   --fill-paper-shadow: #c0a887; /* the warm shade under paper */
 
-  --fill-deck-0: #0c141d; /* a recess cut INTO an instrument */
-  --fill-deck-1: #1b2836; /* the instrument plate: steps up off the sky */
-  --fill-deck-2: #27384a; /* a raised / live region on that plate */
+  /* The deck steps are SATURATED blue, not neutral slate. A desaturated
+     grey step is the "brushed metal" read the cel rule already threw out
+     once; a shadow is a darker, more saturated member of the hue family.
+     The gap between 0 and 1 is deliberately large - it is the only thing
+     separating a plate from the night sky now that no line does. */
+  --fill-deck-0: #0d1a26; /* a recess cut INTO an instrument */
+  --fill-deck-1: #22384f; /* the instrument plate: steps up off the sky */
+  --fill-deck-2: #2d4763; /* a raised / live region on that plate */
 
   --ink-w-1: 1.5px;
   --ink-w-2: 2.5px;
