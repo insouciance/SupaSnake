@@ -146,7 +146,7 @@ export function EnergyReactor({
           onClick={() => requestCommitment(value - 1)}
           disabled={value <= 0}
           data-testid="energy-decrease"
-          className="btn-paper inline-flex min-h-[54px] w-11 shrink-0 items-center justify-center text-xl disabled:opacity-25 sm:min-h-[60px] sm:w-12"
+          className="btn-paper inline-flex min-h-[46px] w-11 shrink-0 items-center justify-center text-xl disabled:opacity-25 sm:min-h-[60px] sm:w-12"
         >
           −
         </button>
@@ -195,7 +195,7 @@ export function EnergyReactor({
           onClick={() => requestCommitment(value + 1)}
           disabled={value >= available}
           data-testid="energy-increase"
-          className="btn-go inline-flex min-h-[54px] w-14 shrink-0 items-center justify-center text-2xl disabled:opacity-25 sm:min-h-[60px] sm:w-16"
+          className="btn-go inline-flex min-h-[46px] w-14 shrink-0 items-center justify-center text-2xl disabled:opacity-25 sm:min-h-[60px] sm:w-16"
         >
           +
         </button>
@@ -222,7 +222,7 @@ export function EnergyReactor({
           onClick={() => requestCommitment(0)}
           disabled={value === 0}
           data-testid="energy-run-lean"
-          className="btn-paper min-h-[44px] px-3 py-1.5 text-[11px] disabled:opacity-30"
+          className="btn-paper min-h-[44px] whitespace-nowrap px-3 py-1.5 text-[11px] disabled:opacity-30"
         >
           Go cold · ×0.25
         </button>
@@ -231,7 +231,7 @@ export function EnergyReactor({
           onClick={() => requestCommitment(capacity)}
           disabled={available < capacity || value === capacity}
           data-testid="energy-commit-6"
-          className="btn-paper min-h-[44px] px-3 py-1.5 text-[11px] disabled:opacity-30"
+          className="btn-paper min-h-[44px] whitespace-nowrap px-3 py-1.5 text-[11px] disabled:opacity-30"
         >
           Full core · ×{energyCommitmentMultiplier(capacity).toFixed(1)}
         </button>

@@ -182,7 +182,7 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
     expect(screen.getByText(/gen 7/i)).toBeInTheDocument();
   });
 
-  it('switches dynasty through the dock callback, and never re-equips the flying one', () => {
+  it('switches house through the dock callback, and opens the picker on your own', () => {
     const onFavoriteDock = jest.fn();
     const primal = { id: 'primal-favorite', name: 'Moss', generation: 4, dynasty: 'PRIMAL' };
     render(
@@ -199,9 +199,12 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
     expect(onFavoriteDock).toHaveBeenNthCalledWith(1, 'PRIMAL', primal);
     expect(onFavoriteDock).toHaveBeenNthCalledWith(2, 'COSMIC', null);
 
-    // CYBER is the flying dynasty here; pressing it cannot re-issue an equip.
+    // CYBER is the flying dynasty here. Its dock is NOT dead — a dead 92px
+    // target on the surface whose job is choosing a snake would strand a
+    // player who wants a different snake of the house they already fly — so
+    // it asks for a pick instead of re-equipping what is already equipped.
     fireEvent.click(screen.getByTestId('run-setup-favorite-cyber'));
-    expect(onFavoriteDock).toHaveBeenCalledTimes(2);
+    expect(onFavoriteDock).toHaveBeenNthCalledWith(3, 'CYBER', null);
   });
 
   it('names the selected house and its ruleset, and nobody else\'s', () => {

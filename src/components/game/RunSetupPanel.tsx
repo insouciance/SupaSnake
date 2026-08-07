@@ -114,13 +114,13 @@ function FavoriteDock({
       aria-pressed={favorite ? selected : undefined}
       aria-label={
         selected
-          ? `Flying ${favorite?.name ?? dynasty}${favorite ? `, generation ${favorite.generation}` : ''}`
+          ? `Flying ${favorite?.name ?? dynasty}. Choose a different ${dynasty} snake`
           : favorite
             ? `Switch to your ${dynasty} favorite, ${favorite.name}, generation ${favorite.generation}`
             : `Choose a ${dynasty} favorite`
       }
       data-testid={`run-setup-favorite-${dynasty.toLowerCase()}`}
-      className={`relative flex min-h-[76px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-card)] sm:min-h-[92px] sm:gap-1 border-[length:var(--ink-w-3)] border-ink px-1.5 py-2 text-center transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 disabled:cursor-wait ${
+      className={`relative flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-card)] sm:min-h-[92px] sm:gap-1 border-[length:var(--ink-w-3)] border-ink px-1.5 py-2 text-center transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 disabled:cursor-wait ${
         selected
           ? 'bg-ink text-bone-white shadow-[var(--ink-drop-3)]'
           : 'text-bone-white shadow-[var(--ink-drop-2)]'
@@ -204,7 +204,7 @@ export function RunSetupPanel({
       onClick={onStart}
       disabled={isStarting || !snake}
       data-testid={startTestId}
-      className="btn-go inline-flex min-h-[60px] w-full items-center justify-center gap-3 px-4 py-2.5 text-lg sm:min-h-[76px] sm:py-3 sm:text-2xl"
+      className="btn-go inline-flex min-h-[56px] w-full items-center justify-center gap-3 whitespace-nowrap px-4 py-2 text-lg sm:min-h-[76px] sm:py-3 sm:text-2xl"
     >
       <IconPlay size={26} className="shrink-0" />
       <span className="truncate">{isStarting ? 'Starting…' : startLabel}</span>
@@ -287,9 +287,19 @@ export function RunSetupPanel({
                     favorite={shown}
                     selected={flying}
                     busy={favoriteBusyId !== null && favoriteBusyId === shown?.id}
+                    /*
+                     * EVERY DOCK IS LIVE, and the flying one does the more
+                     * useful thing. A disabled dock is a dead 92px target on
+                     * the surface whose entire job is choosing a snake, and it
+                     * strands a player who wants a DIFFERENT snake of the house
+                     * they are already flying. So: another house equips that
+                     * house's favorite, and your own house opens the picker
+                     * for it — passing null is exactly "choose one for this
+                     * dynasty", which is the same call an empty dock makes.
+                     */
                     onSelect={
-                      onFavoriteDock && !flying
-                        ? () => onFavoriteDock(dynasty, favorite)
+                      onFavoriteDock
+                        ? () => onFavoriteDock(dynasty, flying ? null : favorite)
                         : undefined
                     }
                   />
@@ -316,14 +326,14 @@ export function RunSetupPanel({
                 onClick={onChooseSnake}
                 disabled={!onChooseSnake}
                 data-testid="run-setup-snake-picker-trigger"
-                className="min-h-[44px] px-2 font-body text-[11px] text-ink/60 underline decoration-dotted underline-offset-4 hover:text-ink"
+                className="min-h-[44px] whitespace-nowrap px-2 font-body text-[11px] text-ink/60 underline decoration-dotted underline-offset-4 hover:text-ink"
               >
                 <IconSnake size={13} className="mr-1 inline shrink-0" />
                 All snakes
               </button>
               <Link
                 href={labHref}
-                className="min-h-[44px] px-2 py-3 font-body text-[11px] text-ink/60 underline decoration-dotted underline-offset-4 hover:text-ink"
+                className="min-h-[44px] whitespace-nowrap px-2 py-3 font-body text-[11px] text-ink/60 underline decoration-dotted underline-offset-4 hover:text-ink"
               >
                 Snake Lab
               </Link>

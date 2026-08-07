@@ -7258,7 +7258,7 @@ export default function GamePage() {
           <div
             className={
               setupTrayIsPaper
-                ? 'paper-tray modal-tray my-auto min-w-0 space-y-6 p-3 text-center animate-pop-in sm:p-6'
+                ? 'paper-tray modal-tray my-auto min-w-0 space-y-6 p-2 text-center animate-pop-in sm:p-6'
                 : `panel-elevated modal-frame modal-tray my-auto min-w-0 space-y-6 p-2 text-center animate-pop-in sm:p-8 ${
                     isGameOver
                       ? endReason === 'extracted'

@@ -646,16 +646,22 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await backToSetup.click();
     await page.waitForURL(/\/game\?/, { timeout: 60_000 });
     await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
-    // Authority wins over the URL: the Lab reported only 2 Energy available,
-    // so the restored core is clamped to it and the draft's 4 is discarded.
-    await expect(page.getByTestId('energy-summary')).toHaveText('Staked · 2 Energy');
+    // Authority wins over the URL. The draft asked for 4; the Lab reported 2
+    // available; the reactor refuses the ask and re-seats ONE rod rather than
+    // clamping to the ceiling — the released control did the same, and it is
+    // the safer of the two: an over-ask resolves to the smallest stake, never
+    // to the largest one the balance happens to allow.
+    await expect(page.getByTestId('energy-summary')).toHaveText('Staked · 1 Energy');
 
     const restoredUrl = new URL(page.url());
     expect(restoredUrl.searchParams.get('seed')).toBe('e2eSetupSeed');
     expect(restoredUrl.searchParams.get('target')).toBe('4200');
     expect(restoredUrl.searchParams.get('challenge')).toBe('signal:214');
     expect(restoredUrl.searchParams.get('by')).toBe('CoilAce');
-    expect(restoredUrl.searchParams.get('setupEnergy')).toBe('2');
+    // The URL carries the NAVIGATION intent unchanged; the clamp lives in
+    // state, not in the address bar. That separation is the point of the test
+    // above it — the draft still says 4, and the reactor still refuses it.
+    expect(restoredUrl.searchParams.get('setupEnergy')).toBe('4');
     expect(restoredUrl.searchParams.get('setupRung')).toBe('0');
 
     const setupStorageKeys = await page.evaluate(() => [
