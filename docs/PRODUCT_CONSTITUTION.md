@@ -1,6 +1,29 @@
 # The SupaSnake Product Constitution
 
-**Version:** 1.15 · amended 5 August 2026
+**Version:** 1.16 · amended 7 August 2026
+**v1.16 amendment (explicit owner ruling, 7 August 2026):** the played board has
+**one camera**, and it is a competitive condition rather than a presentation
+preference. The ratified viewpoint is **azimuth 0** (square-on to the south
+side), **28° from zenith**, at the board's own auto-fit distance (**fit ×1.00**),
+aimed at **board centre**, **fov 44** — quoted from the ET-5 surveyor while the
+owner played real runs with the legibility meter on screen. Free rotation, pan
+and zoom are **removed** from every played board, the Training Lab included.
+
+The reason it is a ruling: the camera decides how much screen a cell of approach
+to each wall is worth, and therefore how much warning that wall gives. Under the
+old free controls a player could choose far-row legibility anywhere between
+**0.84** (12° from zenith) and **0.52** (45°), and zoom alone moved it from
+**0.49** to **0.78** at a fixed pitch. That is a difficulty dial, set per player,
+inside a leaderboard game. Two players on one ladder must read the same geometry.
+
+The ratified far/near ratio is **0.68**. It is **two points below the 0.70** the
+26° camera measured, and the owner chose it with that meter visible — the
+stronger vertical read the art direction needs, bought at a known price. **0.68
+is the ruling; restoring 0.70 is an amendment, not a fix.** The angle is
+revisited only on far-row death-forensics evidence. Free camera survives solely
+in dev-gated instruments that do not exist in a production build. Recorded as
+row 38 in §15.
+
 **v1.15 amendment (explicit owner ruling, 5 August 2026 — a recording, not a
 design change):** the ordinary Gene relic cadence is **8 ± 2 foods (6–10
 inclusive, mean 8)**, not the 6 ± 2 (4–8) this document carried from v1.13. At
@@ -605,6 +628,17 @@ one small convenience at a time. Protected, permanently:
   becomes the four entry cards — never as redesign for its own sake. The one screen
   that changes substantially is Results (below), and that is a post-run surface, not
   the game.
+- **The canonical viewpoint** (owner ruling, 7 August 2026): the played board is
+  seen from **one** camera — azimuth 0, **28° from zenith**, the board's own
+  auto-fit distance, aimed at board centre, fov 44 — and there is no player
+  control that moves it. This sits beside input semantics rather than beside
+  presentation because it is fatal geometry: at 16° the far row reads 0.80 of
+  the near row and at 34° it reads 0.62, so a movable camera was a warning-time
+  setting. The Training Lab uses the same viewpoint; practice read from a
+  different camera trains the wrong reflex. The ratified far/near ratio is
+  **0.68** — a recorded, informed trade against the 0.70 the previous camera
+  measured (§15, row 38). Consequence *presentation* may keep improving; the
+  viewpoint moves only by amendment, on evidence, never by taste.
 - **The portal trichotomy.** BANK / PASS / INFUSE is the game's signature. It is made
   with the simulation frozen and the board visible, centered over the play space. It
   is never demoted to a notification, a corner widget, or a timed choice. Consequence
@@ -2010,6 +2044,7 @@ Locked or shipped decisions this document reverses, each with what is given up.
 | 35 | **Codex and Workbench coexist as paired surfaces of one free Research instrument** (v1.10) | **v1.13:** one free Genome Workbench is the only player-facing Research destination. `/codex` remains a compatibility route into it; personal discovery, Genome Weaver progress, world-first history, and legacy records are a subordinate Research Record, not a duplicate Archive/Codex choice or rules catalog. The five-rune Home relic is contextual and non-primary. Explicit owner ruling, 3 August 2026; cooling period waived | The dedicated archive-browsing surface and an explicit Codex-versus-Workbench choice. Gained: one coherent manipulation-first destination, lower information-architecture duplication and mobile load, and preserved personal and historical records |
 | 36 | **Every Gene in the active ruleset roster is eligible for a new account's live offers from its first run, and the Dynasty Signature is withheld from offers until Apex unlocks at ten banked runs** (`genomeV2.ts:3950-3951`) | **v1.14:** the full catalog stays transparent, while a server-authored **seven-Gene** Dynasty starter pool — Signature included from run one — expands through chosen contextual trials resolved in ordinary play. The `apexesUnlocked` offer filter is deleted; Apex *tier activation* keeps its ramp. Existing use grants migration credit and graduated veterans retain the full roster. Explicit owner ruling, 3 August 2026, extended 4 August 2026; cooling period waived | Immediate universal live-choice parity and unrestricted first-session experimentation, plus the late-Signature reveal as a Mastery reward. Gained: a learnable vocabulary, player-chosen sequencing, Dynasty identity present in the first run, and a stronger bridge from Snake competence to Genome mastery. The permanent guardrails are horizontal—not power—ordering, visible future depth, no paid acceleration, active-run continuity, and simulation proof that full eligibility is not strategically worse than an earlier pool. The price of the seventh Gene is a slightly wider first-run vocabulary than the six the design prose imagined; the price of six would have been a Genome that can never fill its sixth locus |
 | 37 | **Ordinary Gene relics arrive on a deterministic 6 ± 2-food interval (4–8)** (v1.13, restated at §4 and §17.28) | **v1.15:** the interval is **8 ± 2 foods (6–10 inclusive, mean 8)**; the validator floor stays 4 because the auto-offer rollback path still opens its first two offers after four foods. Everything else about the relic is unchanged — 40 resolved movement ticks, collection-only reveal, ignore/expiry is not DECLINE/PASS, Patient still doubles the sampled interval, Ascetic still suppresses. The **portal schedule is explicitly untouched**: the carry gamble is core design and its spacing is not a pacing dial. Explicit owner ruling, 5 August 2026, shipped in the Wave-1 rules train (`snake-rules-2026-08-05.2`); cooling period waived, and this row is the reconciliation of the document to rules that were already live | Roughly two build opportunities per long run (about seven by food 42 became about five), and the denser early-run buildcraft rhythm that made a Genome fill faster. Gained: room to play a pick out before the next relic lands, so a run reads as a build with consequences rather than a queue of offers. Recorded rather than designed here: the ruling was made and shipped before this amendment, which is the failure mode the amendment closes — the design authority must not lag the ruleset |
+| 38 | **The board camera is the player's to move** — free pitch across 12–45° from zenith, free zoom across 0.55×–1.6× of the auto-fit, azimuth free while dragging and magnetically snapped to the nearest board side on release, plus a HUD reset-view control (all shipped, `CameraRig`) | **v1.16: ONE canonical competitive viewpoint.** Azimuth 0, **28° from zenith**, fit ×1.00, target board centre, fov 44 — ratified by the owner on 7 August 2026 from the ET-5 camera surveyor, playing real runs with the legibility meter on screen. OrbitControls is **removed** from every played board (Training Lab included) rather than disabled, so the class of bug where the steering surface and the camera compete for the same pointer — which already cost production hotfix #95 — is closed rather than fenced. The flick basis collapses to a constant. Free camera survives only in `?cameraTune=1` and `/dev/cockpit?pitch=`, on routes that do not exist in a production build. Explicit owner ruling, 7 August 2026; the cooling period was waived for the greenlit ET-5 production build, and the ruling is defended mechanically: a four-wall fairness gate and all three cockpit verifiers assert the pose that actually rendered | The player's own read of the board, the drama of a low-angle look, and the pop-out's original purpose — a board the player twists out over the tray. Two points of far-row legibility as well: the ratified 0.68 sits below the 0.70 the 26° camera measured, and that is the trade the owner made deliberately with the meter visible, not a regression to correct. What the free camera was really offering is also what condemned it: a difficulty dial, since 12° gave 0.84 far-row legibility and 45° gave 0.52. Gained: one shared competitive geometry, permanent closure of the pointer-competition class, and a board the art direction can be composed against because the composition can no longer be re-framed by the viewer |
 
 **v1.1 amendments — v1.0 positions reversed by ratified Package A1** (25 July 2026;
 full record in `docs/CONSTITUTION_AMENDMENTS_PROPOSED.md`):

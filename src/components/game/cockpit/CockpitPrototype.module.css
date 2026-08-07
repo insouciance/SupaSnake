@@ -1747,10 +1747,12 @@
     justify-content: stretch;
   }
 
-  .liveRoot .controls [data-control='view'] {
-    display: none;
-  }
-
+  /*
+   * The `[data-control='view']` hide rule is gone with the control itself:
+   * ET-5 locked the board camera, so there is no view to reset on any pointer
+   * type. What that rule bought - a full-width coarse-pointer pause cell - is
+   * now simply what the rail is.
+   */
   .liveRoot .controls button[data-control='pause'],
   .liveRoot .controls button[data-control='abandon'] {
     display: flex;

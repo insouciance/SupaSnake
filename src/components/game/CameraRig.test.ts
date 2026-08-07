@@ -22,21 +22,22 @@ import { SLAB_THICKNESS } from './ArenaFloor';
 import { COCKPIT_CANVAS_OVERHANG } from './screen/gameScreenTokens';
 import {
   buildFitPoints,
+  CANONICAL_POLAR,
   COCKPIT_BASE_FIT_SCALE,
-  COCKPIT_DEFAULT_POLAR,
   COCKPIT_FIT_SCALE,
   COCKPIT_FRAME_MARGIN,
   COCKPIT_TARGET_Y,
   computeFitDistance,
   DEFAULT_AZIMUTH,
   DEFAULT_POLAR,
-  MIN_POLAR,
-  MAX_POLAR,
+  FREE_MAX_POLAR,
+  FREE_MIN_POLAR,
 } from './CameraRig';
+import { CANONICAL_FOV } from './canonicalViewpoint';
 
 const GRID = 20;
 const FOV = 50;
-const COCKPIT_FOV = 44;
+const COCKPIT_FOV = CANONICAL_FOV;
 
 function maxNdcExtent(
   fov: number,
@@ -108,7 +109,7 @@ function defaultDir(): THREE.Vector3 {
 function cockpitDir(): THREE.Vector3 {
   return new THREE.Vector3().setFromSphericalCoords(
     1,
-    COCKPIT_DEFAULT_POLAR,
+    CANONICAL_POLAR,
     DEFAULT_AZIMUTH
   );
 }
@@ -156,8 +157,14 @@ describe('computeFitDistance', () => {
     expect(extent).toBeGreaterThan(0.85);
   });
 
-  it('produces a finite positive distance across the allowed pitch range', () => {
-    for (const polar of [MIN_POLAR, DEFAULT_POLAR, MAX_POLAR]) {
+  /**
+   * The played camera no longer has a pitch RANGE - ET-5 gave it one pitch.
+   * The fit must still be well behaved across the surveyor's free-look band,
+   * because that is the instrument any future viewpoint session uses, and a
+   * fit that degenerates at 80 degrees would make the next ruling unmeasurable.
+   */
+  it('produces a finite positive distance across the surveyor free-look band', () => {
+    for (const polar of [FREE_MIN_POLAR, CANONICAL_POLAR, DEFAULT_POLAR, FREE_MAX_POLAR]) {
       const dir = new THREE.Vector3().setFromSphericalCoords(1, polar, 0);
       const distance = computeFitDistance(FOV, 16 / 9, dir, target, points);
       expect(Number.isFinite(distance)).toBe(true);
@@ -207,7 +214,7 @@ describe('computeFitDistance', () => {
    * by the same growth factor the fit scale is derived from, and held to the
    * same bounds the pre-pop-out fit produced.
    */
-  it('frames the slab inside the bay at rest, despite painting on a larger canvas', () => {
+  it('frames the slab inside the bay, despite painting on a larger canvas', () => {
     const aspect = 1;
     const dir = cockpitDir();
     const cockpitTarget = new THREE.Vector3(
@@ -244,8 +251,10 @@ describe('computeFitDistance', () => {
 
     // The fit scale is DERIVED from the overhang, so the pair cannot drift.
     expect(COCKPIT_FIT_SCALE).toBeCloseTo(COCKPIT_BASE_FIT_SCALE * growth, 10);
-    // Wholly inside the bay at rest: nothing overhangs the tray until the
-    // player twists the camera.
+    // Wholly inside the bay - and since ET-5 the player cannot twist the
+    // camera at all, so this is a permanent property rather than a default
+    // state. The surplus canvas now serves effects and the snake's own
+    // silhouette, which still paint outside the slab.
     expect(bayExtent).toBeLessThanOrEqual(1);
     // And still broadcast-tight - the board fills the bay rather than
     // floating in the middle of it.

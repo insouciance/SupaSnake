@@ -128,6 +128,11 @@ async function readMetrics(page) {
      * by putting a layer with FlickSurface's exact geometry and z-index on the
      * page and asking the browser what a finger in the middle of the board
      * would hit.
+     *
+     * ET-5 has since removed OrbitControls from every played board, so nothing
+     * competes with flick for the pointer any more. This check stays because
+     * it is the one that FAILS if the z-order is ever rearranged again, and
+     * the pop-out canvas is still a paint layer that must never take a hit.
      */
     const flickProbe = document.createElement('div');
     flickProbe.setAttribute('data-flick-probe', '');
@@ -151,16 +156,36 @@ async function readMetrics(page) {
     const steeringTargetName = steeringTarget
       ? `${steeringTarget.tagName.toLowerCase()}.${(steeringTarget.className || '').toString().split(' ')[0]}`
       : 'nothing';
-    // With the steering layer gone, the camera must still be grabbable exactly
-    // where the board is - a fix that killed camera control would be no fix.
+    /*
+     * With the steering layer gone, the point over the board must resolve to
+     * the INPUT ISLAND - not to the bay, the frame, or the canvas bleed.
+     *
+     * This used to be phrased as "the camera is still grabbable". ET-5 locked
+     * the camera, so the island no longer hands anything to OrbitControls; its
+     * remaining job is the one it was always doing underneath - being the
+     * inert sibling that guarantees the pop-out paint layers stay out of the
+     * pointer path. If this ever resolves to something inside the bay, the
+     * stacking-context bug of PR #95 is back regardless of what owns input.
+     */
     flickProbe.remove();
-    const cameraTarget = document.elementFromPoint(
+    const islandTarget = document.elementFromPoint(
       boardRect.x + boardRect.width / 2,
       boardRect.y + boardRect.height / 2
     );
-    const cameraGrabWorks = Boolean(
-      cameraTarget?.closest('[data-arena-input-island]')
+    const boardPointsAtIsland = Boolean(
+      islandTarget?.closest('[data-arena-input-island]')
     );
+
+    /*
+     * ET-5: NO RESET-VIEW CONTROL, ON ANY VIEWPORT.
+     *
+     * The board camera is locked, so a control that restores the default view
+     * has nothing to restore. Its reappearance would mean a movable camera
+     * came back with it.
+     */
+    const resetViewControls = document.querySelectorAll(
+      'button[aria-label="Reset arena view"], button[data-control="view"]'
+    ).length;
 
     const arenaBay = document.querySelector('[data-testid="cockpit-arena-bay"]');
     const blockedControls = [...document.querySelectorAll('button')]
@@ -192,7 +217,8 @@ async function readMetrics(page) {
     return {
       flickReachesBoard,
       steeringTargetName,
-      cameraGrabWorks,
+      boardPointsAtIsland,
+      resetViewControls,
       root: rect(root),
       board,
       frame,
@@ -265,8 +291,12 @@ try {
         `${prefix}: a single-finger flick over the board lands on ${metrics.steeringTargetName}, not the steering layer`
       );
       invariant(
-        metrics.cameraGrabWorks,
-        `${prefix}: the camera grab surface no longer covers the board`
+        metrics.boardPointsAtIsland,
+        `${prefix}: the board's centre no longer resolves to the pointer island`
+      );
+      invariant(
+        metrics.resetViewControls === 0,
+        `${prefix}: ${metrics.resetViewControls} reset-view control(s) present, but the ET-5 camera is locked`
       );
 
       const centerX = metrics.board.x + metrics.board.width / 2;

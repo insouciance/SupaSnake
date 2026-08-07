@@ -2,17 +2,19 @@
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
+import * as THREE from 'three';
 import { LinearToneMapping } from 'three';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { DynastyId } from '@/shared/types/game';
 import type { Position } from '@/lib/game/SnakeGameLogic';
 import { GAME_CONFIG } from '@/shared/config/game';
+import { CANONICAL_FOV } from '@/components/game/canonicalViewpoint';
 import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
 import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
 import {
   CameraRig,
-  COCKPIT_DEFAULT_POLAR,
+  CANONICAL_POLAR,
   COCKPIT_FIT_SCALE,
   COCKPIT_FRAME_MARGIN,
   COCKPIT_TARGET_Y,
@@ -66,6 +68,18 @@ interface ArenaPrototypeCanvasProps {
    * served in production at all.
    */
   forceRenderTier?: RenderTier;
+  /**
+   * Dev-fixture-only pitch escape (`/dev/cockpit?pitch=`), in degrees from
+   * zenith.
+   *
+   * ET-5 ratified ONE viewpoint for the played board, and this is not a way
+   * back to a movable camera: it is a way to judge board art, materials and
+   * silhouettes against a candidate angle before anyone proposes amending the
+   * ruling. `/dev/cockpit` 404s in production, so nothing here can reach a
+   * player. Undefined - the default, and what every verifier measures - means
+   * the ratified pitch.
+   */
+  pitchDeg?: number;
 }
 
 const GRID = GAME_CONFIG.board.gridSize;
@@ -158,6 +172,7 @@ function PrototypeScene({
   effectsEnabled = true,
   density = 'standard',
   forceRenderTier,
+  pitchDeg,
 }: ArenaPrototypeCanvasProps & { isMobile: boolean }) {
   const theme = getDynastyScreenTokens(dynasty);
   const snake = density === 'extreme' ? DENSE_SNAKE : STATIC_SNAKE;
@@ -316,12 +331,20 @@ function PrototypeScene({
         />
       )}
 
+      {/*
+        The fixture renders the SHIPPED camera, so `verify:cockpit-webgl` is
+        measuring the real thing when it pins the canonical angle. `pitchDeg`
+        is the dev-only judging escape; it is never set by the verifiers.
+      */}
       <CameraRig
         gridSize={GRID}
-        resetToken={0}
         frameMargin={COCKPIT_FRAME_MARGIN}
         fitScale={COCKPIT_FIT_SCALE}
-        defaultPolar={COCKPIT_DEFAULT_POLAR}
+        defaultPolar={
+          pitchDeg === undefined
+            ? CANONICAL_POLAR
+            : THREE.MathUtils.degToRad(pitchDeg)
+        }
         targetY={COCKPIT_TARGET_Y}
       />
 
@@ -383,6 +406,7 @@ export function ArenaPrototypeCanvas({
   effectsEnabled = true,
   density = 'standard',
   forceRenderTier,
+  pitchDeg,
 }: ArenaPrototypeCanvasProps) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -406,7 +430,7 @@ export function ArenaPrototypeCanvas({
       <Canvas
         camera={{
           position: [center, center * 2.4, center * 1.9],
-          fov: 44,
+          fov: CANONICAL_FOV,
         }}
         shadows
         dpr={isMobile ? [1, 1.5] : [1, 2]}
@@ -427,6 +451,7 @@ export function ArenaPrototypeCanvas({
           effectsEnabled={effectsEnabled}
           density={density}
           forceRenderTier={forceRenderTier}
+          pitchDeg={pitchDeg}
         />
         <RenderStatsProbe />
       </Canvas>

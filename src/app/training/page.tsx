@@ -48,12 +48,13 @@ import { FoodBeacon } from '@/components/game/FoodBeacon';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import {
   CameraRig,
-  COCKPIT_DEFAULT_POLAR,
+  CANONICAL_POLAR,
   COCKPIT_FIT_SCALE,
   COCKPIT_FRAME_MARGIN,
   COCKPIT_TARGET_Y,
   DEFAULT_AZIMUTH,
 } from '@/components/game/CameraRig';
+import { CANONICAL_FOV } from '@/components/game/canonicalViewpoint';
 import { FlickSurface } from '@/components/game/FlickSurface';
 import { TrainingPathRenderer } from '@/components/game/training/TrainingPathRenderer';
 import { DEFAULT_SANDBOX_PATH } from '@/components/training/PathComposer';
@@ -92,7 +93,6 @@ interface TrainingBoardProps {
   bufferRef: { readonly current: InterpolationBuffer | null };
   azimuthRef: { current: number };
   isMobile: boolean;
-  resetToken: number;
 }
 
 function TrainingBoard({
@@ -103,7 +103,6 @@ function TrainingBoard({
   bufferRef,
   azimuthRef,
   isMobile,
-  resetToken,
 }: TrainingBoardProps) {
   const theme = themeManager.getTheme(scenario.dynasty);
   const target = snapshot.target;
@@ -112,7 +111,10 @@ function TrainingBoard({
 
   return (
     <Canvas
-      camera={{ position: [cameraCenter, cameraCenter * 2.4, cameraCenter * 1.9], fov: 44 }}
+      camera={{
+        position: [cameraCenter, cameraCenter * 2.4, cameraCenter * 1.9],
+        fov: CANONICAL_FOV,
+      }}
       shadows
       dpr={isMobile ? [1, 1.5] : [1, 2]}
     >
@@ -180,13 +182,17 @@ function TrainingBoard({
           />
         )}
       </Suspense>
+      {/*
+        ET-5: the Training Lab is deliberate practice for the competitive
+        board, so it is framed by the same ratified viewpoint. A drill read
+        from a different camera trains the wrong reflex.
+      */}
       <CameraRig
         gridSize={scenario.gridSize}
-        resetToken={resetToken}
         azimuthRef={azimuthRef}
         frameMargin={COCKPIT_FRAME_MARGIN}
         fitScale={COCKPIT_FIT_SCALE}
-        defaultPolar={COCKPIT_DEFAULT_POLAR}
+        defaultPolar={CANONICAL_POLAR}
         targetY={COCKPIT_TARGET_Y}
       />
     </Canvas>
@@ -226,7 +232,6 @@ export default function TrainingPage() {
   const [verification, setVerification] = useState<VerificationState>('offline');
   const [circuit, setCircuit] = useState<CircuitState | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [viewResetToken, setViewResetToken] = useState(0);
   const runRef = useRef<TrainingRun | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const interpolationRef = useRef<InterpolationBuffer>(createInterpolationBuffer());
@@ -452,7 +457,6 @@ export default function TrainingPage() {
     setResult(null);
     setActiveGuidance(nextGuidance);
     setView('run');
-    setViewResetToken((token) => token + 1);
     trackEvent(TRAINING_EVENTS.ATTEMPT_STARTED, {
       category: 'gameplay',
       source,
@@ -755,7 +759,6 @@ export default function TrainingPage() {
         model={cockpitModel}
         onPause={handlePause}
         onAbandon={handleAbandon}
-        onResetView={() => setViewResetToken((token) => token + 1)}
         showPause={!snapshot.state.isPaused}
         showAbandon={snapshot.state.isPaused}
         pauseLabel="Pause training"
@@ -768,7 +771,6 @@ export default function TrainingPage() {
           bufferRef={interpolationRef}
           azimuthRef={cameraAzimuthRef}
           isMobile={isMobile}
-          resetToken={viewResetToken}
         />
       </RunCockpit>
       {isMobile && !snapshot.done && (

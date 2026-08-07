@@ -17,6 +17,10 @@
  * - ?arena=released|cockpit (WebGL renderer only)
  * - ?effects=off (raw scene-cost comparison)
  * - ?density=extreme (actual long coiled snake + dense causal terrain)
+ * - ?pitch=1..88 (WebGL renderer only - judge board art at a candidate
+ *   camera pitch in degrees from zenith. ET-5 ratified one viewpoint for the
+ *   played board; this is a judging escape on a route that 404s in
+ *   production, never a route back to a movable camera.)
  *
  * Production: notFound() - this page never ships to players.
  */
@@ -68,6 +72,17 @@ function parseRenderTier(value: string | undefined): RenderTier | undefined {
   return parsed as RenderTier;
 }
 
+/**
+ * ET-5 dev pitch escape. Bounded to the surveyor's own free-look range so a
+ * typo cannot ask three's spherical math for a degenerate pole.
+ */
+function parsePitchDeg(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 88) return undefined;
+  return parsed;
+}
+
 function parseGeneCount(value: string | undefined): number {
   const parsed = Number(value ?? '4');
   return Number.isFinite(parsed) ? Math.max(0, Math.min(6, Math.floor(parsed))) : 4;
@@ -90,6 +105,7 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
       arenaEffects={first(params.effects) !== 'off'}
       arenaDensity={first(params.density) === 'extreme' ? 'extreme' : 'standard'}
       arenaRenderTier={parseRenderTier(first(params.tier))}
+      arenaPitchDeg={parsePitchDeg(first(params.pitch))}
     />
   );
 }

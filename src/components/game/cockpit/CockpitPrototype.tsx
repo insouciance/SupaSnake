@@ -29,6 +29,8 @@ interface CockpitPrototypeProps {
   arenaDensity?: 'standard' | 'extreme';
   /** Dev-fixture-only tier pin; see ArenaPrototypeCanvas.forceRenderTier. */
   arenaRenderTier?: RenderTier;
+  /** Dev-fixture-only pitch escape; see ArenaPrototypeCanvas.pitchDeg. */
+  arenaPitchDeg?: number;
 }
 
 type TokenStyle = CSSProperties & Record<`--${string}`, string>;
@@ -159,14 +161,6 @@ function PauseGlyph() {
   );
 }
 
-function ResetGlyph() {
-  return (
-    <Svg>
-      <path d="M4 11a8 8 0 1 1 2.1 6.6M4 5v6h6" />
-    </Svg>
-  );
-}
-
 function StrainGlyph({ id }: { id: (typeof STRAINS)[number]['id'] }) {
   if (id === 'AURUM') {
     return <Svg><path d="m12 3 7 5-2.5 10h-9L5 8l7-5Z" /><path d="m5 8 7 4 7-4M12 12v6" /></Svg>;
@@ -207,6 +201,7 @@ function ArenaPreview({
   arenaEffects,
   arenaDensity,
   arenaRenderTier,
+  arenaPitchDeg,
 }: {
   state: CockpitPrototypeState;
   dynasty: DynastyId;
@@ -215,6 +210,7 @@ function ArenaPreview({
   arenaEffects: boolean;
   arenaDensity: 'standard' | 'extreme';
   arenaRenderTier?: RenderTier;
+  arenaPitchDeg?: number;
 }) {
   const portalLive = state === 'portal' || state === 'apex';
   return (
@@ -244,6 +240,7 @@ function ArenaPreview({
                   effectsEnabled={arenaEffects}
                   density={arenaDensity}
                   forceRenderTier={arenaRenderTier}
+                  pitchDeg={arenaPitchDeg}
                 />
               </div>
             </div>
@@ -311,6 +308,7 @@ export function CockpitPrototype({
   arenaEffects = true,
   arenaDensity = 'standard',
   arenaRenderTier,
+  arenaPitchDeg,
 }: CockpitPrototypeProps) {
   const theme = getDynastyScreenTokens(dynasty);
   const normalizedGeneCount = Math.max(0, Math.min(6, Math.floor(geneCount)));
@@ -428,10 +426,8 @@ export function CockpitPrototype({
             <span>{statusText}</span>
           </div>
 
+          {/* ET-5 removed the reset-view control with the camera it reset. */}
           <div className={styles.controls} aria-label="Cockpit controls">
-            <button type="button" aria-label="Reset arena view" title="Reset view">
-              <ResetGlyph />
-            </button>
             <button type="button" aria-label="Pause run" title="Pause">
               <PauseGlyph />
             </button>
@@ -445,6 +441,7 @@ export function CockpitPrototype({
             arenaEffects={arenaEffects}
             arenaDensity={arenaDensity}
             arenaRenderTier={arenaRenderTier}
+            arenaPitchDeg={arenaPitchDeg}
           />
         </div>
       </div>

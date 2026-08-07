@@ -17,6 +17,36 @@ import { chromium } from 'playwright';
 const CANVAS_OVERHANG = 0.25;
 const CANVAS_GROWTH = 1 + 2 * CANVAS_OVERHANG;
 
+/**
+ * THE ET-5 CANONICAL VIEWPOINT, MIRRORED FROM
+ * `src/components/game/canonicalViewpoint.ts`.
+ *
+ * Same rule as CANVAS_OVERHANG above: plain node, no bundler, so the numbers
+ * are copied and the assertion is what catches divergence. These are not a
+ * restatement of a prop - `CameraRig` publishes what the camera ACTUALLY
+ * rendered, measured back out of its position and live projection, onto the
+ * canvas element. So this checks the pixels' camera, not the code's intent.
+ *
+ * The viewpoint was ratified by the owner on 2026-08-07 and recorded in
+ * Product Constitution v1.16 (§5, §15 row 38). Changing any number here
+ * without that ruling being amended first is the drift this gate exists to
+ * stop - including "fixing" far/near back up to 0.70.
+ */
+const CANONICAL_AZIMUTH_DEG = 0;
+const CANONICAL_POLAR_DEG = 28;
+const CANONICAL_FOV = 44;
+const CANONICAL_FIT_MULTIPLE = 1;
+const CANONICAL_ANGLE_TOLERANCE_DEG = 0.5;
+const CANONICAL_FIT_TOLERANCE = 0.01;
+/**
+ * far/near is only viewport-independent on landscape aspects (the fit becomes
+ * depth-driven past ~1.13:1); portrait fits from further away and measures
+ * HIGHER. So the exact pin applies to landscape cases and portrait is held to
+ * the floor - which is the honest shape of the guarantee.
+ */
+const CANONICAL_FAR_NEAR_RATIO = 0.6774;
+const CANONICAL_RATIO_TOLERANCE = 0.001;
+
 const BASE_URL = process.env.COCKPIT_BASE_URL ?? 'http://127.0.0.1:3107';
 const CASES = [
   { width: 390, height: 844, dynasty: 'PRIMAL', state: 'portal' },
@@ -71,7 +101,14 @@ async function measure(testCase, arena, density = 'standard') {
   await host.locator('canvas').waitFor({ state: 'visible' });
   await page.waitForFunction(() => {
     const element = document.querySelector('[data-testid="cockpit-webgl-board"]');
-    return Number(element?.getAttribute('data-draw-calls')) > 0;
+    // The camera pose is published by CameraRig's fit, which runs in an
+    // effect before the first painted frame - so waiting on draw calls alone
+    // would already imply it. Both are required explicitly so a missing
+    // publish fails as a timeout on the thing that is missing.
+    return (
+      Number(element?.getAttribute('data-draw-calls')) > 0 &&
+      element?.querySelector('canvas')?.dataset.cameraPolarDeg !== undefined
+    );
   });
 
   const result = await host.evaluate((element) => {
@@ -85,6 +122,17 @@ async function measure(testCase, arena, density = 'standard') {
       ?.getBoundingClientRect();
     return {
       bay: bay ? { width: bay.width, height: bay.height } : null,
+      camera: canvas
+        ? {
+            locked: canvas.dataset.cameraLocked ?? null,
+            azimuthDeg: Number(canvas.dataset.cameraAzimuthDeg),
+            polarDeg: Number(canvas.dataset.cameraPolarDeg),
+            fitMultiple: Number(canvas.dataset.cameraFitMultiple),
+            fov: Number(canvas.dataset.cameraFov),
+            farNear: Number(canvas.dataset.cameraFarNear),
+            published: canvas.dataset.cameraPolarDeg !== undefined,
+          }
+        : null,
       renderTier: element.getAttribute('data-render-tier'),
       drawCalls: Number(element.getAttribute('data-draw-calls')),
       triangles: Number(element.getAttribute('data-triangles')),
@@ -171,11 +219,68 @@ try {
         `${tierLabel}: render tier is "${measured.renderTier}", not a tier from the table`
       );
     }
+    /*
+     * THE RATIFIED VIEWPOINT IS WHAT ACTUALLY RENDERS.
+     *
+     * Every number here is read back out of the posed camera by
+     * `readViewpoint` - the same function the four-wall fairness gate asserts
+     * on and the same one the dev surveyor's meter displays - so the tray, the
+     * unit gate and this browser gate cannot report three different cameras.
+     *
+     * `locked` is the input half of the ruling: no OrbitControls exists on a
+     * played board, so a `false` here means someone handed the fixture the dev
+     * surveyor's free camera.
+     */
+    for (const [cameraLabel, measured] of [
+      [`${label} released`, released],
+      [`${label} cockpit`, cockpit],
+    ]) {
+      const camera = measured.camera;
+      invariant(
+        camera && camera.published,
+        `${cameraLabel}: the camera published no viewpoint - CameraRig did not fit`
+      );
+      invariant(
+        camera.locked === 'true',
+        `${cameraLabel}: the board camera is not locked (data-camera-locked="${camera.locked}")`
+      );
+      invariant(
+        Math.abs(camera.polarDeg - CANONICAL_POLAR_DEG) <= CANONICAL_ANGLE_TOLERANCE_DEG,
+        `${cameraLabel}: pitch renders at ${camera.polarDeg}deg, not the ratified ${CANONICAL_POLAR_DEG}deg`
+      );
+      invariant(
+        Math.abs(camera.azimuthDeg - CANONICAL_AZIMUTH_DEG) <= CANONICAL_ANGLE_TOLERANCE_DEG,
+        `${cameraLabel}: azimuth renders at ${camera.azimuthDeg}deg, not the ratified ${CANONICAL_AZIMUTH_DEG}deg`
+      );
+      invariant(
+        Math.abs(camera.fitMultiple - CANONICAL_FIT_MULTIPLE) <= CANONICAL_FIT_TOLERANCE,
+        `${cameraLabel}: distance is ${camera.fitMultiple}x the auto-fit, not ${CANONICAL_FIT_MULTIPLE}x`
+      );
+      invariant(
+        Math.abs(camera.fov - CANONICAL_FOV) < 0.01,
+        `${cameraLabel}: fov renders at ${camera.fov}, not the ratified ${CANONICAL_FOV}`
+      );
+      // Landscape is where far/near is a constant; portrait fits from further
+      // away and is held to the floor instead.
+      const landscape = testCase.width >= testCase.height * 1.2;
+      if (landscape) {
+        invariant(
+          Math.abs(camera.farNear - CANONICAL_FAR_NEAR_RATIO) <= CANONICAL_RATIO_TOLERANCE,
+          `${cameraLabel}: far/near renders at ${camera.farNear}, not the ratified ${CANONICAL_FAR_NEAR_RATIO}`
+        );
+      } else {
+        invariant(
+          camera.farNear >= CANONICAL_FAR_NEAR_RATIO - CANONICAL_RATIO_TOLERANCE,
+          `${cameraLabel}: far/near renders at ${camera.farNear}, below the ratified floor ${CANONICAL_FAR_NEAR_RATIO}`
+        );
+      }
+    }
+
     invariant(cockpit.screenshotBytes > 5_000, `${label}: rendered image payload is empty`);
     baselines.set(`${testCase.width}x${testCase.height}:${testCase.dynasty}`, cockpit);
 
     console.log(
-      `PASS ${label} — ${cockpit.drawCalls} calls (${callDelta >= 0 ? '+' : ''}${callDelta}), ${cockpit.triangles} triangles`
+      `PASS ${label} — ${cockpit.drawCalls} calls (${callDelta >= 0 ? '+' : ''}${callDelta}), ${cockpit.triangles} triangles, camera az ${cockpit.camera.azimuthDeg} pitch ${cockpit.camera.polarDeg} fit ${cockpit.camera.fitMultiple} far/near ${cockpit.camera.farNear}`
     );
   }
 

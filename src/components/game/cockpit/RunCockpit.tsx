@@ -14,7 +14,6 @@ import {
   OverclockGlyph,
   PauseGlyph,
   PortalGlyph,
-  ResetGlyph,
   RiskGlyph,
   ScoreGlyph,
   ShieldGlyph,
@@ -32,7 +31,6 @@ interface RunCockpitProps {
   children: ReactNode;
   onPause: () => void;
   onAbandon?: () => void;
-  onResetView: () => void;
   onOverclock?: (source: GenomeV2OverclockSource) => void;
   pauseDisabled?: boolean;
   showPause?: boolean;
@@ -79,7 +77,6 @@ export function RunCockpit({
   children,
   onPause,
   onAbandon,
-  onResetView,
   onOverclock,
   pauseDisabled = false,
   showPause = true,
@@ -406,15 +403,6 @@ export function RunCockpit({
             aria-label="Cockpit controls"
             data-cockpit-zone="controls"
           >
-            <button
-              type="button"
-              onClick={onResetView}
-              aria-label="Reset arena view"
-              title="Reset view"
-              data-control="view"
-            >
-              <ResetGlyph />
-            </button>
             {showPause ? (
               <button
                 type="button"
