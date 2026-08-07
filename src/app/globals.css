@@ -123,8 +123,57 @@
   /* The hard offset drop under a drawn card. No blur: a soft shadow is a
      lighting effect and this is a printed object. Comic cards get their
      weight from a flat displaced block, and so do ours. */
+  --ink-drop-1: 2px 2px 0 var(--ink-stroke);
   --ink-drop-2: 3px 3px 0 var(--ink-stroke);
   --ink-drop-3: 5px 5px 0 var(--ink-stroke);
+
+  /* ---------------------------------------------------------------------
+     THE DROP, SCOPED BY GROUND (ruling T-1, applied).
+
+     The drop above is the same device as the paper outline's companion
+     shade, and T-1 rules that device by the ground it falls on: ink is the
+     shade on light surfaces, and the drawn shade exists for paper-on-dark
+     because an ink line - or an ink block - would vanish there.
+
+     The night sky under the game HUD is #030609..#0b1118. `--ink-stroke` is
+     #0b1118, which is at or ABOVE the ground's own value, so an ink drop on
+     it displaces nothing the eye can find. These are the same physics - ONE
+     hard offset, no blur, a flat displaced block and never a lighting effect
+     - carrying the ground's own darkest value instead of the paper grammar's.
+
+     Use these ONLY where the surface sits on the void. Anything on paper,
+     amber, or a saturated fill takes `--ink-drop-*` above.
+     --------------------------------------------------------------------- */
+  --ink-drop-void-1: 2px 2px 0 rgba(0, 0, 0, 0.72);
+  --ink-drop-void-2: 3px 3px 0 rgba(0, 0, 0, 0.72);
+  --ink-drop-void-3: 5px 5px 0 rgba(0, 0, 0, 0.72);
+
+  /* ---------------------------------------------------------------------
+     THE RADIUS ROLES (ruling T-9, applied).
+
+     `styleguide/styleguide.md:39` said "hard edges or minimal radius (max
+     4px), no fully rounded corners", and two shipped surfaces had already
+     broken it by deliberate ruling - `.modal-frame` at 26px and `.ink-chip`
+     as a full circle. T-9 retires that line and replaces it with ONE RADIUS
+     PER ROLE, recorded here beside the outline tiers because it is chosen the
+     same way: by what the element IS, never by how large it is.
+
+       --radius-chip  chips, tags, inline controls, small meters, the cells of
+                      a repeated field. Pairs with --ink-w-1.
+       --radius-card  buttons, cards, list rows, HUD instruments. Pairs with
+                      --ink-w-2.
+       --radius-tray  modals, panels, trays. Pairs with --ink-w-3, and the
+                      value IS `.modal-frame`'s shipped 26px, unchanged.
+
+     The three values step, and they step SLOWLY: a drawn frame's corner is a
+     decision the hand made once, and a 90s cartoon panel turns its corner
+     confidently rather than easing around it. A round object whose ROUNDNESS
+     is its shape - the portal dial, an avatar, the Home rail's chips - is not
+     a radius decision at all and stays a circle.
+     --------------------------------------------------------------------- */
+  --radius-chip: 4px;
+  --radius-card: 8px;
+  --radius-tray: 26px;
 }
 
 /* -----------------------------------------------------------------------
@@ -200,7 +249,9 @@
 .modal-frame {
   /* Keeps the element's existing 1px box - only the line disappears. */
   border-color: transparent;
-  border-radius: 26px;
+  /* The TRAY role's radius (T-9). The token was set FROM this literal, so
+     this is a name for the shipped 26px and not a change to it. */
+  border-radius: var(--radius-tray);
   box-shadow:
     var(--paper-ring-3),
     0 18px 48px rgba(0, 0, 0, 0.55);

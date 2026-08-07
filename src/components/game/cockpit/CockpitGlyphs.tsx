@@ -2,14 +2,43 @@ import type { ReactNode } from 'react';
 import type { GeneId } from '@/shared/game/genes';
 import type { StrainId } from '@/shared/game/strains';
 
-function Svg({ children }: { children: ReactNode }) {
+/**
+ * THE TWO INK WEIGHTS THE GLYPH SET IS DRAWN AT (90S-B, audit item C6).
+ *
+ * Every mark in here used to be one hairline weight - `strokeWidth 1.8` on a
+ * 24x24 box, whatever the mark was for and whatever size it rendered at. That
+ * is fifteen technical icons inside a composition whose every other line is a
+ * chosen one, and ruling T-10 names the defect exactly: an ink weight is
+ * CHOSEN PER OBJECT, never inherited. `snake90s.ts` derives the creature's
+ * hull from the gap it must not close; these are derived from the box the mark
+ * is read in.
+ *
+ *   DECK    the instrument marks - score, DNA, mode, portal, yield, the
+ *           controls. They render at 22-29px inside a tray the player reads at
+ *           a glance while steering, so they carry the heavier line and hold
+ *           their silhouette at speed.
+ *   RACK    the gene and strain alphabets. They render at roughly 16-28px
+ *           inside a cell of a repeated field, and their job is to stay
+ *           DISTINCT from each other - the catalog test asserts exactly that.
+ *           A deck weight here would close their interior detail into a blob,
+ *           so they take the lighter line: the same two-weight logic the
+ *           character uses, thick contour outside, finer line within.
+ *
+ * The paths are untouched. This is the line the marks are drawn WITH, not what
+ * they are drawings OF, and the gene/strain silhouettes stay byte-identical to
+ * the ones `CockpitGlyphs.test.tsx` pins as bespoke.
+ */
+const DECK_INK = 2.6;
+const RACK_INK = 2.2;
+
+function Svg({ children, weight = RACK_INK }: { children: ReactNode; weight?: number }) {
   return (
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth={weight}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
@@ -18,89 +47,94 @@ function Svg({ children }: { children: ReactNode }) {
   );
 }
 
+/** A deck-weight mark: the instrument glyphs the player reads while steering. */
+function DeckSvg({ children }: { children: ReactNode }) {
+  return <Svg weight={DECK_INK}>{children}</Svg>;
+}
+
 export function ScoreGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <path d="M5 5h14v5c0 4.2-2.7 7.1-7 8.5C7.7 17.1 5 14.2 5 10V5Z" />
       <path d="M8 5V3h8v2M9 21h6M12 18.5V21" />
       <path d="m12 8 1.1 2.2 2.4.3-1.7 1.7.4 2.4-2.2-1.1-2.2 1.1.4-2.4-1.7-1.7 2.4-.3L12 8Z" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
 export function DnaGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <path d="M7 3c0 4.3 10 5.6 10 10s-10 5.7-10 8" />
       <path d="M17 3c0 4.3-10 5.6-10 10s10 5.7 10 8" />
       <path d="M8.2 7h7.6M8.2 17h7.6M9.5 12h5" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
 export function EnergyGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <path d="M13.5 2 5.8 13h5.8L10.5 22l7.7-11h-5.8l1.1-9Z" />
       <path d="M4 5.5h3M17 18.5h3" opacity=".6" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
 export function OverclockGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <path d="M4 17a8 8 0 1 1 16 0" />
       <path d="M7 17h10M12 13l5-5" />
       <path d="M6.5 12H4M20 12h-2.5M12 6V3" opacity=".7" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
 export function TrainingObjectiveGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <circle cx="12" cy="12" r="8" />
       <circle cx="12" cy="12" r="3" />
       <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
 export function TrainingTickGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <circle cx="12" cy="13" r="8" />
       <path d="M9 2h6M12 5v3M12 13l3-2M18 7l2-2" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
 export function ShieldGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <path d="m12 3 7 3v5c0 4.7-2.6 8-7 10-4.4-2-7-5.3-7-10V6l7-3Z" />
       <path d="m8.5 12 2.2 2.2 4.8-5" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
 export function RiskGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <path d="M18.4 17.5A8 8 0 1 1 19.7 8" />
       <path d="m18.8 4-.9 5.1-5-.9M12 7v5l3 2" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
 export function PortalGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <ellipse cx="12" cy="12" rx="6.5" ry="9" />
       <ellipse cx="12" cy="12" rx="3" ry="5.5" />
       <path d="M12 3v3M12 18v3" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
@@ -110,36 +144,36 @@ export function ModeGlyph({ mode }: { mode: 'standard' | 'free' | 'anomaly' | 't
   }
   if (mode === 'free') {
     return (
-      <Svg>
+      <DeckSvg>
         <path d="M8.2 8.4c-3.8 0-5.3 7.2-1.6 7.2 3 0 6.1-7.2 9.2-7.2 3.8 0 5.3 7.2 1.6 7.2-3 0-6.1-7.2-9.2-7.2Z" />
-      </Svg>
+      </DeckSvg>
     );
   }
   if (mode === 'anomaly') {
     return (
-      <Svg>
+      <DeckSvg>
         <path d="M4 12c2.2-6.5 5.3-8.7 8-8.7s5.8 2.2 8 8.7c-2.2 6.5-5.3 8.7-8 8.7S6.2 18.5 4 12Z" />
         <path d="M8 12h8M12 8v8M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6" />
-      </Svg>
+      </DeckSvg>
     );
   }
   return (
-    <Svg>
+    <DeckSvg>
       <path d="M5 18V6l7-3 7 3v12l-7 3-7-3Z" />
       <path d="m8 8 4 2 4-2M12 10v7" />
-    </Svg>
+    </DeckSvg>
   );
 }
 
 export function PauseGlyph() {
-  return <Svg><path d="M8 5v14M16 5v14" strokeWidth="3" /></Svg>;
+  return <DeckSvg><path d="M8 5v14M16 5v14" strokeWidth="3.6" /></DeckSvg>;
 }
 
 export function AbandonGlyph() {
   return (
-    <Svg>
+    <DeckSvg>
       <path d="M10 4H5v16h5M13 8l4 4-4 4M8 12h9" />
-    </Svg>
+    </DeckSvg>
   );
 }
 

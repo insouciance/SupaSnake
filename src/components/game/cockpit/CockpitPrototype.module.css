@@ -13,6 +13,33 @@
   --danger-rose: #fb7185;
   --bone: #edf5fb;
   --muted: #8fa3b6;
+  /*
+   * THE TWO AUTHORED VALUES THE HUD IS BUILT FROM (90S-B).
+   *
+   * CEL means the tone is CHOSEN, not lit. Before this the instruments were
+   * painted by four lighting mechanisms at once - a 145deg surface gradient, a
+   * gradient border-box, two inset edge lights and a 5px inset hairline - and
+   * the composite read as brushed metal, which is a material, which is a
+   * rendering. The board beside them is drawn from flat authored tones with
+   * hard boundaries, so the HUD is too: ONE value for a tray, ONE value for a
+   * recess inside it, and the difference between them is the only modelling
+   * either surface gets.
+   *
+   * Both keep a little alpha on purpose. The cartoon night sky is the ground
+   * the whole composition stands on, and a tray you can see a star through is
+   * seated in the picture rather than laid on top of it.
+   *
+   * THE STEP BETWEEN THEM IS THE WHOLE MODEL, so it is chosen to be READ and
+   * not merely to exist. Six gene sockets and five strain gauges are FIELDS
+   * (T-3) - nothing is drawn around them - which means the only thing telling
+   * a player there are six slots is this value difference. Measured on the
+   * played board at 1440x900: at the first pair of values the empty sockets
+   * disappeared into their tray, so the tray lifted and the recess dropped
+   * until the field counts at a glance. That is the same trade the board makes
+   * between a tile's top face and the shadow in its groove.
+   */
+  --tray-fill: rgba(14, 25, 35, 0.97);
+  --cell-recess: rgba(2, 6, 10, 0.9);
   isolation: isolate;
   overflow: hidden;
   color: var(--bone);
@@ -90,27 +117,70 @@
   margin: 0 auto;
 }
 
+/*
+ * THE INSTRUMENT TRAY - one frame, one fill (90S-B, audit item C5).
+ *
+ * FOUR MECHANISMS BECAME ONE. The tray used to draw its edge with a clip-path
+ * corner chamfer, a gradient border-box, two inset edge lights and a 5px inset
+ * hairline `::after` - four ways of saying "border", none of them a line. What
+ * they produced together was a bevel: a lit material with a highlight on one
+ * side and a shadow on the other. That is a rendering, and it sat one gap away
+ * from a board whose every edge is a drawn stroke.
+ *
+ * PAPER, TIER 2, AND NEITHER IS TASTE.
+ *
+ *   The COLOUR follows the outline system's adaptive rule (`globals.css:35-45`)
+ *   and ruling T-1: paper is for elements sitting on DARK or rich context,
+ *   where an ink line would vanish. These trays sit on the night sky, which is
+ *   darker than `--ink-stroke` itself. Ink here would be a black line on black.
+ *
+ *   The WEIGHT is the tier the token comment already assigns by role -
+ *   `--ink-w-2` is literally "buttons, cards, list rows, HUD INSTRUMENTS". T-10
+ *   says weights are chosen per object rather than inherited, and this is that
+ *   choice made explicitly: tier 2 is heavy enough to read as a drawn contour
+ *   at 58-66px of deck height, and light enough that five of them around a
+ *   board do not out-shout the board's own silhouette.
+ *
+ * THE DRAWN SHADE PLUS THE DROP. T-1 keeps both devices and scopes them: the
+ * grey companion is what a paper stroke's shaded edge looks like on dark, and
+ * the flat displaced block is what a printed object's weight looks like. They
+ * compose here - ring first, block behind it - and the block uses
+ * `--ink-drop-void-2` because ink would displace nothing against this ground.
+ * NO BLUR anywhere: the two inset edge lights are gone and nothing replaced
+ * them with a soft one.
+ *
+ * NOT ONE PIXEL MOVES, AND THAT IS DELIBERATE RATHER THAN LUCKY. The stroke is
+ * drawn as an INSET RING over the tray's own padding, keeping the element's
+ * 1px border box exactly as it was - the same technique, and for the same
+ * reason, that `.modal-frame` and the decision dock use: "drawn as spread
+ * RINGS and a border-COLOUR change, never a border-width change", because
+ * `box-sizing: border-box` means a heavier border shrinks the content box and
+ * moves every child inside it. Some of these trays have three pixels of slack
+ * at the 58px deck floor, so a 2.5px border would have clipped the strain
+ * gauges' footing at 1280x720. An inset ring costs zero layout, and every
+ * rectangle `verify:cockpit-prototype` and `verify:cockpit-decisions` measure
+ * is the rectangle they measured before.
+ *
+ * The companion shade and the displaced block go OUTSIDE, which is where T-1
+ * puts the shade and where a drop falls by definition. Together they spend 4px
+ * of a 7-13px composition gap.
+ */
 .instrument {
   position: relative;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid transparent;
-  clip-path: polygon(0 9px, 9px 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
-  background:
-    linear-gradient(145deg, rgba(20, 31, 43, 0.94), rgba(5, 10, 15, 0.98)) padding-box,
-    linear-gradient(145deg, rgba(164, 203, 229, 0.32), rgba(44, 73, 97, 0.18) 60%, color-mix(in srgb, var(--dynasty-primary) 44%, transparent)) border-box;
+  /* The 1px box the tray always had, now COLOURED rather than resized. It is
+     the outermost 1px of the tier-2 stroke; the inset ring below supplies the
+     remaining 1.5px, so the white core is one contiguous 2.5px line with the
+     shade sitting directly against its outer edge and no fill showing between
+     them. Never widen this: the width is the geometry, the colour is the art. */
+  border: 1px solid var(--paper-stroke);
+  border-radius: var(--radius-card);
+  background: var(--tray-fill);
   box-shadow:
-    inset 0 1px 0 rgba(235, 247, 255, 0.06),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
-}
-
-.instrument::after {
-  content: '';
-  position: absolute;
-  inset: 5px;
-  pointer-events: none;
-  border-top: 1px solid rgba(167, 204, 230, 0.06);
-  border-left: 1px solid rgba(167, 204, 230, 0.035);
+    inset 0 0 0 calc(var(--ink-w-2) - 1px) var(--paper-stroke),
+    var(--paper-shade-ring),
+    var(--ink-drop-void-2);
 }
 
 .scoreInstrument,
@@ -129,12 +199,16 @@
   grid-area: dna;
 }
 
+/* The mark carries itself. A 7px coloured bloom under a glyph is the glyph
+   emitting light, and nothing in this composition emits light except the four
+   objects the bloom contract names on the board. The dynasty hue stays - it is
+   semantic - and the weight the glyph lost to the halo it gets back in ink
+   (see `CockpitGlyphs.tsx`). */
 .primaryIcon {
   flex: 0 0 auto;
   width: 29px;
   height: 29px;
   color: var(--dynasty-secondary);
-  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--dynasty-secondary) 34%, transparent));
 }
 
 .primaryIcon svg,
@@ -204,17 +278,21 @@
   line-height: 1;
 }
 
+/* Two colour stops at ONE position is a hard boundary, not a gradient - the
+   mechanism was already cel and only the weight and the spent value change.
+   3px so the rule reads as a drawn bar at a glance, and the drained part takes
+   an authored dark rather than a wash of white at 14%. */
 .comboValue::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 2px;
+  height: 3px;
   background: linear-gradient(
     to right,
     var(--secure-gold) var(--constellation-window, 100%),
-    rgba(255, 255, 255, 0.14) var(--constellation-window, 100%)
+    var(--cell-recess) var(--constellation-window, 100%)
   );
 }
 
@@ -256,18 +334,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A meter is two authored values meeting at a hard edge. The track goes to the
+   recess value and the fill drops its 8px bloom - a bar that glows is a bar
+   made of light, and this one is made of ink and colour. */
 .trainingProgress > i {
   display: block;
   height: 6px;
   overflow: hidden;
-  background: rgba(92, 128, 154, 0.24);
+  border-radius: var(--radius-chip);
+  background: var(--cell-recess);
 }
 
 .trainingProgress > i > b {
   display: block;
   height: 100%;
   background: var(--dynasty-secondary);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--dynasty-secondary) 45%, transparent);
   transition: width 120ms linear;
 }
 
@@ -280,43 +361,49 @@
   width: 100%;
 }
 
+/*
+ * THE GENE RACK IS A FIELD, AND FIELDS GET NO INTERNAL INK (ruling T-3).
+ *
+ * The style guide asks for "thinner dark internal lines" and T-3 promotes the
+ * board's own resolution of that clause to a general rule: internal ink is for
+ * the CHARACTER, forbidden on FIELDS of repeated elements. Six identical
+ * sockets is exactly such a field - on the board, forty drawn cell boundaries
+ * stopped reading as boundaries and started reading as a grid, and six drawn
+ * socket boundaries do the same thing at a smaller scale.
+ *
+ * So the two rings this element used to wear - an inset 1px ring plus a second
+ * 1px `::before` border 1px inside it - are both gone, and separation is
+ * bought the way the board buys it: by the GAP between cells and by the value
+ * step between an empty recess and a filled block. Nothing is drawn around
+ * anything.
+ *
+ * The octagonal chamfer goes with them. A cut corner is a techno idiom, and
+ * this is now a small field of blocks under a board made of 400 of them; it
+ * takes the CHIP role's radius and turns its corner once.
+ */
 .geneSocket {
   position: relative;
   display: grid;
   aspect-ratio: 1;
   place-items: center;
   overflow: hidden;
-  clip-path: polygon(23% 0, 77% 0, 100% 23%, 100% 77%, 77% 100%, 23% 100%, 0 77%, 0 23%);
-  color: rgba(127, 153, 174, 0.3);
-  background:
-    radial-gradient(circle at 45% 35%, rgba(133, 165, 190, 0.08), transparent 52%),
-    #070d13;
-  box-shadow: inset 0 0 0 1px rgba(111, 151, 180, 0.24);
-}
-
-.geneSocket::before {
-  content: '';
-  position: absolute;
-  inset: 1px;
-  clip-path: inherit;
-  border: 1px solid rgba(126, 161, 187, 0.16);
+  border-radius: var(--radius-chip);
+  color: rgba(127, 153, 174, 0.34);
+  background: var(--cell-recess);
 }
 
 .geneSocket > i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: rgba(122, 149, 170, 0.2);
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-chip);
+  background: rgba(122, 149, 170, 0.24);
 }
 
+/* A held gene is the same block filled. One authored dynasty tint against the
+   empty socket's recess - no radial wash, no 16px inner bloom, no ring. */
 .geneSocketFilled {
   color: var(--dynasty-secondary);
-  background:
-    radial-gradient(circle at 45% 38%, color-mix(in srgb, var(--dynasty-primary) 22%, transparent), transparent 58%),
-    linear-gradient(145deg, rgba(17, 29, 39, 0.98), #060a0f);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--dynasty-primary) 72%, transparent),
-    inset 0 0 16px color-mix(in srgb, var(--dynasty-primary) 10%, transparent);
+  background: color-mix(in srgb, var(--dynasty-primary) 26%, #070d13);
 }
 
 .geneSocketSpent {
@@ -324,20 +411,22 @@
   filter: saturate(0.35);
 }
 
+/* A struck-through socket. This mark is allowed to be drawn where the socket's
+   own boundary is not: it is a STATE written on one item, not a boundary
+   repeated across a field. Chunky and flat - a 1px hairline wearing a 5px halo
+   was a lit line pretending to be a stroke. */
 .geneSocketSpent::after {
   content: '';
   position: absolute;
   width: 130%;
-  height: 1px;
+  height: 3px;
   transform: rotate(-45deg);
-  background: rgba(237, 245, 251, 0.64);
-  box-shadow: 0 0 5px rgba(237, 245, 251, 0.25);
+  background: var(--bone);
 }
 
 .geneSocket svg {
   width: 66%;
   height: 66%;
-  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--dynasty-secondary) 28%, transparent));
 }
 
 .systemsRack {
@@ -358,6 +447,8 @@
   width: 100%;
 }
 
+/* Three identical cells is a field (T-3): no drawn boundary, one recess value,
+   the gap does the separating. */
 .trainingMetrics > span {
   display: flex;
   min-width: 0;
@@ -365,8 +456,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(96, 129, 153, 0.2);
-  background: rgba(3, 8, 12, 0.58);
+  border-radius: var(--radius-chip);
+  background: var(--cell-recess);
 }
 
 .trainingMetrics small {
@@ -386,6 +477,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * THE PORTAL DIAL. A single gauge, not a field, so it keeps a drawn contour -
+ * and it is the one HUD element the whole game is about, so the contour STEPS
+ * when the portal arrives: tier 1 at rest, tier 2 in cyan when it is live.
+ * That is the weight hierarchy the audit asks decision surfaces to carry
+ * (B2 - "weight hierarchy by frame tier, not by tint"), applied to the
+ * instrument that announces the decision.
+ *
+ * Round on purpose and not a radius decision: a dial's roundness is its shape,
+ * which T-9's role table explicitly leaves alone.
+ *
+ * The 20px outer bloom, the 14px inner bloom and the 4px drop-shadow on the
+ * progress ring are all gone. Arrival is now told by contour weight, colour
+ * and the sweep - three hard-edged facts instead of three soft ones.
+ */
 .portalDial {
   position: relative;
   display: grid;
@@ -393,10 +499,10 @@
   height: 42px;
   margin: 0 auto;
   place-items: center;
-  border: 1px solid rgba(102, 143, 173, 0.3);
+  border: var(--ink-w-1) solid rgba(143, 163, 182, 0.42);
   border-radius: 50%;
-  color: rgba(120, 151, 174, 0.48);
-  background: radial-gradient(circle, rgba(34, 49, 63, 0.6), rgba(4, 9, 14, 0.94) 68%);
+  color: rgba(120, 151, 174, 0.55);
+  background: var(--cell-recess);
 }
 
 .portalDial > svg {
@@ -407,21 +513,20 @@
 .portalProgress {
   position: absolute;
   inset: -4px;
-  border: 2px solid rgba(99, 131, 153, 0.2);
+  border: 2px solid rgba(99, 131, 153, 0.24);
   border-top-color: transparent;
   border-radius: 50%;
 }
 
 .portalDialLive {
-  color: #b6fbff;
-  border-color: rgba(103, 232, 249, 0.68);
-  box-shadow: 0 0 20px rgba(34, 211, 238, 0.13), inset 0 0 14px rgba(34, 211, 238, 0.08);
+  color: #d6fdff;
+  border-width: var(--ink-w-2);
+  border-color: var(--system-cyan);
 }
 
 .portalDialLive .portalProgress {
   border-color: var(--system-cyan);
-  border-right-color: rgba(103, 232, 249, 0.18);
-  filter: drop-shadow(0 0 4px rgba(103, 232, 249, 0.4));
+  border-right-color: rgba(103, 232, 249, 0.2);
   animation: portalArrival 500ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
@@ -431,6 +536,15 @@
   gap: 6px;
 }
 
+/*
+ * THE YIELD PAIR. Two cells that look like a field and are not one: BANK and
+ * CRASH are the two halves of the extraction question, and the product already
+ * spends a colour on each of them. So they keep a drawn contour where the gene
+ * sockets lose theirs - the line here is not a boundary repeated across
+ * identical things, it is each cell stating which of the two it is. Tier 1,
+ * because they are small meters, in the cell's OWN semantic hue (see
+ * `.secureOutcome` / `.riskOutcome` below).
+ */
 .outcomes > span {
   display: flex;
   min-width: 0;
@@ -438,8 +552,9 @@
   justify-content: center;
   gap: 4px;
   min-height: 38px;
-  border: 1px solid rgba(96, 129, 153, 0.2);
-  background: rgba(3, 8, 12, 0.58);
+  border: var(--ink-w-1) solid currentColor;
+  border-radius: var(--radius-chip);
+  background: var(--cell-recess);
 }
 
 .outcomes svg {
@@ -470,6 +585,14 @@
   min-height: 0;
 }
 
+/*
+ * THE STRAIN GAUGES. Five repeated cells - a field (T-3), so no cell is drawn
+ * around. What each one keeps is its FOOTING: the strain's own colour as a
+ * flat bar under it, which is a semantic mark rather than a boundary, and it
+ * is now the full authored hue at tier 1 weight instead of a 2px line faded to
+ * 68%. The vertical wash above it is replaced by one flat tint, because a
+ * gradient rising out of a bar is the bar casting light.
+ */
 .strainGauge {
   display: grid;
   grid-template-columns: 1fr;
@@ -479,8 +602,8 @@
   justify-items: center;
   min-width: 0;
   padding: 3px 4px;
-  border-bottom: 2px solid color-mix(in srgb, var(--strain) 68%, transparent);
-  background: linear-gradient(0deg, color-mix(in srgb, var(--strain) 8%, transparent), transparent 84%);
+  border-bottom: 3px solid var(--strain);
+  background: color-mix(in srgb, var(--strain) 9%, transparent);
 }
 
 .strainIcon {
@@ -496,15 +619,18 @@
   width: 100%;
 }
 
+/* Countable blocks, two authored values, one hard boundary between them. The
+   skew stays - a leaning block is angular, and angular is what the direction
+   asks for - and the 5px bloom on the lit ones goes, because a segment that
+   glows is a segment made of light. */
 .strainSegments i {
   height: 5px;
   transform: skewX(-18deg);
-  background: rgba(105, 130, 150, 0.18);
+  background: var(--cell-recess);
 }
 
 .strainSegments i[data-active='true'] {
   background: var(--strain);
-  box-shadow: 0 0 5px color-mix(in srgb, var(--strain) 35%, transparent);
 }
 
 .strainSuppressed {
@@ -512,9 +638,12 @@
   filter: saturate(0.55);
 }
 
+/* Dampened. A dashed hairline circle is a technical annotation; this is a
+   drawn ring at chip weight and chip radius, in the strain's own hue - the
+   same "state written on one item" licence the spent gene socket takes. */
 .strainSuppressed .strainIcon {
-  border: 1px dashed color-mix(in srgb, var(--strain) 62%, transparent);
-  border-radius: 999px;
+  border: var(--ink-w-1) solid var(--strain);
+  border-radius: var(--radius-chip);
 }
 
 .systemDormant {
@@ -612,6 +741,18 @@
   color: var(--bone);
 }
 
+/*
+ * THE STATUS BANNER. It is lettering laid on the night sky between the deck
+ * and the board, which makes it the same class of object as `RunRateCallout` -
+ * the one in-run surface that was already drawn rather than lit, and the
+ * audit's named reference for in-play type (C11). It borrows that idiom at a
+ * quieter volume: a hard offset in the ground's own darkest value, no blur,
+ * no rotation, no stroke. A hard edge is a decision; a blur is an accident.
+ *
+ * The 1px translucent rule above it is retired. A hairline at 16% opacity is
+ * not a line, it is a suggestion of one, and the banner does not need a
+ * boundary - it needs presence.
+ */
 .statusRail {
   grid-area: status;
   display: flex;
@@ -619,21 +760,24 @@
   justify-content: center;
   gap: 9px;
   min-width: 0;
-  border-top: 1px solid rgba(111, 154, 185, 0.16);
   color: var(--muted);
   font-size: clamp(14px, 1.15vw, 17px);
   font-weight: 700;
   letter-spacing: 0.035em;
   text-align: center;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.72);
   text-transform: uppercase;
 }
 
+/* A drawn tick, not a lit one: the 7px bloom is gone and the mark gets the
+   weight back as size. Still on its point - a square turned 45 degrees is
+   angular geometry, which the direction wants, unlike the halo, which it
+   does not. */
 .statusMarker {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   transform: rotate(45deg);
   background: var(--dynasty-secondary);
-  box-shadow: 0 0 7px color-mix(in srgb, var(--dynasty-secondary) 55%, transparent);
 }
 
 .root[data-state='ready'] .statusRail,
@@ -679,9 +823,22 @@
   visibility: hidden;
 }
 
+/* Abandon wears its own stroke. The rose is the product's stop colour, so the
+   whole tier-2 line goes rose - outer 1px and inset ring together - rather
+   than a 48% fade of it on the outer pixel only. A line that means "this ends
+   the run" should be as certain as any other line on the screen. */
 .abandonControl {
   color: var(--danger-rose) !important;
-  border-color: color-mix(in srgb, var(--danger-rose) 48%, transparent) !important;
+  border-color: var(--danger-rose) !important;
+  box-shadow:
+    inset 0 0 0 calc(var(--ink-w-2) - 1px) var(--danger-rose),
+    var(--ink-drop-void-2) !important;
+}
+
+.abandonControl:active:not(:disabled) {
+  box-shadow:
+    inset 0 0 0 calc(var(--ink-w-2) - 1px) var(--danger-rose),
+    1px 1px 0 rgba(0, 0, 0, 0.72) !important;
 }
 
 .abandonControl:hover,
@@ -714,6 +871,14 @@
   background: linear-gradient(90deg, transparent, rgba(3, 8, 12, 0.9) 24%);
 }
 
+/*
+ * THE OVERCLOCK CHIPS. Pressable, so they take the CHIP role's radius and a
+ * tier-1 contour in the dynasty hue at full strength - the 58% fade was the
+ * line apologising for itself. The 12px inner bloom is gone: `.ink-chip` is
+ * the product's model for a chip you can press (audit C3, "it is the
+ * reference"), and its presence comes from a flat fill, a hard line and a
+ * displaced block, none of which is light.
+ */
 .overclockRail button,
 .overclockRail > span {
   display: flex;
@@ -722,12 +887,12 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  border: 1px solid color-mix(in srgb, var(--dynasty-secondary) 58%, transparent);
-  border-radius: 8px;
+  border: var(--ink-w-1) solid var(--dynasty-secondary);
+  border-radius: var(--radius-chip);
   padding: 4px 7px;
   color: var(--bone);
   background: rgba(4, 10, 15, 0.94);
-  box-shadow: inset 0 0 12px color-mix(in srgb, var(--dynasty-primary) 9%, transparent);
+  box-shadow: var(--ink-drop-void-1);
   font-family: var(--font-body), sans-serif;
 }
 
@@ -766,11 +931,13 @@
   font-style: normal;
 }
 
+/* Active is told by weight and hue, the way the portal dial tells arrival:
+   tier 2 in gold. The two blooms it used to wear said the same thing with
+   light. */
 .overclockRail[data-active='true'] > span {
   border-color: var(--secure-gold);
-  box-shadow:
-    inset 0 0 14px color-mix(in srgb, var(--secure-gold) 10%, transparent),
-    0 0 12px color-mix(in srgb, var(--secure-gold) 18%, transparent);
+  border-width: var(--ink-w-2);
+  box-shadow: var(--ink-drop-void-2);
 }
 
 .composition:has(.overclockRail) .statusRail,
@@ -855,12 +1022,33 @@
      pixel-invariance protected and `box-sizing: border-box` means a heavier
      border would shrink the content box and move every child inside it. */
   border-color: transparent !important;
-  border-radius: 26px !important;
-  background:
-    linear-gradient(155deg, rgba(15, 26, 36, 0.98), rgba(3, 7, 11, 0.99)) !important;
+  /* The TRAY role's radius (T-9). Same 26px `.modal-frame` has always drawn;
+     the token is a name for it, not a change to it. */
+  border-radius: var(--radius-tray) !important;
+  /*
+   * CEL, AND A PRINTED DROP (90S-B).
+   *
+   * The stroke is untouched - `--paper-ring-3` is the one-tray-one-outline
+   * ruling and it was already the direction. What changes is everything that
+   * was still lighting the tray:
+   *
+   *   The 155deg fill becomes ONE authored value. A decision surface is the
+   *   loudest object the game ever puts on screen and it was modelling itself
+   *   with a light source that exists nowhere in the composition.
+   *
+   *   The 80px blur becomes a flat displaced block. "A soft shadow is a
+   *   lighting effect and this is a printed object" is the rule the token
+   *   beside it was written for; at tier 3, because a docked decision is a
+   *   TRAY. The value is the ground's, not ink's (T-1): this falls on the
+   *   night sky, where `--ink-stroke` is lighter than what it lands on.
+   *
+   * Neither touches layout: `verify:cockpit-decisions` measures this panel's
+   * rectangle and its tray width, and a fill and a shadow move neither.
+   */
+  background: rgba(9, 17, 25, 0.985) !important;
   box-shadow:
     var(--paper-ring-3),
-    0 30px 80px rgba(0, 0, 0, 0.72) !important;
+    var(--ink-drop-void-3) !important;
 }
 
 .decisionDock :global(h2) {
@@ -933,17 +1121,41 @@
   pointer-events: none;
 }
 
+/*
+ * PAUSE AND ABANDON - printed buttons, `.ink-chip`'s physics on the void.
+ *
+ * The audit's C2 direction for every button in the product is the chip's:
+ * "flat fill, ink tier-2 frame, hard displaced drop that COLLAPSES on :active"
+ * - the block shrinks under the finger rather than the button moving away from
+ * it, which is how a physical button reads. That is copied here move for move,
+ * with the drop in the ground's value (T-1) and the stroke in paper, because
+ * these sit on the night sky and an ink chip would vanish into it.
+ *
+ * The two diagonal corner cuts go. A chamfer is a machined edge; this is a
+ * drawn object and it takes the CARD role's single radius. The 145deg fill
+ * goes with them for the same reason it went on the trays.
+ *
+ * SIZE IS UNTOUCHED - 48px here, 44px in the two compact layouts, 52px on
+ * coarse pointers. The stroke is drawn as an inset ring over the button's own
+ * interior so the box stays exactly 48px and the touch-target invariants both
+ * verifiers assert cannot move.
+ */
 .controls button {
   display: grid;
   flex: 0 0 auto;
   width: 48px;
   height: 48px;
   place-items: center;
-  border: 1px solid rgba(126, 164, 192, 0.36);
-  clip-path: polygon(0 7px, 7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  border: 1px solid var(--paper-stroke);
+  border-radius: var(--radius-card);
   color: var(--bone);
-  background: linear-gradient(145deg, rgba(19, 31, 43, 0.95), rgba(5, 10, 15, 0.98));
+  background: var(--tray-fill);
+  box-shadow:
+    inset 0 0 0 calc(var(--ink-w-2) - 1px) var(--paper-stroke),
+    var(--paper-shade-ring),
+    var(--ink-drop-void-2);
   cursor: pointer;
+  transition: box-shadow 130ms ease;
 }
 
 .controls button:hover,
@@ -951,6 +1163,22 @@
   outline: 2px solid var(--system-cyan);
   outline-offset: 2px;
   color: var(--system-cyan);
+}
+
+/* The press, copied from `.ink-chip` exactly: the BLOCK shrinks under the
+   finger and the button does not move, which is how a physical button reads.
+   No transform - a button that slides is a screen object. */
+.controls button:active:not(:disabled) {
+  box-shadow:
+    inset 0 0 0 calc(var(--ink-w-2) - 1px) var(--paper-stroke),
+    var(--paper-shade-ring),
+    1px 1px 0 rgba(0, 0, 0, 0.72);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .controls button {
+    transition: none;
+  }
 }
 
 .controls svg {
@@ -1901,8 +2129,11 @@
     justify-items: center;
     padding: 3px 4px;
     border-left: 0;
-    border-bottom: 2px solid color-mix(in srgb, var(--strain) 68%, transparent);
-    background: linear-gradient(0deg, color-mix(in srgb, var(--strain) 8%, transparent), transparent 84%);
+    /* Same footing as the desktop gauge - the portrait rule restates the whole
+       declaration, so the flat bar and the flat tint have to be restated with
+       it or this breakpoint silently keeps the old lit pair. */
+    border-bottom: 3px solid var(--strain);
+    background: color-mix(in srgb, var(--strain) 9%, transparent);
   }
 
   .strainIcon {
