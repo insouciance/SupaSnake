@@ -3,7 +3,20 @@
 import { Canvas, useThree } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { LinearToneMapping } from 'three';
-import { useEffect, useRef, useCallback, useMemo, useState, Suspense, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import {
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  useState,
+  Suspense,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
+import type { CameraSurveyorProbeProps } from '@/components/game/dev/CameraSurveyorProbe';
+import type { CameraSurveyorTrayProps } from '@/components/game/dev/CameraSurveyorTray';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import {
   SnakeGameLogic,
@@ -92,12 +105,13 @@ import { AimSystemSelector } from '@/components/game/AimSystemSelector';
 import { RunInsightCard } from '@/components/game/RunInsightCard';
 import {
   CameraRig,
-  COCKPIT_DEFAULT_POLAR,
+  CANONICAL_POLAR,
   COCKPIT_FIT_SCALE,
   COCKPIT_FRAME_MARGIN,
   COCKPIT_TARGET_Y,
   DEFAULT_AZIMUTH,
 } from '@/components/game/CameraRig';
+import { CANONICAL_FOV } from '@/components/game/canonicalViewpoint';
 import { FlickSurface } from '@/components/game/FlickSurface';
 import { InputDebugOverlay } from '@/components/game/InputDebugOverlay';
 import { FoodBeacon } from '@/components/game/FoodBeacon';
@@ -325,9 +339,57 @@ import {
   IconFlame,
   IconFlask,
   IconHome,
-  IconReset,
   IconSnake,
 } from '@/components/ui/icons';
+
+/**
+ * The camera parameters the rig is actually driven with, named once so the
+ * ET-5 surveyor measures against the SAME framing the board is drawn with
+ * rather than a second copy of the expressions that could drift from it.
+ *
+ * `CAMERA_DEFAULT_POLAR` is unconditional: the HUD rollback flag changes the
+ * chassis the board is framed against, never the ratified competitive angle.
+ */
+const CAMERA_FRAME_MARGIN = HUD_COCKPIT_V1_ENABLED ? COCKPIT_FRAME_MARGIN : 1;
+const CAMERA_FIT_SCALE = HUD_COCKPIT_V1_ENABLED ? COCKPIT_FIT_SCALE : 1;
+const CAMERA_DEFAULT_POLAR = CANONICAL_POLAR;
+const CAMERA_TARGET_Y = HUD_COCKPIT_V1_ENABLED ? COCKPIT_TARGET_Y : 0;
+
+/**
+ * ET-5 CAMERA SURVEYOR - DEV ONLY, AND PROVABLY ABSENT FROM PRODUCTION.
+ *
+ * The viewpoint is already ratified; this mode survives because the ruling is
+ * revisitable and the next session needs the same instrument that produced
+ * this one.
+ *
+ * The mode is double-gated: `NODE_ENV !== 'production'` AND `?cameraTune=1`.
+ * The second gate keeps it off for anyone not deliberately tuning; the first
+ * decides whether the code is in the bundle at all.
+ *
+ * THE SHAPE OF THIS BLOCK IS LOAD-BEARING, AND IT WAS MEASURED, NOT ASSUMED.
+ * Written as `const X = AVAILABLE ? dynamic(() => import(...)) : null` - with
+ * the condition behind a named constant - webpack still emitted the surveyor
+ * chunk and its CSS into the production build: the parser does not propagate
+ * the constant into the branch, so the `import()` stayed a live dependency and
+ * `camera-surveyor-tray` was greppable in `.next/static`. An `if` on the raw
+ * `process.env.NODE_ENV` comparison is the form the bundler folds before it
+ * ever walks the branch, so the import is never registered and no chunk, class
+ * name or string of the surveyor's exists in a production build. Verified by
+ * building and grepping; do not "tidy" this back into a ternary.
+ */
+const CAMERA_SURVEYOR_AVAILABLE = process.env.NODE_ENV !== 'production';
+let CameraSurveyorProbe: ComponentType<CameraSurveyorProbeProps> | null = null;
+let CameraSurveyorTray: ComponentType<CameraSurveyorTrayProps> | null = null;
+if (process.env.NODE_ENV !== 'production') {
+  CameraSurveyorProbe = dynamic(
+    () => import('@/components/game/dev/CameraSurveyorProbe'),
+    { ssr: false }
+  );
+  CameraSurveyorTray = dynamic(
+    () => import('@/components/game/dev/CameraSurveyorTray'),
+    { ssr: false }
+  );
+}
 
 function collisionDiagnosticLabel(
   diagnostic: CollisionDiagnostic | null
@@ -464,7 +526,6 @@ interface BoardViewportShellProps {
   model: RunCockpitModel;
   onPause: () => void;
   onAbandon?: () => void;
-  onResetView: () => void;
   onOverclock?: (source: GenomeV2OverclockSource) => void;
   pauseDisabled: boolean;
   showPause: boolean;
@@ -504,7 +565,6 @@ function BoardViewportShell({
   model,
   onPause,
   onAbandon,
-  onResetView,
   onOverclock,
   pauseDisabled,
   showPause,
@@ -521,7 +581,6 @@ function BoardViewportShell({
         model={model}
         onPause={onPause}
         onAbandon={onAbandon}
-        onResetView={onResetView}
         onOverclock={onOverclock}
         pauseDisabled={pauseDisabled}
         showPause={showPause}
@@ -677,7 +736,6 @@ export default function GamePage() {
   const [deathPos, setDeathPos] = useState<[number, number, number] | null>(null);
   const [showDeathExplosion, setShowDeathExplosion] = useState(false);
   const [cameraShake, setCameraShake] = useState<[number, number, number]>([0, 0, 0]);
-  const [viewResetToken, setViewResetToken] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   // A pause or build decision never releases directly into movement. The
   // engine stays frozen until the player's next deliberate direction input.
@@ -697,9 +755,17 @@ export default function GamePage() {
   const [choicePityStrain, setChoicePityStrain] = useState<StrainId | null>(null);
   const pauseRearmingRef = useRef(false);
   const pauseRearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Live camera azimuth written per frame by CameraRig; read at flick
-  // pointerdown to freeze the gesture's orientation for the whole touch.
+  // The azimuth the flick basis is read against. ET-5 locked the board
+  // camera, so on a played board this is a CONSTANT - CameraRig writes
+  // DEFAULT_AZIMUTH once at fit and never again, and flick axes are board
+  // axes. It stays a ref because the dev surveyor (?cameraTune=1) really does
+  // orbit, and the per-touch gesture freeze must keep working there.
   const cameraAzimuthRef = useRef<number>(DEFAULT_AZIMUTH);
+  // The rig's live OrbitControls, handed out so the ET-5 surveyor can read the
+  // orbit target and angles. Null in production, where no controls exist.
+  const cameraControlsRef = useRef<OrbitControlsImpl | null>(null);
+  // ?cameraTune=1 camera surveyor (dev builds only, see CAMERA_SURVEYOR_AVAILABLE)
+  const [cameraTuneActive, setCameraTuneActive] = useState(false);
   // ?debug=input instrumentation - null unless the flag is present, so the
   // input path records nothing in normal play.
   const inputDebugRef = useRef<InputDebugState | null>(null);
@@ -1481,6 +1547,12 @@ export default function GamePage() {
     // Perf overlay: dev builds only, opt-in via ?perf
     if (process.env.NODE_ENV !== 'production' && params.has('perf')) {
       setPerfEnabled(true);
+    }
+    // ET-5 camera surveyor: dev builds only, opt-in via ?cameraTune=1. The
+    // second half of the double gate - the first is CAMERA_SURVEYOR_AVAILABLE,
+    // which decides whether the code exists at all.
+    if (CAMERA_SURVEYOR_AVAILABLE && params.get('cameraTune') === '1') {
+      setCameraTuneActive(true);
     }
   }, []);
 
@@ -6555,24 +6627,13 @@ export default function GamePage() {
         <div className="absolute bottom-4 left-4 z-10 text-beige/60 text-sm font-body space-y-0.5">
           <p>Controls: Arrow Keys or WASD</p>
           <p>Pause: SPACE (P or ESC)</p>
-          <p>Orbit: Mouse drag (snaps to sides) | Zoom: Scroll</p>
         </div>
       )}
-
-      {/* Reset view - restores the default side-aligned camera */}
-      {(!HUD_COCKPIT_V1_ENABLED || !isPlaying) && (
-        <button
-        onClick={() => setViewResetToken((t) => t + 1)}
-        className="absolute right-4 z-10 flex items-center justify-center w-11 h-11 rounded-arcade border border-scale-blue-light/60 bg-void/70 backdrop-blur-sm hover:border-venom-orange/70 transition-all text-beige hover:text-bone-white"
-        style={isPlaying
-          ? { top: 'calc(env(safe-area-inset-top, 0px) + 62px)' }
-          : { bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
-        title="Reset view"
-        aria-label="Reset view"
-      >
-        <IconReset size={20} />
-        </button>
-      )}
+      {/*
+        ET-5: the orbit/zoom line and the reset-view button are gone with the
+        controls they described. The board has one viewpoint, so there is
+        nothing to orbit, nothing to zoom, and nothing to restore.
+      */}
 
       {/* Flick-anywhere touch layer (mobile default). Sits in the z-band
           between the canvas and the HUD (z-10+), so HUD buttons stay live.
@@ -7532,7 +7593,6 @@ export default function GamePage() {
         model={cockpitModel}
         onPause={handlePause}
         onAbandon={() => setShowAbandonConfirm(true)}
-        onResetView={() => setViewResetToken((token) => token + 1)}
         onOverclock={handleGenomeV2Overclock}
         pauseDisabled={pauseRearming && !awaitingResumeInput}
         showPause={!isGameOver && !isReady && !isPaused && !blockingOverlayActive}
@@ -7610,7 +7670,7 @@ export default function GamePage() {
       <Canvas
         camera={{
           position: [boardCenter, boardCenter * 2.4, boardCenter * 1.9],
-          fov: HUD_COCKPIT_V1_ENABLED ? 44 : 50
+          fov: HUD_COCKPIT_V1_ENABLED ? CANONICAL_FOV : 50
         }}
         shadows
         // Fluidity: cap devicePixelRatio - uncapped retina dpr (3x) was the
@@ -7738,17 +7798,35 @@ export default function GamePage() {
           />
         </Suspense>
 
+        {/*
+          ET-5: the canonical competitive camera. `defaultPolar` is the
+          RATIFIED pitch on both branches - the HUD rollback flag changes the
+          chassis framing (there is no cockpit tray to frame against with it
+          off) but it may not change the competitive angle, because a rollback
+          of the HUD is not a ruling on the viewpoint.
+        */}
         <CameraRig
           gridSize={GAME_CONFIG.board.gridSize}
-          resetToken={viewResetToken}
           azimuthRef={cameraAzimuthRef}
-          frameMargin={HUD_COCKPIT_V1_ENABLED ? COCKPIT_FRAME_MARGIN : 1}
-          fitScale={HUD_COCKPIT_V1_ENABLED ? COCKPIT_FIT_SCALE : 1}
-          defaultPolar={HUD_COCKPIT_V1_ENABLED
-            ? COCKPIT_DEFAULT_POLAR
-            : undefined}
-          targetY={HUD_COCKPIT_V1_ENABLED ? COCKPIT_TARGET_Y : undefined}
+          frameMargin={CAMERA_FRAME_MARGIN}
+          fitScale={CAMERA_FIT_SCALE}
+          defaultPolar={CAMERA_DEFAULT_POLAR}
+          targetY={CAMERA_TARGET_Y}
+          freeCamera={cameraTuneActive}
+          controlsSink={cameraControlsRef}
         />
+
+        {/* Dev-only camera tuning probe (?cameraTune=1) */}
+        {CameraSurveyorProbe && cameraTuneActive && (
+          <CameraSurveyorProbe
+            gridSize={GAME_CONFIG.board.gridSize}
+            frameMargin={CAMERA_FRAME_MARGIN}
+            fitScale={CAMERA_FIT_SCALE}
+            defaultPolar={CAMERA_DEFAULT_POLAR}
+            targetY={CAMERA_TARGET_Y}
+            controlsRef={cameraControlsRef}
+          />
+        )}
 
         {/* Dev-only render stats (?perf) */}
         {perfEnabled && <PerfHUD />}
@@ -7815,6 +7893,11 @@ export default function GamePage() {
         />
       </Canvas>
       </BoardViewportShell>
+
+      {/* ET-5 camera surveyor readout (?cameraTune=1, dev builds only) */}
+      {CameraSurveyorTray && cameraTuneActive && (
+        <CameraSurveyorTray defaultPolar={CAMERA_DEFAULT_POLAR} />
+      )}
     </div>
   );
 }

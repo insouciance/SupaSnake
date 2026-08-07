@@ -211,11 +211,20 @@ async function openCase({ kind, viewport, consent }) {
       `${kind}/${viewport.name}: tactical hold has no visible guidance`
     );
     invariant(metrics.abandonControl, `${kind}/${viewport.name}: abandon control missing`);
+    /*
+     * ET-5: THE BOARD CAMERA IS LOCKED, SO NO POINTER TYPE GETS A RESET.
+     *
+     * This assertion used to be conditional - the control was hidden on coarse
+     * pointers to buy a full-width pause cell, and desktop kept it. The
+     * canonical viewpoint removed the control everywhere, so the check is now
+     * unconditional and it means something stronger: a reset button reappearing
+     * anywhere is a camera that can be moved again.
+     */
+    invariant(
+      !metrics.viewControl,
+      `${kind}/${viewport.name}: a reset-view control is present, but the ET-5 camera is locked`
+    );
     if (viewport.name !== 'desktop') {
-      invariant(
-        !metrics.viewControl,
-        `${kind}/${viewport.name}: reset view did not yield the coarse-pointer pause cell`
-      );
       invariant(
         metrics.abandonControl.width >= 78 && metrics.abandonControl.height >= 52,
         `${kind}/${viewport.name}: coarse pause cell is only ${metrics.abandonControl.width.toFixed(1)}×${metrics.abandonControl.height.toFixed(1)}`

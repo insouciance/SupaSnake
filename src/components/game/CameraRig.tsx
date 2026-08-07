@@ -1,68 +1,79 @@
 'use client';
 
 /**
- * CameraRig - side-aligned tactical camera with magnetic azimuth snapping.
+ * CameraRig - THE CANONICAL COMPETITIVE CAMERA (ET-5).
  *
- * Defaults: 70-degree down-look (20 degrees polar from zenith), aligned
- * behind the board's south side facing north (parallel to a board side,
- * not the legacy corner diagonal), distance auto-fit so the whole board
- * plus a small margin is visible at any viewport aspect.
+ * The played board is viewed from one fixed pose and no other: square-on to
+ * the south side (azimuth 0), 28 degrees from zenith, at the board's own
+ * auto-fit distance, aimed at board centre, fov 44. The numbers and the ruling
+ * behind them live in `./canonicalViewpoint`; this file is what puts the
+ * camera there.
  *
- * Manipulation: pitch and zoom are free within clamps; azimuth is free
- * while dragging but snaps (damped ease, ~0.25s) to the nearest 90-degree
- * side on release, so the view always settles parallel to a board side.
- * The auto-fit distance recomputes on viewport resize (preserving the
- * player's orientation) and is the zoom baseline; `resetToken` restores
- * the full default view (wired to the HUD reset button).
+ * WHAT USED TO BE HERE, AND WHY IT IS GONE. The rig previously mounted
+ * OrbitControls on the live board: free pitch inside 12..45 degrees, free zoom
+ * across 0.55x..1.6x of the fit, free azimuth magnetically snapped to the
+ * nearest board side on release, plus a HUD button to put it all back. That is
+ * removed - not disabled, removed. Two reasons, in order of weight:
  *
- * Performance: the fit math (iterative corner projection) runs only on
- * mount/resize/reset. The per-frame snap path allocates nothing - it
- * reuses one shared Vector3 and three.js's internal temp quaternion.
+ *   1. COMPETITIVE. A camera the player can move is a camera two players on
+ *      the same ladder do not share. Pitch alone moved far-row legibility from
+ *      0.80 to 0.62 (see canonicalViewpoint), which is a material difference
+ *      in how much warning the far wall gives - a setting, effectively, and
+ *      settings do not belong in the fatal geometry of a leaderboard game.
+ *   2. INPUT. The board is also the steering surface. Every pointer that
+ *      OrbitControls could claim was a pointer flick steering had to be
+ *      protected from, and that competition has already cost one production
+ *      hotfix (PR #95). With no controls on the board the class of bug is
+ *      closed rather than fenced.
+ *
+ * The pointer island (`[data-arena-input-island]`) stays exactly where #95 put
+ * it: it is what guarantees the pop-out canvas can never take a hit, and it is
+ * still the OrbitControls host in the one place controls still exist.
+ *
+ * FREE CAMERA SURVIVES WHERE IT COSTS NOTHING: `freeCamera` is passed by the
+ * dev-only ET-5 surveyor (`/game?cameraTune=1`, dev builds only), which is how
+ * this viewpoint was chosen and how the next one would be. It is never passed
+ * in production. The Specimen Chamber's camera is a separate rig entirely and
+ * is untouched by this.
+ *
+ * Performance: the fit math (iterative corner projection) runs on mount and
+ * resize only. In the locked configuration the rig subscribes to no frame loop
+ * at all - it renders `null` and the camera simply stays where it was put.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { COCKPIT_CANVAS_OVERHANG } from './screen/gameScreenTokens';
+import { CANONICAL_POLAR_DEG, readViewpoint } from './canonicalViewpoint';
 
 /** Default pitch: 70 degrees down from horizontal = 20 degrees from zenith */
 export const DEFAULT_POLAR = THREE.MathUtils.degToRad(20);
 /**
- * Cockpit pitch, pass 3.
+ * THE RATIFIED PITCH (ET-5, owner ruling 7 August 2026): 28 degrees from
+ * zenith, replacing the 26 this board shipped with.
  *
- * The owner asked for a LOWER default so the art gets a stronger 3D read,
- * with the explicit constraint that every row must stay equally playable -
- * "when in a first person view, some rows would be much better visible than
- * others, so we want to keep that top down in general and only go as far as
- * possible to make it look beautiful."
+ * The constraint the owner set when the pitch was first lowered still holds -
+ * "keep that top down in general and only go as far as possible to make it
+ * look beautiful" - and 28 is where the surveyor session landed after playing
+ * real runs at candidate angles with the legibility meter on screen. It costs
+ * two points of far-row legibility (0.696 -> 0.677) and buys the vertical
+ * presence the 90s art direction is built on. `canonicalViewpoint.ts` carries
+ * the full table and the reason 0.68 is a ruling rather than a regression.
  *
- * That constraint is measurable, so it was measured rather than eyeballed.
- * At the cockpit fit (fov 44, frame margin 1.175, fit scale 0.94) the on-screen
- * height of the tallest board row divided by the shortest is:
- *
- *   16 deg from zenith (the old default)  1.43 desktop / 1.31 portrait
- *   24 deg                                1.70 / 1.47
- *   26 deg  <- chosen                     1.78 / 1.51
- *   30 deg                                1.95 / 1.58
- *   34 deg                                2.14 / 1.66
- *
- * At 26 the shortest row is still 56% of the tallest on desktop and 66% on a
- * phone: all twenty rows remain individually resolvable, which is the actual
- * playability question. What it buys is vertical presence - a one-cell-tall
- * object rises 0.50 of a row height on screen instead of 0.30, so the snake,
- * the walls and the terrain all read as standing UP off the board by two
- * thirds more than they did. That is the "stronger 3D effect" in one number.
- *
- * 30 and beyond is where the far rows start to crowd and where a coil crossing
- * the top of the board begins to occlude the row behind it. This is the far
- * edge of "as far as possible", not a compromise short of it.
- *
- * Manual pitch is unchanged: players may still tilt anywhere in
- * MIN_POLAR..MAX_POLAR, and 26 sits comfortably inside that range.
+ * There is no manual pitch any more: this is the pitch, everywhere the game is
+ * played.
  */
-export const COCKPIT_DEFAULT_POLAR = THREE.MathUtils.degToRad(26);
+export const CANONICAL_POLAR = THREE.MathUtils.degToRad(CANONICAL_POLAR_DEG);
 /** Exact outer half-overhang of the premium undertray chassis. */
 export const COCKPIT_FRAME_MARGIN = 1.175;
 /**
@@ -108,38 +119,42 @@ export const COCKPIT_BASE_FIT_SCALE = 0.94;
  * one thing the pop-out must never do; it is now arithmetically impossible to
  * raise it alone.
  *
- * One scalar only compensates UNIFORM growth, and window-reach is not a fixed
- * fraction of the bay, so this buys reach at the common desktop and phone
- * shapes rather than a guarantee at every aspect.
+ * ET-5 note: the surplus surface no longer serves a player-twisted board,
+ * because nothing twists it. It still serves the effects and the snake's own
+ * silhouette, which paint outside the slab, and it is the surface every
+ * shipped framing number was calibrated against - so it stays, and the
+ * at-rest containment it guarantees is now a permanent property rather than a
+ * default state.
  */
 export const COCKPIT_FIT_SCALE =
   COCKPIT_BASE_FIT_SCALE * (1 + 2 * COCKPIT_CANVAS_OVERHANG);
 /** Small framing bias that protects the near (south) chassis corners. */
 export const COCKPIT_TARGET_Y = -0.3;
-/** Pitch limits (polar angle from zenith) */
-export const MIN_POLAR = THREE.MathUtils.degToRad(12);
-export const MAX_POLAR = THREE.MathUtils.degToRad(45);
 /** Default azimuth: behind the south (+Z) side, facing north */
 export const DEFAULT_AZIMUTH = 0;
 /** Fraction of NDC half-extent the board may fill (rest is margin) */
 const FIT_MARGIN = 0.94;
-/** Zoom clamps relative to the auto-fit baseline distance */
-const ZOOM_IN_RATIO = 0.55;
-const ZOOM_OUT_RATIO = 1.6;
-/** Damped snap rate - time constant ~60ms, settles in ~0.25s */
-const SNAP_SPEED = 16;
-/** Snap epsilon (radians) below which the snap completes */
-const SNAP_EPSILON = 0.002;
 
-const HALF_PI = Math.PI / 2;
-const Y_AXIS = new THREE.Vector3(0, 1, 0);
+/**
+ * Free-look limits for the ET-5 camera surveyor, and for nothing else.
+ *
+ * The played camera has no limits because it has no freedom. The surveyor's
+ * whole job is to find where a viewpoint stops being playable, so it must be
+ * able to look from angles the game will never ship; these bounds exist only
+ * to keep three's spherical math away from its poles.
+ */
+export const FREE_MIN_POLAR = THREE.MathUtils.degToRad(1);
+export const FREE_MAX_POLAR = THREE.MathUtils.degToRad(88);
+/** Surveyor zoom band, relative to the auto-fit baseline distance. */
+const FREE_ZOOM_IN_RATIO = 0.2;
+const FREE_ZOOM_OUT_RATIO = 4;
 
 /**
  * Iterative corner-projection auto-fit: place a trial camera at `distance`
  * along `dir` from `target`, project the board's corner points, measure the
  * max NDC overflow ratio, and rescale. Projection is not linear in distance
  * at a tilted view, so 3 iterations refine to a tight fit. Called only on
- * mount/resize/reset - allocations here are fine.
+ * mount/resize - allocations here are fine.
  */
 export function computeFitDistance(
   fov: number,
@@ -188,58 +203,96 @@ export function buildFitPoints(gridSize: number, frameMargin = 1): THREE.Vector3
 
 interface CameraRigProps {
   gridSize: number;
-  /** Increment to restore the default view (pitch, side, fit distance) */
-  resetToken: number;
   /**
-   * Optional sink: the rig writes its current azimuth (radians) here every
-   * frame so DOM-side consumers (flick input) can read the live camera
-   * orientation without reaching into the three.js scene. Write-only from
-   * the rig's perspective; a plain number write allocates nothing.
+   * Optional sink: the azimuth (radians) the flick basis should be read
+   * against. In the locked configuration the rig writes `DEFAULT_AZIMUTH` once
+   * and never again - the flick basis is a CONSTANT, which is the input half
+   * of the ET-5 ruling. The dev surveyor writes it per frame, because there
+   * the camera really does orbit.
    */
   azimuthRef?: MutableRefObject<number>;
   /** Visible non-playable chassis beyond the board; released default is 1. */
   frameMargin?: number;
   /** Multiplier on the computed baseline distance; released default is 1. */
   fitScale?: number;
-  /** Default/reset pitch, expressed as polar angle from zenith. */
+  /** Pitch, as a polar angle from zenith. Production passes the ratified one. */
   defaultPolar?: number;
   /** Vertical orbit target used to bias ground-plane framing. */
   targetY?: number;
+  /**
+   * ET-5 camera surveyor (dev builds only, `/game?cameraTune=1`).
+   *
+   * Mounts OrbitControls with panning on and the clamps widened, so a
+   * candidate viewpoint can be held exactly and quoted. Defaults false, and
+   * the production bundle has no caller that sets it: on a played board this
+   * component renders nothing at all.
+   */
+  freeCamera?: boolean;
+  /**
+   * Optional sink for the live OrbitControls instance (surveyor only).
+   *
+   * The surveyor readout needs the orbit TARGET, which panning moves, and it
+   * lives on the controls and nowhere else.
+   */
+  controlsSink?: MutableRefObject<OrbitControlsImpl | null>;
 }
 
-export function CameraRig({
-  gridSize,
-  resetToken,
-  azimuthRef,
-  frameMargin = 1,
-  fitScale = 1,
-  defaultPolar = DEFAULT_POLAR,
-  targetY = 0,
-}: CameraRigProps) {
-  const camera = useThree((s) => s.camera);
-  const size = useThree((s) => s.size);
-  const controlsRef = useRef<OrbitControlsImpl | null>(null);
-  /** Azimuth (radians) the camera is easing toward; null = not snapping */
-  const snapTarget = useRef<number | null>(null);
-  const initialized = useRef(false);
-  const lastResetToken = useRef(resetToken);
+/**
+ * Publishes the camera pose that ACTUALLY RENDERED onto the canvas element, so
+ * the cockpit verifiers can assert the ruling instead of trusting it.
+ *
+ * Measured back out of `camera.position` and the live projection matrix -
+ * never echoed from the constants that posed the camera, because a readout
+ * that repeats its own input proves nothing. Written on mount and resize only;
+ * there is no per-frame cost.
+ */
+function publishViewpoint(
+  canvas: HTMLCanvasElement | undefined,
+  camera: THREE.PerspectiveCamera,
+  target: THREE.Vector3,
+  fitDistance: number,
+  gridSize: number,
+  width: number,
+  height: number,
+  locked: boolean
+): void {
+  if (!canvas) return;
+  camera.updateMatrixWorld(true);
+  const readout = readViewpoint(camera, target, fitDistance, gridSize, width, height);
+  canvas.dataset.cameraLocked = locked ? 'true' : 'false';
+  canvas.dataset.cameraAzimuthDeg = readout.azimuthDeg.toFixed(3);
+  canvas.dataset.cameraPolarDeg = readout.polarDeg.toFixed(3);
+  canvas.dataset.cameraFitMultiple = readout.fitMultiple.toFixed(4);
+  canvas.dataset.cameraFov = readout.fov.toFixed(2);
+  canvas.dataset.cameraFarNear = readout.farNear.toFixed(4);
+}
 
-  const [minDistance, setMinDistance] = useState(12);
-  const [maxDistance, setMaxDistance] = useState(60);
+/**
+ * The surveyor's OrbitControls - a separate component so that a locked rig
+ * mounts no controls, subscribes to no frame loop, and attaches no pointer
+ * listeners. Rendered only when `freeCamera` is set, which only dev code does.
+ */
+function SurveyorControls({
+  target,
+  fitDistance,
+  azimuthRef,
+  controlsSink,
+}: {
+  target: THREE.Vector3;
+  fitDistance: number;
+  azimuthRef?: MutableRefObject<number>;
+  controlsSink?: MutableRefObject<OrbitControlsImpl | null>;
+}) {
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   /**
    * The cockpit's pointer island (see `.arenaInputIsland`).
    *
    * The board canvas overhangs its bay and is pointer-transparent so it can
-   * never swallow a HUD hit; this element is the bay rectangle and is where
-   * camera drags are actually accepted. Looked up rather than passed: the
-   * live game mounts its Canvas as `children` of a cockpit it does not own,
-   * so threading a ref would mean widening several unrelated signatures for
-   * a purely presentational wire.
-   *
-   * Resolved in an effect (never during render) and kept in state so
-   * OrbitControls re-attaches once it exists. `null` is a first-class value:
-   * drei then falls back to the canvas, which is the pre-pop-out behaviour.
+   * never swallow a HUD hit; this element is the bay rectangle. Looked up
+   * rather than passed: the game mounts its Canvas as `children` of a cockpit
+   * it does not own. `null` is a first-class value - drei then falls back to
+   * the canvas.
    */
   const [inputIsland, setInputIsland] = useState<HTMLElement | null>(null);
   useEffect(() => {
@@ -247,6 +300,57 @@ export function CameraRig({
       document.querySelector<HTMLElement>('[data-arena-input-island]')
     );
   }, []);
+
+  const attachControls = useCallback(
+    (instance: OrbitControlsImpl | null) => {
+      controlsRef.current = instance;
+      if (controlsSink) controlsSink.current = instance;
+    },
+    [controlsSink]
+  );
+
+  useFrame(() => {
+    const controls = controlsRef.current;
+    if (controls && azimuthRef) {
+      azimuthRef.current = controls.getAzimuthalAngle();
+    }
+  });
+
+  return (
+    <OrbitControls
+      ref={attachControls}
+      domElement={inputIsland ?? undefined}
+      target={target}
+      enablePan
+      // Ground-plane panning, so a panned target stays ON the board and its
+      // offset is honestly expressible in cells.
+      screenSpacePanning={false}
+      minDistance={fitDistance * FREE_ZOOM_IN_RATIO}
+      maxDistance={fitDistance * FREE_ZOOM_OUT_RATIO}
+      minPolarAngle={FREE_MIN_POLAR}
+      maxPolarAngle={FREE_MAX_POLAR}
+      enableDamping
+      dampingFactor={0.05}
+      rotateSpeed={0.5}
+    />
+  );
+}
+
+export function CameraRig({
+  gridSize,
+  azimuthRef,
+  frameMargin = 1,
+  fitScale = 1,
+  defaultPolar = DEFAULT_POLAR,
+  targetY = 0,
+  freeCamera = false,
+  controlsSink,
+}: CameraRigProps) {
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
+  const size = useThree((s) => s.size);
+  const initialized = useRef(false);
+  const [fitDistance, setFitDistance] = useState(0);
 
   const target = useMemo(
     () => new THREE.Vector3(gridSize / 2, targetY, gridSize / 2),
@@ -256,103 +360,100 @@ export function CameraRig({
     () => buildFitPoints(gridSize, frameMargin),
     [gridSize, frameMargin]
   );
-  /** Shared per-frame scratch vector (never reallocated) */
-  const scratch = useMemo(() => new THREE.Vector3(), []);
 
   const applyFit = useCallback(
-    (resetOrientation: boolean) => {
+    (firstMount: boolean) => {
       const persp = camera as THREE.PerspectiveCamera;
       const dir = new THREE.Vector3();
-      if (resetOrientation || persp.position.distanceToSquared(target) < 1e-6) {
+      /**
+       * A LOCKED rig recomputes the ratified direction every time, rather than
+       * preserving whatever orientation the camera happens to hold. There is
+       * only one orientation, so "preserve" and "restore" are the same
+       * instruction - and stating it as restore means no accumulated float
+       * drift or stray external write can survive a resize.
+       */
+      if (!freeCamera || firstMount || persp.position.distanceToSquared(target) < 1e-6) {
         dir.setFromSphericalCoords(1, defaultPolar, DEFAULT_AZIMUTH);
       } else {
         dir.copy(persp.position).sub(target).normalize();
       }
 
-      const distance = computeFitDistance(
-        persp.fov,
-        size.width / size.height,
-        dir,
-        target,
-        fitPoints
-      ) * fitScale;
+      const distance =
+        computeFitDistance(
+          persp.fov,
+          size.width / size.height,
+          dir,
+          target,
+          fitPoints
+        ) * fitScale;
 
-      setMinDistance(distance * ZOOM_IN_RATIO);
-      setMaxDistance(distance * ZOOM_OUT_RATIO);
+      setFitDistance(distance);
+
+      // Surveying pans, so a resize refit must not haul the camera back to a
+      // board-centre framing the owner deliberately moved off. The zoom clamps
+      // above still follow the new viewport; only the pose is left alone.
+      if (freeCamera && !firstMount) {
+        publishViewpoint(
+          gl?.domElement,
+          persp,
+          target,
+          distance,
+          gridSize,
+          size.width,
+          size.height,
+          false
+        );
+        return;
+      }
 
       persp.position.copy(target).addScaledVector(dir, distance);
       persp.lookAt(target);
       persp.updateProjectionMatrix();
-      snapTarget.current = null;
-      controlsRef.current?.update();
+
+      if (azimuthRef && !freeCamera) azimuthRef.current = DEFAULT_AZIMUTH;
+
+      publishViewpoint(
+        gl?.domElement,
+        persp,
+        target,
+        distance,
+        gridSize,
+        size.width,
+        size.height,
+        !freeCamera
+      );
     },
-    [camera, size.width, size.height, target, fitPoints, fitScale, defaultPolar]
+    [
+      camera,
+      gl,
+      size.width,
+      size.height,
+      target,
+      fitPoints,
+      fitScale,
+      defaultPolar,
+      freeCamera,
+      gridSize,
+      azimuthRef,
+    ]
   );
 
-  // Mount: full default view. Resize: refit preserving orientation.
+  // Mount: the ratified pose. Resize: refit (locked re-derives the same pose).
   useEffect(() => {
     applyFit(!initialized.current);
     initialized.current = true;
   }, [applyFit]);
 
-  // Reset affordance: restore the default view when the token changes
-  useEffect(() => {
-    if (resetToken !== lastResetToken.current) {
-      lastResetToken.current = resetToken;
-      applyFit(true);
-    }
-  }, [resetToken, applyFit]);
-
-  // Magnetic azimuth: on release, ease to the nearest 90-degree side
-  const handleStart = useCallback(() => {
-    snapTarget.current = null;
-  }, []);
-
-  const handleEnd = useCallback(() => {
-    const controls = controlsRef.current;
-    if (!controls) return;
-    snapTarget.current =
-      Math.round(controls.getAzimuthalAngle() / HALF_PI) * HALF_PI;
-  }, []);
-
-  useFrame((_, delta) => {
-    const controls = controlsRef.current;
-    if (controls && azimuthRef) {
-      azimuthRef.current = controls.getAzimuthalAngle();
-    }
-    const goal = snapTarget.current;
-    if (!controls || goal === null) return;
-
-    const current = controls.getAzimuthalAngle();
-    const diff = goal - current;
-    const done = Math.abs(diff) < SNAP_EPSILON;
-    const step = done ? diff : diff * (1 - Math.exp(-SNAP_SPEED * delta));
-
-    // Rotate the camera position around the target directly - bypasses the
-    // controls' damping scaling so the ease rate is exactly ours.
-    scratch.copy(camera.position).sub(target);
-    scratch.applyAxisAngle(Y_AXIS, step);
-    camera.position.copy(target).add(scratch);
-    controls.update();
-
-    if (done) snapTarget.current = null;
-  });
+  // `fitDistance` is 0 until the first fit lands; mounting controls with a
+  // zero zoom band would collapse the camera onto the target for a frame.
+  if (!freeCamera || fitDistance <= 0) return null;
 
   return (
-    <OrbitControls
-      ref={controlsRef}
-      domElement={inputIsland ?? undefined}
+    <SurveyorControls
       target={target}
-      enablePan={false}
-      minDistance={minDistance}
-      maxDistance={maxDistance}
-      minPolarAngle={MIN_POLAR}
-      maxPolarAngle={MAX_POLAR}
-      enableDamping
-      dampingFactor={0.05}
-      rotateSpeed={0.5}
-      onStart={handleStart}
-      onEnd={handleEnd}
+      fitDistance={fitDistance}
+      azimuthRef={azimuthRef}
+      controlsSink={controlsSink}
     />
   );
 }

@@ -40,7 +40,7 @@ const MODEL: RunCockpitModel = {
 describe('RunCockpit', () => {
   it('adapts canonical telemetry without placing text inside the board', () => {
     render(
-      <RunCockpit model={MODEL} onPause={jest.fn()} onResetView={jest.fn()}>
+      <RunCockpit model={MODEL} onPause={jest.fn()}>
         <canvas data-testid="real-board" />
       </RunCockpit>
     );
@@ -72,7 +72,6 @@ describe('RunCockpit', () => {
       <RunCockpit
         model={{ ...MODEL, mode: 'free', modeLabel: 'Free play' }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
       >
         <canvas />
       </RunCockpit>
@@ -94,7 +93,6 @@ describe('RunCockpit', () => {
           ),
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
       >
         <canvas />
       </RunCockpit>
@@ -103,7 +101,7 @@ describe('RunCockpit', () => {
     expect(screen.getByTestId('strain-meter-AURUM').querySelectorAll('i')).toHaveLength(4);
 
     rerender(
-      <RunCockpit model={MODEL} onPause={jest.fn()} onResetView={jest.fn()}>
+      <RunCockpit model={MODEL} onPause={jest.fn()}>
         <canvas />
       </RunCockpit>
     );
@@ -123,7 +121,6 @@ describe('RunCockpit', () => {
           ),
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
       >
         <canvas />
       </RunCockpit>
@@ -142,7 +139,6 @@ describe('RunCockpit', () => {
           ),
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
       >
         <canvas />
       </RunCockpit>
@@ -161,7 +157,6 @@ describe('RunCockpit', () => {
           ),
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
       >
         <canvas />
       </RunCockpit>
@@ -179,7 +174,6 @@ describe('RunCockpit', () => {
           outcomeUnitLabel: 'Genome Yield before stamped outer multipliers',
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
       >
         <canvas />
       </RunCockpit>
@@ -217,7 +211,6 @@ describe('RunCockpit', () => {
           },
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
       >
         <canvas data-testid="training-board" />
       </RunCockpit>
@@ -234,12 +227,10 @@ describe('RunCockpit', () => {
 
   it('keeps controls actionable above flick input and reserves decisions', () => {
     const onPause = jest.fn();
-    const onResetView = jest.fn();
     render(
       <RunCockpit
         model={{ ...MODEL, state: 'active', isFirstMovementPrompt: false }}
         onPause={onPause}
-        onResetView={onResetView}
         decisionDock={<div role="dialog" aria-label="Decision">Choose</div>}
       >
         <canvas />
@@ -253,9 +244,12 @@ describe('RunCockpit', () => {
       screen.getByRole('dialog', { name: 'Decision' })
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reset arena view' }));
+    // ET-5 locked the board camera, so the cockpit rail carries no reset
+    // control at all - the one thing it used to reset cannot move.
+    expect(
+      screen.queryByRole('button', { name: 'Reset arena view' })
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Pause run' }));
-    expect(onResetView).toHaveBeenCalledTimes(1);
     expect(onPause).toHaveBeenCalledTimes(1);
   });
 
@@ -277,7 +271,6 @@ describe('RunCockpit', () => {
           },
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
         onOverclock={onOverclock}
       >
         <canvas />
@@ -304,7 +297,6 @@ describe('RunCockpit', () => {
           },
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
         onOverclock={onOverclock}
       >
         <canvas />
@@ -340,7 +332,6 @@ describe('RunCockpit', () => {
           },
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
         onOverclock={jest.fn()}
         eventCallout={<span data-testid="held-event-callout">Move to resume</span>}
       >
@@ -365,7 +356,6 @@ describe('RunCockpit', () => {
         }}
         onPause={jest.fn()}
         onAbandon={onAbandon}
-        onResetView={jest.fn()}
         showPause={false}
         showAbandon
       >
@@ -398,7 +388,6 @@ describe('RunCockpit', () => {
           isFirstMovementPrompt: false,
         }}
         onPause={jest.fn()}
-        onResetView={jest.fn()}
         rateCallout={<span data-testid="run-rate-callout">Growth rate +3</span>}
       >
         <canvas data-testid="rate-board" />
@@ -415,7 +404,7 @@ describe('RunCockpit', () => {
 
   it('keeps growth out of the persistent HUD', () => {
     render(
-      <RunCockpit model={MODEL} onPause={jest.fn()} onResetView={jest.fn()}>
+      <RunCockpit model={MODEL} onPause={jest.fn()}>
         <canvas />
       </RunCockpit>
     );

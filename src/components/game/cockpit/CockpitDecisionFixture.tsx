@@ -382,7 +382,6 @@ export function CockpitDecisionFixture({ kind }: { kind: CockpitDecisionFixtureK
             : MODEL}
         onPause={() => undefined}
         onAbandon={() => undefined}
-        onResetView={() => undefined}
         showPause={false}
         showAbandon={kind === 'hold'}
         decisionDock={decisionVisible ? <Decision kind={kind} /> : undefined}

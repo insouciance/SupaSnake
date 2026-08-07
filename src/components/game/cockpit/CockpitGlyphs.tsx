@@ -135,10 +135,6 @@ export function PauseGlyph() {
   return <Svg><path d="M8 5v14M16 5v14" strokeWidth="3" /></Svg>;
 }
 
-export function ResetGlyph() {
-  return <Svg><path d="M4 11a8 8 0 1 1 2.1 6.6M4 5v6h6" /></Svg>;
-}
-
 export function AbandonGlyph() {
   return (
     <Svg>
