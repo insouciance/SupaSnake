@@ -28,18 +28,19 @@
 | Wardrobe | Server-held; `NEXT_PUBLIC_SNAKE_COSMETICS` live, two cosmetic definitions in the catalog (face + crown) and no food skins by design |
 | Presentation | The ratified 90s composition, live behind `NEXT_PUBLIC_NINETIES_COMPOSITION`; board themes SUPA SNAKE ORANGE / CYAN NEON / DARK NEON, HUD in 90s ink |
 | Camera | ET-5 canonical framing: pinned azimuth 0, pitch 28, fit 1.00, fov 44, with a four-wall fairness gate and OrbitControls off the live board |
-| Player-feature baseline | `fc6fdf34e50c73d9a43df5577e4c82a82d888928` |
-| Current deployment | `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` (`supasnake-7nw4vbjja-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` (`fb25918`); same schema and rules version so no continuity boundary, but serves the 24-flag surface and gives up the 90s composition. To drop the composition alone, prefer the flag-off forward release |
+| Brand | The Mark: rebuilt vector wordmark at locked geometry, first favicon, PWA/maskable icon family |
+| Player-feature baseline | `e62d3000ae3a1a7ecdb60fea19df1beeb4cff233` |
+| Current deployment | `dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` (`supasnake-jd2djdx9b-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` (`fc6fdf3`); identical schema, surface, hash and rules version — the cheapest rollback in the chain; it gives up The Mark, the ET-3 hot-path work and the ET-1 arrival feel |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release is the 90s cutover — the largest visual change in the
-product's history: Wave-3 measurement work (PR 97), the ET-5 canonical camera
-with its Constitution v1.16 §15 row (PR 98), the ratified 90s composition behind
-`NEXT_PUBLIC_NINETIES_COMPOSITION` (PR 99) and the HUD in 90s ink (PR 100). It
-carried **no migration** — the hosted schema stays 001–069 — and moved the
-public surface to **25 flags**. The engine rules version is untouched at
+The current release is feel and brand: The Mark — the rebuilt vector logo family
+(PR 101) — the Constitution v1.16 citation fix (PR 103), ET-3 taking React out
+of the hot path (PR 104), ET-1's front-loaded arrival (PR 105) and a
+lockfile-only advisory clearance (PR 106). Nothing about the contract moved: no
+migration, the hosted schema stays 001–069, and the public surface stays at
+**25 flags** at the same hash. The engine rules version is untouched at
 `snake-rules-2026-08-05.2`, so open runs crossed the cutover seamlessly.
 
 The release passed all ten protected-PR checks including the four
@@ -52,7 +53,9 @@ ordinary and two-session SQL
 integration, the production runtime dependency audit, staged and canonical
 health, the 16-key `cohesive_release_read_only_v5` schema probe, exact cron
 ownership, and focused public-production smoke. Production workflow
-`31196323574` deployed it. Detailed evidence is
+`31225427908` deployed it, on the third dispatch: the first two halted before
+any mutation, once on a test flake and once on a freshly published advisory, and
+production was never touched. Detailed evidence is
 maintained in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -138,6 +141,15 @@ maintained in `docs/ops/QA_CHECKLIST.md`.
   RIDE ON, TRADE UP, GOLDEN HOUR, and GOLD, PULSE, COILS, WARP and RISK. A
   mounted glossary is available wherever the terms appear, so a term is never
   the thing standing between a player and the decision.
+- The product has a mark. The rebuilt vector wordmark sits on the home screen at
+  locked geometry, and the icon family — the first favicon the product has ever
+  had, plus PWA and maskable icons — derives from that same source rather than
+  from a traced screenshot.
+- Arrival feels front-loaded rather than floaty: movement resolves with α 0.45
+  and a 0.06 overshoot, owner-ratified as "real crisp and precise, huge
+  difference". React is out of the movement hot path entirely — page commits per
+  tick fell from 1.2 to a steady 0.0 — so the board's responsiveness no longer
+  competes with rendering work.
 - The board is drawn in the ratified 90s composition, with three board themes —
   SUPA SNAKE ORANGE, CYAN NEON and DARK NEON — and a HUD in matching 90s ink.
   The whole composition sits behind `NEXT_PUBLIC_NINETIES_COMPOSITION`, and the

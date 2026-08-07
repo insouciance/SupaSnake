@@ -27,9 +27,9 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `fc6fdf34e50c73d9a43df5577e4c82a82d888928` — the 90s cutover: Wave-3 measurement, ET-5 canonical camera, the 90s composition and the 90s HUD |
-| Current deployment | `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` (`supasnake-7nw4vbjja-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` (`fb25918`); same schema and rules version, serves the 24-flag surface; to drop the composition alone prefer the flag-off forward release |
+| Production behavior commit | `e62d3000ae3a1a7ecdb60fea19df1beeb4cff233` — The Mark, ET-3 React-out-of-hot-path, ET-1 front-loaded arrival, and a lockfile advisory clearance |
+| Current deployment | `dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` (`supasnake-jd2djdx9b-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` (`fc6fdf3`); identical schema, surface, hash and rules version — the cheapest rollback in the chain |
 | Engine rules version | `snake-rules-2026-08-05.2` |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–069 deployed and aligned; no pending migration |
@@ -43,7 +43,7 @@ Design references:
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `fc6fdf34e50c73d9a43df5577e4c82a82d888928` |
+| Canonical source | `main`; canonical health reports exact SHA `e62d3000ae3a1a7ecdb60fea19df1beeb4cff233` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
@@ -84,6 +84,51 @@ retired pre-v2 application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### Feel-and-brand production evidence
+
+- Exact main SHA `e62d3000ae3a1a7ecdb60fea19df1beeb4cff233` — The Mark, the
+  rebuilt vector logo family (PR 101), the Constitution v1.16 citation fix
+  (PR 103), ET-3 React-out-of-hot-path (PR 104), ET-1 front-loaded arrival
+  (PR 105) and a lockfile-only advisory clearance (PR 106). Production workflow
+  `31225427908` verified 22:54–23:08 UTC and deployed 23:08–23:15:42 UTC on
+  7 August 2026 with `expected_migrations=none`, as
+  `dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm`
+  (`supasnake-jd2djdx9b-josef-bells-projects.vercel.app`). The outgoing anchor
+  was `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` on `fc6fdf3`.
+- **Nothing about the contract moved.** No migration; hosted schema stays
+  001–069. Public surface stays at 25 flags with `contractHash` equal to
+  `declaredHash` at
+  `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, recomputed
+  at the release SHA. Probe `cohesive_release_read_only_v5`, 16 keys, verified
+  at the SHA; cron definition hash unchanged.
+- **The Mark, proved at runtime** against pre-cutover baselines: `/favicon.ico`
+  404 → 200 (the product's first favicon), `/brand/mark.png` 404 → 200, and
+  icon-family references in the home HTML 0 → 9.
+- **Rules held completely still**: the version string is unchanged *and* the
+  rules chunk `2894-38b54650201f7905.js` is byte-identical. This is the
+  counterpoint to the previous release, where the chunk moved while the string
+  did not — neither is a continuity boundary, because the pinning contract keys
+  on the version string alone.
+- **ET-1 is in by construction, not by observation.** Its identifiers are folded
+  by the minifier, so there is no runtime proof of the arrival curve. The honest
+  structural observation is that the render chunk changed
+  (`page-dd5d97c…` → `page-9dcb6d7…`) while the rules chunk did not, with a
+  bundle delta of 7 changed, 7 retired, 32 identical. The ratification that
+  counts for a feel change is the owner's: "real crisp and precise, huge
+  difference". ET-3 by contrast *is* measurable and was measured — page commits
+  per tick 1.2 → 0.0 steady.
+- **Three dispatches, and the two failures are the gate working.** Dispatch 1
+  failed on the CYBER speed-ramp seed-window flake — diagnosed rather than
+  retried: the engine's `startTime = Date.now()` feeds the relic schedule, so
+  the assertion window is wall-clock dependent; task 45 carries the fix pattern.
+  Dispatch 2 cleared that and hit a freshly published nanoid high advisory
+  against a byte-identical lockfile — the same signature as the earlier
+  brace-expansion block, remedied the same way by the lockfile-only PR 106
+  (nanoid ≥ 3.3.17, dompurify 3.4.13). Dispatch 3 succeeded. **Both failures
+  were pre-mutation halts: the deploy job was skipped and production was never
+  touched.** Read a red dispatch here as the fail-closed design holding, not as
+  an unstable release.
 
 ### The 90s cutover production evidence
 
