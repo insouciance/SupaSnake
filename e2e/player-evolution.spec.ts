@@ -193,28 +193,21 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
     // looked like a curriculum bug rather than a read taken too early.
     //
     // Waiting for the rail to MOUNT is not enough — that is what the earlier
-    // fix waited for, and the rail mounts unannotated. The condition that
-    // actually means "the curriculum arrived" is that every tile the rail
-    // shows carries the attribute, which is the invariant the assertions below
-    // already depend on.
-    const railTiles = palette.locator('> button');
+    // fix waited for, and the rail mounts unannotated.
+    //
+    // Nor is "every tile carries the attribute" the right condition, though it
+    // reads like it should be: the rail iterates `reading.availableGenes`
+    // (WorkbenchView.tsx:577) while the curriculum annotates only
+    // `genomeV2ActivePool(dynasty)` (curriculum.ts:174), so a tile outside the
+    // active pool NEVER gets annotated and that wait can never come true.
+    //
+    // The honest signal is that ANY tile is annotated. `annotations` is
+    // derived from one `curriculum` state value, so every annotatable tile
+    // gains its attribute in a single React commit — the first annotated tile
+    // and the last arrive in the same frame. One is therefore proof the fetch
+    // resolved, which is the only thing this wait needs to establish.
     const annotatedTiles = palette.locator('> button[data-eligibility]');
-    await expect(railTiles.first()).toBeAttached({ timeout: 30_000 });
-    await expect
-      .poll(
-        async () => {
-          const [tiles, annotated] = await Promise.all([
-            railTiles.count(),
-            annotatedTiles.count(),
-          ]);
-          return tiles > 0 && tiles === annotated;
-        },
-        {
-          timeout: 30_000,
-          message: 'the gene rail never became fully annotated by the curriculum',
-        }
-      )
-      .toBe(true);
+    await expect(annotatedTiles.first()).toBeAttached({ timeout: 30_000 });
 
     const railIds = await annotatedTiles.evaluateAll((nodes) =>
       nodes.map((node) =>
