@@ -1110,7 +1110,6 @@ export default function GamePage() {
   const [genomeFtue, setGenomeFtue] = useState<GenomeFtueCapability | null>(null);
   const [genomeRulesVersion, setGenomeRulesVersion] = useState<1 | 2>(1);
   const [genomeV2State, setGenomeV2State] = useState<GenomeV2State | null>(null);
-  const [genomeV2SimulationTick, setGenomeV2SimulationTick] = useState(0);
   const [genomeV2BoardFeedback, setGenomeV2BoardFeedback] =
     useState<GenomeV2BoardFeedback | null>(null);
   const [genomeV2Activation, setGenomeV2Activation] =
@@ -2588,9 +2587,9 @@ export default function GamePage() {
     const bridge = genomeV2RuntimeBridge(gameRef.current);
     const next = bridge ? parseGenomeV2State(bridge.getState().genomeV2) : null;
     setGenomeV2State(next);
-    setGenomeV2SimulationTick(gameRef.current?.getSimulationTick() ?? 0);
+    setSimulationTick(gameRef.current?.getSimulationTick() ?? 0);
     return next;
-  }, []);
+  }, [setSimulationTick]);
 
   const revealGenomeV2Commit = useCallback((
     before: GenomeV2State | null,
@@ -2835,7 +2834,7 @@ export default function GamePage() {
       setGenomeV2State(parseGenomeV2State(
         (state as typeof state & { genomeV2?: unknown }).genomeV2
       ));
-      setGenomeV2SimulationTick(gameRef.current?.getSimulationTick() ?? 0);
+      setSimulationTick(gameRef.current?.getSimulationTick() ?? 0);
       setStrains(state.strainCounts, state.strainTiers);
       setFusedSplices(state.fusedSplices);
       setGildedCells(state.gildedCells);
@@ -3760,6 +3759,7 @@ export default function GamePage() {
     setRevivePhaseTicks,
     setRevive,
     setScore,
+    setSimulationTick,
     setStrains,
     setSurgeChoicePending,
     setQueuedDirections,
@@ -3814,9 +3814,17 @@ export default function GamePage() {
         setQueuedDirections(queued);
       }
       if (prev.foodEaten !== state.foodEaten) setFoodEaten(state.foodEaten);
-      setHoldsUsed(state.holdsUsed);
-      setHoldsTotal(state.holdBudget);
-      setChoicePityStrain(state.pendingChoicePity);
+      // These three are page state rather than store state, and the updater
+      // form is how a page-state write says "only if it moved": returning the
+      // current value is React's own bail-out, and it does not depend on the
+      // eager-state fast path being available on the tick it happens to run.
+      setHoldsUsed((held) => (held === state.holdsUsed ? held : state.holdsUsed));
+      setHoldsTotal((total) => (
+        total === state.holdBudget ? total : state.holdBudget
+      ));
+      setChoicePityStrain((pity) => (
+        pity === state.pendingChoicePity ? pity : state.pendingChoicePity
+      ));
       if (
         !samePosition(prev.exitTile, state.exitTile) ||
         prev.exitTicksRemaining !== (state.exitTile ? state.exitTicksRemaining : 0)
@@ -3855,7 +3863,14 @@ export default function GamePage() {
       // ruleset's arena, not to buildcraft, so gating it here would recreate
       // the invisible-block bug for every non-genome run.
       if (!sameTerrain(prev.terrain, state.terrain)) setTerrain(state.terrain);
-      if (prev.revivePhaseTicksRemaining !== state.revivePhaseTicksRemaining) {
+      // Compared against what the store WOULD hold, not against the raw
+      // reading: both setters normalise, and comparing the un-normalised
+      // value would write an identical number on every tick forever.
+      const revivePhaseTicks = Math.max(
+        0,
+        Math.trunc(state.revivePhaseTicksRemaining)
+      );
+      if (prev.revivePhaseTicksRemaining !== revivePhaseTicks) {
         setRevivePhaseTicks(state.revivePhaseTicksRemaining);
       }
       const genomeRevision = gameRef.current.getGenomeV2Revision();
@@ -3865,7 +3880,10 @@ export default function GamePage() {
           gameRef.current.getGenomeV2State()
         ));
       }
-      const simulationTick = gameRef.current.getSimulationTick();
+      const simulationTick = Math.max(
+        0,
+        Math.trunc(gameRef.current.getSimulationTick())
+      );
       if (prev.simulationTick !== simulationTick) {
         setSimulationTick(simulationTick);
       }
@@ -4135,7 +4153,7 @@ export default function GamePage() {
     setGenomeRulesVersion(startedRulesVersion);
     setGenomeV2Activation(startedActivation);
     setGenomeV2State(null);
-    setGenomeV2SimulationTick(0);
+    setSimulationTick(0);
     setGenomeV2BoardFeedback(null);
     genomeV2FeedbackRunSeedRef.current = null;
     genomeV2FeedbackEventRef.current = null;
@@ -4235,6 +4253,7 @@ export default function GamePage() {
     setPortalChoicePending,
     setReady,
     setSelectedDynasty,
+    setSimulationTick,
     setSurgeChoicePending,
     setTorus,
     storeStartGame,
@@ -4970,7 +4989,7 @@ export default function GamePage() {
       (state as typeof state & { genomeV2?: unknown }).genomeV2
     );
     setGenomeV2State(restoredGenomeV2);
-    setGenomeV2SimulationTick(game.getSimulationTick());
+    setSimulationTick(game.getSimulationTick());
     setChoiceOptions(
       restoredGenomeV2?.offer ? null : state.pendingChoice,
       restoredGenomeV2?.offer ? null : state.choiceSource
@@ -5007,6 +5026,7 @@ export default function GamePage() {
     setPaused,
     setPortalChoicePending,
     setReady,
+    setSimulationTick,
     setSurgeChoicePending,
     syncState,
   ]);
@@ -8626,8 +8646,9 @@ function GameBoard({
   const torus = useGameStore((state) => state.torus);
   const direction = useGameStore((state) => state.direction);
   const constellationGlyph = useGameStore((state) => state.constellationGlyph);
-  // The COUNT is what the snake is drawn from; the remaining ticks are the
-  // renderer's business and would be a subscription to every movement.
+  // The snake is drawn from WHETHER the phase is live, not from how many
+  // moves are left in it — and a boolean stops changing the moment the phase
+  // begins, where the count would change on every one of those moves.
   const revivePhaseActive = useGameStore(
     (state) => state.revivePhaseTicksRemaining > 0
   );
