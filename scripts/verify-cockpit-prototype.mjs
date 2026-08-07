@@ -111,6 +111,57 @@ async function readMetrics(page) {
      * is paused. This asserts the narrower and actually-ratified rule: the
      * thing on top of a HUD control is never the board.
      */
+    /*
+     * SINGLE-FINGER FLICK MUST REACH THE STEERING LAYER, ALWAYS.
+     *
+     * Reported from real mobile play as unplayable: flicking rotated the board
+     * instead of turning the snake. `FlickSurface` is a page-level layer at
+     * z-index 5, and the arena bay paints at 20 so a twisted board can break
+     * out over the HUD - but nothing between the bay and the page establishes
+     * a stacking context, so everything inside the bay competed with flick
+     * directly and won. The camera's grab surface, then a CHILD of the bay,
+     * captured the gesture and handed it to OrbitControls.
+     *
+     * The fix is that input and paint no longer share a z-index: the grab
+     * surface is a sibling at the board's old level and the bay is
+     * pointer-transparent. This proves it, the only way that is meaningful -
+     * by putting a layer with FlickSurface's exact geometry and z-index on the
+     * page and asking the browser what a finger in the middle of the board
+     * would hit.
+     */
+    const flickProbe = document.createElement('div');
+    flickProbe.setAttribute('data-flick-probe', '');
+    flickProbe.style.cssText = 'position:absolute;inset:0;z-index:5;touch-action:none;';
+    /*
+     * Mounted INSIDE the fixture root, which is where `FlickSurface` sits
+     * relative to the cockpit in the live game: it is a sibling of the element
+     * containing `.liveRoot`, and `.liveRoot` is `position: relative` with
+     * `z-index: auto`, so flick and the cockpit's internals share one stacking
+     * context. The fixture root carries its own z-index, so appending to
+     * `body` would compare the probe against the whole fixture instead of
+     * against the board - and would prove nothing.
+     */
+    root.appendChild(flickProbe);
+    const boardRect = boardElement.getBoundingClientRect();
+    const steeringTarget = document.elementFromPoint(
+      boardRect.x + boardRect.width / 2,
+      boardRect.y + boardRect.height / 2
+    );
+    const flickReachesBoard = steeringTarget === flickProbe;
+    const steeringTargetName = steeringTarget
+      ? `${steeringTarget.tagName.toLowerCase()}.${(steeringTarget.className || '').toString().split(' ')[0]}`
+      : 'nothing';
+    // With the steering layer gone, the camera must still be grabbable exactly
+    // where the board is - a fix that killed camera control would be no fix.
+    flickProbe.remove();
+    const cameraTarget = document.elementFromPoint(
+      boardRect.x + boardRect.width / 2,
+      boardRect.y + boardRect.height / 2
+    );
+    const cameraGrabWorks = Boolean(
+      cameraTarget?.closest('[data-arena-input-island]')
+    );
+
     const arenaBay = document.querySelector('[data-testid="cockpit-arena-bay"]');
     const blockedControls = [...document.querySelectorAll('button')]
       .map((element) => {
@@ -139,6 +190,9 @@ async function readMetrics(page) {
       : null;
 
     return {
+      flickReachesBoard,
+      steeringTargetName,
+      cameraGrabWorks,
       root: rect(root),
       board,
       frame,
@@ -205,6 +259,14 @@ try {
       invariant(
         metrics.blockedControls.length === 0,
         `${prefix}: board surface intercepts HUD controls: ${metrics.blockedControls.join('; ')}`
+      );
+      invariant(
+        metrics.flickReachesBoard,
+        `${prefix}: a single-finger flick over the board lands on ${metrics.steeringTargetName}, not the steering layer`
+      );
+      invariant(
+        metrics.cameraGrabWorks,
+        `${prefix}: the camera grab surface no longer covers the board`
       );
 
       const centerX = metrics.board.x + metrics.board.width / 2;

@@ -41,17 +41,65 @@
  */
 
 /** 0 is the full ratified look; higher tiers are progressively cheaper. */
-export type RenderTier = 0 | 1 | 2 | 3;
+export type RenderTier = 0 | 1 | 2 | 3 | 4;
 
-export const MAX_RENDER_TIER: RenderTier = 3;
+export const MAX_RENDER_TIER: RenderTier = 4;
+
+/**
+ * What the floor tier repays when it turns the composer off.
+ *
+ * Bloom carries real brightness, not just softness: measured on the cockpit
+ * fixture (scripts/measure-floor-luminance.mjs), scene mean luminance is 30.15
+ * with the composer at the T3 configuration and 26.60 with it simply dropped -
+ * a ~12% dim, exactly the "a lag spike made the lighting go down" the owner
+ * rejected. So the floor repays what it can: renderer exposure is scaled by
+ * this factor while (and only while) the composer is off.
+ *
+ * THE VALUE IS CALIBRATED EMPIRICALLY, NOT DERIVED. Exposure multiplies
+ * LINEAR light before the sRGB output encode, so a naive ratio (30.15/26.60 ~
+ * 1.13) reads as only a few percent on encoded pixels; and because bloom's
+ * contribution is additive and localized around bright objects, a GLOBAL
+ * multiplier cannot reproduce it exactly - chasing mean parity empirically
+ * requires ~1.85, which lifts shadows scene-wide and drives the amber fills
+ * toward clipping, i.e. spends identity to buy a number. 1.318 is the
+ * calibrated knee of that curve: measured canvas mean at the floor sits ~6.5%
+ * below T3, and side-by-side frames are near-indistinguishable (the residual
+ * lives in the wide soft veil bloom paints over bright regions, which is the
+ * one thing a floor without a composer cannot fake).
+ *
+ * The floor is the governor's LAST resort - reached only under sustained
+ * starvation, usually behind a decision blur, on devices where the
+ * alternative is the run itself slowing down. Re-calibrate with the script if
+ * the scene's lighting changes.
+ */
+export const COMPOSER_OFF_EXPOSURE_COMPENSATION = 1.318;
 
 export interface RenderQuality {
   readonly tier: RenderTier;
   /**
-   * Bloom's internal resolution as a fraction of the canvas, or `null` to drop
-   * the post-processing composer entirely.
+   * Bloom's internal resolution as a fraction of the canvas. Meaningful while
+   * `composerEnabled`; kept at the floor's last value otherwise so the table
+   * stays monotonic and total.
    */
-  readonly bloomResolutionScale: number | null;
+  readonly bloomResolutionScale: number;
+  /**
+   * Whether the postprocessing composer runs at all.
+   *
+   * True through every tier but the floor. The composer's fixed per-frame
+   * overhead (render targets + pass machinery) is what an actually starved
+   * main thread most needs shed - measured under 6x CPU throttle, a floor
+   * that kept the composer alive recovered far less tick retention than one
+   * that dropped it. The floor drops it and repays the brightness via
+   * `exposureCompensation`; see COMPOSER_OFF_EXPOSURE_COMPENSATION.
+   */
+  readonly composerEnabled: boolean;
+  /**
+   * Renderer exposure multiplier for this tier. 1 wherever the composer runs.
+   * At the floor it repays the composer's measured luminance share, so NO tier
+   * boundary is allowed to change how bright the board is - the rule is:
+   * tiers spend detail and softness, never brightness.
+   */
+  readonly exposureCompensation: number;
   /** Whether solid terrain contributes to the shadow map. */
   readonly terrainCastsShadow: boolean;
   /** Whether the key light renders a shadow map at all. */
@@ -79,31 +127,64 @@ export interface RenderQuality {
  *   T2  terrain stops casting into the shadow map. Up to 400 instanced blocks
  *       leave the shadow pass; they still RECEIVE, so the board keeps its
  *       depth. Sanctioned only as a degraded tier - never the default.
- *   T3  no shadow map and no composer. The floor: flat toon fills, ink
- *       outlines, the slab, the amber. Still unmistakably this board.
+ *   T3  no shadow map, and bloom at an eighth. Nearly the whole lighting
+ *       budget is gone, but the composer still runs, so the glow's light is
+ *       still bloom's own.
+ *   T4  the true floor: the composer is OFF, and the brightness it carried is
+ *       repaid through renderer exposure (COMPOSER_OFF_EXPOSURE_COMPENSATION),
+ *       so the board does not dim - it loses the soft halo around bright
+ *       things and nothing else. This is the tier that exists for a main
+ *       thread in genuine starvation: the composer's fixed per-frame overhead
+ *       is the last render cost worth shedding, and measured under 6x CPU
+ *       throttle it is the difference between a run that drops ticks and one
+ *       that holds ~99% retention. Flat toon fills, ink outlines, the slab,
+ *       the amber, all intact.
+ *
+ * LUMINANCE NEUTRALITY IS THE RULE ACROSS EVERY BOUNDARY. A player should not
+ * be able to see a tier change except as a slight softening of shadows and
+ * glow. Within the composer tiers, resolution is the knob because it changes
+ * how WIDE and soft the glow is, not how much light it adds; across the floor
+ * boundary, exposure repays what the composer carried. Brightness is never
+ * the currency.
  */
 export const RENDER_QUALITY_TIERS: readonly RenderQuality[] = [
   {
     tier: 0,
     bloomResolutionScale: 0.5,
+    composerEnabled: true,
+    exposureCompensation: 1,
     terrainCastsShadow: true,
     shadowsEnabled: true,
   },
   {
     tier: 1,
     bloomResolutionScale: 0.25,
+    composerEnabled: true,
+    exposureCompensation: 1,
     terrainCastsShadow: true,
     shadowsEnabled: true,
   },
   {
     tier: 2,
     bloomResolutionScale: 0.25,
+    composerEnabled: true,
+    exposureCompensation: 1,
     terrainCastsShadow: false,
     shadowsEnabled: true,
   },
   {
     tier: 3,
-    bloomResolutionScale: null,
+    bloomResolutionScale: 0.125,
+    composerEnabled: true,
+    exposureCompensation: 1,
+    terrainCastsShadow: false,
+    shadowsEnabled: false,
+  },
+  {
+    tier: 4,
+    bloomResolutionScale: 0.125,
+    composerEnabled: false,
+    exposureCompensation: COMPOSER_OFF_EXPOSURE_COMPENSATION,
     terrainCastsShadow: false,
     shadowsEnabled: false,
   },

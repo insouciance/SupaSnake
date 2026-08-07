@@ -1,8 +1,8 @@
 'use client';
 
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
-import { NoToneMapping } from 'three';
+import { LinearToneMapping } from 'three';
 import { useEffect, useRef, useCallback, useMemo, useState, Suspense, type ReactNode } from 'react';
 import { themeManager } from '@/lib/theme/ThemeManager';
 import {
@@ -474,6 +474,28 @@ interface BoardViewportShellProps {
   eventCallout?: ReactNode;
   rateCallout?: ReactNode;
   children: ReactNode;
+}
+
+/**
+ * The floor tier's brightness repayment, applied at the renderer.
+ *
+ * Lives inside the Canvas so it can reach the renderer. Exposure is 1 at every
+ * tier that runs the composer; when the governor's floor turns the composer
+ * off, this repays the ~12% of scene mean luminance bloom carries (see
+ * COMPOSER_OFF_EXPOSURE_COMPENSATION) so a tier boundary never reads as a
+ * brightness change - the owner's rule: tiers spend detail and softness,
+ * never brightness. With LinearToneMapping the exposure is a single uniform:
+ * no material recompiles, applied the same frame the tier changes.
+ */
+function FloorExposure({ exposure }: { exposure: number }) {
+  const gl = useThree((state) => state.gl);
+  useEffect(() => {
+    gl.toneMappingExposure = exposure;
+    return () => {
+      gl.toneMappingExposure = 1;
+    };
+  }, [gl, exposure]);
+  return null;
 }
 
 function BoardViewportShell({
@@ -7596,18 +7618,38 @@ export default function GamePage() {
         dpr={isMobile ? [1, 1.5] : [1, 2]}
         // INK & AMBER: R3F defaults to ACES Filmic, whose shoulder desaturates
         // exactly the flat toon fills this direction is built on. The board is
-        // authored in sRGB and should ship what it was authored as.
-        gl={{ toneMapping: NoToneMapping }}
+        // authored in sRGB and should ship what it was authored as. Linear at
+        // exposure 1 is the identity - same pixels NoToneMapping produced -
+        // but unlike NoToneMapping it honors toneMappingExposure, which is the
+        // knob the governor's floor tier uses to repay the composer's
+        // brightness (see FloorExposure below).
+        gl={{ toneMapping: LinearToneMapping }}
       >
-        {/* Fog in the void family so the arena's far edge melts into the
-            page backdrop instead of cutting out against it - lifted and
-            pulled back so the board reads bright and premium */}
-        <fog
-          attach="fog"
-          args={HUD_COCKPIT_V1_ENABLED
-            ? [GAME_SCREEN_COLORS.void, 39, 72]
-            : ['#0a0f14', 40, 75]}
-        />
+        {/* NO FOG, AND THAT IS THE FIX FOR "the board is only bright when I
+            zoom in" - reported from real mobile play.
+
+            Linear fog blends a surface toward the fog colour by its distance
+            FROM THE CAMERA. The fog here ran from 39 to 72 world units in the
+            near-black void, and the zoom range is the fit distance times
+            0.55 to 1.6 - so zooming out walked the whole board deep into that
+            band and zooming in pulled it out. Measured on a 390x844 viewport,
+            the board's centre was 2.70x brighter at maximum zoom-in than at
+            maximum zoom-out, and it was being dimmed even at rest. Portrait
+            phones fit from further away, which is why the owner saw it worst.
+
+            Owner ruling: "lighting should move with the game board, be
+            constant." Camera-distance fog is the one effect that CANNOT
+            satisfy that - it is a function of camera distance by definition -
+            so it goes. The rest of the rig already obeys the ruling: the key
+            light, the dynasty point light and the food spots are all placed
+            in BOARD space, so their relationship to the surfaces they light
+            never changes when the camera moves.
+
+            What the fog was for - keeping the arena's far edge from cutting
+            out against the backdrop - is now done better by the things INK &
+            AMBER gave the board: an ink outline, a chamfered edge and the
+            float halo underneath it. The board is a drawn object with a
+            deliberate silhouette; it is no longer supposed to dissolve. */}
         {/* Premium base rig: cool sky/ground hemisphere carries the
             ambient read (subtle top/bottom shading instead of flat fill) */}
         <hemisphereLight
@@ -7717,7 +7759,7 @@ export default function GamePage() {
             raised from 0.55/0.35 with the tone-mapping change: without the ACES
             shoulder the mid-tones sit higher, so the old threshold would have
             let ordinary lit surfaces bloom. The same set of objects glows. */}
-        {!isMobile && renderQuality.bloomResolutionScale !== null && (
+        {!isMobile && renderQuality.composerEnabled && (
           <EffectComposer>
             {/* BLOOM'S RESOLUTION IS THE GOVERNOR'S FIRST LEVER, AND HALVING
                 IT AT REST IS A CORRECTION THE POP-OUT MADE NECESSARY.
@@ -7745,9 +7787,13 @@ export default function GamePage() {
                 resolution is standard practice rather than a compromise.
 
                 Because it is cheap to spend and hard to see, it is also what
-                the governor spends FIRST: quarter resolution at tier 1, and the
-                whole composer at tier 3. The threshold, smoothing and intensity
-                - the things that decide WHAT glows - never change. */}
+                the governor spends FIRST: quarter resolution at tier 1, an
+                eighth at tier 3, and at the floor (tier 4) the composer goes
+                away entirely - its fixed per-frame overhead is the last render
+                cost worth shedding for a main thread in genuine starvation -
+                while FloorExposure repays the brightness it carried. The
+                threshold, smoothing and intensity - the things that decide
+                WHAT glows - never change. */}
             <Bloom
               resolutionScale={renderQuality.bloomResolutionScale}
               luminanceThreshold={HUD_COCKPIT_V1_ENABLED ? 0.68 : 0.5}
@@ -7757,6 +7803,16 @@ export default function GamePage() {
             />
           </EffectComposer>
         )}
+        {/* Repays the composer's luminance share while the floor tier has it
+            off. Mobile never runs the composer, so its authored look never
+            included bloom's light - exposure stays 1 there at every tier. */}
+        <FloorExposure
+          exposure={
+            !isMobile && !renderQuality.composerEnabled
+              ? renderQuality.exposureCompensation
+              : 1
+          }
+        />
       </Canvas>
       </BoardViewportShell>
     </div>

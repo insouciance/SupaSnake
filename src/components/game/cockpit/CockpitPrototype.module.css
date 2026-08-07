@@ -1005,6 +1005,21 @@
 .arenaBay {
   position: relative;
   z-index: 20;
+  /*
+   * THE BAY IS PAINT, NOT INPUT.
+   *
+   * Everything in here - the tray, the frame, the viewport, the oversized
+   * canvas - exists to be looked at. Camera input is `.arenaInputIsland`,
+   * which is now a SIBLING at the board's old z-level so it cannot outrank
+   * the mobile flick layer.
+   *
+   * Without this the bay still swallowed steering: at z-index 20 the frame
+   * itself is above flick's 5, so a single finger landed on `.arenaFrame`
+   * instead of the flick surface and the board rotated. Making the whole
+   * subtree pointer-transparent is the honest expression of what it is -
+   * there is nothing in here a player can act on.
+   */
+  pointer-events: none;
   grid-area: arena;
   display: grid;
   min-width: 0;
@@ -1251,10 +1266,40 @@
  * absent, the rig falls back to the canvas and the cockpit behaves exactly
  * as it did before this existed.
  */
+/*
+ * THE CAMERA'S GRAB SURFACE, AND THE ONE RULE IT MUST OBEY.
+ *
+ * The board canvas is pointer-transparent so it can paint over the HUD without
+ * swallowing a HUD hit; this element is where camera drags are actually
+ * accepted, and `CameraRig` hands it to OrbitControls as the controls' DOM
+ * element.
+ *
+ * IT IS A SIBLING OF `.arenaBay`, NOT A CHILD, AND THAT IS LOAD-BEARING.
+ *
+ * The bay paints at z-index 20 so a twisted board breaks out over the trays.
+ * Nothing in this cockpit establishes a stacking context between the bay and
+ * the page - `.liveRoot` is `position: relative` with `z-index: auto` and
+ * `isolation: auto`, and `container-type: size` on `.cockpitShell` does not
+ * create one either (measured, not assumed) - so a z-index set in here
+ * competes directly with the page's own layers.
+ *
+ * The mobile flick layer is one of those layers, at z-index 5. As a CHILD of
+ * the bay this element inherited the bay's 20 and therefore outranked flick,
+ * so every single-finger steering gesture on a phone was captured here and
+ * handed to OrbitControls: the board rotated instead of the snake turning.
+ * That was reported from real play as unplayable.
+ *
+ * So input sits back at the board's OLD level - below flick (5) and below the
+ * HUD controls (10) - while the board's PAINT stays at 20. Those two things
+ * were only ever the same number by accident.
+ *
+ * `grid-area: arena` puts it on exactly the bay's rectangle without depending
+ * on the bay's box, so the camera is still grabbed precisely where the board
+ * lives.
+ */
 .arenaInputIsland {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
+  grid-area: arena;
+  z-index: 1;
   touch-action: none;
   pointer-events: auto;
 }
