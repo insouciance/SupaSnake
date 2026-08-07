@@ -157,7 +157,7 @@ import {
 import { GenomeCard } from '@/components/game/GenomeCard';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { ModeToggle } from '@/components/game/ModeToggle';
-import { EnergyCommitmentSelector } from '@/components/game/EnergyCommitmentSelector';
+import { EnergyReactor } from '@/components/game/EnergyReactor';
 import { AnomalyPanel, type AnomalyBoardView } from '@/components/game/AnomalyPanel';
 import { BlackoutMask } from '@/components/game/BlackoutMask';
 import {
@@ -1954,6 +1954,24 @@ export default function GamePage() {
       cancelled = true;
     };
   }, [session?.access_token, isPlaying]);
+
+  /*
+   * THE ANOMALY ARRIVES FROM HOME (owner: the anomaly entry leaves Setup).
+   *
+   * Setup no longer offers a mode, so the one way into an anomaly run is
+   * Home's flash card, which links here with `?mode=anomaly`. It is honoured
+   * ONLY when the board says an anomaly is actually live, so a stale link, a
+   * bookmark or a hand-typed URL cannot put the player into a mode the week
+   * does not have. Read from `window.location` rather than `useSearchParams`
+   * for the same reason the route already reads its other entry parameter
+   * that way: this is a one-shot arrival fact, not reactive state.
+   */
+  useEffect(() => {
+    if (isPlaying || !anomalyBoard?.live) return;
+    if (typeof window === 'undefined') return;
+    const requested = new URLSearchParams(window.location.search).get('mode');
+    if (requested === 'anomaly') setGameMode('anomaly');
+  }, [anomalyBoard?.live, isPlaying, setGameMode]);
 
   // Automatic clan-battle context for the commitment decision. Attempt-level
   // detail is only the viewer's own; team/opponent are aggregate totals.
@@ -6681,15 +6699,23 @@ export default function GamePage() {
     />
   ) : null;
 
-  const energySelectorNode =
-    !noSnakeAvailable && gameMode !== 'free' ? (
-      <EnergyCommitmentSelector
-        energy={charge}
-        value={energyCommitment}
-        onChange={setEnergyCommitment}
-        clanBattle={clanBattleSetup}
-      />
-    ) : null;
+  /*
+   * THE MODE COLLAPSE (owner: "Energy Reactor — zero is free play").
+   *
+   * The reactor was previously hidden whenever the mode toggle said "free",
+   * which made the two controls contradict each other: the toggle set a mode
+   * and the reactor set a stake, and either could silently overrule the other.
+   * There is one control now. It is always mounted, and `gameMode` is DERIVED
+   * from it below rather than set beside it.
+   */
+  const energySelectorNode = !noSnakeAvailable ? (
+    <EnergyReactor
+      energy={charge}
+      value={energyCommitment}
+      onChange={setEnergyCommitment}
+      clanBattle={clanBattleSetup}
+    />
+  ) : null;
 
   /* Weekly Anomaly board entry: modifier, timer, your best, top 10 */
   const anomalyPanelNode =
@@ -6775,73 +6801,49 @@ export default function GamePage() {
    * snaps this state back to the rung it chose, so a clamped ask corrects itself
    * the moment the run begins.
    */
-  const activeRung = ladderRungDefinition(ladderRung);
-  const ladderNoteNode = (
-    <p className="font-body text-sm text-beige/70" data-testid="ladder-readout">
-      Ladder:{' '}
-      <span className="text-bone-white">
-        Rung {activeRung.rung} · {activeRung.name}
-      </span>
-      {' · '}
-      <span className="text-venom-orange">{activeRung.rule}</span>
-    </p>
-  );
-
-  /**
-   * The rung selector (WP-3.12) remains inside the setup disclosure rather than
-   * adding another top-level tap, which is how the 3-tap law survives.
+  /*
+   * THE DIFFICULTY LADDER LEAVES SETUP (owner ruling: "difficulty ladder —
+   * gone").
    *
-   * Null when the flag is off, and null when the player has nothing above
-   * Ground unlocked: a one-option selector is a control that teaches nothing
-   * and still costs screen. Rungs above `ladderAttemptable` are rendered
-   * DISABLED rather than hidden, because the point of a ladder is that you can
-   * see the next step and the ones after it.
+   * Two nodes stood here: a `ladder-readout` line and a `ladder-selector` grid
+   * of rungs, both rendered inside the "Tune run" disclosure that Setup no
+   * longer has. They are removed rather than hidden behind a flag, because a
+   * control nothing renders is not a rollback path, it is dead code.
+   *
+   * The LADDER ITSELF is untouched: `ladderRung` still rides the start request,
+   * the server still decides the rung, `applyStartedRun` still snaps this state
+   * back to what it chose, and `ladderSalvageFloor` still sets the crash floor
+   * the portal decision reads. What is gone is the pre-run surface that asked
+   * the player to pick a difficulty before they had played.
    */
-  const ladderSelectorNode =
-    LADDER_ENABLED && ladderAttemptable > DEFAULT_LADDER_RUNG ? (
-      <div data-testid="ladder-selector">
-        <p className="label-arcade mb-2 text-cosmic">Difficulty ladder</p>
-        <div className="flex flex-wrap gap-2">
-          {LADDER_RUNGS.map((rung) => {
-            const active = ladderRung === rung.rung;
-            const locked = rung.rung > ladderAttemptable;
-            return (
-              <button
-                key={rung.rung}
-                type="button"
-                onClick={() => setLadderRung(rung.rung)}
-                disabled={locked}
-                aria-pressed={active}
-                data-testid={`ladder-rung-${rung.rung}`}
-                data-locked={locked ? 'true' : 'false'}
-                className={`rounded-arcade border px-3 py-2 text-left font-body text-xs transition-all ${
-                  locked
-                    ? 'cursor-not-allowed border-scale-blue-light/20 bg-scale-blue/20 text-beige/30'
-                    : active
-                      ? 'border-venom-orange/70 bg-venom-orange/15 text-bone-white'
-                      : 'border-scale-blue-light/40 bg-scale-blue/40 text-beige/80 hover:border-venom-orange/50'
-                }`}
-              >
-                <span className="block font-semibold">
-                  {rung.rung}. {rung.name}
-                </span>
-                <span className="block text-beige/60">{rung.rule}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    ) : null;
+
+  /*
+   * THE DERIVED RUN MODE (owner: "Energy Reactor — zero is free play").
+   *
+   * Mode used to be a thing the player SET, on a toggle that sat beside a
+   * commitment control it could contradict. It is now a thing the reactor
+   * MEANS: no rod seated is a free run, any rod seated is an earning run, and
+   * the anomaly is the one genuinely different board so it keeps its own
+   * value. Everything downstream — the start label, the test id, and the mode
+   * `handleStart` records on the session — reads this one expression, so the
+   * three can no longer disagree.
+   */
+  const setupRunMode: GameMode =
+    gameMode === 'anomaly' ? 'anomaly' : energyCommitment > 0 ? 'earn' : 'free';
 
   const startTestId =
-    gameMode === 'free'
+    setupRunMode === 'free'
       ? 'free-play-start'
-      : gameMode === 'anomaly'
+      : setupRunMode === 'anomaly'
         ? 'anomaly-start'
         : 'earn-start';
 
   // Run Flow v1 shows Results until the player asks for SETUP.
   const showResultsLayers = RUN_FLOW_V1_ENABLED && isGameOver && !setupReopened;
+
+  /** The overlay tray wears paper only while it IS Run Setup. */
+  const setupTrayIsPaper =
+    RUN_FLOW_V1_ENABLED && !showResultsLayers && !interruptedRun;
 
   const setupFavoriteRows = favoriteSetupSnakesByDynasty(
     collectionSnakes,
@@ -7237,15 +7239,30 @@ export default function GamePage() {
           {/* ONE tray, ONE outline (owner ruling). This element is the tray for
               every state of the overlay - Run Setup, Results, recovery - so the
               single bold frame lives here and nothing inside it may draw a
-              second one. See `.modal-frame` in globals.css. */}
+              second one.
+
+              THE TRAY'S MATERIAL FOLLOWS ITS STATE (90S-PATH). Run Setup is
+              the panel between the chamber and the board, and it is printed on
+              the chamber's stock: `.paper-tray` - warm authored fill, ink
+              contour at the tray weight, one hard block. That is the coherence
+              claim of the whole path, because the player then crosses exactly
+              one change of material and it means "the run has started".
+              Results and recovery are read AFTER the board has been seen, so
+              they keep the deck frame; re-dressing them is its own package and
+              inventing a light Results screen here would be scope this ruling
+              did not ask for. */}
           <div
-            className={`panel-elevated modal-frame modal-tray my-auto min-w-0 space-y-6 p-2 text-center animate-pop-in sm:p-8 ${
-              isGameOver
-                ? endReason === 'extracted'
-                  ? '[--glow:#f2a03f]'
-                  : '[--glow:#a3324a]'
-                : '[--glow:#f2a03f]'
-            }`}
+            className={
+              setupTrayIsPaper
+                ? 'paper-tray modal-tray my-auto min-w-0 space-y-6 p-3 text-center animate-pop-in sm:p-6'
+                : `panel-elevated modal-frame modal-tray my-auto min-w-0 space-y-6 p-2 text-center animate-pop-in sm:p-8 ${
+                    isGameOver
+                      ? endReason === 'extracted'
+                        ? '[--glow:#f2a03f]'
+                        : '[--glow:#a3324a]'
+                      : '[--glow:#f2a03f]'
+                  }`
+            }
           >
             {/* Constitution §5 / WP-1.06: one consolidated Run Setup page and
                 a three-layer Results screen. The shipped screen below is the
@@ -7495,26 +7512,22 @@ export default function GamePage() {
                       ? rulesetExplainer[normalizeDynastyName(equippedSnake.dynasty)]
                       : ''
                   }
-                  masteryLevel={
-                    equippedSnake
-                      ? masteryLevels[normalizeDynastyName(equippedSnake.dynasty)] ?? null
-                      : null
-                  }
-                  modeLabel={
-                    gameMode === 'free'
-                      ? 'Free Play'
-                      : gameMode === 'anomaly'
-                        ? 'Anomaly run'
-                        : 'Earning run'
-                  }
-                  aimLabel={getAimSystem(aimSystem).name}
                   challengeNote={challengeRun ? challengeRunNote(challengeRun) : null}
                   startLabel={
-                    gameMode === 'free'
-                      ? 'Free Play'
-                      : gameMode === 'anomaly'
-                        ? `Run the Anomaly · ${energyCommitment > 0 ? `${energyCommitment} Energy` : 'Lean'}`
-                        : `Play · ${energyCommitment > 0 ? `${energyCommitment} Energy` : 'Lean'}`
+                    /*
+                     * THE LABEL IS THE REACTOR'S READOUT. Mode is no longer a
+                     * thing the player sets, so the button states what the
+                     * core is about to spend: nothing seated reads FREE PLAY,
+                     * and any seated rod reads what it costs. The anomaly
+                     * keeps its own word because it is a different board.
+                     */
+                    setupRunMode === 'anomaly'
+                      ? energyCommitment > 0
+                        ? `Run the Anomaly · ${energyCommitment} Energy`
+                        : 'Run the Anomaly · Free'
+                      : energyCommitment > 0
+                        ? `Play · ${energyCommitment} Energy`
+                        : 'Free Play'
                   }
                   startTestId={startTestId}
                   isStarting={isStarting}
@@ -7536,17 +7549,10 @@ export default function GamePage() {
                     setSnakePickerOpen(true);
                   }}
                   onStart={() => {
-                    void handleStart(gameMode);
+                    void handleStart(setupRunMode);
                   }}
                   startError={startError}
-                  heirloom={heirloomNode}
                   energySelector={energySelectorNode}
-                  modeToggle={modeToggleNode}
-                  ladderNote={ladderNoteNode}
-                  ladderSelector={ladderSelectorNode}
-                  anomalyPanel={anomalyPanelNode}
-                  aimSelector={aimSelectorNode}
-                  buildSeed={buildSeedNode}
                 />
               )
             ) : (

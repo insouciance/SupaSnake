@@ -1,37 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useId, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { formatAscendanceYieldMultiplier } from '@/shared/game/ascendance';
 import type { StrainId } from '@/shared/game/strains';
-import {
-  IconBolt,
-  IconCrown,
-  IconDna,
-  IconFlask,
-  IconPlay,
-  IconSnake,
-} from '@/components/ui/icons';
+import { IconPlay, IconSnake } from '@/components/ui/icons';
 import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
-import { InfoPopover } from '@/components/ui/InfoPopover';
-import { describe as describeLexiconEntry } from '@/shared/game/lexicon';
+import { HOME_WORDMARK } from '@/components/home/HomeIdentityHud';
 import {
   SETUP_DYNASTIES,
   type SetupDynasty,
 } from '@/components/game/SnakePickerSheet';
-
-/**
- * The three portal verbs, read from the one lexicon the Codex and the
- * Workbench read. Composed at module scope because the entries are pure
- * config-derived constants — the values move when the carry config moves, and
- * never because a component re-rendered.
- */
-const PORTAL_RAIL_MECHANICS = (
-  ['extraction_bank', 'extraction_pass', 'extraction_infuse'] as const
-).flatMap((id) => {
-  const entry = describeLexiconEntry('mechanic', id);
-  return entry ? [entry] : [];
-});
 
 export interface RunSetupSnake {
   id?: string;
@@ -43,25 +22,18 @@ export interface RunSetupSnake {
 export interface RunSetupPanelProps {
   snake: RunSetupSnake | null;
   noSnakeAvailable: boolean;
+  /** One line of what this dynasty's ruleset does — part of the pick, not a
+   *  fourth element. */
   rulesetExplainer: string;
-  masteryLevel: number | null;
-  modeLabel: string;
-  aimLabel: string;
   startLabel: string;
   challengeNote?: string | null;
   startTestId: string;
-  ladderNote?: ReactNode;
-  ladderSelector?: ReactNode;
   isStarting: boolean;
   onStart: () => void;
   onChooseSnake?: () => void;
   startError: string | null;
-  heirloom?: ReactNode;
+  /** The Energy Reactor. */
   energySelector?: ReactNode;
-  modeToggle?: ReactNode;
-  anomalyPanel?: ReactNode;
-  aimSelector?: ReactNode;
-  buildSeed?: ReactNode;
   /** Exactly one setup dock per dynasty; null renders a deliberate pick slot. */
   favorites?: Partial<Record<SetupDynasty, RunSetupSnake | null>>;
   onFavoriteDock?: (
@@ -79,41 +51,16 @@ const DYNASTY_STRAIN: Record<SetupDynasty, StrainId> = {
   COSMIC: 'FLUX',
 };
 
-const DYNASTY_VISUALS: Record<
-  SetupDynasty,
-  {
-    accent: string;
-    secondary: string;
-    text: string;
-    border: string;
-    wash: string;
-    shadow: string;
-  }
-> = {
-  CYBER: {
-    accent: '#22d3ee',
-    secondary: '#8b5cf6',
-    text: 'text-cyber',
-    border: 'border-cyber/60',
-    wash: 'bg-cyber/10',
-    shadow: 'shadow-cyber/25',
-  },
-  PRIMAL: {
-    accent: '#86efac',
-    secondary: '#22d3ee',
-    text: 'text-primal-glow',
-    border: 'border-primal-glow/55',
-    wash: 'bg-primal/15',
-    shadow: 'shadow-primal-glow/20',
-  },
-  COSMIC: {
-    accent: '#a855f7',
-    secondary: '#fbbf24',
-    text: 'text-cosmic-glow',
-    border: 'border-cosmic/65',
-    wash: 'bg-cosmic/15',
-    shadow: 'shadow-cosmic/25',
-  },
+/**
+ * The dynasty's authored fill. These are the dynasty accents that already mean
+ * something everywhere else in the product (`gameScreenTokens.ts`), spent as a
+ * FILL rather than as a keyline — the same move the portal cards make. Each
+ * carries the ink contour, so the hue never has to be legible as a line.
+ */
+const DYNASTY_FILL: Record<SetupDynasty, string> = {
+  CYBER: '#0f5f74',
+  PRIMAL: '#2f6b23',
+  COSMIC: '#4b2f80',
 };
 
 function setupDynasty(value: string): SetupDynasty {
@@ -121,72 +68,20 @@ function setupDynasty(value: string): SetupDynasty {
   return SETUP_DYNASTIES.find((dynasty) => dynasty === normalized) ?? 'PRIMAL';
 }
 
-/** A calm, continuous-body portrait: character art, not a technical diagram. */
-function LaunchSnake({ snake }: { snake: RunSetupSnake }) {
-  const rawId = useId().replaceAll(':', '');
-  const gradientId = `run-snake-gradient-${rawId}`;
-  const glowId = `run-snake-glow-${rawId}`;
-  const dynasty = setupDynasty(snake.dynasty);
-  const visual = DYNASTY_VISUALS[dynasty];
-
-  return (
-    <svg
-      viewBox="0 0 520 210"
-      className="h-full w-full overflow-visible"
-      role="img"
-      aria-label={`${snake.name}, Generation ${snake.generation}, ready to launch`}
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={visual.accent} />
-          <stop offset="62%" stopColor={visual.secondary} />
-          <stop offset="100%" stopColor="#fbbf24" />
-        </linearGradient>
-        <filter id={glowId} x="-25%" y="-50%" width="150%" height="200%">
-          <feGaussianBlur stdDeviation="8" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      <g
-        className="motion-safe:animate-breathe motion-reduce:animate-none"
-        filter={`url(#${glowId})`}
-      >
-        <path
-          d="M62 147 C119 55 203 188 284 116 S411 57 459 105"
-          fill="none"
-          stroke={visual.accent}
-          strokeWidth="48"
-          strokeLinecap="round"
-          opacity="0.14"
-        />
-        <path
-          d="M62 147 C119 55 203 188 284 116 S411 57 459 105"
-          fill="none"
-          stroke={`url(#${gradientId})`}
-          strokeWidth="29"
-          strokeLinecap="round"
-        />
-        <path
-          d="M69 141 C124 70 202 176 281 108 S403 62 451 101"
-          fill="none"
-          stroke="rgba(255,255,255,0.42)"
-          strokeWidth="4"
-          strokeLinecap="round"
-        />
-        <g transform="translate(455 104) rotate(-12)">
-          <rect x="-8" y="-16" width="46" height="32" rx="13" fill={`url(#${gradientId})`} />
-          <circle cx="25" cy="-6" r="3.5" fill="#06090d" />
-          <circle cx="26" cy="-7" r="1.1" fill="#e6edf3" />
-        </g>
-      </g>
-    </svg>
-  );
-}
-
+/**
+ * ELEMENT (a) — DYNASTY FAVORITES.
+ *
+ * One dock per dynasty, each holding the snake you last flew for that house.
+ * Picking IS the whole snake choice: the dock is the control, not a preview of
+ * a control that lives somewhere else. The released panel put a launch
+ * portrait, a dynasty chip, a generation chip, a payout line and a "Change
+ * snake" button ABOVE the favorites, so the same decision was offered twice in
+ * two different shapes — the favorites are the survivor.
+ *
+ * Selected is INK FILL, paper glyph. The dynasty hue says which house; the ink
+ * says which one you are flying. That separation matters because a player who
+ * reads "selected" off a hue has to know three hues first.
+ */
 function FavoriteDock({
   dynasty,
   favorite,
@@ -200,7 +95,6 @@ function FavoriteDock({
   busy: boolean;
   onSelect?: () => void;
 }) {
-  const visual = DYNASTY_VISUALS[dynasty];
   return (
     <button
       type="button"
@@ -208,262 +102,170 @@ function FavoriteDock({
       disabled={!onSelect || busy}
       aria-pressed={favorite ? selected : undefined}
       aria-label={
-        favorite
-          ? `Equip favorite ${dynasty} snake ${favorite.name}, generation ${favorite.generation}`
-          : `Choose ${dynasty} favorite snake`
-      }
-      className={`group relative min-h-[78px] min-w-0 overflow-hidden rounded-[18px] border px-1.5 py-2 text-center transition-[border-color,background-color,transform] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber disabled:cursor-wait ${
         selected
-          ? `${visual.border} ${visual.wash} shadow-glow ${visual.shadow}`
+          ? `Flying ${favorite?.name ?? dynasty}${favorite ? `, generation ${favorite.generation}` : ''}`
           : favorite
-            ? 'border-scale-blue-light/45 bg-void-deep/70 hover:border-cosmic/45'
-            : 'border-scale-blue-light/35 bg-scale-blue/20 hover:border-cyber/45 hover:bg-cyber/5'
-      }`}
+            ? `Switch to your ${dynasty} favorite, ${favorite.name}, generation ${favorite.generation}`
+            : `Choose a ${dynasty} favorite`
+      }
       data-testid={`run-setup-favorite-${dynasty.toLowerCase()}`}
+      className={`relative flex min-h-[92px] min-w-0 flex-col items-center justify-center gap-1 rounded-[var(--radius-card)] border-[length:var(--ink-w-3)] border-ink px-1.5 py-2 text-center transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 disabled:cursor-wait ${
+        selected
+          ? 'bg-ink text-bone-white shadow-[var(--ink-drop-3)]'
+          : 'text-bone-white shadow-[var(--ink-drop-2)]'
+      }`}
+      style={selected ? undefined : { backgroundColor: DYNASTY_FILL[dynasty] }}
     >
-      <span className={`label-arcade block truncate text-[8px] ${selected ? visual.text : 'text-beige/50'}`}>
+      <span
+        aria-hidden="true"
+        className={`inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink p-1 text-ink`}
+        style={{ backgroundColor: selected ? '#fffdf8' : 'rgba(255,253,248,0.85)' }}
+      >
+        <StrainGlyph id={DYNASTY_STRAIN[dynasty]} />
+      </span>
+      <span className="label-arcade block truncate text-[9px] text-bone-white/80">
         {dynasty}
       </span>
       {favorite ? (
-        <>
-          <span className="mt-1 flex items-center justify-center gap-1">
-            <span className={`h-4 w-4 shrink-0 ${selected ? visual.text : 'text-beige/55'}`}>
-              <StrainGlyph id={DYNASTY_STRAIN[dynasty]} />
-            </span>
-            <span className="truncate font-display text-[11px] text-bone-white">
-              Gen {favorite.generation}
-            </span>
-          </span>
-          <span className="mt-1 block truncate font-body text-[9px] text-beige/60">
+        <span className="min-w-0">
+          <span className="heading-display block truncate text-[11px] text-bone-white">
             {busy ? 'Equipping…' : favorite.name}
           </span>
-          <span
-            aria-hidden="true"
-            className={`absolute right-2 top-2 h-1.5 w-1.5 rotate-45 ${
-              selected ? 'bg-rarity-legendary shadow-glow-sm shadow-rarity-legendary/70' : 'bg-scale-blue-light'
-            }`}
-          />
-        </>
-      ) : (
-        <>
-          <span className={`mt-1 block font-display text-xl leading-none ${visual.text}`}>+</span>
-          <span className="mt-1 block truncate font-body text-[9px] text-beige/65">
-            Pick favorite
+          <span className="block truncate font-body text-[9px] text-bone-white/70">
+            Gen {favorite.generation} · ×{formatAscendanceYieldMultiplier(favorite.generation)}
           </span>
-        </>
+        </span>
+      ) : (
+        <span className="block truncate font-body text-[10px] text-bone-white/80">
+          Pick a favorite
+        </span>
       )}
     </button>
   );
 }
 
-function MissionReadout({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-h-[50px] min-w-0 items-center gap-2.5 rounded-[16px] border border-scale-blue-light/40 bg-void-deep/65 px-2.5 text-left">
-      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyber/30 bg-cyber/10 text-cyber">
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <span className="label-arcade block truncate text-[8px] text-beige/50">{label}</span>
-        <span className="block truncate font-display text-[11px] text-bone-white">{value}</span>
-      </span>
-    </div>
-  );
-}
-
+/**
+ * RUN SETUP — THREE ELEMENTS (owner structural ruling).
+ *
+ *   "Dynasty Favorites, Energy Reactor (zero is free play), and the Play
+ *    button. Everything else is noise."
+ *
+ * What left, and where it went: the AIM system picker (to the Lab), the
+ * ANOMALY entry (to Home, where a thing that is true for one week belongs),
+ * the DIFFICULTY LADDER (gone). With them went the `<details>` "Tune run"
+ * disclosure that hid them, the Earn/Free/Anomaly mode toggle — free play is
+ * now the reactor at zero — the mission readouts, the mastery chip, the portal
+ * rail, the heirloom summary and the duplicate launch portrait.
+ *
+ * ONE TRAY, ONE FRAME, re-expressed. The overlay's panel is the tray and
+ * carries `.paper-tray`; this is a REGION inside it and draws no frame of its
+ * own. The tray is PAPER, and that is the coherence claim of the whole path:
+ * Home is a paper room, Setup is a panel printed on the same stock, and the
+ * board is the dark place you go when you press Play. The player never crosses
+ * a change of material except the one that means "the run has started".
+ *
+ * THE TAP LAW holds: Home's Play chip, then PLAY here. Setup adds exactly one
+ * tap and a player who changes nothing never touches a third control.
+ */
 export function RunSetupPanel({
   snake,
   noSnakeAvailable,
   rulesetExplainer,
-  masteryLevel,
-  modeLabel,
-  aimLabel,
   startLabel,
   challengeNote,
   startTestId,
-  ladderNote = null,
-  ladderSelector = null,
   isStarting,
   onStart,
   onChooseSnake,
   startError,
-  heirloom,
   energySelector,
-  modeToggle,
-  anomalyPanel,
-  aimSelector,
-  buildSeed,
   favorites = {},
   onFavoriteDock,
   favoriteBusyId = null,
   labHref = '/lab?returnTo=%2Fgame',
 }: RunSetupPanelProps) {
-  const hasAdjustables =
-    Boolean(ladderSelector) ||
-    Boolean(anomalyPanel) ||
-    Boolean(aimSelector) ||
-    Boolean(buildSeed);
   const selectedDynasty = snake ? setupDynasty(snake.dynasty) : null;
-  const visual = selectedDynasty ? DYNASTY_VISUALS[selectedDynasty] : DYNASTY_VISUALS.CYBER;
 
-  /*
-   * ONE TRAY, ONE OUTLINE (owner ruling).
-   *
-   * This section used to be a second tray inside the overlay's panel: its own
-   * 30px radius, its own cyan border and its own outer glow, nested inside a
-   * sharp-cornered rectangle that already was the tray. Two trays and two
-   * outlines for one surface.
-   *
-   * The overlay's panel is the tray and carries `.modal-frame`; this is now a
-   * REGION inside it. It keeps the radial dynasty washes, because those are
-   * atmosphere rather than a frame, and gives up the border, the rounding and
-   * the glow shadow entirely.
-   */
+  const playButton = (
+    <button
+      type="button"
+      onClick={onStart}
+      disabled={isStarting || !snake}
+      data-testid={startTestId}
+      className="btn-go inline-flex min-h-[68px] w-full items-center justify-center gap-3 px-4 py-3 text-xl sm:min-h-[76px] sm:text-2xl"
+    >
+      <IconPlay size={26} className="shrink-0" />
+      <span className="truncate">{isStarting ? 'Starting…' : startLabel}</span>
+    </button>
+  );
+
   return (
     <section
-      className="relative isolate mx-auto w-full overflow-hidden bg-[radial-gradient(circle_at_50%_7%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_8%_48%,rgba(139,92,246,0.14),transparent_25%),radial-gradient(circle_at_92%_84%,rgba(251,191,36,0.09),transparent_24%)] p-2.5 text-center sm:p-5"
+      className="relative mx-auto w-full min-w-0 p-1 text-center sm:p-2"
       data-testid="run-setup"
     >
-      <header className="relative mx-auto">
-        <p className="label-arcade text-pulse">Run cockpit</p>
-        <h2 className="heading-display text-xl text-bone-white sm:mt-1 sm:text-3xl">
-          Ready to launch
-        </h2>
-        <p className="hidden font-body text-xs text-beige/60 sm:mt-1 sm:block">
-          Choose your snake. Set the stakes. Play.
-        </p>
-      </header>
+      {/* The Mark, small, at the head of the tray. Setup is the one surface
+          between the chamber and the board, and a printed panel is exactly
+          where a logo belongs — it is what makes the tray read as a made
+          object rather than a dialog. Sized off the same measured constant
+          Home uses, so the two can never drift. */}
+      <picture>
+        <source
+          type="image/webp"
+          srcSet="/brand/mark.webp 1x, /brand/mark@2x.webp 2x, /brand/mark@3x.webp 3x"
+        />
+        <img
+          src="/brand/mark.png"
+          width={HOME_WORDMARK.intrinsicWidth}
+          height={HOME_WORDMARK.intrinsicHeight}
+          alt="SUPASNAKE"
+          decoding="async"
+          className="mx-auto -mt-1 mb-1 w-[132px] max-w-full -rotate-[2deg] select-none sm:w-[168px]"
+          data-testid="run-setup-mark"
+        />
+      </picture>
 
       {snake ? (
         <>
-          <section
-            className="relative mx-auto mt-2 overflow-hidden rounded-[20px] bg-[radial-gradient(circle_at_50%_35%,rgba(230,237,243,0.05),transparent_42%),linear-gradient(180deg,rgba(22,32,43,0.55),rgba(6,9,13,0.9))] sm:mt-4 sm:rounded-[24px]"
-            aria-label="Selected snake launch chamber"
-          >
-            <div className="absolute left-3 top-3 z-10 hidden max-w-[calc(100%-1.5rem)] items-center gap-1.5 sm:flex">
-              <span className={`rounded-full border ${visual.border} ${visual.wash} px-2 py-1 font-mono text-[8px] ${visual.text} whitespace-nowrap`}>
-                {selectedDynasty}
-              </span>
-              <span className="rounded-full border border-rarity-legendary/35 bg-rarity-legendary/10 px-2 py-1 font-mono text-[8px] text-rarity-legendary whitespace-nowrap">
-                Gen {snake.generation}
-              </span>
-            </div>
-
-            <div className="hidden h-[205px] px-4 pt-5 sm:block">
-              <LaunchSnake snake={snake} />
-            </div>
-
-            <div className="relative grid min-h-[78px] grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2 bg-void-deep/75 px-2.5 py-2.5 text-left sm:block sm:border-t sm:border-scale-blue-light/30 sm:px-5 sm:py-3 sm:text-center">
-              <span className={`inline-flex h-10 w-10 items-center justify-center rounded-full border ${visual.border} ${visual.wash} p-2 ${visual.text} shadow-glow sm:hidden`} aria-hidden="true">
-                <StrainGlyph id={DYNASTY_STRAIN[selectedDynasty!]} />
-              </span>
-              <div className="min-w-0">
-                <p className={`label-arcade text-[8px] sm:text-[9px] ${visual.text}`}>
-                  <span className="sm:hidden">{selectedDynasty} · Gen {snake.generation}</span>
-                  <span className="hidden sm:inline">Selected lineage</span>
-                </p>
-                <h3 className="truncate heading-display text-lg text-bone-white sm:mt-0.5 sm:text-2xl">
-                  {snake.name}
-                </h3>
-                <p className="truncate font-body text-[10px] text-beige/65 sm:mt-0.5 sm:text-xs">
-                  <span className="hidden sm:inline">Generation {snake.generation} · </span>
-                  <span data-testid="run-setup-yield-multiplier">
-                    Payout ×{formatAscendanceYieldMultiplier(snake.generation)}
-                  </span>
-                </p>
-              </div>
-              <div className="flex gap-1.5 sm:mt-3 sm:grid sm:grid-cols-2 sm:gap-2">
-                <button
-                  type="button"
-                  onClick={onChooseSnake}
-                  disabled={!onChooseSnake}
-                  data-testid="run-setup-snake-picker-trigger"
-                  className="btn-neutral inline-flex h-11 w-11 min-w-0 items-center justify-center gap-1.5 rounded-full p-0 text-[10px] whitespace-nowrap sm:h-auto sm:min-h-[44px] sm:w-auto sm:px-2 sm:py-2"
-                  aria-label={`Choose snake. Current: ${snake.name}, generation ${snake.generation}`}
-                >
-                  <IconSnake size={15} className="shrink-0 text-cyber" />
-                  <span className="sr-only sm:not-sr-only">Change snake</span>
-                </button>
-                <Link
-                  href={labHref}
-                  aria-label="Snake Lab"
-                  className="btn-neutral inline-flex h-11 w-11 min-w-0 items-center justify-center gap-1.5 rounded-full p-0 text-[10px] text-cosmic-glow whitespace-nowrap sm:h-auto sm:min-h-[44px] sm:w-auto sm:px-2 sm:py-2"
-                >
-                  <IconFlask size={15} className="shrink-0" />
-                  <span className="sr-only sm:not-sr-only">Snake Lab</span>
-                </Link>
-              </div>
-            </div>
-          </section>
-
-          {modeToggle ? (
-            <section
-              className="mx-auto mt-2 rounded-[18px] bg-cosmic/8 px-2 py-1 [&_.label-arcade]:text-[8px] [&_button]:rounded-full [&_button]:whitespace-nowrap sm:py-1.5"
-              aria-label="Choose run mode"
-              data-testid="run-setup-mode-control"
-            >
-              {modeToggle}
-            </section>
-          ) : null}
-
-          {energySelector ? <div className="mt-2 sm:mt-3">{energySelector}</div> : null}
-
-          {challengeNote && (
+          {/* ---------- (a) DYNASTY FAVORITES ---------- */}
+          <section aria-labelledby="run-favorites-title" className="mt-2">
             <p
-              className="mx-auto mt-2 rounded-[16px] bg-cosmic/12 px-3 py-1.5 font-body text-xs text-cosmic-glow sm:mt-3 sm:px-4 sm:py-2 sm:text-sm"
-              data-testid="challenge-note"
+              id="run-favorites-title"
+              className="label-arcade text-[10px] text-ink/55"
             >
-              {challengeNote}
+              Who is flying
             </p>
-          )}
-
-          {startError && (
-            <div className="mx-auto mt-2 animate-fade-up rounded-[16px] bg-strike-red/20 px-4 py-2" role="alert">
-              <p className="font-body text-strike-red">{startError}</p>
-            </div>
-          )}
-
-          <div className="mx-auto mt-2 rounded-[18px] bg-void-deep/60 p-1.5 sm:mt-3 sm:p-2.5">
-            <button
-              type="button"
-              onClick={onStart}
-              disabled={isStarting}
-              data-testid={startTestId}
-              className={`btn-go inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[14px] px-4 py-2.5 text-base whitespace-nowrap sm:min-h-[56px] sm:py-3 sm:text-lg ${
-                isStarting ? 'cursor-wait' : 'animate-glow-pulse shadow-cyber/45'
-              }`}
+            <div
+              className="mt-1.5 grid grid-cols-3 gap-2"
+              data-testid="run-setup-favorites"
             >
-              <IconPlay size={21} className="shrink-0" />
-              <span className="truncate">{isStarting ? 'Starting…' : startLabel}</span>
-            </button>
-          </div>
-
-          <section className="mx-auto mt-3" aria-labelledby="run-favorites-title">
-            <div className="mb-2 flex items-center justify-center gap-2">
-              <IconCrown size={14} className="text-rarity-legendary" />
-              <p id="run-favorites-title" className="label-arcade text-[9px] text-beige/55">
-                Dynasty favorites
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-1.5 min-[380px]:gap-2" data-testid="run-setup-favorites">
               {SETUP_DYNASTIES.map((dynasty) => {
                 const favorite = favorites[dynasty] ?? null;
+                /*
+                 * THE DOCK ALWAYS ANSWERS "WHO IS FLYING".
+                 *
+                 * Selection used to be `favorite.id === snake.id`, which is
+                 * false in two ordinary situations - a player with no saved
+                 * favorite yet, and a player flying a snake of that house that
+                 * is not the saved one. In both, every dock rendered
+                 * unselected and the panel silently stopped naming the snake
+                 * about to launch. The flying DYNASTY is the equipped snake's,
+                 * always, so that is what selects a dock; and the selected
+                 * dock shows the equipped snake rather than the stored
+                 * favorite, because the question this element answers is who
+                 * is flying and not who is bookmarked.
+                 */
+                const flying = dynasty === selectedDynasty;
+                const shown = flying ? snake : favorite;
                 return (
                   <FavoriteDock
                     key={dynasty}
                     dynasty={dynasty}
-                    favorite={favorite}
-                    selected={Boolean(favorite?.id && favorite.id === snake.id)}
-                    busy={favoriteBusyId !== null && favoriteBusyId === favorite?.id}
+                    favorite={shown}
+                    selected={flying}
+                    busy={favoriteBusyId !== null && favoriteBusyId === shown?.id}
                     onSelect={
-                      onFavoriteDock
+                      onFavoriteDock && !flying
                         ? () => onFavoriteDock(dynasty, favorite)
                         : undefined
                     }
@@ -471,124 +273,78 @@ export function RunSetupPanel({
                 );
               })}
             </div>
-          </section>
 
-          <section className="mx-auto mt-3 grid grid-cols-2 gap-2" aria-label="Run configuration">
-            <MissionReadout icon={<IconDna size={17} />} label="Run mode" value={modeLabel} />
-            <MissionReadout icon={<IconBolt size={17} />} label="Aim system" value={aimLabel} />
-          </section>
-
-          <section className="mx-auto mt-2 rounded-[16px] bg-void-deep/55 px-3 py-2.5">
-            <p className="font-body text-xs leading-snug text-beige/75" data-testid="ruleset-explainer">
+            {/* The selected house states its rule in one line. This is part of
+                the pick — it is what the dynasty IS — and not a fourth
+                element; there is no explainer for the two you did not pick. */}
+            <p
+              className="mt-1.5 px-1 font-body text-[11px] leading-snug text-ink/70"
+              data-testid="ruleset-explainer"
+            >
+              {selectedDynasty ? `${selectedDynasty} · ` : ''}
               {rulesetExplainer}
             </p>
-            <p className="mt-1 font-body text-[11px] text-beige/50" data-testid="run-setup-summary">
-              {modeLabel} · {aimLabel}
-              {masteryLevel !== null && (
-                <span data-testid="mastery-chip"> · Mastery M{masteryLevel}</span>
-              )}
-            </p>
-            {ladderNote ? <div className="mt-1 [&>*]:text-xs">{ladderNote}</div> : null}
-            <p className="mt-1 font-body text-[10px] text-beige/45">
-              BANK at a portal pays +25% · crash and you keep 60%
-            </p>
-            {/*
-              The portal rail, before the run rather than during it (WP-D).
-              The headline sentence above is untouched — `e2e/game.spec.ts`
-              reads it and the legacy pre-game screen carries the same words —
-              and each verb gains an `InfoPopover` reading the SAME lexicon
-              entry the Workbench and the Codex read, so the full rule and its
-              cost reach a touch device, which a `title` attribute never did.
-              R1 holds by placement: this is Run Setup, so nothing here can
-              render between first input and run end.
-            */}
-            <p className="mt-1 flex flex-wrap items-center gap-x-1 font-body text-[10px] text-beige/45" data-testid="setup-portal-rail">
-              {PORTAL_RAIL_MECHANICS.map((entry) => (
-                <InfoPopover
-                  key={entry.id}
-                  title={entry.name}
-                  effect={entry.effect}
-                  cost={entry.cost}
-                  label={`${entry.name}: what it does`}
-                  testId={`portal-rail-${entry.id}`}
-                  className="min-h-[44px] px-1 font-display text-[11px] text-cosmic-glow underline decoration-dotted underline-offset-2"
-                >
-                  {entry.name}
-                </InfoPopover>
-              ))}
-            </p>
+
+            <div className="mt-1 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={onChooseSnake}
+                disabled={!onChooseSnake}
+                data-testid="run-setup-snake-picker-trigger"
+                className="min-h-[44px] px-2 font-body text-[11px] text-ink/60 underline decoration-dotted underline-offset-4 hover:text-ink"
+              >
+                <IconSnake size={13} className="mr-1 inline shrink-0" />
+                All snakes
+              </button>
+              <Link
+                href={labHref}
+                className="min-h-[44px] px-2 py-3 font-body text-[11px] text-ink/60 underline decoration-dotted underline-offset-4 hover:text-ink"
+              >
+                Snake Lab
+              </Link>
+            </div>
           </section>
 
-          {heirloom ? <div className="mt-3">{heirloom}</div> : null}
+          {/* ---------- (b) ENERGY REACTOR ---------- */}
+          {energySelector ? <div className="mt-3">{energySelector}</div> : null}
+
+          {challengeNote && (
+            <p
+              className="mt-2 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-cosmic px-3 py-1.5 font-body text-xs text-bone-white"
+              data-testid="challenge-note"
+            >
+              {challengeNote}
+            </p>
+          )}
+
+          {startError && (
+            <div
+              className="mt-2 animate-fade-up rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-strike-red px-4 py-2"
+              role="alert"
+            >
+              <p className="font-body text-bone-white">{startError}</p>
+            </div>
+          )}
+
+          {/* ---------- (c) PLAY ---------- */}
+          <div className="mt-3">{playButton}</div>
         </>
       ) : noSnakeAvailable ? (
-        <div className="mx-auto mt-5 rounded-[20px] bg-strike-red/15 p-5">
-          <p className="font-body text-beige">
+        <div className="mt-5 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-strike-red p-5">
+          <p className="font-body text-bone-white">
             We couldn&apos;t prepare your snake. Return Home and retry.
           </p>
-        </div>
-      ) : (
-        <div className="mx-auto mt-5 rounded-[20px] bg-cyber/8 p-5">
-          <p className="font-body text-beige/70">Preparing your snake…</p>
-        </div>
-      )}
-
-      {!snake && challengeNote && (
-        <p
-          className="mx-auto mt-3 rounded-[16px] bg-cosmic/12 px-4 py-2 font-body text-sm text-cosmic-glow"
-          data-testid="challenge-note"
-        >
-          {challengeNote}
-        </p>
-      )}
-
-      {!snake && startError && (
-        <div className="mx-auto mt-3 animate-fade-up rounded-[16px] bg-strike-red/20 px-4 py-2" role="alert">
-          <p className="font-body text-strike-red">{startError}</p>
-        </div>
-      )}
-
-      {!snake && <div className="mx-auto mt-3 rounded-[18px] bg-void-deep/60 p-2.5">
-        {noSnakeAvailable ? (
           <Link
             href="/"
-            className="btn-go inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[14px] px-4 py-3 text-base whitespace-nowrap"
+            className="btn-go mt-4 inline-flex min-h-[52px] w-full items-center justify-center px-4 py-3 text-base"
           >
             Return Home to Retry
           </Link>
-        ) : (
-          <button
-            type="button"
-            onClick={onStart}
-            disabled={isStarting || !snake}
-            data-testid={startTestId}
-            className={`btn-go inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[14px] px-4 py-3 text-base whitespace-nowrap sm:text-lg ${
-              isStarting || !snake
-                ? 'cursor-wait'
-                : 'animate-glow-pulse shadow-cyber/45'
-            }`}
-          >
-            <IconPlay size={21} className="shrink-0" />
-            <span className="truncate">{isStarting ? 'Starting…' : startLabel}</span>
-          </button>
-        )}
-      </div>}
-
-      {!noSnakeAvailable && hasAdjustables && (
-        <details
-          className="mx-auto mt-3 rounded-[18px] bg-void-deep/55 p-3 text-left"
-          data-testid="run-setup-adjust"
-        >
-          <summary className="cursor-pointer text-center font-display text-xs uppercase text-cosmic-glow whitespace-nowrap">
-            Tune run
-          </summary>
-          <div className="space-y-4 overflow-x-auto pt-4 text-center [&_button]:whitespace-nowrap">
-            {ladderSelector}
-            {anomalyPanel}
-            {aimSelector}
-            {buildSeed}
-          </div>
-        </details>
+        </div>
+      ) : (
+        <div className="paper-recess mt-5 p-5">
+          <p className="font-body text-ink/60">Preparing your snake…</p>
+        </div>
       )}
     </section>
   );

@@ -622,6 +622,16 @@ canvas {
     transform: none;
   }
 
+  /* PAPER: the neutral button ON A PAPER SURFACE. `.btn-neutral` carries the
+     deck plate value, which is correct on the board and foreign on the
+     chamber's stock - a slate-blue slab in the middle of a printed panel. Same
+     object, same contour, same block; the family follows the room. */
+  .btn-paper {
+    @apply btn-arcade text-ink;
+    background-color: #fffdf8;
+  }
+  .btn-paper:hover { background-color: var(--fill-paper-2); }
+
   /* STOP: destructive/exit */
   .btn-stop {
     @apply btn-arcade text-bone-white;

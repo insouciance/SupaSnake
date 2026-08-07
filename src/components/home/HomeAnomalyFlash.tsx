@@ -41,7 +41,7 @@ import { STRAINS } from '@/shared/game/strains';
  * It reads the same `GET /api/anomaly` the board entry always read, so nothing
  * here invents state: no live anomaly, no card.
  */
-export function HomeAnomalyFlash({ token }: { token: string | null }) {
+export function HomeAnomalyFlash({ token }: { token: string | null | undefined }) {
   const [board, setBoard] = useState<AnomalyBoardView | null>(null);
   const [now, setNow] = useState(() => Date.now());
 

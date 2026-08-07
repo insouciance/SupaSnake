@@ -49,8 +49,6 @@ import {
 import { specimenCameraDistance } from '@/components/home/specimenCameraFit';
 import {
   EquippedCosmetics,
-  SegmentGenomeBand,
-  genomeBandColor,
   occludesFeature,
   type CosmeticLoadout,
 } from '@/components/home/SnakeCosmetics';
@@ -580,8 +578,6 @@ function SpecimenBody({
         const geometry = isHead
           ? headGeometry ?? fallbackHeadGeometry
           : bodyGeometry ?? fallbackBodyGeometry;
-        // Body index 0 is the piece right behind the head.
-        const bandColor = isHead ? null : genomeBandColor(i - 1);
         return (
           <mesh
             key={i}
@@ -602,7 +598,6 @@ function SpecimenBody({
             {isHead && bareEyes && <SpecimenEyes animate={animate} />}
             {isHead && <SpecimenMouth />}
             {isHead && <EquippedCosmetics loadout={loadout} />}
-            {bandColor && <SegmentGenomeBand color={bandColor} />}
           </mesh>
         );
       })}
