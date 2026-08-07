@@ -54,7 +54,7 @@
  * comment, which is enough to make the byte stream differ and trigger the
  * browser's update check.
  */
-export const SERVICE_WORKER_VERSION = 'wp-2.04.1';
+export const SERVICE_WORKER_VERSION = '90s-1.0';
 
 export const SERVICE_WORKER_SOURCE = `/* SupaSnake service worker ${SERVICE_WORKER_VERSION}
  * Notifications only. No caching, no fetch handler, no unread count, no background sync.
@@ -103,7 +103,7 @@ self.addEventListener('push', function (event) {
       renotify: false,
       requireInteraction: false,
       silent: false,
-      icon: '/icon.svg',
+      icon: '/brand/icon-192.png',
       data: { url: typeof payload.url === 'string' ? payload.url : '/' }
     })
   );

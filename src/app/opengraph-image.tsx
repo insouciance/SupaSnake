@@ -10,6 +10,7 @@
 
 import { ImageResponse } from 'next/og';
 import { OG_COLORS, OG_CONTENT_TYPE, OG_IMAGE_SIZE } from '@/lib/og/brand';
+import { OG_MARK_DATA_URI, OG_MARK_HEIGHT, OG_MARK_WIDTH } from '@/lib/og/markImage';
 import { CANONICAL_ORIGIN, SITE_NAME, SITE_TAGLINE } from '@/shared/config/site';
 
 export const alt = `${SITE_NAME} — ${SITE_TAGLINE}`;
@@ -18,6 +19,13 @@ export const contentType = OG_CONTENT_TYPE;
 
 /** The three portal choices, which are the product's signature (§5). */
 const CHOICES = ['BANK IT', 'PUSH YOUR LUCK', 'FEED THE SNAKE'];
+
+/**
+ * Rendered width of the mark on the card. The content column is 1040px wide
+ * (1200 less two 80px gutters); 560 leaves the burst clear of the tagline and
+ * keeps the lettering comfortably above the size at which it stops reading.
+ */
+const MARK_W = 560;
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -36,21 +44,20 @@ export default function OpengraphImage() {
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {/* The real mark, not the product name set in whatever face Satori
+              falls back to. Satori resolves no network and no filesystem, so
+              the logo arrives as a data URI compiled into the bundle by
+              `scripts/build-brand-assets.mjs`. */}
+          <img
+            src={OG_MARK_DATA_URI}
+            alt={SITE_NAME}
+            width={MARK_W}
+            height={Math.round((MARK_W * OG_MARK_HEIGHT) / OG_MARK_WIDTH)}
+          />
           <div
             style={{
               display: 'flex',
-              fontSize: 96,
-              fontWeight: 800,
-              letterSpacing: '-0.02em',
-              color: OG_COLORS.accent,
-            }}
-          >
-            {SITE_NAME.toUpperCase()}
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              marginTop: 8,
+              marginTop: 4,
               fontSize: 26,
               letterSpacing: '0.24em',
               textTransform: 'uppercase',

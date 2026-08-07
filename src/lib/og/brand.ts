@@ -5,14 +5,23 @@
  * globals.css, restated as literals because `next/og` renders through
  * Satori with inline styles only — it cannot read Tailwind or CSS variables.
  * Keep them in step with the palette; do not invent new brand colours here.
+ *
+ * THE ACCENT WAS STALE. This file's own header claimed to mirror the app
+ * palette while `accent` sat at the cyan `#22d3ee` that `globals.css:13-15`
+ * retired — "released back to CYBER, where it means dynasty rather than
+ * accent". Every share card, and therefore every link anyone posted, shipped a
+ * colour the product had stopped using. It now carries the mark's own amber.
+ *
+ * Note what is NOT here: the burst violet. Ruling T-2 confines the logo purple
+ * to the mark itself, and an OG card's text and rules are chrome, not mark.
  */
 
 export const OG_COLORS = {
   voidDeep: '#06090d',
   void: '#0a1017',
   panelTop: '#121a24',
-  accent: '#22d3ee',
-  accentLight: '#67e8f9',
+  accent: '#FCC406',
+  accentLight: '#FFD614',
   boneWhite: '#e6edf3',
   beige: '#94a3b8',
   scaleBlueLight: '#2b3b4d',

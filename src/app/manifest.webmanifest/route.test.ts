@@ -36,10 +36,15 @@ describe('GET /manifest.webmanifest', () => {
     expect(response.headers.get('Content-Type')).toContain('application/manifest+json');
     const body = await response.json();
     expect(body.start_url).toBe('/');
-    expect(body.icons.map((icon: { src: string }) => icon.src)).toEqual([
-      '/icon.svg',
-      '/apple-icon',
-    ]);
+    // Asserted against the declaration rather than a second hardcoded list:
+    // this route's job is to serve PWA_ICONS faithfully, and what that list
+    // should CONTAIN is pinned by manifest.test.ts. Two copies of the list
+    // meant one test failing for a reason the other had already covered.
+    const { PWA_ICONS } = await import('@/lib/pwa/manifest');
+    expect(body.icons.map((icon: { src: string }) => icon.src)).toEqual(
+      PWA_ICONS.map((icon) => icon.src)
+    );
+    expect(body.icons.length).toBeGreaterThanOrEqual(3);
   });
 
   it('404s when the flag is absent', async () => {
