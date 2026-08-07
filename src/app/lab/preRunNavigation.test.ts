@@ -103,7 +103,24 @@ describe('Setup → Lab → Back to Setup draft wiring contract', () => {
 
     expect(builderStart).toBeGreaterThan(-1);
     expect(builder).toMatch(/currentSearch\s*:/);
-    expect(builder).toMatch(/mode\s*:\s*gameMode/);
+    /*
+     * THE DRAFT CARRIES THE DERIVED MODE, NOT THE STORE'S.
+     *
+     * This used to pin `mode: gameMode`, and the 2026-08-07 mode collapse
+     * made that the bug rather than the contract: `gameMode` is no longer set
+     * by any control on Setup, so serialising it could send the Lab a draft
+     * saying `setupMode=free` while the Energy Reactor showed four rods
+     * seated. The href must carry what the reactor MEANS.
+     *
+     * Asserted as "the derived expression, and not the raw store value",
+     * because the failure this guards is silent: both compile, both round-
+     * trip, and only one of them agrees with what the player can see.
+     */
+    expect(builder).toMatch(/mode\s*:\s*setupRunMode/);
+    expect(builder).not.toMatch(/mode\s*:\s*gameMode\b/);
+    expect(gameSource).toMatch(
+      /const\s+setupRunMode[\s\S]{0,200}energyCommitment\s*>\s*0/
+    );
     expect(builder).toMatch(/energyCommitment\s*[,}]/);
     expect(builder).toMatch(/ladderRung\s*[,}]/);
     expect(gameSource.match(propPattern) ?? []).toHaveLength(2);
