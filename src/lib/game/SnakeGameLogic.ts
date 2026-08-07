@@ -1108,6 +1108,12 @@ export class SnakeGameLogic {
    * replay already reproduces, with no change to the recorded trace format.
    */
   private lastConsumedTurn: Direction | null = null;
+  /**
+   * ET-0: DOM timestamp of the input the last movement boundary consumed.
+   * Diagnostic only — see the write site for why it is safe to hold engine-
+   * side and why no replay path reads it.
+   */
+  private lastConsumedInputTimeMs: number | null = null;
   /** Food count at the last FLUX-apex Singularity pull, for its cadence. */
   private lastSingularityPullAtFood = 0;
   /**
@@ -2906,6 +2912,15 @@ export class SnakeGameLogic {
   }
 
   /**
+   * ET-0: the DOM timestamp of the input the most recent movement boundary
+   * consumed, or null if that boundary consumed nothing. Read-only, and read
+   * only by instrumentation.
+   */
+  get lastConsumedInputTime(): number | null {
+    return this.lastConsumedInputTimeMs;
+  }
+
+  /**
    * Game tick - advance one step
    */
   tick(): void {
@@ -2957,6 +2972,15 @@ export class SnakeGameLogic {
     // could only have been validated against the live heading.
     if (!arrivalBeat) {
       this.lastConsumedTurn = queued ? queued.direction : null;
+      // ET-0 DIAGNOSTIC ONLY. The DOM timestamp of the input this boundary
+      // just acted on, so the page can close the loop from event to effect
+      // without the engine knowing what a clock is.
+      //
+      // Deliberately NOT simulation state and NOT in the checkpoint: unlike
+      // `lastConsumedTurn` above — which the replay re-derives because input
+      // ADMISSION depends on it (:2483) — nothing reads this back. A replay
+      // leaves it null and reaches an identical board.
+      this.lastConsumedInputTimeMs = queued?.timing?.inputTimeMs ?? null;
     }
     if (queued) {
       this.state.direction = queued.direction;
