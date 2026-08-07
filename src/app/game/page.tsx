@@ -5877,7 +5877,7 @@ export default function GamePage() {
   // deliberate two-step for all six. It is preselected, never re-armed: the
   // page still shows it, still lets them change it, and nothing is committed
   // until they press the launch action. The clamp against server-held stock
-  // lives in `EnergyCommitmentSelector`, so a stale figure cannot outlive the
+  // lives in `EnergyReactor`, so a stale figure cannot outlive the
   // Energy that backs it.
   const handleOpenSetup = useCallback(() => {
     if (activeEnergyCommitted > 0) setEnergyCommitment(activeEnergyCommitted);
