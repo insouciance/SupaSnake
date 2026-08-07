@@ -142,7 +142,18 @@ const BEVEL = Object.freeze([0.9, 2.4]);
 const SHAPE_BEVEL = Object.freeze([3, 4]);
 /** The shape's outer contour weight. */
 const SHAPE_EDGE = 3.5;
-/** Breathing room in the viewBox so no stroke is clipped. */
+/**
+ * Breathing room in the viewBox so no stroke is clipped.
+ *
+ * It has two jobs and both are small. The first is the miter: `SHAPE_BOX` is
+ * the reach of the path's VERTICES, and a mitred join on a tear spike carries
+ * the outline past its own vertex — 0.43 units at the sharpest spike the
+ * current amplitude produces, well inside the miterlimit's ceiling. The second
+ * is margin proper. What is left over, ~5.5 units, is roughly three pixels
+ * clear on every side of `mark.png` at 1x, which is the size the desktop hero
+ * is served at and the only one where a spike ever landed in the frame's last
+ * pixel column.
+ */
 const PAD = 6;
 
 const round = (n) => Math.round(n * 100) / 100;

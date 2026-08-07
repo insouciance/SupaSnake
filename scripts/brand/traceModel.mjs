@@ -188,7 +188,14 @@ const TEAR_CAP = 1.95;
 const TEAR_CAP_INK = 2.95;
 /** The same inside a counter, which has far less room to give. */
 const TEAR_CAP_COUNTER = 0.85;
-/** The purple keyline is already large-featured; it tears wider but gentler. */
+/**
+ * The purple keyline is already large-featured; it tears wider but gentler.
+ *
+ * Nothing outside the drawing constrains this cap. `SHAPE_BOX` is measured off
+ * the path AFTER the hand has moved it (`pathBoxOf`), so the frame grows with
+ * the amplitude instead of eating into the margin — raise it because the
+ * drawing wants it raised, and the viewBox follows.
+ */
 const SHAPE_TEAR = Object.freeze({ gain: 1.9, gainDown: 2.2, cap: 2.6 });
 /** The plate only shows as a hard violet edge between letters. */
 const PLATE_TEAR = Object.freeze({ gain: 1.75, gainDown: 2.0, cap: 1.85 });
@@ -303,7 +310,8 @@ async function main() {
     )
     .join(' ');
 
-  const box = boxOf(burstComponent, toUnits);
+  // Measured off the emitted path, not off `burstComponent` — see `pathBoxOf`.
+  const box = pathBoxOf(burst);
   const source = render({ glyphs, burst, plate, box, model: `${meta.width}x${meta.height}` });
 
   if (CHECK) {
@@ -741,6 +749,33 @@ const boxOf = (c, { scale, ox, oy }) => [
   round((c.y1 - c.y0) * scale),
 ];
 
+/**
+ * [x, y, w, h] of a path AS EMITTED — the reach of the drawing, not of the
+ * raster component it was traced from.
+ *
+ * These two differ by the tear. `boxOf` measures the component BEFORE the hand
+ * displaces its vertices, so a box taken from it is short by up to the tear cap
+ * on every side, and a viewBox padded off that box hands its pad to the tear
+ * instead of to the margin. That is exactly how the outermost spike of the
+ * purple keyline came to land inside the last pixel column of `mark.png` and
+ * read as a flat cut. The fix is to measure what is drawn: the amplitude then
+ * costs nothing, because it is inside the number the frame is built from.
+ *
+ * Every path this module emits is a polyline of absolute `M`/`L` commands with
+ * `Z` (see `pathsOf`), so the extremes ARE the vertices — no curve to solve.
+ */
+const pathBoxOf = (d) => {
+  const nums = d.match(/-?\d+(?:\.\d+)?/g).map(Number);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < nums.length; i += 2) {
+    if (nums[i] < x0) x0 = nums[i];
+    if (nums[i] > x1) x1 = nums[i];
+    if (nums[i + 1] < y0) y0 = nums[i + 1];
+    if (nums[i + 1] > y1) y1 = nums[i + 1];
+  }
+  return [round(x0), round(y0), round(x1 - x0), round(y1 - y0)];
+};
+
 // ------------------------------------------------------------------- output
 
 function render({ glyphs, burst, plate, box, model }) {
@@ -790,7 +825,11 @@ export const SHAPE = '${burst}';
 /** The hard-edged darker region the lettering sits on. */
 export const SHADE_PLATE = '${plate}';
 
-/** [x, y, w, h] of the purple shape, in design units. */
+/**
+ * [x, y, w, h] of the purple shape AS DRAWN, in design units — the torn path's
+ * own extremes, tear included, so a frame padded off this box is padded off the
+ * real reach of the outermost spike.
+ */
 export const SHAPE_BOX = Object.freeze([${box.join(', ')}]);
 
 /** [x, y, w, h] of the lettering's ink, in design units. */
