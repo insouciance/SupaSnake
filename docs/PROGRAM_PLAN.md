@@ -111,11 +111,19 @@ engine work. Order (visibility × IP, audit-derived, sequencing-corrected):
    migration and its own owner decision), and the non-instanced `SnakeModel`
    path still mounts no cosmetics — which is why the round-3 sparse-snake shots
    show a bare head and why this port's do too. Both belong to 90S-10.
-4. **90S-1 The Mark** (M/L): new logo (/Volumes/Souci_WD/Downloads/LOGO.jpg)
-   → production asset family (transparent, 2x/3x, SVG trace if feasible),
-   home hero at the locked size/position, favicon/PWA/og/notification icons.
+4. **90S-1 The Mark** (M/L): REBUILD the logo as an original production
+   vector (owner 2026-08-07: LOGO.jpg is the MODEL, never the asset — "you
+   certainly shouldn't implement that JPG") — chunky comic letterforms,
+   yellow→orange gradient, purple burst as drawn polygon; whole icon family
+   (hero/favicon/PWA-maskable/og/notification) derives from the rebuilt SVG;
+   simplified small-mark variant if the burst muds below ~64px (owner
+   reviews); home hero at the locked size/position; side-by-side
+   rebuild-vs-model comparison for owner fidelity judgment.
 5. **90S-10 Cosmetic Renderer & Atelier** (L): the invisible-identity fix —
    trail/board_accent/emblem slots get renderers, badges read their glyph.
+   PLUS default-equip migration for the guide shades/braids (owner agreed
+   2026-08-07: 90S-A ships with bare-head default; the equip default is this
+   package's migration) —
    Highest commercial value in the audit; pairs with runway mode (#42) and
    supporter-item seeding when the owner calls them.
 6. **90S-2 Chrome Law** (L) → **90S-4 Pickups** (M) → **90S-3 Extraction** (L)

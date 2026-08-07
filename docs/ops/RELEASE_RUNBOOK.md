@@ -1,59 +1,91 @@
 # Production Release Runbook
 
-Current production baseline: the Wave-2 release
-`fb25918d731e8f292a106e168728ca0782b78c94` — the mobile hotfix (PR 95) atop the
-server-held wardrobe and migration 069 (PR 90), the modal and polish batch
-(PR 91), the previous release record (PR 93) and the LF-D closure (PR 94) —
+Current production baseline: the 90s cutover
+`fc6fdf34e50c73d9a43df5577e4c82a82d888928` — Wave-3 Measurement CE-5×ET-0
+(PR 97), the ET-5 canonical camera with Constitution v1.16 §15 row 38 (PR 98),
+the ratified 90s composition behind `NEXT_PUBLIC_NINETIES_COMPOSITION`
+(PR 99, 90S-A) and the HUD in 90s ink (PR 100, 90S-B) —
 independently verified on 7 August 2026 by successful production workflow
-`31158876485` (verify 07:44–08:01 UTC, deploy 08:01–08:08:53 UTC,
-`expected_migrations=069_snake_cosmetic_loadout.sql`) as deployment
-`dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt`
-(`supasnake-6wigb55k0-josef-bells-projects.vercel.app`). The outgoing anchor was
-`dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` on `59fb580`.
+`31196323574` (verify 16:11–16:27 UTC, deploy 16:27–16:36:17 UTC,
+`expected_migrations=none`) as deployment
+`dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8`
+(`supasnake-7nw4vbjja-josef-bells-projects.vercel.app`). The outgoing anchor was
+`dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` on `fb25918`.
 
-**This release moved both the schema and the public surface.** Hosted migrations
-went from 001–068 to **001–069**: `069_snake_cosmetic_loadout.sql` applied under
-the reviewed `snake-cosmetic-loadout` rollout classifier, and its notice
-recorded “2 snake cosmetic definitions now in the catalog (face + crown),
-0 food skins by design”. The public surface went from 23 flags to **24** with
-`NEXT_PUBLIC_SNAKE_COSMETICS`, and `contractHash` equals `declaredHash` at
-`e60cd71ee0ca67a5be81d165b26d0bf8eab337319276862367a9f2b89d158017`, computed
-independently from the checked-in manifest before dispatch. Canonical health
+**This is the largest visual change in the product's history, and it carried no
+migration.** The hosted schema stays **001–069** with no pending plan. The
+public surface went from 24 flags to **25** with
+`NEXT_PUBLIC_NINETIES_COMPOSITION`, and `contractHash` equals `declaredHash` at
+`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, computed
+independently from the checked-in manifest at the merge SHA. Canonical health
 reports the exact release SHA, healthy database, project ref
 `gmpwyzqafoyowndbvlma`, and Genome schema/catalog/Ascendance 2/2/2 with eight
 Splices, rules version 2, and neutral 2/3/4 Strain thresholds.
 
-The wardrobe was proved at runtime: `/api/player/cosmetics` and its `/equip`
-child both answer 401 rather than 404, so the routes exist and are merely
-unauthenticated; neither route existed at `59fb580`. **Name the discriminator
-correctly** — the cosmetics chamber itself predates this release and ran off a
-client-side `EQUIPPED_LOADOUT` constant. What shipped here is the *server-held*
-wardrobe, so "the chamber renders" is not evidence of this release and the two
-routes are.
+The design cutover was proved at runtime: the board-theme literals
+`SUPA SNAKE ORANGE`, `CYAN NEON` and `DARK NEON` were baselined **absent** from
+the outgoing bundle and are present in `8368-ecaa95e1b2172365.js` after the
+deploy. Baselining the absence first is what makes the presence mean something.
 
 The dedicated read-only probe remains `cohesive_release_read_only_v5` and came
-back green on all 16 sentinels; PR 90 and PR 94 did not change the probe, which
-was verified at the release SHA. Canonical alias, cron owner, and every cron
+back green on all 16 sentinels, verified at the release SHA. Canonical alias,
+cron owner, and every cron
 host name the same READY production deployment; cron is enabled and its
 normalized definition hash remains
 `a59e17b1817d6a84747db483b6adfb8f8ed3de7f3613e459530cefa9491aaeaf`.
 Stripe remains in sandbox/test mode. The deploy workflow's reviewed rollout
 allowlist holds six contracts — `genome-v2-initial`, `genome-v2-resume`,
 `settlement-payload-bounds`, `player-gene-eligibility`,
-`settlement-sweep-primary` and `snake-cosmetic-loadout` — the sixth exercised
-end to end for the first time by this run.
+`settlement-sweep-primary` and `snake-cosmetic-loadout`.
 
-**The engine rules version is unchanged at `snake-rules-2026-08-05.2`**, and the
-rules chunk `2894-433978b3ede14d00.js` kept a byte-identical filename hash
-across the cutover for the **third consecutive release**. This train therefore
-has no run-continuity boundary: open runs crossed it seamlessly, with no
-`incompatible` phase and no recovery path. A schema and flag change is not by
-itself a continuity boundary; only the rules version is.
+### A moved rules chunk is not a rules change
+
+**The engine rules version is unchanged at `snake-rules-2026-08-05.2`**, so this
+train has no run-continuity boundary: open runs crossed it seamlessly, with no
+`incompatible` phase and no recovery path.
+
+But read the evidence carefully, because this release is the first in four where
+it is not simply "the chunk hash is identical". The rules **chunk** moved —
+`2894-433978b3ede14d00.js` → `2894-38b54650201f7905.js` — consistent with
+PR 97's telemetry touching engine-adjacent files. The version *string* did not
+move: it is present in the new chunk, and the old version is absent from all 39.
+
+The pinning contract keys on the **version string**, not on the chunk filename.
+So a moved chunk with an unchanged string is not a boundary, and a future
+operator who treats a changed chunk hash as one will withdraw a release for no
+reason. Taken with the earlier lesson, the rule is: a schema change, a flag
+change, and a moved chunk are each *not* continuity boundaries on their own —
+only the rules version string is.
+
+### Rollback shape for the current release
+
+The 90s cutover carries **no migration**, so rollback is deployment-level:
+return the alias to `dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` and change nothing else.
+The schema stays 001–069 either way.
+
+Turning the composition off is the *other* lever, and it is a forward release
+with `NEXT_PUBLIC_NINETIES_COMPOSITION` off rather than a rollback. That path is
+tested rather than inferred: the `rollback` E2E leg builds and runs the INK &
+AMBER stone board, so the off-leg is exercised on every PR.
+
+### What an observable proof cannot cover — ET-5's camera
+
+Record this as a limitation, not as a pass. PR 98's canonical camera has **no
+clean runtime observable**: its numeric constants are folded by minification,
+and grepping the served bundle for `canonical` matches unrelated settlement
+copy. It is correct by construction and pinned by its verifier, but nothing in
+the served artifact independently proves it.
+
+That is an acceptable gap for a camera, and it is named here so a future reader
+does not mistake the silence for evidence. If runtime proof of camera framing is
+ever actually needed, the cheapest honest fix is a data attribute carrying the
+pinned values, which minification will not fold.
 
 ### Rollback shape for a migration-bearing release
 
-This release has a **migration boundary**, and it behaves differently from the
-flag and rules boundaries described elsewhere in this runbook.
+A migration boundary behaves differently from the flag and rules boundaries
+described elsewhere in this runbook. Migration 069, from the Wave-2 release, is
+the worked example.
 
 Migration 069 **stays applied** on any rollback. It is purely additive, and the
 workflow proved the outgoing application healthy against the post-069 schema at
@@ -88,6 +120,12 @@ editing a migration that is already merged or deployed, and 069 is both; a
 docs-only record is not the place to make an exception to that rule. Read the
 header as superseded by this section.
 
+**This item is RESOLVED and needs no further carrying.** It has surfaced on the
+deploy agent's checklist for several consecutive releases; the ruling above is
+the final disposition — the header stays as written, this section supersedes it,
+and no future release is expected to re-raise it. Only an owner decision to
+waive the applied-migration rule would reopen it.
+
 ### What a rules bump does to a run in flight
 
 Say this precisely, because the loose phrasing — “active runs replay under the
@@ -116,14 +154,17 @@ item (FM-12), and it is a known gap rather than a property of this release.
 The live interaction-v2 contract uses optional physical Gene relics on a
 deterministic 8 ± 2-food cadence; already-issued or omitted interaction stamps
 retain automatic-offer v1 compatibility. The now-previous deployment
-`dpl_Hamna8jet9i7EcyNpL2FRnqLkicB` (`59fb580`) is the artifact-level rollback
-candidate. It shares the same rules version, so rolling back crosses no
-run-continuity boundary and interrupts no run in flight — but it predates
-migration 069 and serves the **23-flag** surface at hash `ac678998…e2be`. As set
-out above, 069 stays applied and the outgoing artifact was proven healthy
-against it, so the rollback is deployment-level only; what it gives up is the
-server-held wardrobe, the modal and polish batch, and the mobile hotfix. The
-artifact before it (`dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na`, `03d185a`) additionally
+`dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt` (`fb25918`) is the artifact-level rollback
+candidate. It shares hosted schema 001–069 and the same rules version, so
+rolling back crosses no run-continuity boundary and interrupts no run in flight
+— but it serves the **24-flag** surface at hash `e60cd71e…8017`, and it gives up
+the 90s composition, the 90s HUD, the canonical camera and the Wave-3
+measurement work. Prefer the flag-off forward release if the objection is to the
+composition rather than to the build. The artifact before it
+(`dpl_Hamna8jet9i7EcyNpL2FRnqLkicB`, `59fb580`) additionally predates migration
+069 and serves the **23-flag** surface, giving up the server-held wardrobe, the
+modal and polish batch, and the mobile hotfix; 069 stays applied either way. The
+one before that (`dpl_6SMXi6Ke6APYWdS6wm3T2efxR3Na`, `03d185a`) additionally
 gives up the INK & AMBER presentation and the adaptive-quality governor. Going
 back to (`dpl_5e1E1JEjrxd6wg55zCs83g3Q7rF1`, `4e51e81`) serves
 `snake-rules-2026-08-05.1`, so a rollback that far *is* a rules change: runs
