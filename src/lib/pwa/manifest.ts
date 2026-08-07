@@ -7,18 +7,26 @@
  * home screen and a window without browser chrome — never a gate and never a
  * thing to pester somebody about. That posture is why this file is small.
  *
- * ICONS ARE REUSED, NOT REGENERATED
+ * ICONS ARE DERIVED, NOT DRAWN
  *
- *   WP-0.08 already shipped the icon set through the App Router file
- *   conventions: `src/app/icon.svg` (the scalable mark, served verbatim at
- *   `/icon.svg`) and `src/app/apple-icon.tsx` (180×180 PNG, rendered by
- *   `next/og` at `/apple-icon`). This module references those two URLs and
- *   creates nothing. A second icon set would be a second thing to keep in
- *   step with the palette, and the first one to go stale.
+ *   Every icon below is rasterised from one vector,
+ *   `scripts/brand/markGeometry.mjs`, by `scripts/build-brand-assets.mjs`.
+ *   That is a correction, not a refactor: WP-0.08's set was a hand-written
+ *   path duplicated between `src/app/icon.svg` and `src/app/apple-icon.tsx`,
+ *   the two copies were free to drift, and both were still shipping the cyan
+ *   that `globals.css:13-15` retired.
  *
- *   The SVG carries `sizes: 'any'`, which is what makes it satisfy the
- *   installability floor on Chromium (an icon of at least 144px, or a
- *   vector declared for any size) without a raster ladder.
+ *   The SVG keeps `sizes: 'any'`, which satisfies the installability floor on
+ *   Chromium (an icon of at least 144px, or a vector declared for any size).
+ *   The 192/512 rasters are added anyway because Android prefers a raster it
+ *   can size once, and the MASKABLE pair is what stops a launcher letterboxing
+ *   the mark inside its own shape — those two are drawn to a tighter safe zone
+ *   so the glyph survives a circular crop.
+ *
+ *   `/apple-icon` is deliberately absent. iOS reads the `apple-touch-icon`
+ *   link tag that the App Router emits from `src/app/apple-icon.png`, never
+ *   the manifest, so listing it here only added an entry that no platform
+ *   consumed.
  *
  * NOTHING COMMERCIAL LIVES HERE
  *
@@ -75,8 +83,8 @@ export interface ManifestIcon {
 }
 
 /**
- * The existing WP-0.08 icons, by their served URL. Both are App Router file
- * conventions; neither is a new asset.
+ * The icon set, by served URL. All five are committed files derived from the
+ * mark; none is generated at request time.
  */
 export const PWA_ICONS: readonly ManifestIcon[] = [
   {
@@ -87,11 +95,28 @@ export const PWA_ICONS: readonly ManifestIcon[] = [
     purpose: 'any',
   },
   {
-    // src/app/apple-icon.tsx — next/og route, 180×180 PNG.
-    src: '/apple-icon',
-    sizes: '180x180',
+    src: '/brand/icon-192.png',
+    sizes: '192x192',
     type: 'image/png',
     purpose: 'any',
+  },
+  {
+    src: '/brand/icon-512.png',
+    sizes: '512x512',
+    type: 'image/png',
+    purpose: 'any',
+  },
+  {
+    src: '/brand/icon-maskable-192.png',
+    sizes: '192x192',
+    type: 'image/png',
+    purpose: 'maskable',
+  },
+  {
+    src: '/brand/icon-maskable-512.png',
+    sizes: '512x512',
+    type: 'image/png',
+    purpose: 'maskable',
   },
 ];
 
