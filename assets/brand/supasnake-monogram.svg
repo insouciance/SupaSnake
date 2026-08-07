@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="SupaSnake">
+<title>SupaSnake</title>
+<defs>
+<linearGradient id="ss-mono" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="100">
+<stop offset="0" stop-color="#FFD614"/>
+<stop offset="0.46" stop-color="#FCC406"/>
+<stop offset="1" stop-color="#FA8102"/>
+</linearGradient>
+<mask id="ss-mono-ink" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+<rect width="100" height="100" fill="#000"/>
+<g fill="none" stroke="#fff" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="3"><g transform="translate(26.32 82) rotate(-4) scale(0.64) translate(0 -100)"><path d="M65 26 L50 12 L26 12 L12 29 L19 45 L49 57 L56 71 L46 88 L23 88 L7 74" stroke-width="27"/></g></g>
+</mask>
+</defs>
+<rect width="100" height="100" rx="20" fill="#7E0672"/>
+<g fill="none" stroke="#0B0410" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="3"><g transform="translate(26.32 82) rotate(-4) scale(0.64) translate(0 -100)"><path d="M65 26 L50 12 L26 12 L12 29 L19 45 L49 57 L56 71 L46 88 L23 88 L7 74" stroke-width="40"/></g></g>
+<g mask="url(#ss-mono-ink)">
+<rect width="100" height="100" fill="#FFE47E"/>
+<g fill="none" stroke="url(#ss-mono)" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="3" transform="translate(0 2.56)"><g transform="translate(26.32 82) rotate(-4) scale(0.64) translate(0 -100)"><path d="M65 26 L50 12 L26 12 L12 29 L19 45 L49 57 L56 71 L46 88 L23 88 L7 74" stroke-width="27"/></g></g>
+</g>
+</svg>
