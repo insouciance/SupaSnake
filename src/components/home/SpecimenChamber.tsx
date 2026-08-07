@@ -55,6 +55,7 @@ import {
   type CosmeticLoadout,
 } from '@/components/home/SnakeCosmetics';
 import { EMPTY_SNAKE_LOADOUT } from '@/lib/cosmetics/snakeCosmetics';
+import { NINETIES_COMPOSITION_ENABLED } from '@/lib/features/ninetiesComposition';
 
 // -----------------------------------------------------------------------------
 // Look constants
@@ -1204,8 +1205,16 @@ export function SpecimenChamber({
        * resolve one style through one flag; publishing it here lets a browser
        * test assert on BOTH e2e legs that the home creature is the creature
        * this build ships, without starting a run to find out.
+       *
+       * THE FLAG, NOT `IS_SNAKE_90S`. They are the same value in every built
+       * artifact, and they differ in exactly one place: a dev server where
+       * `?snake90s=` has been used to compare styles. `IS_SNAKE_90S` reads the
+       * URL, which exists only on the client, so publishing it would make the
+       * server's markup and the client's disagree on a dev compare - a
+       * hydration mismatch bought for a fact this attribute is not about. What
+       * it is about is which composition the BUILD shipped.
        */
-      data-composition={IS_SNAKE_90S ? 'nineties' : 'stone'}
+      data-composition={NINETIES_COMPOSITION_ENABLED ? 'nineties' : 'stone'}
       data-testid="home-specimen-full-stage"
     >
       {/*

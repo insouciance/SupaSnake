@@ -116,12 +116,11 @@ export function RunCockpit({
        * rather than assumed.
        *
        * `NEXT_PUBLIC_*` is inlined at build time, so nothing at runtime can
-       * read the flag back out of the artifact - and a rollback that CI cannot
-       * see is a rollback nobody is testing. Both e2e legs run the whole suite;
-       * this is what lets each of them say which one it is.
-       *
-       * It is also the CSS hook for the one thing that has to differ in the
-       * DOM: see `.arenaQuietZone` and the note on the tray's frame.
+       * read the flag back out of the artifact - and a rollback CI cannot see
+       * is a rollback nobody is testing. The chamber publishes the same fact
+       * for the same reason (see `SpecimenChamber`); this one is here so a
+       * screenshot or a bug report from the played board carries which
+       * composition produced it.
        */
       data-composition={NINETIES_COMPOSITION_ENABLED ? 'nineties' : 'stone'}
       data-testid="game-hud"
