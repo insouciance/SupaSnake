@@ -78,17 +78,20 @@ const HOME_HEADER_GRID_STYLE = {
  * and 441px. `mark.png` is 441px wide for that reason - 1x is the widest box
  * the mark ever occupies, so the desktop hero is served at native resolution.
  *
- * The mark is TALLER than the type it replaces (148px against 102px at the
- * desktop step) and that is correct: the extra height is burst, and the
- * LETTERING inside it lands at roughly the cap height the type had. Matching
- * the outer heights instead would have shrunk the letters by a third.
+ * The mark is TALLER than the type it replaces (158px against 102px at the
+ * desktop step) and that is correct: the extra height is the purple shape, and
+ * the LETTERING inside it lands at roughly the cap height the type had.
+ * Matching the outer heights instead would have shrunk the letters by a third.
+ * The height is READ OFF the emitted file rather than chosen - the mark's
+ * aspect is a property of the drawing, so `build-brand-assets.mjs` decides it
+ * and this constant follows.
  */
 export const HOME_WORDMARK = Object.freeze({
   /** Measured from the ruling's own geometry; see above. */
   widthEm: 6.12,
   /** Intrinsic size of the 1x delivery, for aspect-ratio and CLS. */
   intrinsicWidth: 441,
-  intrinsicHeight: 148,
+  intrinsicHeight: 158,
 });
 
 export interface HomeSpecimenIdentity {

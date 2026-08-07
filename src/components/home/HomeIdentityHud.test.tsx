@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { render, screen } from '@testing-library/react';
 import {
   HOME_HEADER_GRID,
@@ -69,6 +71,21 @@ describe('the mark, under the locked wordmark geometry', () => {
     const img = screen.getByRole('heading', { level: 1 }).querySelector('img');
     expect(img).toHaveAttribute('width', String(HOME_WORDMARK.intrinsicWidth));
     expect(img).toHaveAttribute('height', String(HOME_WORDMARK.intrinsicHeight));
+  });
+
+  /**
+   * The declared box has to be the file's ACTUAL box, or the reserved space is
+   * wrong and the hero shifts as the mark decodes. The mark's aspect is a
+   * property of the drawing, so redrawing it moves this height — which is
+   * precisely the drift this reads out of the PNG rather than trusting.
+   */
+  it('declares the emitted file’s real size, not a remembered one', () => {
+    const png = readFileSync(
+      join(process.cwd(), 'public/brand/mark.png')
+    );
+    // IHDR width/height are big-endian uint32 at byte 16 and 20.
+    expect(png.readUInt32BE(16)).toBe(HOME_WORDMARK.intrinsicWidth);
+    expect(png.readUInt32BE(20)).toBe(HOME_WORDMARK.intrinsicHeight);
   });
 });
 
