@@ -15,7 +15,14 @@
 
 import { useEffect, useRef, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import type { TickJitterMeter } from '@/lib/game/runInstruments';
+import { renderCommits, type TickJitterMeter } from '@/lib/game/runInstruments';
+
+/**
+ * The surfaces whose commit rate ET-3 is accountable for, in the order they
+ * are printed. `page` is the 8k-line run route, `cockpit` the HUD shell,
+ * `board` the in-Canvas scene component.
+ */
+const COMMIT_CHANNELS = ['page', 'cockpit', 'board'] as const;
 
 /** Frames kept for the p95 window (~4s at 60fps). */
 const RING_SIZE = 240;
@@ -50,6 +57,11 @@ export function PerfHUD({
   const lastCallsRef = useRef(0);
   const lastTrianglesRef = useRef(0);
   const elementRef = useRef<HTMLDivElement | null>(null);
+  // ET-3: commits and ticks are both cumulative, so the reported rate is a
+  // DELTA over the report window. A cumulative ratio would keep quoting the
+  // loading burst long after steady movement started.
+  const lastTickCountRef = useRef(0);
+  const lastCommitsRef = useRef<number[]>(COMMIT_CHANNELS.map(() => 0));
 
   // EffectComposer resets gl.info on every pass, which would leave only
   // the final fullscreen quad visible here. Turn autoReset off and reset
@@ -128,10 +140,26 @@ export function PerfHUD({
           ).toFixed(0)}ms @${(jitter.worstGapScheduledMs ?? 0).toFixed(0)}ms\n`
         : 'tick: no samples\n';
 
+    // ET-3 commit rate: React commits per engine tick, per surface, over this
+    // report window. The package's exit criterion is that these read 0.00
+    // while the snake is simply moving.
+    const tickCount = jitterRef?.current?.tickCount ?? 0;
+    const tickDelta = tickCount - lastTickCountRef.current;
+    lastTickCountRef.current = tickCount;
+    const commitParts = COMMIT_CHANNELS.map((channel, index) => {
+      const total = renderCommits.get(channel);
+      const delta = total - lastCommitsRef.current[index];
+      lastCommitsRef.current[index] = total;
+      const perTick = tickDelta > 0 ? (delta / tickDelta).toFixed(2) : '-';
+      return `${channel} ${perTick}`;
+    });
+    const commitLine = `commits/tick ${commitParts.join('  ')}\n`;
+
     el.textContent =
       `draws ${lastCallsRef.current}  tris ${lastTrianglesRef.current}\n` +
       `frame ${emaRef.current.toFixed(1)}ms  p95 ${p95.toFixed(1)}ms\n` +
       jitterLine +
+      commitLine +
       `fps ~${(1000 / Math.max(emaRef.current, 0.001)).toFixed(0)}  dpr ${gl
         .getPixelRatio()
         .toFixed(2)}`;

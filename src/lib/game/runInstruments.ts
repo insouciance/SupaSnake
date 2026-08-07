@@ -358,6 +358,54 @@ export class RenderTierLedger {
   }
 }
 
+// ---------------------------------------------------------------------------
+// React commit counter (ET-3's before/after number)
+// ---------------------------------------------------------------------------
+
+/**
+ * How many times each React surface COMMITTED, counted per named channel.
+ *
+ * ET-3's claim is that a movement tick should cost no React work: the snake
+ * reaches the screen through the interpolation buffer, and the HUD's leaves
+ * subscribe to the fields they draw. That claim is only worth making if it is
+ * a number, and "renders per tick" is the number — the tick count comes from
+ * `TickJitterMeter`, the commit counts come from here, and the ratio is the
+ * whole argument.
+ *
+ * Channels are recorded from an effect with no dependency list, which React
+ * runs after EVERY commit of that component — so this counts commits, not
+ * render attempts a bailout discarded. Nothing here reaches the engine, a
+ * payout, or the store: it is a tally that overlays read.
+ */
+export class CommitCounter {
+  private readonly counts = new Map<string, number>();
+
+  record(channel: string): void {
+    this.counts.set(channel, (this.counts.get(channel) ?? 0) + 1);
+  }
+
+  get(channel: string): number {
+    return this.counts.get(channel) ?? 0;
+  }
+
+  snapshot(): Record<string, number> {
+    return Object.fromEntries(this.counts);
+  }
+
+  reset(): void {
+    this.counts.clear();
+  }
+}
+
+/**
+ * The one counter every surface reports into.
+ *
+ * A singleton rather than a prop: the surfaces being counted are a page, a
+ * cockpit and an in-Canvas board that share no owner, and threading a ref
+ * through them would be exactly the plumbing this package exists to remove.
+ */
+export const renderCommits = new CommitCounter();
+
 /** Convenience for overlays: "p50/p95/max (n)" in one short string. */
 export function formatSummary(summary: SampleSummary, unit = 'ms'): string {
   if (summary.count === 0) return 'no samples';

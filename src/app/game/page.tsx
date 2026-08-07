@@ -160,6 +160,7 @@ import {
   TickJitterMeter,
   buildDeathForensics,
   COYOTE_OBSERVATION_MS,
+  renderCommits,
   type DeathForensics,
 } from '@/lib/game/runInstruments';
 import { reportTelemetry } from '@/lib/telemetry/report';
@@ -589,6 +590,7 @@ function BoardViewportShell({
   rateCallout,
   children,
 }: BoardViewportShellProps) {
+  useCommitCount('cockpit');
   if (cockpitEnabled && isPlaying) {
     return (
       <RunCockpit
@@ -706,7 +708,27 @@ function directionCanRelease(result: SetDirectionResult): boolean {
   return result === 'accepted' || result === 'duplicate';
 }
 
+/**
+ * ET-3's meter, read from inside the surfaces it judges.
+ *
+ * The empty dependency list is the whole mechanism: React runs this effect
+ * after EVERY commit of the calling component, so the tally counts commits
+ * rather than render attempts a bailout threw away. `?perf` divides it by the
+ * tick count and prints "commits/tick", which is the package's exit criterion
+ * expressed as a number.
+ *
+ * Dev builds only. In production it is a branch that returns immediately —
+ * the instrument may never become a cost on the thread it exists to protect.
+ */
+function useCommitCount(channel: string): void {
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    renderCommits.record(channel);
+  });
+}
+
 export default function GamePage() {
+  useCommitCount('page');
   const { session, isAuthenticated, isAnonymous, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
   /**
@@ -8221,6 +8243,7 @@ function GameBoard({
   showDeathExplosion,
   cameraShake,
 }: GameBoardProps) {
+  useCommitCount('board');
   const theme = themeManager.getTheme(dynasty);
   const materialProfile = getGameMaterialProfile(dynasty);
   // 90S-A: see boardThemeForRun. Null on the rollback leg. One per dynasty.
