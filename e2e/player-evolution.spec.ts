@@ -184,13 +184,43 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
     // state consumes is the Workbench's business and changes with the plan; the
     // curriculum's claim is about WHICH powers may reach a real run's Pods, and
     // that claim has to hold for every Gene the rail is showing.
-    const railIds = await palette
-      .locator('[data-eligibility]')
-      .evaluateAll((nodes) =>
-        nodes.map((node) =>
-          (node.getAttribute('data-testid') ?? '').replace('workbench-gene-', '')
-        )
-      );
+    // THE ANNOTATION RACE (#35). The rail renders
+    // `data-eligibility={annotation?.state}` (WorkbenchView.tsx:591) and React
+    // OMITS an attribute whose value is undefined — so before `useCurriculum`'s
+    // fetch resolves, every tile is present and NONE carries the attribute.
+    // Reading the rail in the frame right after Clear therefore legitimately
+    // snapshotted zero annotated tiles: `railIds.length = 0`, and the failure
+    // looked like a curriculum bug rather than a read taken too early.
+    //
+    // Waiting for the rail to MOUNT is not enough — that is what the earlier
+    // fix waited for, and the rail mounts unannotated. The condition that
+    // actually means "the curriculum arrived" is that every tile the rail
+    // shows carries the attribute, which is the invariant the assertions below
+    // already depend on.
+    const railTiles = palette.locator('> button');
+    const annotatedTiles = palette.locator('> button[data-eligibility]');
+    await expect(railTiles.first()).toBeAttached({ timeout: 30_000 });
+    await expect
+      .poll(
+        async () => {
+          const [tiles, annotated] = await Promise.all([
+            railTiles.count(),
+            annotatedTiles.count(),
+          ]);
+          return tiles > 0 && tiles === annotated;
+        },
+        {
+          timeout: 30_000,
+          message: 'the gene rail never became fully annotated by the curriculum',
+        }
+      )
+      .toBe(true);
+
+    const railIds = await annotatedTiles.evaluateAll((nodes) =>
+      nodes.map((node) =>
+        (node.getAttribute('data-testid') ?? '').replace('workbench-gene-', '')
+      )
+    );
     expect(railIds.length).toBeGreaterThan(0);
     const railStarters = railIds.filter((id) =>
       (STARTERS as readonly string[]).includes(id)
