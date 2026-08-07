@@ -76,7 +76,7 @@ export function ClanIdentityEditor({ accessToken, view, onSaved }: ClanIdentityE
           style={{ background: `linear-gradient(120deg, ${from}, ${to})` }}
           data-testid="clan-banner-preview"
         >
-          <div className="w-12 h-12 rounded-arcade bg-void/50 border border-bone-white/30 flex items-center justify-center text-2xl text-bone-white">
+          <div className="w-12 h-12 rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] border-[length:var(--ink-w-2)] border-ink flex items-center justify-center text-2xl text-bone-white">
             {emblem ? emblem.glyph : <IconShield size={22} />}
           </div>
           <div>
@@ -98,7 +98,7 @@ export function ClanIdentityEditor({ accessToken, view, onSaved }: ClanIdentityE
                     className={`w-14 h-9 rounded-arcade border transition-all ${
                       (bannerId ?? CLAN_BANNERS[0].id) === option.id
                         ? 'border-venom-orange scale-105'
-                        : 'border-scale-blue-light/50 hover:border-bone-white/60'
+                        : 'border-ink hover:border-venom-orange'
                     } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                     style={{ background: `linear-gradient(120deg, ${option.from}, ${option.to})` }}
                   />
@@ -119,7 +119,7 @@ export function ClanIdentityEditor({ accessToken, view, onSaved }: ClanIdentityE
                     className={`w-11 h-11 rounded-arcade border bg-void/60 text-xl text-bone-white transition-all ${
                       emblemId === option.id
                         ? 'border-venom-orange scale-105'
-                        : 'border-scale-blue-light/50 hover:border-bone-white/60'
+                        : 'border-ink hover:border-venom-orange'
                     } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {option.glyph}
@@ -146,7 +146,7 @@ export function ClanIdentityEditor({ accessToken, view, onSaved }: ClanIdentityE
                         aria-label={`${label} ${color}`}
                         className={`w-8 h-8 rounded-full border transition-all ${
                           value === color
-                            ? 'border-bone-white scale-110'
+                            ? 'border-ink scale-110'
                             : 'border-scale-blue-light/50'
                         } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                         style={{ background: color }}
