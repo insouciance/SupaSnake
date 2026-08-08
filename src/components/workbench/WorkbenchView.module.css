@@ -1,31 +1,67 @@
+/* -----------------------------------------------------------------------
+   THE GENOME WORKBENCH — the 90s cartoon language, on the DECK ground.
+
+   What this file used to be: a cosmic-glow surface. Radial gradients, 1px
+   pale hairlines on every region, blurred bloom, dashed orbits, blob radii.
+   Nine of the pattern library's rules were broken by it at once, and the
+   loudest was structural rather than decorative — five nested framed boxes
+   (`.table` inside which `.focusReaction`, `.curriculumTrials`, `.study`,
+   `.strainDisclosure` each drew their own border) where the ruling allows
+   ONE tray and ONE outline.
+
+   The grammar it wears now, all of it composed from `globals.css` tokens and
+   nothing invented beside them:
+
+     GROUND      the DECK ladder. `--fill-deck-1` is the tray, `--fill-deck-0`
+                 is a recess cut into it, `--fill-deck-2` is a raised thing
+                 lying on it. The steps ARE the separation, so regions inside
+                 the tray carry no border at all.
+     CONTOUR     `--ink-border-*`, and only on silhouettes: the tray, a slot,
+                 the picker, a chip, a button. Never around a region.
+     THE DROP    `--ink-drop-*` on the deck fills, `--ink-drop-void-*` where
+                 the shadow falls on the page's own night. Never blurred.
+     THE GAP     the slot row, the option list, the ladder and the fact field
+                 are FIELDS: they separate by the space between their cells.
+     PRESS       every pressable collapses its block to `1px 1px 0` under the
+                 finger rather than moving away from it.
+     ACCENT      amber is a FILL, never a keyline, and it means one thing:
+                 value you are getting — a Combo, a formed recipe, TAKE.
+     RADIUS      chip 4 / card 8 / tray 26, chosen by role.
+
+   No `filter`, no `box-shadow` with a blur radius, no `text-shadow`, and no
+   colour lighter than the fill it sits on drawn as a line.
+   ----------------------------------------------------------------------- */
+
 .workbench {
-  --violet: #a855f7;
-  --cyan: #22d3ee;
-  --gold: #f5c542;
+  --deck-0: var(--fill-deck-0);
+  --deck-1: var(--fill-deck-1);
+  --deck-2: var(--fill-deck-2);
+  --quiet: rgb(238 243 247 / 68%);
+  --quieter: rgb(238 243 247 / 52%);
   display: grid;
   width: 100%;
   min-width: 0;
   gap: 16px;
-  animation: researchEnter .42s ease-out both;
   container-name: research;
   container-type: inline-size;
 }
 
 .workbench > * { min-width: 0; }
 
+/* ---------- the page head: type on the ground, no frame ---------- */
+
 .intro {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 18px;
-  padding: 2px 4px;
+  padding: 0 2px;
 }
 
 .intro > div > p,
-.tableHeader p,
-.paletteHeader p {
+.tableHeader p {
   margin: 0;
-  color: rgb(125 249 255 / 78%);
+  color: var(--venom-orange);
   font-family: var(--font-body);
   font-size: 14px;
   font-weight: 800;
@@ -34,30 +70,32 @@
 }
 
 .intro h2 {
-  margin: 2px 0 0;
-  color: #f7f0ff;
+  margin: 3px 0 0;
+  color: var(--bone-white);
   font-family: var(--font-display);
   font-size: clamp(24px, 4vw, 38px);
   line-height: .98;
-  text-shadow: 0 0 18px rgb(168 85 247 / 25%);
 }
 
 .intro > div > span {
   display: block;
   margin-top: 5px;
-  color: rgb(237 233 223 / 62%);
+  color: var(--quiet);
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.4;
 }
 
+/* Dynasty specimens: chips on the ground. Selected is INK FILL with a paper
+   glyph — the documented "a chip that is a CHOICE" state, the same one Run
+   Setup's dynasty docks wear, so the two surfaces agree on what chosen looks
+   like. */
 .snakeMarks {
   display: flex;
   max-width: 55%;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 7px;
-  padding: 4px;
+  gap: 8px;
 }
 
 .snakeMarks button {
@@ -66,58 +104,42 @@
   min-height: 48px;
   align-items: center;
   gap: 8px;
-  border: 1px solid rgb(125 249 255 / 18%);
-  border-radius: 999px;
-  background: rgb(5 11 26 / 48%);
-  padding: 5px 10px 5px 7px;
-  color: rgb(237 233 223 / 55%);
+  border: var(--ink-border-2);
+  border-radius: var(--radius-card);
+  background: var(--deck-2);
+  padding: 6px 12px 6px 8px;
+  color: var(--bone-white);
+  box-shadow: var(--ink-drop-void-2);
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.snakeMarks button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink-stroke);
 }
 
 .snakeMarks button[aria-pressed='true'] {
-  border-color: rgb(245 197 66 / 68%);
-  background: radial-gradient(circle at 20% 50%, rgb(168 85 247 / 24%), rgb(5 11 26 / 84%));
-  color: #f7f0ff;
-  box-shadow: 0 0 15px rgb(168 85 247 / 15%);
+  background: var(--ink);
+  color: var(--bone-white);
 }
 
-.snakeMarks i {
-  width: 27px;
-  height: 27px;
-  color: var(--cyan);
-  filter: drop-shadow(0 0 7px rgb(34 211 238 / 46%));
-}
-
+.snakeMarks i { width: 26px; height: 26px; flex: none; color: var(--venom-orange); }
 .snakeMarks span { min-width: 0; text-align: left; }
 .snakeMarks strong,
 .snakeMarks small { display: block; white-space: nowrap; }
 .snakeMarks strong { font-family: var(--font-display); font-size: 14px; letter-spacing: .06em; }
-.snakeMarks small { margin-top: 1px; color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 14px; }
+.snakeMarks small { margin-top: 1px; color: var(--quiet); font-family: var(--font-body); font-size: 14px; }
+
+/* ---------- THE TRAY. One frame. Everything below is a region. ---------- */
 
 .table {
   position: relative;
   isolation: isolate;
-  overflow: hidden;
-  border: 1px solid rgb(168 85 247 / 35%);
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at 50% 17%, rgb(168 85 247 / 19%), transparent 31%),
-    radial-gradient(circle at 9% 63%, rgb(34 211 238 / 10%), transparent 28%),
-    linear-gradient(155deg, rgb(9 9 25 / 95%), rgb(3 8 20 / 93%));
-  padding: 15px;
-  box-shadow: inset 0 0 42px rgb(168 85 247 / 7%), 0 20px 48px rgb(0 0 0 / 22%);
-}
-
-.constellation {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  opacity: .18;
-  background-image:
-    radial-gradient(circle, #c4b5fd 0 1px, transparent 1.5px),
-    linear-gradient(112deg, transparent 0 49%, rgb(168 85 247 / 28%) 49.3% 49.6%, transparent 50% 100%);
-  background-position: 8px 16px, center;
-  background-size: 47px 47px, 100% 100%;
-  mask-image: linear-gradient(to bottom, black, transparent 88%);
+  border: var(--ink-border-3);
+  border-radius: var(--radius-tray);
+  background: var(--deck-1);
+  padding: 16px;
+  box-shadow: var(--ink-drop-void-3);
 }
 
 .tableHeader {
@@ -128,191 +150,331 @@
 }
 
 .tableHeader h3 {
-  margin: 2px 0 0;
-  color: #f7f0ff;
+  margin: 3px 0 0;
+  color: var(--bone-white);
   font-family: var(--font-display);
   font-size: clamp(16px, 2.4vw, 22px);
   line-height: 1.05;
 }
 
 .historyControls { display: flex; align-items: center; gap: 6px; }
-.historyControls span { color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 14px; }
+.historyControls span { color: var(--quiet); font-family: var(--font-body); font-size: 14px; }
+
 .historyControls button,
 .stateVerbs button {
   min-height: 44px;
-  border: 0;
-  background: transparent;
-  padding: 6px 8px;
-  color: rgb(196 181 253 / 68%);
+  border: var(--ink-border-1);
+  border-radius: var(--radius-chip);
+  background: var(--deck-0);
+  padding: 6px 12px;
+  color: var(--bone-white);
   font-family: var(--font-body);
   font-size: 14px;
   font-weight: 800;
   letter-spacing: .06em;
+  box-shadow: var(--ink-drop-1);
+  transition: box-shadow 120ms ease, transform 120ms ease;
 }
-.historyControls button:disabled { opacity: .28; }
 
-.genomeStage {
+.historyControls button:active,
+.stateVerbs button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink-stroke);
+}
+
+.historyControls button:disabled,
+.stateVerbs button:disabled {
+  color: var(--quieter);
+  box-shadow: none;
+}
+
+/* ---------- THE BENCH: six slots, a field separated by gaps ---------- */
+
+.genomeStage { margin-top: 14px; }
+
+.slotRow {
   position: relative;
+  z-index: 21;
   display: grid;
-  min-height: 252px;
-  place-items: center;
-  margin-top: 6px;
-}
-
-.locusArc {
-  display: grid;
-  width: min(100%, 720px);
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
 }
 
-.locus {
-  position: relative;
+.slotCell { position: relative; min-width: 0; }
+
+/*
+ * A slot is an OBJECT — a socket you press — so it takes the contour, the
+ * card radius and the block, and it collapses that block under the finger.
+ * Its state is carried by FILL, never by a coloured line:
+ *
+ *   open      amber, because the open slot is the one offering you something
+ *   gene      the raised deck step
+ *   splice    amber, because a Combo is value you already own
+ *   ash       the recess step and no block at all: a burned socket is a hole
+ *   waiting   the recess step, quiet, and not pressable
+ */
+.slot {
   display: flex;
+  width: 100%;
   min-width: 0;
-  min-height: 128px;
+  min-height: 132px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 0;
-  background: transparent;
-  padding: 8px 4px;
-  color: rgb(237 233 223 / 56%);
+  gap: 3px;
+  border: var(--ink-border-2);
+  border-radius: var(--radius-card);
+  background: var(--deck-2);
+  padding: 9px 5px;
+  color: var(--bone-white);
+  box-shadow: var(--ink-drop-2);
+  transition: box-shadow 120ms ease, transform 120ms ease;
 }
 
-.locus:nth-child(1), .locus:nth-child(6) { transform: translateY(28px); }
-.locus:nth-child(2), .locus:nth-child(5) { transform: translateY(-18px); }
-.locus:nth-child(3), .locus:nth-child(4) { transform: translateY(-42px); }
-
-.locus::before {
-  position: absolute;
-  inset: 5px 9px;
-  border: 1px solid rgb(125 249 255 / 19%);
-  border-radius: 36% 64% 50% 50% / 54% 40% 60% 46%;
-  background: radial-gradient(circle, rgb(34 211 238 / 8%), rgb(4 8 20 / 78%) 68%);
-  content: '';
-  transform: rotate(calc((var(--slot, 1) - 3) * 4deg));
+.slot:not(:disabled):active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink-stroke);
 }
 
-.locus[data-kind='splice']::before {
-  border-color: rgb(245 197 66 / 66%);
-  box-shadow: inset 0 0 14px rgb(245 197 66 / 12%), 0 0 14px rgb(245 197 66 / 14%);
+.slot[data-open='true'] {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink-stroke);
 }
 
-.locus[data-kind='ash']::before {
-  border-color: rgb(148 163 184 / 28%);
-  background: radial-gradient(circle, rgb(71 85 105 / 42%), rgb(2 6 16 / 88%));
+.slot[data-kind='empty'] {
+  background: var(--deck-0);
+  color: var(--quieter);
+  box-shadow: none;
 }
 
-.locus[data-recode-target='true']::before {
-  border-color: var(--gold);
-  animation: targetPulse 1.35s ease-in-out infinite;
-  box-shadow: 0 0 18px rgb(245 197 66 / 34%);
+.slot[data-mode='take'] {
+  background: var(--venom-orange);
+  color: var(--ink);
+  box-shadow: var(--ink-drop-2);
 }
 
-.locus:disabled { cursor: default; }
-.locusRune { z-index: 1; width: 27px; height: 27px; color: var(--cyan); }
-.locusRune i { display: block; width: 13px; height: 13px; border: 1px dashed rgb(125 249 255 / 32%); border-radius: 50%; }
-.locusRune b { color: rgb(203 213 225 / 52%); font-size: 22px; font-weight: 400; }
-.locus strong { z-index: 1; max-width: 100%; color: #f7f0ff; font-family: var(--font-display); font-size: 14px; letter-spacing: .025em; line-height: 1.15; overflow-wrap: anywhere; text-align: center; white-space: normal; }
-.locus small { z-index: 1; margin-top: 3px; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; letter-spacing: .08em; }
+.slot[data-kind='splice'] {
+  background: var(--venom-orange);
+  color: var(--ink);
+}
 
-.reactionCore {
-  position: absolute;
-  top: 93px;
-  display: flex;
-  width: 136px;
-  height: 136px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #c4b5fd;
+.slot[data-kind='ash'] {
+  background: var(--deck-0);
+  color: var(--quieter);
+  box-shadow: none;
+}
+
+.slot:disabled { cursor: default; }
+
+.slotRune { display: grid; width: 28px; height: 28px; place-items: center; color: inherit; }
+.slotRune b { font-family: var(--font-display); font-size: 24px; font-weight: 400; line-height: 1; }
+.slot strong {
+  max-width: 100%;
+  color: inherit;
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: .02em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.slot small {
+  color: inherit;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  opacity: .78;
+}
+
+.stageHint {
+  margin: 9px 0 0;
+  color: var(--quiet);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
   text-align: center;
 }
 
-.reactionCore::before,
-.reactionCore::after {
+/* ---------- THE PICKER, AT THE SLOT ---------- */
+
+/* Catches the tap that dismisses. Fixed, so anywhere off the panel works;
+   below the slot row's z-index, so tapping ANOTHER slot moves the picker
+   there instead of costing a tap to close first. */
+.pickerCatcher {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  background: transparent;
+}
+
+.picker {
   position: absolute;
-  inset: 8px;
-  border: 1px solid rgb(168 85 247 / 58%);
-  border-radius: 31% 69% 58% 42% / 45% 38% 62% 55%;
-  background: radial-gradient(circle, rgb(168 85 247 / 20%), rgb(8 8 24 / 82%) 66%);
-  content: '';
-  transform: rotate(12deg);
-}
-.reactionCore::after { inset: 16px; border-color: rgb(34 211 238 / 28%); background: transparent; transform: rotate(-18deg); }
-.reactionCore > i { z-index: 1; width: 31px; height: 31px; filter: drop-shadow(0 0 9px rgb(168 85 247 / 68%)); }
-.reactionCore > strong { z-index: 1; max-width: 116px; margin-top: 4px; color: #f7f0ff; font-family: var(--font-display); font-size: 14px; line-height: 1.2; overflow-wrap: anywhere; }
-.reactionCore > small { z-index: 1; max-width: 112px; margin-top: 2px; color: rgb(125 249 255 / 78%); font-family: var(--font-body); font-size: 14px; letter-spacing: .035em; line-height: 1.1; overflow-wrap: anywhere; text-transform: uppercase; white-space: normal; }
-.coreOrbit { position: absolute; inset: 0; border: 1px dashed rgb(196 181 253 / 26%); border-radius: 50%; animation: orbit 22s linear infinite; }
-
-.mathRibbon {
+  z-index: 22;
+  top: calc(100% + 10px);
+  left: 50%;
   display: flex;
-  max-width: 680px;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 7px 16px;
-  margin: -2px auto 11px;
-  color: #f7f0ff;
-  font-family: var(--font-mono);
+  width: min(346px, calc(100vw - 24px));
+  max-height: var(--picker-max-h, 440px);
+  flex-direction: column;
+  border: var(--ink-border-3);
+  border-radius: var(--radius-tray);
+  background: var(--deck-1);
+  padding: 12px;
+  box-shadow: var(--ink-drop-3);
+  transform:
+    translateX(-50%)
+    translate(var(--picker-dx, 0px), var(--picker-dy, 0px));
+}
+
+.picker[data-flip='up'] { top: auto; bottom: calc(100% + 10px); }
+
+.pickerHead {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pickerHead p {
+  min-width: 0;
+  margin: 0;
+  color: var(--bone-white);
+  font-family: var(--font-display);
   font-size: 14px;
-  line-height: 1.35;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
-.mathRibbon span { display: inline-flex; gap: 5px; }
-.mathRibbon b { color: rgb(125 249 255 / 74%); font-family: var(--font-body); font-size: 14px; letter-spacing: .07em; }
 
-.strainRailGroup { display: grid; gap: 7px; }
-.strainRail {
+/* Written, not a cross. A cross beside a live choice reads as a decision. */
+.pickerDismiss {
+  min-height: 44px;
+  flex: none;
+  border: var(--ink-border-1);
+  border-radius: var(--radius-chip);
+  background: var(--deck-0);
+  padding: 6px 10px;
+  color: var(--bone-white);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  box-shadow: var(--ink-drop-1);
+}
+
+.pickerDismiss:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink-stroke); }
+
+.pickerHint {
+  flex: none;
+  margin: 8px 0 0;
+  color: var(--quiet);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.pickerNote {
+  margin: 8px 0 0;
+  border-radius: var(--radius-card);
+  background: var(--deck-0);
+  padding: 8px 10px;
+  color: var(--quiet);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.pickerOptions {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  min-height: 72px;
+  flex: 1 1 auto;
   gap: 7px;
+  margin-top: 9px;
+  overflow-y: auto;
+  align-content: start;
 }
-.strain { min-width: 0; border-top: 1px solid color-mix(in srgb, var(--strain), transparent 70%); padding-top: 7px; opacity: .68; transition: opacity .2s ease, filter .2s ease; }
-.strain[data-focused='true'] { opacity: 1; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--strain), transparent 65%)); }
-.strainName { display: flex; min-width: 0; align-items: center; gap: 4px; color: var(--strain); }
-.strainName i { width: 17px; height: 17px; flex: none; }
-.strainName b { min-width: 0; font-family: var(--font-display); font-size: 14px; overflow-wrap: anywhere; }
-.strainName em { margin-left: auto; color: #f7f0ff; font-family: var(--font-mono); font-size: 14px; font-style: normal; }
-.rungs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-.rungs button { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; border: 1px solid color-mix(in srgb, var(--strain), transparent 68%); border-radius: 50%; background: rgb(4 8 20 / 45%); color: rgb(237 233 223 / 68%); font-family: var(--font-mono); font-size: 14px; }
-.rungs button[data-active='true'] { border-color: var(--strain); background: color-mix(in srgb, var(--strain), transparent 82%); color: #fff; box-shadow: 0 0 9px color-mix(in srgb, var(--strain), transparent 52%); }
-.rungs button[data-locked='true'] { border-style: dashed; border-color: color-mix(in srgb, var(--strain), transparent 36%); color: var(--strain); }
-.rungs button[aria-pressed='true'] { outline: 1px solid #fff; outline-offset: 2px; color: #fff; }
-.strain > small { display: block; margin-top: 5px; color: rgb(237 233 223 / 64%); font-family: var(--font-body); font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
-.strainDisclosure { display: flex; min-height: 44px; align-items: center; gap: 9px; margin: 0; border: 1px solid color-mix(in srgb, var(--strain), transparent 66%); border-radius: 12px; background: color-mix(in srgb, var(--strain), transparent 92%); padding: 8px 10px; color: #f7f0ff; }
-.strainDisclosure > i { width: 24px; height: 24px; flex: none; color: var(--strain); filter: drop-shadow(0 0 7px color-mix(in srgb, var(--strain), transparent 48%)); }
-.strainDisclosure strong, .strainDisclosure small, .strainDisclosure em { display: block; font-family: var(--font-body); }
-.strainDisclosure strong { color: var(--strain); font-size: 14px; }
-.strainDisclosure small { margin-top: 2px; color: rgb(237 233 223 / 78%); font-size: 14px; line-height: 1.45; }
-.strainDisclosure em { margin-top: 3px; color: var(--gold); font-size: 14px; font-style: normal; }
-.strainHint { margin: 0; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: center; }
 
-.palette { margin-top: 14px; border-top: 1px solid rgb(168 85 247 / 22%); padding-top: 12px; }
-.paletteHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-.paletteHeader small { color: rgb(237 233 223 / 66%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
-.lenses { display: flex; gap: 4px; }
-.lenses button { display: inline-flex; min-height: 44px; align-items: center; gap: 4px; border: 0; background: transparent; padding: 5px 8px; color: rgb(237 233 223 / 68%); font-family: var(--font-body); font-size: 14px; font-weight: 800; text-transform: uppercase; }
-.lenses button[aria-selected='true'] { color: var(--gold); text-shadow: 0 0 9px rgb(245 197 66 / 42%); }
-.lenses i { font-size: 14px; font-style: normal; }
-.geneRail { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 184px), 1fr)); gap: 7px; padding: 8px 1px 4px; }
-.geneRail button { display: flex; width: 100%; min-width: 0; min-height: 98px; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, var(--gene-strain), transparent 78%); border-radius: 12px; background: linear-gradient(120deg, color-mix(in srgb, var(--gene-strain), transparent 93%), rgb(4 8 20 / 66%)); padding: 9px; color: rgb(237 233 223 / 66%); text-align: left; }
-.geneRail button[aria-pressed='true'] { border-color: rgb(168 85 247 / 66%); background: radial-gradient(circle at 22% 50%, rgb(168 85 247 / 25%), rgb(4 8 20 / 82%)); color: #f7f0ff; box-shadow: 0 0 14px rgb(168 85 247 / 13%); }
-.geneRail button > i { width: 29px; height: 29px; flex: none; color: var(--gene-strain, var(--cyan)); filter: drop-shadow(0 0 7px color-mix(in srgb, var(--gene-strain), transparent 48%)); }
-.geneRailCopy { min-width: 0; flex: 1; }
-.geneRail strong, .geneRail small { display: block; overflow-wrap: anywhere; white-space: normal; }
-.geneRail strong { font-family: var(--font-display); font-size: 14px; line-height: 1.2; }
-.geneRail small { margin-top: 3px; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; line-height: 1.3; text-transform: uppercase; }
+/* Selecting one shrinks the list rather than pushing the actions off the
+   panel. The read below is what the player is now looking at. */
+.picker[data-has-selection='true'] .pickerOptions { flex: 0 1 auto; max-height: 136px; }
+
+.option {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 9px;
+  border: var(--ink-border-2);
+  border-radius: var(--radius-card);
+  background: var(--deck-2);
+  padding: 9px;
+  color: var(--bone-white);
+  text-align: left;
+  box-shadow: var(--ink-drop-1);
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+/* A partner or a shared path is called out by WEIGHT, not by a second hue:
+   the row stands further off the panel. Order never changes. */
+.option[data-match='true'] { box-shadow: var(--ink-drop-2); }
+
+.option:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink-stroke); }
+
+.option[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--bone-white);
+  box-shadow: var(--ink-drop-2);
+}
+
+.option > i { width: 26px; height: 26px; flex: none; color: var(--venom-orange); }
+.optionCopy { min-width: 0; flex: 1; }
+.option strong,
+.option small { display: block; overflow-wrap: anywhere; white-space: normal; }
+.option strong { font-family: var(--font-display); font-size: 14px; line-height: 1.2; }
+.optionCategory {
+  display: inline-block;
+  margin-top: 4px;
+  border-radius: var(--radius-chip);
+  background: var(--deck-0);
+  padding: 1px 6px;
+  color: var(--quiet);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.option small { margin-top: 4px; color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.35; }
+.option[aria-pressed='true'] small,
+.option[aria-pressed='true'] .optionCategory { color: var(--bone-white); }
+
+.optionMatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.optionMatches b {
+  border: var(--ink-border-1);
+  border-radius: var(--radius-chip);
+  padding: 2px 6px;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  line-height: 1.15;
+}
+.optionMatches b[data-kind='combo'] { background: var(--venom-orange); }
+.optionMatches b[data-kind='path'] { background: var(--strain); }
 
 /*
- * Curriculum annotation (WP-D). Deliberately the quietest type on the rail:
+ * Curriculum annotation (WP-D). Deliberately the quietest type in the picker:
  * it reports where a power may appear in a real run, and a locked state must
  * never read as a stronger one (PEO §9.4 blocks launch at 20% misreading).
  */
 .geneEligibility {
   display: block;
   margin-top: 5px;
-  color: rgb(237 233 223 / 52%);
+  color: var(--quieter);
   font-family: var(--font-body);
   font-size: 12px;
   font-style: normal;
@@ -321,79 +483,267 @@
   white-space: normal;
 }
 
-.geneRail button[data-eligibility='trial'] .geneEligibility {
-  color: color-mix(in srgb, var(--gene-strain), rgb(237 233 223) 42%);
-}
+.option[aria-pressed='true'] .geneEligibility { color: rgb(238 243 247 / 62%); }
 
-.curriculumTrials {
-  margin-top: 12px;
-  border: 1px solid rgb(125 249 255 / 22%);
-  border-radius: 14px;
-  background: rgb(6 9 13 / 55%);
-  padding: 12px;
-}
-
-.curriculumTrials p {
-  color: rgb(245 243 239 / 92%);
-  font-family: var(--font-display);
-  font-size: 14px;
-}
-
-.curriculumTrials small {
-  display: block;
-  margin-top: 4px;
-  color: rgb(237 233 223 / 62%);
-  font-family: var(--font-body);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.curriculumTrials p[role='alert'] {
-  margin-top: 8px;
-  color: rgb(248 113 113 / 92%);
-  font-family: var(--font-body);
-  font-size: 13px;
-}
-
-.curriculumChoices {
-  display: grid;
+.pickerSelected {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
   gap: 8px;
-  margin-top: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
-}
-
-.curriculumChoices button {
-  min-height: 44px;
-  border: 1px solid rgb(125 249 255 / 32%);
-  border-radius: 12px;
-  background: rgb(125 249 255 / 6%);
+  margin-top: 9px;
+  border-radius: var(--radius-card);
+  background: var(--deck-0);
   padding: 10px;
-  text-align: left;
+  overflow-y: auto;
 }
 
-.curriculumChoices button:disabled {
-  opacity: 55%;
-}
-
-.curriculumChoices strong {
-  display: block;
-  color: rgb(125 249 255);
+.pickerSelected > header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pickerSelected > header strong {
+  color: var(--bone-white);
   font-family: var(--font-display);
   font-size: 14px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
-.curriculumChoices small {
-  margin-top: 3px;
+.pickerRead { display: grid; gap: 8px; overflow-y: auto; }
+
+.pickerRule { display: grid; gap: 5px; }
+.pickerRule p { margin: 0; color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.pickerRule b {
+  display: block;
+  margin-bottom: 1px;
+  color: var(--venom-orange);
+  font-family: var(--font-body);
+  font-size: 14px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
 
+.spliceBranches { display: grid; gap: 5px; }
+.spliceBranches > button {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  border: var(--ink-border-1);
+  border-radius: var(--radius-chip);
+  background: var(--deck-2);
+  padding: 6px 9px;
+  color: var(--bone-white);
+  text-align: left;
+  box-shadow: var(--ink-drop-1);
+}
+.spliceBranches > button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink-stroke); }
+.spliceBranches > button[data-forms='true'] { background: var(--venom-orange); color: var(--ink); }
+.spliceLabel { min-width: 0; flex: 1; }
+.spliceBranches strong,
+.spliceBranches small { display: block; overflow-wrap: anywhere; white-space: normal; }
+.spliceBranches strong { font-family: var(--font-display); font-size: 14px; line-height: 1.25; }
+.spliceBranches small { color: inherit; font-family: var(--font-body); font-size: 14px; line-height: 1.3; opacity: .8; }
+.spliceDisclosure { display: grid; gap: 5px; border-radius: var(--radius-chip); background: var(--deck-2); padding: 8px 9px; }
+.spliceDisclosure p { margin: 0; color: var(--bone-white); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.spliceDisclosure b { display: block; color: var(--venom-orange); font-family: var(--font-body); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+.noBranch { margin: 0; color: var(--quieter); font-family: var(--font-body); font-size: 14px; }
+
+/* The actions never leave the panel: they stick to its floor while the read
+   above them scrolls. */
+.commitControls {
+  position: sticky;
+  bottom: -10px;
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 -10px -10px;
+  background: var(--deck-0);
+  padding: 8px 10px 10px;
+}
+
+.commitControls button {
+  min-height: 48px;
+  flex: 1 1 auto;
+  border: var(--ink-border-2);
+  border-radius: var(--radius-card);
+  background: var(--deck-2);
+  padding: 8px 12px;
+  color: var(--bone-white);
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: .05em;
+  box-shadow: var(--ink-drop-2);
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.commitControls button:not(:disabled):active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink-stroke);
+}
+
+.commitControls .primaryCommit { background: var(--venom-orange); color: var(--ink); }
+
+.commitControls button:disabled {
+  background: var(--deck-0);
+  color: var(--quieter);
+  box-shadow: none;
+}
+
+/* ---------- readouts: recesses cut into the tray, no borders ---------- */
+
+.mathRibbon {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  margin: 14px 0 0;
+  border-radius: var(--radius-card);
+  background: var(--deck-0);
+  padding: 9px 12px;
+  color: var(--bone-white);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.mathRibbon span { display: inline-flex; gap: 6px; }
+.mathRibbon b { color: var(--venom-orange); font-family: var(--font-body); font-size: 14px; letter-spacing: .07em; }
+
+.strainRailGroup { display: grid; gap: 8px; margin-top: 14px; }
+.strainRail { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+
+.strain {
+  min-width: 0;
+  border-radius: var(--radius-card);
+  background: var(--deck-0);
+  padding: 8px;
+}
+.strain[data-focused='true'] { background: var(--deck-2); }
+.strainName { display: flex; min-width: 0; align-items: center; gap: 5px; color: var(--strain); }
+.strainName i { width: 17px; height: 17px; flex: none; }
+.strainName b { min-width: 0; font-family: var(--font-display); font-size: 14px; overflow-wrap: anywhere; }
+.strainName em { margin-left: auto; color: var(--bone-white); font-family: var(--font-body); font-size: 14px; font-style: normal; font-weight: 900; }
+
+.rungs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.rungs button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border: var(--ink-border-1);
+  border-radius: var(--radius-chip);
+  background: var(--deck-2);
+  color: var(--bone-white);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: var(--ink-drop-1);
+}
+.rungs button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink-stroke); }
+.rungs button[data-active='true'] { background: var(--strain); color: var(--ink); }
+.rungs button[data-locked='true'] { background: var(--deck-0); color: var(--quieter); box-shadow: none; }
+.rungs button[aria-pressed='true'] { outline: var(--ink-w-2) solid var(--ink-stroke); outline-offset: 2px; }
+
+.strain > small {
+  display: block;
+  margin-top: 6px;
+  color: var(--quiet);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.strainDisclosure {
+  display: flex;
+  min-height: 44px;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  border-radius: var(--radius-card);
+  background: var(--deck-0);
+  padding: 9px 10px;
+  color: var(--bone-white);
+}
+.strainDisclosure > i { width: 24px; height: 24px; flex: none; color: var(--strain); }
+.strainDisclosure strong,
+.strainDisclosure small,
+.strainDisclosure em { display: block; font-family: var(--font-body); }
+.strainDisclosure strong { color: var(--strain); font-size: 14px; }
+.strainDisclosure small { margin-top: 2px; color: var(--quiet); font-size: 14px; line-height: 1.45; }
+.strainDisclosure em { margin-top: 3px; color: var(--venom-orange); font-size: 14px; font-style: normal; }
+
+.strainHint { margin: 0; color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: center; }
+
+.reactionField { margin-top: 14px; border-radius: var(--radius-card); background: var(--deck-0); padding: 10px; }
+.reactionField > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.reactionField > header small { color: var(--quiet); font-family: var(--font-body); font-size: 14px; }
+.reactionField > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 9px; }
+
+.lenses { display: flex; flex-wrap: wrap; gap: 5px; }
+.lenses button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 5px;
+  border: var(--ink-border-1);
+  border-radius: var(--radius-chip);
+  background: var(--deck-2);
+  padding: 6px 11px;
+  color: var(--bone-white);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  box-shadow: var(--ink-drop-1);
+}
+.lenses button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink-stroke); }
+.lenses button[aria-selected='true'] { background: var(--ink); color: var(--bone-white); }
+.lenses i { font-size: 14px; font-style: normal; }
+
+.reactionFact { min-width: 0; border-radius: var(--radius-chip); background: var(--deck-2); padding: 8px 9px; }
+.factNode { display: none; }
+.reactionFact strong { display: block; color: var(--bone-white); font-family: var(--font-display); font-size: 14px; line-height: 1.3; }
+.reactionFact p { margin: 3px 0 0; color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.reactionFact small { display: block; margin-top: 3px; color: var(--venom-orange); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.quietReaction { margin: 9px 0 0; color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
+
+.stateVerbs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 14px; }
+
+/* ---------- trials, messages, and the settled specimen ---------- */
+
+.curriculumTrials { margin-top: 14px; border-radius: var(--radius-card); background: var(--deck-0); padding: 11px; }
+.curriculumTrials p { margin: 0; color: var(--bone-white); font-family: var(--font-display); font-size: 14px; }
+.curriculumTrials small { display: block; margin-top: 5px; color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
+.curriculumTrials p[role='alert'] { margin-top: 8px; color: var(--venom-orange-light); font-family: var(--font-body); font-size: 14px; }
+
+.curriculumChoices { display: grid; gap: 8px; margin-top: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+.curriculumChoices button {
+  min-height: 48px;
+  border: var(--ink-border-2);
+  border-radius: var(--radius-card);
+  background: var(--deck-2);
+  padding: 10px;
+  color: var(--bone-white);
+  text-align: left;
+  box-shadow: var(--ink-drop-1);
+}
+.curriculumChoices button:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink-stroke); }
+.curriculumChoices button:disabled { background: var(--deck-0); color: var(--quieter); box-shadow: none; }
+.curriculumChoices strong { display: block; color: inherit; font-family: var(--font-display); font-size: 14px; }
+.curriculumChoices small { margin-top: 3px; }
+
+/* Strain badges: the accent spent as a FILL with ink type on it, which is the
+   only way a five-hue family stays legible at chip size on a dark plate. */
 .geneStrainBadges {
-  position: relative;
-  z-index: 1;
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   margin-top: 5px;
 }
 
@@ -402,183 +752,126 @@
   min-width: 0;
   align-items: center;
   gap: 3px;
-  border: 1px solid color-mix(in srgb, var(--strain), transparent 48%);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--strain), transparent 88%);
-  padding: 3px 6px 3px 4px;
-  color: var(--strain);
-  box-shadow: inset 0 0 8px color-mix(in srgb, var(--strain), transparent 88%);
+  border: var(--ink-border-1);
+  border-radius: var(--radius-chip);
+  background: var(--strain);
+  padding: 2px 6px 2px 4px;
+  color: var(--ink);
 }
 
-.geneStrainBadge i {
-  width: 12px;
-  height: 12px;
-  flex: none;
-}
-
+.geneStrainBadge i { width: 12px; height: 12px; flex: none; }
 .geneStrainBadge b {
   overflow: visible;
   font-family: var(--font-body);
   font-size: 14px;
   font-weight: 900;
-  letter-spacing: .055em;
-  line-height: 1.1;
+  letter-spacing: .05em;
+  line-height: 1.15;
   text-overflow: clip;
   white-space: nowrap;
 }
 
-.geneStrainBadges[data-compact='true'] {
-  max-width: 100%;
-  justify-content: center;
-  gap: 2px;
-  margin-top: 3px;
+.geneStrainBadges[data-compact='true'] { justify-content: center; gap: 3px; margin-top: 4px; }
+.geneStrainBadges[data-compact='true'] .geneStrainBadge { padding: 2px 5px 2px 3px; }
+
+.recodeNotice,
+.error {
+  margin: 10px 0 0;
+  border-radius: var(--radius-card);
+  padding: 9px 11px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
 }
-
-.geneStrainBadges[data-compact='true'] .geneStrainBadge {
-  padding: 2px 5px 2px 3px;
-}
-
-.geneStrainBadges[data-compact='true'] .geneStrainBadge i {
-  width: 12px;
-  height: 12px;
-}
-
-.geneStrainBadges[data-compact='true'] .geneStrainBadge b { font-size: 14px; }
-
-.focusReaction { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, .7fr) auto; gap: 12px; align-items: center; margin-top: 10px; border: 1px solid rgb(168 85 247 / 24%); border-radius: 14px; background: rgb(8 8 24 / 46%); padding: 10px; }
-.focusRule { display: grid; gap: 6px; }
-.focusRule p { margin: 0; color: rgb(237 233 223 / 76%); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
-.focusRule b { display: block; margin-bottom: 2px; color: rgb(125 249 255 / 78%); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
-.spliceBranches { position: relative; display: grid; gap: 5px; }
-.spliceBranches > button { display: flex; min-width: 0; min-height: 44px; align-items: center; gap: 6px; border: 0; border-radius: 9px; background: transparent; padding: 5px; opacity: .68; color: inherit; text-align: left; }
-.spliceBranches > button[data-forms='true'], .spliceBranches > button[aria-expanded='true'] { background: rgb(168 85 247 / 9%); opacity: 1; }
-.spliceBranches > button > span:first-child { width: 10px; height: 10px; flex: none; border: 1px solid rgb(168 85 247 / 64%); border-radius: 50%; }
-.spliceBranches > button[data-forms='true'] > span:first-child { border-color: var(--gold); background: var(--gold); box-shadow: 0 0 9px rgb(245 197 66 / 62%); }
-.spliceLabel { min-width: 0; flex: 1; }
-.spliceBranches > button strong, .spliceBranches > button small { display: block; overflow-wrap: anywhere; white-space: normal; }
-.spliceBranches strong { color: #f7f0ff; font-family: var(--font-display); font-size: 14px; line-height: 1.25; }
-.spliceBranches small { color: rgb(237 233 223 / 64%); font-family: var(--font-body); font-size: 14px; line-height: 1.3; }
-.spliceBranches .spliceDisclosure { display: grid; gap: 5px; border-left: 1px solid rgb(245 197 66 / 48%); padding: 5px 7px; }
-.spliceDisclosure p { margin: 0; color: rgb(237 233 223 / 76%); font-family: var(--font-body); font-size: 14px; line-height: 1.45; white-space: normal; }
-.spliceDisclosure b { display: block; color: rgb(245 197 66 / 82%); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
-.noBranch { color: rgb(237 233 223 / 58%); font-family: var(--font-body); font-size: 14px; }
-.commitControls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
-.commitControls button { min-height: 44px; border: 1px solid rgb(125 249 255 / 22%); border-radius: 999px; background: rgb(4 8 20 / 66%); padding: 7px 12px; color: rgb(237 233 223 / 68%); font-family: var(--font-display); font-size: 14px; letter-spacing: .05em; white-space: normal; }
-.commitControls .primaryCommit { border-color: rgb(245 197 66 / 68%); color: var(--gold); box-shadow: 0 0 12px rgb(245 197 66 / 12%); }
-.commitControls button:disabled { opacity: .3; }
-
-.reactionField { position: relative; margin-top: 10px; border-top: 1px solid rgb(125 249 255 / 17%); padding-top: 10px; }
-.reactionField > header { display: flex; align-items: baseline; gap: 6px; color: var(--gold); text-transform: uppercase; }
-.reactionField > header span { font-size: 16px; }
-.reactionField > header strong { font-family: var(--font-display); font-size: 14px; letter-spacing: .09em; }
-.reactionField > header small { color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; }
-.reactionField > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; margin-top: 7px; }
-.reactionFact { position: relative; display: grid; grid-template-columns: 13px minmax(0, 1fr); gap: 7px; min-width: 0; padding: 5px 0; }
-.reactionFact::before { position: absolute; top: -7px; bottom: -7px; left: 6px; width: 1px; background: linear-gradient(rgb(168 85 247 / 45%), rgb(34 211 238 / 12%)); content: ''; }
-.factNode { z-index: 1; width: 13px; height: 13px; margin-top: 1px; border: 1px solid rgb(168 85 247 / 62%); border-radius: 50%; background: rgb(4 8 20); box-shadow: 0 0 7px rgb(168 85 247 / 20%); }
-.reactionFact strong { display: block; color: #f7f0ff; font-family: var(--font-display); font-size: 14px; line-height: 1.3; }
-.reactionFact p { margin: 2px 0 0; color: rgb(237 233 223 / 68%); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
-.reactionFact small { display: block; margin-top: 2px; color: rgb(255 189 100 / 80%); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
-.quietReaction { margin: 8px 0 0; color: rgb(237 233 223 / 64%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
-
-.stateVerbs { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; margin-top: 10px; border-top: 1px solid rgb(168 85 247 / 16%); padding-top: 4px; }
-.stateVerbs button { color: rgb(125 249 255 / 54%); }
-.stateVerbs button:hover { color: var(--cyan); }
-.recodeNotice, .error { margin: 6px 0 0; border-radius: 10px; padding: 8px 10px; font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
-.recodeNotice { background: rgb(245 197 66 / 8%); color: rgb(245 197 66 / 78%); text-align: center; }
-.error { border: 1px solid rgb(245 66 99 / 36%); background: rgb(245 66 99 / 9%); color: #ff8ca3; }
-.panelFallback { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; margin: 0; }
-.panelFallback strong { color: #ffd2da; font-family: var(--font-display); }
+.recodeNotice { background: var(--deck-0); color: var(--quiet); text-align: center; }
+.error { border: var(--ink-border-2); background: var(--strike-red); color: var(--bone-white); box-shadow: var(--ink-drop-void-2); }
+.panelFallback { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; }
+.panelFallback strong { font-family: var(--font-display); }
 .panelFallback span { min-width: 0; flex: 1 1 280px; }
-.honesty { margin: 0; padding: 0 5px; color: rgb(237 233 223 / 64%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: center; }
-.researchInvitation { margin: 0; border-left: 1px solid rgb(245 197 66 / 42%); padding: 7px 10px; color: rgb(237 233 223 / 68%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
-.researchInvitation a { color: var(--gold); font-weight: 800; }
-.loading { border: 1px solid rgb(168 85 247 / 28%); border-radius: 18px; background: radial-gradient(circle at 50% 10%, rgb(168 85 247 / 18%), rgb(4 8 20 / 78%)); padding: 28px; color: rgb(237 233 223 / 68%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: center; }
 
+.honesty { margin: 0; padding: 0 4px; color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: center; }
+
+.researchInvitation {
+  margin: 0;
+  border-radius: var(--radius-card);
+  background: var(--deck-0);
+  padding: 9px 11px;
+  color: var(--quiet);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.researchInvitation a { color: var(--venom-orange); font-weight: 900; }
+
+.loading {
+  border: var(--ink-border-3);
+  border-radius: var(--radius-tray);
+  background: var(--deck-1);
+  padding: 28px;
+  color: var(--quiet);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+  box-shadow: var(--ink-drop-void-3);
+}
+
+/* The settled specimen is its own tray beside the experiment, not a frame
+   nested in one. Amber head, because a settled run is value you already own. */
 .study {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgb(245 197 66 / 42%);
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at 15% 10%, rgb(245 197 66 / 13%), transparent 30%),
-    radial-gradient(circle at 84% 40%, rgb(168 85 247 / 17%), transparent 36%),
-    rgb(4 8 20 / 88%);
-  box-shadow: inset 0 0 42px rgb(245 197 66 / 5%), 0 17px 42px rgb(0 0 0 / 24%);
+  border: var(--ink-border-3);
+  border-radius: var(--radius-tray);
+  background: var(--deck-1);
+  box-shadow: var(--ink-drop-void-3);
 }
-.study::before {
-  position: absolute;
-  inset: 0;
-  opacity: .13;
-  background-image: radial-gradient(circle, #f5c542 0 1px, transparent 1.5px);
-  background-size: 43px 43px;
-  content: '';
-  pointer-events: none;
-}
+
 .studyHeader {
-  position: relative;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid rgb(245 197 66 / 18%);
-  padding: 14px 16px;
+  border-radius: calc(var(--radius-tray) - 3px) calc(var(--radius-tray) - 3px) 0 0;
+  background: var(--venom-orange);
+  padding: 13px 16px;
+  color: var(--ink);
 }
-.studyHeader p { margin: 0; color: rgb(245 197 66 / 74%); font-family: var(--font-body); font-size: 14px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
-.studyHeader h3 { margin: 2px 0 0; color: #fff9dc; font-family: var(--font-display); font-size: 18px; }
-.studyHeader span { display: block; max-width: 600px; margin-top: 3px; color: rgb(237 233 223 / 62%); font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
-.studyHeader > strong { flex: none; color: var(--gold); font-family: var(--font-mono); font-size: 16px; text-shadow: 0 0 12px rgb(245 197 66 / 32%); }
-.studyBody { position: relative; display: grid; gap: 12px; padding: 13px 15px 15px; }
-.studyGenome { position: relative; display: grid; min-height: 142px; place-items: center; }
-.studyGenome .locusArc { align-self: start; }
-.studyGenome .locus:nth-child(n) { transform: none; }
-.studyCore {
-  position: absolute;
-  bottom: 0;
+.studyHeader p { margin: 0; font-family: var(--font-body); font-size: 14px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+.studyHeader h3 { margin: 3px 0 0; font-family: var(--font-display); font-size: 18px; }
+.studyHeader span { display: block; max-width: 600px; margin-top: 3px; font-family: var(--font-body); font-size: 14px; line-height: 1.4; }
+.studyHeader > strong { flex: none; font-family: var(--font-display); font-size: 16px; }
+
+.studyBody { display: grid; gap: 12px; padding: 14px 16px 16px; }
+.studySummary {
   display: flex;
-  width: 94px;
-  height: 94px;
-  flex-direction: column;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  border: 1px solid rgb(245 197 66 / 45%);
-  border-radius: 50%;
-  background: radial-gradient(circle, rgb(245 197 66 / 14%), rgb(6 8 22 / 88%) 70%);
-  color: var(--gold);
-  text-align: center;
-  box-shadow: 0 0 20px rgb(168 85 247 / 15%);
+  gap: 6px 18px;
+  border-radius: var(--radius-card);
+  background: var(--deck-0);
+  padding: 9px 12px;
+  color: var(--bone-white);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 800;
 }
-.studyCore > i { width: 25px; height: 25px; }
-.studyCore strong { margin-top: 3px; color: #fff9dc; font-family: var(--font-display); font-size: 14px; line-height: 1.2; }
-.studyCore small { color: rgb(125 249 255 / 76%); font-family: var(--font-body); font-size: 14px; line-height: 1.2; text-transform: uppercase; }
-.studyFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; border-top: 1px solid rgb(168 85 247 / 17%); padding-top: 8px; }
+.studySummary i { display: block; width: 22px; height: 22px; color: var(--venom-orange); }
+.studySummary b { color: var(--venom-orange); letter-spacing: .07em; }
+.studyFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+
+/* ---------- the field reflows; nothing changes material ---------- */
 
 @container research (max-width: 860px) {
   .intro { align-items: flex-start; flex-direction: column; }
-  .snakeMarks { width: 100%; max-width: none; justify-content: flex-start; padding-left: 0; }
-  .table { border-radius: 17px; padding: 11px; }
+  .snakeMarks { width: 100%; max-width: none; justify-content: flex-start; }
+  .table { border-radius: var(--radius-tray); padding: 12px; }
   .tableHeader { align-items: flex-start; }
   .tableHeader h3 { max-width: 220px; }
   .historyControls span { display: none; }
-  .genomeStage { min-height: 350px; }
-  .locusArc { grid-template-columns: repeat(3, minmax(76px, 1fr)); gap: 66px 4px; }
-  .locus:nth-child(n) { transform: none; }
-  .locus:nth-child(2), .locus:nth-child(5) { transform: translateY(-18px); }
-  .reactionCore { top: 107px; }
+  .slotRow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .strainRail { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .rungs button { width: 44px; height: 44px; }
-  .paletteHeader { align-items: flex-start; flex-direction: column; }
-  .lenses { width: 100%; justify-content: space-between; }
-  .lenses button { flex: 1; justify-content: center; }
-  .focusReaction { grid-template-columns: 1fr; }
-  .commitControls { justify-content: flex-start; }
   .reactionField > div { grid-template-columns: 1fr; }
-  .study { border-radius: 17px; }
   .studyHeader { align-items: flex-start; flex-direction: column; }
   .studyHeader > strong { align-self: flex-start; }
-  .studyGenome { min-height: 340px; }
-  .studyGenome .locusArc { grid-template-columns: repeat(3, minmax(76px, 1fr)); gap: 62px 4px; }
-  .studyCore { bottom: 92px; }
   .studyFacts { grid-template-columns: 1fr; }
 }
 
@@ -586,19 +879,32 @@
   .tableHeader { flex-direction: column; }
   .historyControls { align-self: stretch; justify-content: flex-end; }
   .snakeMarks button { flex: 1 1 126px; min-width: 0; }
+  .slot { min-height: 118px; }
   .strainRail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .geneRail { grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr)); }
 }
 
 @container research (max-width: 350px) {
+  .slotRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .strainRail { grid-template-columns: 1fr; }
-  .geneRail { grid-template-columns: 1fr; }
+}
+
+/* A landscape phone has ~390px of height for everything. The panel keeps its
+   material and loses its air: tighter padding, a two-column option field, and
+   a shorter list before it scrolls inside itself. The actions stay stuck to
+   the floor either way, so they are never the thing that scrolls away. */
+@media (max-height: 560px) {
+  .picker { width: min(420px, calc(100vw - 24px)); padding: 10px; }
+  .pickerOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .picker[data-has-selection='true'] .pickerOptions { max-height: 96px; }
+  .option { flex-direction: column; gap: 5px; }
+  .slot { min-height: 104px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workbench, .coreOrbit, .locus[data-recode-target='true']::before { animation: none; }
+  .snakeMarks button,
+  .slot,
+  .option,
+  .commitControls button,
+  .historyControls button,
+  .stateVerbs button { transition: none; }
 }
-
-@keyframes orbit { to { transform: rotate(360deg); } }
-@keyframes targetPulse { 50% { box-shadow: 0 0 25px rgb(245 197 66 / 54%); } }
-@keyframes researchEnter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
