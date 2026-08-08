@@ -1101,7 +1101,19 @@ export function ArenaFloor({
    * blocks.
    */
   const playSurface = neonTheme?.face ?? floorColor;
-  const seamFloor = neonTheme?.grooveShadow ?? floorColor;
+  /**
+   * The seam floor, and the brand-purple experiment's one claim on it.
+   *
+   * `seamUnderglowFloor` is absent on every shipped theme, so this reads
+   * `grooveShadow` exactly as it always has. When `applyBoardPurple` has
+   * supplied one it is an ALREADY-BANDED tone and lands only here - on the
+   * slab's top face, which on a tiled board is the floor of every cut. The
+   * theme's own `grooveShadow` is left alone on purpose: it is also the cel
+   * ramp's shadow hue and the analytic pass's groove colour, and tinting it
+   * would put violet in every shadow on the board.
+   */
+  const seamFloor =
+    neonTheme?.seamUnderglowFloor ?? neonTheme?.grooveShadow ?? floorColor;
   const faceColor = tiled ? seamFloor : playSurface;
   const checkColor = neonTheme?.checker ?? gridColor;
   const cutColor = neonTheme?.grooveLight ?? majorGridColor;
@@ -1109,7 +1121,17 @@ export function ArenaFloor({
   const majorDepth = neonTheme?.majorDepth ?? majorGridOpacity;
   const washColor = neonTheme?.edgeWash ?? accentColor;
   const washStrength = neonTheme?.edgeWashStrength ?? edgeWashStrength;
-  const bevelTone = neonTheme?.bevel ?? ARENA_STONE.bevel;
+  /**
+   * The slab's outer chamfer - and the brand-purple experiment's frame band.
+   *
+   * `slabFrameBand` is absent on every shipped theme, so this is `bevel` as it
+   * always was. When present it is the ONE ring around the whole play space:
+   * `createArenaSlabGeometry` paints its four chamfer quads with this tone and
+   * nothing else on the board reads it, which is what keeps the variant a frame
+   * rather than a per-tile treatment.
+   */
+  const bevelTone =
+    neonTheme?.slabFrameBand ?? neonTheme?.bevel ?? ARENA_STONE.bevel;
   const sideTone = neonTheme?.side ?? ARENA_STONE.side;
   const baseTone = neonTheme?.base ?? ARENA_STONE.base;
   const haloTone = neonTheme?.halo ?? ARENA_STONE.halo;

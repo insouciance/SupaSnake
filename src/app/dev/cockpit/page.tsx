@@ -41,6 +41,17 @@
  *   exactly as it was reviewed, so the instinct can be checked against the two
  *   boards rather than against a description of them. Themed board only; the
  *   stone board's grooves are the only boundary it has.)
+ * - ?boardPurple=underglow|frame|both (THE BRAND PURPLE EXPERIMENT. The owner
+ *   ruled the Mark's purple a defining brand colour on 2026-08-07, overturning
+ *   "purple is logo-only", and approved prototyping it on the gameboard - to be
+ *   judged on screen before anything is ratified. `underglow` puts a constant
+ *   violet in the floor of every seam and the bottom of every groove wall,
+ *   UNDER the house neon rather than over it; `frame` bands the slab's outer
+ *   chamfer - the one ring around the play space - the way the Mark's burst
+ *   frames the wordmark; `both` is the pair. Absent is the shipped board, and
+ *   absent is what every surface other than this route can produce: nothing
+ *   here is behind a flag or an env var. See `applyBoardPurple` for the values
+ *   and for why neither variant can become the house colour.)
  * - ?snake90s=1|guide|0 (the 90s cartoon character style, see
  *   `src/components/game/screen/snake90s.ts`. Omitted follows
  *   `NEXT_PUBLIC_NINETIES_COMPOSITION`; `guide` is the RATIFIED style, `1` is
@@ -57,7 +68,10 @@
  */
 
 import { notFound } from 'next/navigation';
-import { parseBoardThemeSelection } from '@/components/game/screen/boardThemes';
+import {
+  parseBoardPurpleMode,
+  parseBoardThemeSelection,
+} from '@/components/game/screen/boardThemes';
 import {
   MAX_RENDER_TIER,
   type RenderTier,
@@ -235,6 +249,7 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
         arenaPitchDeg={parsePitchDeg(first(params.pitch))}
         arenaBoardTheme={parseBoardThemeSelection(first(params.boardTheme))}
         arenaBoardSeamLines={parseFlag(first(params.gridlines))}
+        arenaBoardPurple={parseBoardPurpleMode(first(params.boardPurple))}
         arenaArrivalMode={arrivalMode}
       />
       <SnakeStyleSwitcher params={params} active={first(params.snake90s)} />

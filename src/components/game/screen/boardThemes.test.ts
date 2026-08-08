@@ -1,9 +1,13 @@
 import { GAME_SCREEN_COLORS } from './gameScreenTokens';
 import {
+  applyBoardPurple,
   BOARD_THEME_BY_DYNASTY,
   BOARD_THEMES,
   boardThemeForDynasty,
+  BRAND_PURPLE,
   getBoardTheme,
+  mixHexSRGB,
+  parseBoardPurpleMode,
   parseBoardThemeSelection,
   resolveBoardTheme,
   SUPA_ORANGE,
@@ -270,5 +274,167 @@ describe('board theme selection', () => {
     // A selection overrides the scene's dynasty - that is what lets the owner
     // flip all three themes against one fixed scene.
     expect(resolveBoardTheme('PRIMAL', 'CYBER')?.id).toBe('solNeon');
+  });
+});
+
+describe('the brand purple experiment', () => {
+  /**
+   * THE MARK'S OWN VALUES, pinned.
+   *
+   * These four hexes are read off `scripts/brand/markGeometry.mjs`'s
+   * `MARK_PALETTE` - the module every brand raster in `public/brand/` is
+   * generated from - and they are independently what
+   * `assets/brand/supasnake-mark.svg` contains, which is where Home Round 2
+   * tokenised the same family from. Two extractions, two sources, one set of
+   * values. Pinned literally rather than imported from the generator so that a
+   * drift there fails HERE, loudly, instead of silently repainting the board.
+   */
+  it('carries the Mark palette verbatim, under Home Round 2 token names', () => {
+    expect(BRAND_PURPLE).toEqual({
+      base: '#a201ae',
+      shade: '#7d0275',
+      deep: '#33012d',
+      ink: '#170116',
+    });
+  });
+
+  /**
+   * THE SHIPPED DEFAULT IS UNCHANGED, and this is the test that says so.
+   *
+   * Nothing about this experiment may reach a player. The three shipped themes
+   * carry NO purple field at all - not a null, not a zero, absent - so every
+   * consumer's `??` fallback takes the branch it took before the experiment
+   * existed and the geometry builder's fast paths stay on their old lines.
+   */
+  it('leaves all three shipped themes with no purple on them at all', () => {
+    for (const theme of THEMES) {
+      expect(theme.seamUnderglow).toBeUndefined();
+      expect(theme.seamUnderglowStrength).toBeUndefined();
+      expect(theme.seamUnderglowFloor).toBeUndefined();
+      expect(theme.slabFrameBand).toBeUndefined();
+    }
+  });
+
+  it('places each variant only where that variant belongs', () => {
+    for (const theme of THEMES) {
+      const underglow = applyBoardPurple(theme, 'underglow')!;
+      expect(underglow.seamUnderglow).toBe(BRAND_PURPLE.shade);
+      expect(underglow.seamUnderglowFloor).toBeDefined();
+      // The frame is a SEPARATE variant and must not ride along with it.
+      expect(underglow.slabFrameBand).toBeUndefined();
+
+      const frame = applyBoardPurple(theme, 'frame')!;
+      expect(frame.slabFrameBand).toBeDefined();
+      expect(frame.seamUnderglow).toBeUndefined();
+      expect(frame.seamUnderglowFloor).toBeUndefined();
+
+      const both = applyBoardPurple(theme, 'both')!;
+      expect(both.seamUnderglow).toBe(BRAND_PURPLE.shade);
+      expect(both.seamUnderglowFloor).toBe(underglow.seamUnderglowFloor);
+      expect(both.slabFrameBand).toBe(frame.slabFrameBand);
+    }
+  });
+
+  it('is pure - a shipped theme is never mutated by deriving from it', () => {
+    const theme = BOARD_THEMES.cyanNeon;
+    const before = JSON.stringify(theme);
+    applyBoardPurple(theme, 'both');
+    expect(JSON.stringify(theme)).toBe(before);
+    expect(BOARD_THEMES.cyanNeon.seamUnderglow).toBeUndefined();
+  });
+
+  it('passes a null theme or an absent mode straight through', () => {
+    expect(applyBoardPurple(null, 'both')).toBeNull();
+    expect(applyBoardPurple(BOARD_THEMES.solNeon, null)).toBe(BOARD_THEMES.solNeon);
+    expect(applyBoardPurple(BOARD_THEMES.solNeon, undefined)).toBe(
+      BOARD_THEMES.solNeon
+    );
+  });
+
+  /**
+   * THE HOUSE NEON IS NOT TOUCHED. The dynasty identity law lives in these
+   * fields; the experiment may add surfaces but may never edit the house's own
+   * light or the plane the character is read against.
+   */
+  it('never edits the house neon, the play surface or the lit shoulder', () => {
+    for (const theme of THEMES) {
+      for (const mode of ['underglow', 'frame', 'both'] as const) {
+        const derived = applyBoardPurple(theme, mode)!;
+        expect(derived.neon).toBe(theme.neon);
+        expect(derived.face).toBe(theme.face);
+        expect(derived.tileEdgeKey).toBe(theme.tileEdgeKey);
+        expect(derived.tileEdgeMid).toBe(theme.tileEdgeMid);
+        expect(derived.tileWall).toBe(theme.tileWall);
+        // The cel ramp's shadow hue and the analytic pass's groove colour both
+        // read `grooveShadow`. Tinting it would put violet in every shadow.
+        expect(derived.grooveShadow).toBe(theme.grooveShadow);
+      }
+    }
+  });
+
+  /**
+   * LUMINANCE-NEUTRAL BY CONSTRUCTION.
+   *
+   * The burst shade sits at ~36/255 and the three wall tones at ~25-29, so a
+   * third of it is a CHROMA event: the seam gets more colour, not more light.
+   * Six levels is a generous ceiling on a step that measures under three, and
+   * it is what keeps the underglow from flattening the shoulder-to-wall step
+   * the line-free board reads its boundaries from.
+   */
+  it('moves the seam chroma without moving its luminance', () => {
+    for (const theme of THEMES) {
+      const derived = applyBoardPurple(theme, 'underglow')!;
+      const wall = mixHexSRGB(
+        theme.tileWall,
+        derived.seamUnderglow!,
+        derived.seamUnderglowStrength!
+      );
+      expect(Math.abs(luminance(wall) - luminance(theme.tileWall))).toBeLessThan(6);
+      expect(chroma(wall)).toBeGreaterThan(chroma(theme.tileWall));
+
+      // And the floor stays under the wall above it, so a seam still reads as
+      // a cut rather than as the lit slot `SEAM_GLOW` records from its own
+      // first render.
+      expect(luminance(derived.seamUnderglowFloor!)).toBeLessThan(luminance(wall));
+    }
+  });
+
+  /**
+   * THE FRAME IS THE UNIVERSE'S CONSTANT, and that is a measurable claim: the
+   * band has to read as ONE violet on all three houses rather than as three
+   * house-tinted violets. A tight hue spread across the themes is what says so.
+   */
+  it('bands all three slabs with one recognisable violet', () => {
+    const bands = THEMES.map(
+      (theme) => applyBoardPurple(theme, 'frame')!.slabFrameBand!
+    );
+    for (const band of bands) {
+      expect(hueDistance(band, BRAND_PURPLE.base)).toBeLessThan(20);
+      expect(chroma(band)).toBeGreaterThan(0.4);
+    }
+    for (const other of bands.slice(1)) {
+      expect(hueDistance(bands[0], other)).toBeLessThan(20);
+    }
+  });
+
+  it('mixes in sRGB, so an authored percentage is a perceived one', () => {
+    expect(mixHexSRGB('#000000', '#ffffff', 0)).toBe('#000000');
+    expect(mixHexSRGB('#000000', '#ffffff', 1)).toBe('#ffffff');
+    expect(mixHexSRGB('#000000', '#ffffff', 0.5)).toBe('#808080');
+    // Clamped, never wrapped - a bad weight may not produce a bad colour.
+    expect(mixHexSRGB('#000000', '#ffffff', -1)).toBe('#000000');
+    expect(mixHexSRGB('#000000', '#ffffff', 2)).toBe('#ffffff');
+  });
+
+  it('reads the URL strictly, and defaults to the shipped board', () => {
+    expect(parseBoardPurpleMode('underglow')).toBe('underglow');
+    expect(parseBoardPurpleMode('frame')).toBe('frame');
+    expect(parseBoardPurpleMode(' BOTH ')).toBe('both');
+    expect(parseBoardPurpleMode(undefined)).toBeNull();
+    expect(parseBoardPurpleMode('')).toBeNull();
+    expect(parseBoardPurpleMode('1')).toBeNull();
+    expect(parseBoardPurpleMode('on')).toBeNull();
+    expect(parseBoardPurpleMode('purple')).toBeNull();
+    expect(parseBoardPurpleMode('__proto__')).toBeNull();
   });
 });

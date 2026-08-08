@@ -61,6 +61,53 @@ export type BoardThemeId = 'cyanNeon' | 'solNeon' | 'darkNeon';
  */
 export const SUPA_ORANGE = '#f2a03f';
 
+/**
+ * THE MARK'S PURPLE - the brand family, verbatim.
+ *
+ * SOURCE OF TRUTH, and it is a module rather than a picture:
+ * `scripts/brand/markGeometry.mjs` exports `MARK_PALETTE` (lines 95-110) and is
+ * "the only place the mark is drawn" - every PNG, WebP, favicon and app icon in
+ * `public/brand/` is rasterised from it, and `assets/brand/supasnake-mark.svg`
+ * is its OUTPUT, not its source. These four values are that palette's violet
+ * members, copied unchanged; `node scripts/build-brand-assets.mjs --check`
+ * proves the shipped family still matches the generator.
+ *
+ * NAMED TO MATCH HOME ROUND 2, deliberately. That branch tokenised the same
+ * four values for the home surface (`--brand-purple`, `-shade`, `-deep`,
+ * `-ink`) by reading `assets/brand/supasnake-mark.svg` directly. The two
+ * extractions were done independently, from the generator and from its output,
+ * and they agree to the byte - so the keys here carry Home's token names rather
+ * than the generator's internal ones, and the train reconciles by inspection
+ * instead of by translation. The generator's own names are recorded beside each
+ * value because that is where the ROLE is documented.
+ *
+ *   base   `--brand-purple`        MARK_PALETTE.burstRim: the burst's LIT
+ *                                  TOP-LEFT EDGE, the model's brightest violet
+ *                                  decile. Home treats it as the primary, and
+ *                                  the frame band uses it for the same reason
+ *                                  the Mark does - it is the value the shape
+ *                                  takes where it catches light.
+ *   shade  `--brand-purple-shade`  MARK_PALETTE.burst: the modal violet of the
+ *                                  burst's BODY, the largest area of purple in
+ *                                  the logo. Dimmer than base, which is what
+ *                                  the underglow needs.
+ *   deep   `--brand-purple-deep`   MARK_PALETTE.burstShade: the hard-edged
+ *                                  darker region the lettering sits on.
+ *   ink    `--brand-purple-ink`    MARK_PALETTE.burstEdge: the shape's outer
+ *                                  contour.
+ *
+ * `deep` and `ink` are unused by this experiment and are carried so the family
+ * is complete in one place - a later reader finds the fourth member here rather
+ * than discovering it in the SVG. Lower-case to match Home's tokens character
+ * for character; the SVG writes the same values upper-case.
+ */
+export const BRAND_PURPLE = {
+  base: '#a201ae',
+  shade: '#7d0275',
+  deep: '#33012d',
+  ink: '#170116',
+} as const;
+
 export interface BoardTheme {
   id: BoardThemeId;
   /** Human label, for the fixture's own readout. */
@@ -152,6 +199,224 @@ export interface BoardTheme {
   /** The soft outer wash. Atmosphere, not a painted frame. */
   edgeWash: string;
   edgeWashStrength: number;
+
+  /* ---- THE BRAND PURPLE EXPERIMENT - ABSENT ON ALL THREE SHIPPED THEMES ---- */
+  /**
+   * (a) SEAM UNDERGLOW: the violet the bottom of a groove WALL fades into.
+   *
+   * Optional, and absent from `CYAN_NEON`, `SOL_NEON` and `DARK_NEON`, so the
+   * board a player sees is byte-identical to the one before this experiment
+   * existed. Only `applyBoardPurple` ever sets it.
+   */
+  seamUnderglow?: string;
+  /** (a) How far that wall bottom leans into it, as an sRGB mix. */
+  seamUnderglowStrength?: number;
+  /**
+   * (a) The seam FLOOR, already banded.
+   *
+   * A RESOLVED colour rather than a colour-plus-weight, because the slab's top
+   * face is one flat vertex tone with nothing to interpolate along - the mix
+   * has to happen somewhere and the theme layer is where the purple lives.
+   *
+   * It exists as its own token instead of tinting `grooveShadow`, and that is
+   * load-bearing: `grooveShadow` is ALSO the hue family every shadow band on
+   * the board leans into (`createBoardCelRamp`, at 0.55 on the darkest band)
+   * and the analytic pass's own groove colour (`ArenaFloor`'s `uGrooveShadow`).
+   * Tinting it would push violet into every shadow on every surface, which is
+   * precisely the "purple replaces the house colour" failure this experiment
+   * has to avoid.
+   */
+  seamUnderglowFloor?: string;
+  /**
+   * (b) SLAB FRAME BAND: the slab's outer chamfer, already banded.
+   *
+   * ONE ring around the whole play space - `createArenaSlabGeometry` paints
+   * four quads with `tones.bevel` and this replaces that tone. Deliberately NOT
+   * per-tile: 400 tile bands would fight the authored five-tone cel ladders in
+   * `boardTiles.ts` and would re-draw the grid the 2026-08-07 ruling removed.
+   */
+  slabFrameBand?: string;
+}
+
+/**
+ * Mix two sRGB hexes, in sRGB space, returning a hex.
+ *
+ * PERCEPTUAL ON PURPOSE, and the same choice `boardTiles.ts`'s `mixSRGB` makes
+ * for the same reason: an authored percentage has to be a perceived percentage
+ * or the number written in this file is not the number on the screen. A linear
+ * mix of these dark tones toward a mid violet would land visibly short of what
+ * the constant claims.
+ *
+ * Kept dependency-free (no three.js) so the theme layer stays a table of
+ * values that a test can read without a renderer.
+ */
+export function mixHexSRGB(from: string, toward: string, amount: number): string {
+  const t = Math.min(Math.max(amount, 0), 1);
+  const parse = (hex: string): [number, number, number] => {
+    const value = Number.parseInt(hex.replace('#', ''), 16);
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  };
+  const a = parse(from);
+  const b = parse(toward);
+  const channel = (index: number): number =>
+    Math.round(a[index] * (1 - t) + b[index] * t);
+  const hex = (value: number): string => value.toString(16).padStart(2, '0');
+  return `#${hex(channel(0))}${hex(channel(1))}${hex(channel(2))}`;
+}
+
+/**
+ * THE BOARD PURPLE EXPERIMENT - two independently judgeable variants.
+ *
+ * OWNER CONTEXT, 2026-08-07/08: the Mark's purple was ruled a DEFINING BRAND
+ * COLOUR, overturning the earlier "purple is logo-only" position, and the owner
+ * floated putting it on the gameboard and approved prototyping it. Nothing here
+ * ships. There is no default, no flag, no env var: the only way to see any of
+ * it is to type `?boardPurple=` into a route that `notFound()`s in production.
+ *
+ * THE LAW IT HAS TO SURVIVE. `BOARD_THEME_BY_DYNASTY` gives each house its own
+ * neon and that house read is a design pillar. So the purple is placed where it
+ * is structurally incapable of becoming the house colour:
+ *
+ *   NOT on the top plane      - 72% of the board's area, where the character is
+ *                               read. Untouched.
+ *   NOT on a shoulder         - the lit chamfer is the ONE feature carrying each
+ *                               theme's colour onto a surface (see `boardTiles`
+ *                               on why a hot shoulder was rendered and
+ *                               rejected). Violet on 1,600 shoulders would BE
+ *                               the board's colour. Untouched.
+ *   NOT on `neon`             - the house's own value is not touched at all, so
+ *                               the perimeter edge light stays exactly the hue
+ *                               it was authored as.
+ *   ONLY the groove floor and the bottom of a groove wall, which are the
+ *   darkest, most occluded surfaces on the board and are geometrically UNDER
+ *   the house neon: at the perimeter, where the house light actually lands, the
+ *   violet is laid down first and the neon is mixed ON TOP of it. That is the
+ *   brief's "purple sits under it, dimmer, constant" expressed as a layer order
+ *   rather than as a hope about strengths.
+ *
+ * A TENSION THE OWNER HAS TO RULE ON, stated rather than hidden. The line-free
+ * ruling of 2026-08-07 - "we don't need the gridlines now anymore, they are
+ * rather a disturbance" - zeroed every interior seam's drawn light. The
+ * underglow variant puts a colour back into interior seams. It is a HUE event
+ * and not a brightness one (see the strength constants: under +3 sRGB levels on
+ * all three themes), and it is constant rather than a per-cell emphasis, so it
+ * says "this board is made of violet-lit stone" rather than "here is a grid" -
+ * but it is still light in a seam the ruling emptied, and only the owner can
+ * say whether the brand statement is worth it. That is the whole question the
+ * twelve review shots exist to answer.
+ */
+export type BoardPurpleMode = 'underglow' | 'frame' | 'both';
+
+/**
+ * How far the bottom of a groove WALL leans into the burst violet.
+ *
+ * CHOSEN AGAINST THE LUMINANCE-NEUTRAL LAW, and it passes it by construction
+ * rather than by luck: `BRAND_PURPLE.shade` has a Rec.709 luminance of ~36/255,
+ * and the three themes' wall tones sit at ~29 (CYAN #0e2029), ~25 (SOL
+ * #1e1811) and ~27 (DARK #171b21). The violet is therefore within a few levels
+ * of the surface it is mixed into, so a third of it moves luminance by under
+ * three levels on every theme while moving CHROMA decisively. The seam gets
+ * more colour, not more light - which is also why it cannot flatten the
+ * shoulder-to-wall step the line-free board reads its boundaries from.
+ *
+ * It is a THIRD rather than a whisper because of what the surface is worth in
+ * pixels: at the ratified 28-degree pitch a 0.07-cell wall projects to ~1.4px.
+ * A mix that reads as violet on a swatch is invisible on 1.4px of shadow, and
+ * an experiment nobody can see is not a judgement instrument.
+ */
+const SEAM_UNDERGLOW_WALL = 0.34;
+
+/**
+ * How far the seam FLOOR leans into it.
+ *
+ * Stronger than the wall, and the geometry is the argument: the floor is the
+ * one surface in a seam that faces the key light, so it is the part of a groove
+ * a player actually sees - the near wall hides somewhat under half of an
+ * 0.11-wide floor at this pitch, leaving ~2px of top-facing surface per seam
+ * against ~1.4px of near-vertical wall. It is also the deepest point of the
+ * cut, which is where an underglow physically belongs.
+ *
+ * `grooveShadow` is far darker than the wall tone (~5/255 on CYAN), so even at
+ * this weight the floor lands well under the wall above it and the seam keeps
+ * reading as a cut rather than as a lit slot - the failure `SEAM_GLOW` records
+ * from its own first render.
+ */
+const SEAM_UNDERGLOW_FLOOR = 0.42;
+
+/**
+ * How far the slab's outer chamfer leans into the burst RIM.
+ *
+ * HIGH, and the frame's whole point is that it is high. The band is the
+ * universe's constant - the Mark's burst framing the wordmark, applied to the
+ * one ring around the play space - so it must read as brand violet on all
+ * three houses rather than as three violets. What the remaining 22% buys is a
+ * trace of each theme's own stone in the band (cyan-violet, warm violet,
+ * steel-violet), which is there to be judged: the owner may want the constant
+ * absolute, and 1.0 is the edit that makes it so.
+ *
+ * THE RIM, NOT THE BODY, and the Mark is the reason. On the logo `burstRim` is
+ * the value the shape takes where it CATCHES LIGHT, and the slab chamfer's
+ * documented job is "the one bright value on the body - it exists to catch the
+ * key". Same role, same value. It is still a real luminance drop on this one
+ * ring (CYAN's #6f9fb2 sits at ~150 against the rim's ~48), and that drop is
+ * the honest cost of the variant rather than a bug: a frame cannot be violet
+ * and stay a light stone. It touches no play surface - the chamfer is outside
+ * the tile field entirely - so nothing the game is read against moves.
+ */
+const SLAB_FRAME_BAND = 0.78;
+
+/**
+ * Derive the experiment's theme from a shipped one. PURE - never mutates.
+ *
+ * Passing `null` for either argument returns the input untouched, so a caller
+ * can hand it a stone board (`null` theme) or an absent flag without branching.
+ */
+export function applyBoardPurple(
+  theme: BoardTheme | null,
+  mode: BoardPurpleMode | null | undefined
+): BoardTheme | null {
+  if (!theme || !mode) return theme;
+  const next: BoardTheme = { ...theme };
+  if (mode === 'underglow' || mode === 'both') {
+    next.seamUnderglow = BRAND_PURPLE.shade;
+    next.seamUnderglowStrength = SEAM_UNDERGLOW_WALL;
+    next.seamUnderglowFloor = mixHexSRGB(
+      theme.grooveShadow,
+      BRAND_PURPLE.shade,
+      SEAM_UNDERGLOW_FLOOR
+    );
+  }
+  if (mode === 'frame' || mode === 'both') {
+    next.slabFrameBand = mixHexSRGB(
+      theme.bevel,
+      BRAND_PURPLE.base,
+      SLAB_FRAME_BAND
+    );
+  }
+  return next;
+}
+
+/**
+ * Parse `?boardPurple=underglow|frame|both`.
+ *
+ * Anything else - including a missing value, an empty one and `off` - returns
+ * null and the board renders exactly as it ships. Never a raw cast: this is a
+ * URL. Callers gate it on a non-production build, the same contract
+ * `applyArrivalModeFromSearch` carries; the only caller today is `/dev/cockpit`,
+ * which already `notFound()`s in production.
+ */
+export function parseBoardPurpleMode(
+  value: string | undefined
+): BoardPurpleMode | null {
+  const normalized = value?.trim().toLowerCase();
+  if (
+    normalized === 'underglow' ||
+    normalized === 'frame' ||
+    normalized === 'both'
+  ) {
+    return normalized;
+  }
+  return null;
 }
 
 /**

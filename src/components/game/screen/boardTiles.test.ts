@@ -1,5 +1,10 @@
 import * as THREE from 'three';
-import { BOARD_THEMES, type BoardTheme } from './boardThemes';
+import {
+  applyBoardPurple,
+  BOARD_THEMES,
+  BRAND_PURPLE,
+  type BoardTheme,
+} from './boardThemes';
 import {
   applyBoardCelShading,
   createBoardCelRamp,
@@ -674,5 +679,170 @@ describe('the ink hierarchy', () => {
     expect(TILE_INK_WIDTH * 43).toBeGreaterThan(1);
     // ...and the internal line never closed the seam it was drawn inside.
     expect(TILE_INK_WIDTH * 2).toBeLessThan(SEAM_WIDTH * 0.6);
+  });
+});
+
+describe('the brand purple underglow, in the baked field', () => {
+  /**
+   * ONE TILE'S VERTICES, by the quad they belong to.
+   *
+   * `createBoardTileField` emits ten quads per tile in a fixed order - top
+   * plane, four shoulders, four walls, underside - at six vertices each. The
+   * ranges below are that order, and they are what let this suite assert that
+   * the violet reached the walls and NOTHING else.
+   */
+  const PER_TILE = 60;
+  const TOP_AND_SHOULDERS = { from: 0, to: 30 };
+  const WALLS = { from: 30, to: 54 };
+  const UNDERSIDE = { from: 54, to: 60 };
+
+  function tileVertices(
+    field: THREE.BufferGeometry,
+    tile: number,
+    range: { from: number; to: number }
+  ): [number, number, number][] {
+    const colors = field.getAttribute('color');
+    const out: [number, number, number][] = [];
+    for (let i = range.from; i < range.to; i += 1) {
+      const index = tile * PER_TILE + i;
+      out.push([colors.getX(index), colors.getY(index), colors.getZ(index)]);
+    }
+    return out;
+  }
+
+  /** A tile with no perimeter side: every seam around it is an interior one. */
+  const INTERIOR_TILE = 10 * GRID + 10;
+  /** A corner tile, so two of its four sides carry the board's edge light. */
+  const PERIMETER_TILE = 0;
+
+  function hueOf(rgb: [number, number, number]): number {
+    const [r, g, b] = rgb;
+    const max = Math.max(r, g, b);
+    const delta = max - Math.min(r, g, b);
+    if (delta === 0) return 0;
+    const raw =
+      max === r
+        ? ((g - b) / delta) % 6
+        : max === g
+          ? (b - r) / delta + 2
+          : (r - g) / delta + 4;
+    return (raw * 60 + 360) % 360;
+  }
+
+  function hueGap(a: number, b: number): number {
+    const gap = Math.abs(a - b) % 360;
+    return gap > 180 ? 360 - gap : gap;
+  }
+
+  /** Linear-space hue of a hex, to compare against vertex colours. */
+  function hueOfHex(hex: string): number {
+    const color = new THREE.Color(hex);
+    return hueOf([color.r, color.g, color.b]);
+  }
+
+  describe.each(THEMES.map((theme) => [theme.id, theme] as const))(
+    '%s',
+    (_id, theme) => {
+      const off = createBoardTileField(GRID, theme);
+      const lit = createBoardTileField(GRID, applyBoardPurple(theme, 'underglow')!);
+
+      /**
+       * THE PILLAR, AS A TEST. The play surface is 72% of the board's area and
+       * the lit shoulder is the one feature carrying each house's colour onto
+       * a surface. If the violet ever reaches either, purple has stopped being
+       * an underglow and has become the board's colour - so these vertices are
+       * asserted IDENTICAL, bit for bit, on both an interior and a perimeter
+       * tile.
+       */
+      it('leaves the top plane and all four shoulders untouched', () => {
+        for (const tile of [INTERIOR_TILE, PERIMETER_TILE]) {
+          expect(tileVertices(lit.field, tile, TOP_AND_SHOULDERS)).toEqual(
+            tileVertices(off.field, tile, TOP_AND_SHOULDERS)
+          );
+          expect(tileVertices(lit.field, tile, UNDERSIDE)).toEqual(
+            tileVertices(off.field, tile, UNDERSIDE)
+          );
+        }
+      });
+
+      /**
+       * A wall quad is wound [a,b,c,a,c,d] with a and b at the groove floor and
+       * c and d at the shoulder, so exactly three of its six vertices sit below
+       * the shoulder and take the glow. The underglow is a GRADIENT out of the
+       * bottom of the cut, not a repaint of the whole wall.
+       */
+      it('reaches the bottom of a groove wall and stops there', () => {
+        const before = tileVertices(off.field, INTERIOR_TILE, WALLS);
+        const after = tileVertices(lit.field, INTERIOR_TILE, WALLS);
+        const changed = after.filter(
+          (rgb, index) => rgb.join() !== before[index].join()
+        );
+        // Four walls x three lower vertices.
+        expect(changed).toHaveLength(12);
+
+        /**
+         * IT MOVES TOWARD THE BRAND HUE WITHOUT BECOMING IT.
+         *
+         * The seam does not land on pure violet and must not: it is the
+         * theme's own wall tone carrying a third of the brand purple, so
+         * CYAN's dark teal keeps pulling its seam toward blue-violet while
+         * SOL's warm brown pulls its own toward red-violet. That house
+         * inflection is the design - a seam that snapped to one flat violet on
+         * all three boards would have replaced the theme rather than lit it.
+         * So the claim under test is the DIRECTION of travel plus a ceiling,
+         * not an equality with the brand hex.
+         */
+        const purpleHue = hueOfHex(BRAND_PURPLE.shade);
+        const wallHue = hueOfHex(theme.tileWall);
+        for (const rgb of changed) {
+          const gap = hueGap(hueOf(rgb), purpleHue);
+          expect(gap).toBeLessThan(hueGap(wallHue, purpleHue));
+          expect(gap).toBeLessThan(45);
+        }
+      });
+
+      /**
+       * THE LAYER ORDER, MEASURED. On the perimeter - the only place the house
+       * light actually lands - the violet goes down first and the house neon is
+       * mixed on top of it. So the lit vertices there must still read as the
+       * HOUSE's hue, not as the brand's. This is the assertion that would fail
+       * if the two mixes were ever swapped.
+       */
+      it('lets the house neon win on the perimeter, where the two meet', () => {
+        const walls = tileVertices(lit.field, PERIMETER_TILE, WALLS);
+        const neonHue = hueOfHex(theme.neon);
+        const purpleHue = hueOfHex(BRAND_PURPLE.shade);
+        const houseLit = walls.filter(
+          (rgb) => hueGap(hueOf(rgb), neonHue) < hueGap(hueOf(rgb), purpleHue)
+        );
+        // A corner tile carries the edge light on two of its four walls, three
+        // lit vertices each.
+        expect(houseLit.length).toBeGreaterThanOrEqual(6);
+      });
+
+      it('adds no geometry - the violet is colour on the field that shipped', () => {
+        expect(lit.triangles).toBe(off.triangles);
+        expect(lit.field.getAttribute('position').count).toBe(
+          off.field.getAttribute('position').count
+        );
+        // No ink hull either: the underglow is not a drawn line.
+        expect(lit.hull).toBeNull();
+      });
+    }
+  );
+
+  /**
+   * THE SHIPPED BOARD IS BYTE-IDENTICAL. A theme with no purple on it must
+   * produce exactly the field it produced before this experiment existed -
+   * same fast path, same flat quads, same colours.
+   */
+  it('builds the shipped field unchanged when no purple is asked for', () => {
+    for (const theme of THEMES) {
+      const shipped = createBoardTileField(GRID, theme);
+      const again = createBoardTileField(GRID, { ...theme });
+      expect(Array.from(again.field.getAttribute('color').array)).toEqual(
+        Array.from(shipped.field.getAttribute('color').array)
+      );
+    }
   });
 });

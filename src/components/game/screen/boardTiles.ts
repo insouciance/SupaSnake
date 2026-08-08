@@ -557,6 +557,29 @@ export function createBoardTileField(
 
   const neon = new THREE.Color(theme.neon);
   /**
+   * THE BRAND PURPLE UNDERGLOW - absent unless `applyBoardPurple` put it here.
+   *
+   * A CONSTANT, not an emphasis: it carries no seam class and no weight, so it
+   * is the same violet in every cut on the board and cannot draw an emphasis
+   * grid the way `seamGlowWeight` deliberately can. It is laid down FIRST and
+   * the house neon is mixed on top of it, which is what makes "under" a layer
+   * order rather than a hope about two strengths - at the perimeter, the one
+   * place the house light actually lands, the neon wins the same argument it
+   * won before this existed.
+   *
+   * IT SURVIVES T4. This is a vertex COLOUR on baked geometry, read through the
+   * board's toon ramp - no emissive, no bloom, no composer. The floor tier
+   * turns the composer off and repays its luminance through renderer exposure
+   * (`renderQuality.ts`), and an exposure multiplier scales this violet exactly
+   * as it scales every other tone on the board. There is nothing here for the
+   * governor to take away, which is the only honest way to put light in a seam
+   * that has to look the same on a starved device.
+   */
+  const underglow = theme.seamUnderglow
+    ? new THREE.Color(theme.seamUnderglow)
+    : null;
+  const underglowStrength = theme.seamUnderglowStrength ?? 0;
+  /**
    * One colour per (tone, shade) pair, built once.
    *
    * Five shades over the handful of tones a theme owns is at most a few dozen
@@ -575,6 +598,26 @@ export function createBoardTileField(
       toneCache.set(key, color);
     }
     return color;
+  };
+
+  /**
+   * The wall tone with the underglow already in it, one per shade level.
+   *
+   * Cached for the same reason `toneOf` is: the underglow reaches all four
+   * walls of all 400 tiles, and mixing per quad would be 1,600 colour
+   * allocations in a geometry build that is otherwise a few dozen. Five shades
+   * is the whole domain.
+   */
+  const underglowCache = new Map<number, THREE.Color>();
+  const wallToneOf = (level: number): THREE.Color => {
+    const base = toneOf(theme.tileWall, level);
+    if (!underglow) return base;
+    let lit = underglowCache.get(level);
+    if (!lit) {
+      lit = mixSRGB(base, underglow, underglowStrength);
+      underglowCache.set(level, lit);
+    }
+    return lit;
   };
 
   const half = TILE_SPAN / 2;
@@ -771,11 +814,22 @@ export function createBoardTileField(
         weight: number
       ): void => {
         const base = toneOf(theme.tileWall, shade);
-        if (weight <= 0) {
+        if (weight <= 0 && !underglow) {
           quad(a, b, c, d, () => base, centre);
           return;
         }
-        const lit = mixSRGB(base, neon, SEAM_GLOW.wall * weight);
+        /**
+         * THE LAYER ORDER, and it is the whole of the design pillar.
+         *
+         * The violet goes down first and the HOUSE NEON IS MIXED ON TOP OF IT,
+         * so on the 76 perimeter faces where the house light actually lands the
+         * final tone is dominated by the house's own hue exactly as it was
+         * before the experiment. Reversing these two lines would let a constant
+         * violet sit over the dynasty's light, which is the one outcome the
+         * house read cannot survive.
+         */
+        let lit = wallToneOf(shade);
+        if (weight > 0) lit = mixSRGB(lit, neon, SEAM_GLOW.wall * weight);
         quad(
           a,
           b,
