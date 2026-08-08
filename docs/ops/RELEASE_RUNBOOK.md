@@ -1,29 +1,34 @@
 # Production Release Runbook
 
-Current production baseline: the feel-and-brand release
-`e62d3000ae3a1a7ecdb60fea19df1beeb4cff233` — The Mark, the rebuilt vector logo
-family (PR 101), the Constitution v1.16 citation fix (PR 103), ET-3 taking React
-out of the hot path (PR 104), ET-1 front-loaded arrival (PR 105) and a
-lockfile-only advisory clearance (PR 106) —
-independently verified on 7 August 2026 by successful production workflow
-`31225427908` (verify 22:54–23:08 UTC, deploy 23:08–23:15:42 UTC,
+Current production baseline: the relaunch
+`230fc68a2b82c8a5bce1836d88b6689a323cc606` — 90S-Path, home, setup and HUD in
+the cartoon (PR 107), carrying the previous release record (PR 108) —
+independently verified on 8 August 2026 by successful production workflow
+`31229536224` (verify 00:14–00:31 UTC, deploy 00:31–00:38:32 UTC,
 `expected_migrations=none`) as deployment
-`dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm`
-(`supasnake-jd2djdx9b-josef-bells-projects.vercel.app`). The outgoing anchor was
-`dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` on `fc6fdf3`.
+`dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk`
+(`supasnake-8h3sqhc3r-josef-bells-projects.vercel.app`), on a clean first
+dispatch. The outgoing anchor was
+`dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` on `e62d300`.
 
-**Nothing about the contract moved this time.** No migration, so the hosted
+**Nothing about the contract moved.** No migration, so the hosted
 schema stays **001–069** with no pending plan; the public surface stays at
 **25 flags** with `contractHash` equal to `declaredHash` at
-`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, recomputed
-at the release SHA. Canonical health
+`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, and the
+manifest was verified untouched by PR 107 before dispatch rather than merely
+assumed unchanged. Canonical health
 reports the exact release SHA, healthy database, project ref
 `gmpwyzqafoyowndbvlma`, and Genome schema/catalog/Ascendance 2/2/2 with eight
 Splices, rules version 2, and neutral 2/3/4 Strain thresholds.
 
-The Mark was proved at runtime against pre-cutover baselines: `/favicon.ico`
-went 404 → 200 — the product's **first favicon** — `/brand/mark.png` went
-404 → 200, and icon-family references in the home HTML went from 0 to 9.
+The relaunch was proved at runtime against pre-cutover baselines: `border-bone`
+went from 5 occurrences to **0** across the served CSS — the white-border death,
+literally — and `run-setup-mark` and `home-anomaly-flash` went from absent to
+present in the rotated page chunks.
+
+This release also ships the **nine-rule pattern library**, recorded in PR 107.
+It is the extrapolation authority for every remaining surface: later packages
+derive from it rather than re-deciding the grammar per screen.
 
 The dedicated read-only probe remains `cohesive_release_read_only_v5` and came
 back green on all 16 sentinels, verified at the release SHA. Canonical alias,
@@ -38,24 +43,55 @@ allowlist holds six contracts — `genome-v2-initial`, `genome-v2-resume`,
 
 ### A moved rules chunk is not a rules change
 
-**The engine rules version is unchanged at `snake-rules-2026-08-05.2`**, so
-neither this train nor the one before it has a run-continuity boundary: open
-runs crossed both seamlessly, with no `incompatible` phase and no recovery path.
+**The engine rules version is unchanged at `snake-rules-2026-08-05.2`**, so none
+of the last several trains has a run-continuity boundary: open runs crossed each
+seamlessly, with no `incompatible` phase and no recovery path.
 
-Read the evidence carefully, because the two releases differ in a way that looks
-alarming and is not. In the 90s cutover the rules **chunk** moved —
+Read the evidence carefully, because the chunk hash has now done both things
+while the string never moved. In the 90s cutover the rules **chunk** moved —
 `2894-433978b3ede14d00.js` → `2894-38b54650201f7905.js` — consistent with
-PR 97's telemetry touching engine-adjacent files, while the version *string*
-stayed put. In this release the chunk held still as well:
-`2894-38b54650201f7905.js` is byte-identical again.
+PR 97's telemetry touching engine-adjacent files. In the feel-and-brand release
+it held still, byte-identical. In this release it moved again:
+`2894-38b54650201f7905.js` → `2894-1080c5e…`.
 
 The pinning contract keys on the **version string**, not on the chunk filename.
 So a moved chunk with an unchanged string is not a boundary, and a future
 operator who treats a changed chunk hash as one will withdraw a release for no
-reason. The two releases together are the worked example: same string, chunk
-moved once and held once, no boundary either time. Taken with the earlier
-lesson, the rule is: a schema change, a flag change, and a moved chunk are each
-*not* continuity boundaries on their own — only the rules version string is.
+reason. Three consecutive releases are now the worked example: same string,
+chunk moved, held, and moved again — no boundary any of the three times. Taken
+with the earlier lesson, the rule is: a schema change, a flag change, and a
+moved chunk are each *not* continuity boundaries on their own — only the rules
+version string is.
+
+### What the relaunch's runtime proof does and does not cover
+
+Three honest limits, recorded so nobody later reads them as passes:
+
+- The **energy-reactor container** testid is not observable in the initial
+  `/game` chunks, although its children `energy-stock` and `energy-summary` are
+  present. The likely explanation is lazy or conditional mounting. That is
+  flagged, not inferred — nobody has confirmed it, and it should be confirmed
+  before anyone leans on the container as an observable.
+- `/api/anomaly` returning 401 is **pre-existing**, so it is evidence that the
+  wiring is intact and nothing more. It does not discriminate this release from
+  the one before it.
+- `run-setup-adjust`, `favorites` and `ruleset-explainer` all **pre-existed**
+  and are *not* discriminators, even though they appear in the diff's added
+  lines. A testid showing up in a diff is not the same as a testid being new to
+  the product; check the outgoing artifact before claiming either.
+
+### Product shape changed, and one Constitution amendment is pending
+
+Setup is now **three elements**: the reactor collapses at 0 = FREE, and
+`gameMode` is derived rather than chosen. The anomaly now lives on home.
+
+That element-list change needs a **§5 amendment**, which is **open as task 44**
+and not yet made. Record it here so it cannot drift silently: until the
+amendment lands, the shipped setup surface and the Constitution's §5 element
+list disagree, and the Constitution is the authority that has to move.
+
+Also known and filed: the mobile chamber wash-out is pre-existing (task 46), and
+PR 107's report carries two owner-veto judgment calls.
 
 ### Feel changes are in by construction, not by observation
 
@@ -73,11 +109,11 @@ measured: page commits per tick fell 1.2 → 0.0 steady.
 
 ### Rollback shape for the current release
 
-The feel-and-brand release carries **no migration** and no contract change, so
-rollback is deployment-level and unusually cheap: return the alias to
-`dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` and change nothing else. The schema stays
+The relaunch carries **no migration** and no contract change, so
+rollback is deployment-level: return the alias to
+`dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` and change nothing else. The schema stays
 001–069 and the surface stays at 25 flags either way, so there is no flag lever
-to pull here — everything this train shipped is unconditional.
+to pull here — the new home, setup and HUD are unconditional.
 
 Turning the 90s composition off remains available as a *forward* release with
 `NEXT_PUBLIC_NINETIES_COMPOSITION` off, and that path is tested rather than
@@ -85,10 +121,11 @@ inferred: the `rollback` E2E leg builds and runs the INK & AMBER stone board, so
 the off-leg is exercised on every PR. Note that it would also withdraw The
 Mark's context, so it is a composition lever and not a brand one.
 
-### Ops history: three dispatches, and that is the gate working
+### Ops history: the feel-and-brand release took three dispatches
 
-Worth recording in full, because two red dispatches in a row can read like a
-troubled release when it is the opposite.
+The relaunch went out on a clean first dispatch. The release before it did not,
+and that history is worth keeping, because two red dispatches in a row can read
+like a troubled release when it is the opposite.
 
 1. **Dispatch 1 failed** on the CYBER speed-ramp seed-window flake. Diagnosed
    rather than retried blindly: the engine's `startTime = Date.now()` feeds the
@@ -197,12 +234,15 @@ item (FM-12), and it is a known gap rather than a property of this release.
 The live interaction-v2 contract uses optional physical Gene relics on a
 deterministic 8 ± 2-food cadence; already-issued or omitted interaction stamps
 retain automatic-offer v1 compatibility. The now-previous deployment
-`dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` (`fc6fdf3`) is the artifact-level rollback
-candidate, and the cheapest in the chain: same schema, same 25-flag surface and
+`dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` (`e62d300`) is the artifact-level rollback
+candidate: same schema, same 25-flag surface and
 hash, same rules version, so nothing about the contract moves and no run in
-flight is interrupted. It gives up The Mark and its icon family, the ET-3
-hot-path work and the ET-1 arrival feel, and it restores the pre-#106 lockfile.
-The artifact before it (`dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt`, `fb25918`)
+flight is interrupted. It gives up the relaunched home, setup and HUD, and with
+them the nine-rule pattern library's first application. The artifact before it
+(`dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8`, `fc6fdf3`) additionally gives up The Mark
+and its icon family, the ET-3 hot-path work and the ET-1 arrival feel, and
+restores the pre-#106 lockfile.
+The artifact before that (`dpl_EhajnU3taMWsJBDqSAG2dzEkQoWt`, `fb25918`)
 additionally serves the **24-flag** surface at hash `e60cd71e…8017`, giving up
 the 90s composition, the 90s HUD, the canonical camera and the Wave-3
 measurement work — prefer the flag-off forward release if the objection is to

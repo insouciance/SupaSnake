@@ -29,19 +29,20 @@
 | Presentation | The ratified 90s composition, live behind `NEXT_PUBLIC_NINETIES_COMPOSITION`; board themes SUPA SNAKE ORANGE / CYAN NEON / DARK NEON, HUD in 90s ink |
 | Camera | ET-5 canonical framing: pinned azimuth 0, pitch 28, fit 1.00, fov 44, with a four-wall fairness gate and OrbitControls off the live board |
 | Brand | The Mark: rebuilt vector wordmark at locked geometry, first favicon, PWA/maskable icon family |
-| Player-feature baseline | `e62d3000ae3a1a7ecdb60fea19df1beeb4cff233` |
-| Current deployment | `dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` (`supasnake-jd2djdx9b-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` (`fc6fdf3`); identical schema, surface, hash and rules version — the cheapest rollback in the chain; it gives up The Mark, the ET-3 hot-path work and the ET-1 arrival feel |
+| Player-feature baseline | `230fc68a2b82c8a5bce1836d88b6689a323cc606` |
+| Current deployment | `dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk` (`supasnake-8h3sqhc3r-josef-bells-projects.vercel.app`) |
+| Previous deployment | `dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` (`e62d300`); identical schema, surface, hash and rules version; it gives up the relaunched home, setup and HUD |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 
-The current release is feel and brand: The Mark — the rebuilt vector logo family
-(PR 101) — the Constitution v1.16 citation fix (PR 103), ET-3 taking React out
-of the hot path (PR 104), ET-1's front-loaded arrival (PR 105) and a
-lockfile-only advisory clearance (PR 106). Nothing about the contract moved: no
-migration, the hosted schema stays 001–069, and the public surface stays at
-**25 flags** at the same hash. The engine rules version is untouched at
-`snake-rules-2026-08-05.2`, so open runs crossed the cutover seamlessly.
+The current release is the relaunch: 90S-Path, home, setup and HUD redrawn in
+the cartoon (PR 107), carrying the previous release record. Nothing about the
+contract moved: no migration, the hosted schema stays 001–069, and the public
+surface stays at **25 flags** at the same hash, with the manifest verified
+untouched before dispatch. The engine rules version is untouched at
+`snake-rules-2026-08-05.2`, so open runs crossed the cutover seamlessly. It also
+ships the nine-rule pattern library, which is the extrapolation authority for
+the remaining surfaces.
 
 The release passed all ten protected-PR checks including the four
 isolated-Supabase E2E flag shapes — among them the `rollback` leg, which builds
@@ -53,9 +54,7 @@ ordinary and two-session SQL
 integration, the production runtime dependency audit, staged and canonical
 health, the 16-key `cohesive_release_read_only_v5` schema probe, exact cron
 ownership, and focused public-production smoke. Production workflow
-`31225427908` deployed it, on the third dispatch: the first two halted before
-any mutation, once on a test flake and once on a freshly published advisory, and
-production was never touched. Detailed evidence is
+`31229536224` deployed it on a clean first dispatch. Detailed evidence is
 maintained in `docs/ops/QA_CHECKLIST.md`.
 
 ## Player-facing baseline
@@ -141,6 +140,12 @@ maintained in `docs/ops/QA_CHECKLIST.md`.
   RIDE ON, TRADE UP, GOLDEN HOUR, and GOLD, PULSE, COILS, WARP and RISK. A
   mounted glossary is available wherever the terms appear, so a term is never
   the thing standing between a player and the decision.
+- Home, setup and the HUD are drawn in the cartoon, on one coherent path from
+  home through setup into the game. The white borders are gone — literally: the
+  `border-bone` token is no longer served at all.
+- Setup is three elements rather than five. The energy reactor collapses when
+  it reads 0 = FREE, and game mode is derived from the setup rather than picked
+  separately. The anomaly now lives on home.
 - The product has a mark. The rebuilt vector wordmark sits on the home screen at
   locked geometry, and the icon family — the first favicon the product has ever
   had, plus PWA and maskable icons — derives from that same source rather than
@@ -304,6 +309,15 @@ hash. Never write 25/25 as a live fact before then.
 
 These do not invalidate the operator production release:
 
+- **Constitution §5 amendment is pending (task 44).** Setup shipped as three
+  elements, so the shipped surface and the Constitution's §5 element list
+  currently disagree. The Constitution is the authority that has to move;
+  recorded here so the divergence cannot sit unnoticed.
+- The CYBER speed-ramp seed-window flake (task 45) is still open. In the deploy
+  agent's words, "it cost a cycle tonight and will again" — the engine's
+  `startTime = Date.now()` feeds the relic schedule, so the assertion window is
+  wall-clock dependent.
+- Mobile chamber wash-out (task 46), pre-existing and filed.
 - Two SQL changes are queued for the next Track-A migration and were
   deliberately left out of the flag-on release, which carried no migration: the
   clan RPC-layer anonymous guard (defence in depth behind the route-level guard
