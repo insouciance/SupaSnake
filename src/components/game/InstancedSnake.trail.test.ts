@@ -330,12 +330,9 @@ describe('Dynasty and Strain body colour', () => {
 });
 
 describe('tail taper is fluid across engine ticks', () => {
-  it('blends a persistent cell from its previous to current vacancy state', () => {
-    const previous = straight(10); // z 5..14
-    const current = [at(5, 4), ...previous.slice(0, -1)]; // z 4..13
-    const buffer = movingBuffer(previous, current);
-    const levels = new Array(10).fill(1);
-    const heightAt = (alpha: number) => {
+  /** The vacancy height of the cell about to free up, at a given alpha. */
+  const taperAt = (buffer: ReturnType<typeof movingBuffer>, levels: number[]) =>
+    (alpha: number) => {
       const instance = emit(buffer, levels, alpha).sink.instances.find(
         (entry) => Math.abs(entry.position.z - 13.5) < 1e-6
       );
@@ -343,21 +340,54 @@ describe('tail taper is fluid across engine ticks', () => {
       return instance!.scale.y;
     };
 
+  it('blends a persistent cell from its previous to current vacancy state', () => {
     // The property under test is that the vacancy taper FLOWS rather than
-    // blinking once per engine tick. It still does - it just runs on ET-1's
-    // clock now, which completes at ARRIVAL_ALPHA instead of at alpha 1. The
-    // sample points move with the curve; the contract does not.
-    const previousHeight = heightAt(0);
-    const middleHeight = heightAt(ARRIVAL_ALPHA / 2);
-    const arrivedHeight = heightAt(ARRIVAL_ALPHA);
-    expect(previousHeight).toBeGreaterThan(middleHeight);
-    expect(middleHeight).toBeGreaterThan(arrivedHeight);
+    // blinking once per engine tick. Pinned to `front` explicitly: this is the
+    // front-loaded clock's own contract - complete by ARRIVAL_ALPHA, then hold
+    // - and it has to keep being tested for as long as that leg ships for the
+    // A/B, whatever the default happens to be.
+    setArrivalMode('front');
+    try {
+      const previous = straight(10); // z 5..14
+      const current = [at(5, 4), ...previous.slice(0, -1)]; // z 4..13
+      const heightAt = taperAt(movingBuffer(previous, current), new Array(10).fill(1));
 
-    // ...and having landed, it HOLDS. The trail must not keep creeping while
-    // the head sits on its cell, or the body would visibly lag the creature
-    // for the whole settle - the accordion ET-1 exists to prevent.
-    expect(heightAt(0.7)).toBeCloseTo(arrivedHeight, 10);
-    expect(heightAt(1)).toBeCloseTo(arrivedHeight, 10);
+      const previousHeight = heightAt(0);
+      const middleHeight = heightAt(ARRIVAL_ALPHA / 2);
+      const arrivedHeight = heightAt(ARRIVAL_ALPHA);
+      expect(previousHeight).toBeGreaterThan(middleHeight);
+      expect(middleHeight).toBeGreaterThan(arrivedHeight);
+
+      // ...and having landed, it HOLDS. The trail must not keep creeping while
+      // the head sits on its cell, or the body would visibly lag the creature
+      // for the whole settle - the accordion ET-1 exists to prevent.
+      expect(heightAt(0.7)).toBeCloseTo(arrivedHeight, 10);
+      expect(heightAt(1)).toBeCloseTo(arrivedHeight, 10);
+    } finally {
+      resetArrivalMode();
+    }
+  });
+
+  it('runs the glide leg at the constant rate the head travels at', () => {
+    // ET-1b: one clock, and under glide that clock never stops inside an
+    // interval. The head crosses its cell at a fixed speed for the whole tick,
+    // so the cell it deposits behind it grows at that same fixed rate and
+    // completes at alpha 1. A taper that landed early under a head still
+    // travelling is the accordion, inverted.
+    setArrivalMode('glide');
+    try {
+      const previous = straight(10);
+      const current = [at(5, 4), ...previous.slice(0, -1)];
+      const heightAt = taperAt(movingBuffer(previous, current), new Array(10).fill(1));
+
+      expect(heightAt(0)).toBeGreaterThan(heightAt(0.5));
+      expect(heightAt(0.5)).toBeGreaterThan(heightAt(1));
+      // Still moving at the instant `front` had already stopped - which is
+      // exactly the difference between the two legs.
+      expect(heightAt(ARRIVAL_ALPHA)).toBeGreaterThan(heightAt(1));
+    } finally {
+      resetArrivalMode();
+    }
   });
 
   it('runs the classic leg on the old symmetric curve, end to end', () => {

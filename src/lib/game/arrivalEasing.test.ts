@@ -262,9 +262,9 @@ describe('the classic leg reproduces the pre-ET-1 timing exactly', () => {
 });
 
 describe('the dev A/B pin', () => {
-  it('ships front-loaded and only a recognised flag changes it', () => {
-    expect(DEFAULT_ARRIVAL_MODE).toBe('front');
-    expect(getArrivalMode()).toBe('front');
+  it('ships the glide profile and only a recognised flag changes it', () => {
+    expect(DEFAULT_ARRIVAL_MODE).toBe('glide');
+    expect(getArrivalMode()).toBe('glide');
 
     expect(applyArrivalModeFromSearch('?arrival=classic')).toBe('classic');
     expect(getArrivalMode()).toBe('classic');

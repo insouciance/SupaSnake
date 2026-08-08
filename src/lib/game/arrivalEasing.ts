@@ -154,7 +154,7 @@ export type ArrivalMode = 'front' | 'classic' | 'glide';
  * linear head and symmetric smoothstep transitions of the pre-ET-1 build) are
  * both kept intact so the owner can play the three back to back.
  */
-export const DEFAULT_ARRIVAL_MODE: ArrivalMode = 'front';
+export const DEFAULT_ARRIVAL_MODE: ArrivalMode = 'glide';
 
 /**
  * The arrival fraction: the share of a tick interval spent travelling. The
