@@ -25,13 +25,23 @@
  * face travels. Two layers animating against each other is how the old chip
  * got out of phase with its own shadow.
  *
- * ── THE GLYPH SITS ON THE FLAT FACE, BY GEOMETRY ──────────────────────────
+ * ── THE GLYPH IS PAINT ON THE FACE, BY GEOMETRY ───────────────────────────
  *
- * `art.face` is the largest rectangle inside the projected front face, so the
- * glyph is positioned off the drawing rather than nudged until it looked
- * centred. That is the kid-clear clause made structural: a label cannot be
- * eaten by a bevel band, because the bevel bands are not in the box it is
- * given. Percentages of the viewBox, so it holds at every button size.
+ * Owner ruling, 2026-08-08: "the symbols on the face look straight versus the
+ * face actually has an angle — adjust that in the final version."
+ *
+ * `art.face` now carries the face's own rectangle plus the 2x2 that projects
+ * it, so the glyph slot is laid out at the face's real size, centred where the
+ * face centre projects, and then transformed by that matrix about its own
+ * centre. The mark lands on the leaning surface instead of floating in front of
+ * it, and it is still positioned off the drawing rather than nudged until it
+ * looked right — the kid-clear clause made structural, one step further in.
+ *
+ * The slot is sized in percentages of the viewBox, which is square, so it holds
+ * at every button size. WHAT GOES IN IT is only the paint: anything that must
+ * stay square to the screen — a notification badge, a count — belongs outside
+ * `SnakeCubeChrome` on the pressable itself, because a badge that leans is a
+ * badge that looks broken.
  */
 
 import { useId, type CSSProperties, type ReactNode } from 'react';
@@ -132,11 +142,15 @@ export function SnakeCubeChrome({
 }: SnakeCubeChromeProps) {
   const instanceId = useId().replace(/:/g, '');
   const art = getSnakeCubeArt(options);
-  const face = {
-    left: `${((art.face.x - parseFloat(art.viewBox.split(' ')[0])) / art.width) * 100}%`,
-    top: `${((art.face.y - parseFloat(art.viewBox.split(' ')[1])) / art.height) * 100}%`,
+  const [viewX, viewY] = art.viewBox.split(' ').map(Number);
+  const face: CSSProperties = {
+    left: `${((art.face.x - viewX) / art.width) * 100}%`,
+    top: `${((art.face.y - viewY) / art.height) * 100}%`,
     width: `${(art.face.width / art.width) * 100}%`,
     height: `${(art.face.height / art.height) * 100}%`,
+    // Into the face's plane. `transform-origin` is the box centre by default,
+    // which is the point the matrix is derived about.
+    transform: `matrix(${art.face.transform.join(', ')}, 0, 0)`,
   };
 
   return (

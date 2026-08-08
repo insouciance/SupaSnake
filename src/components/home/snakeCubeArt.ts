@@ -407,15 +407,39 @@ export interface CubeArt {
   readonly facets: readonly { readonly d: string; readonly band: CubeBand }[];
   readonly gradients: readonly CubeGradient[];
   /**
-   * The largest axis-aligned rectangle inside the projected FLAT front face,
-   * in viewBox units. A glyph placed here cannot be eaten by a bevel band,
-   * which is the kid-clear clause stated as geometry instead of as care.
+   * THE FLAT FRONT FACE, AS A PLANE A GLYPH CAN BE PAINTED ONTO.
+   *
+   * Owner ruling, 2026-08-08: "the symbols on the face look straight versus the
+   * face actually has an angle — adjust that in the final version."
+   *
+   * They were straight because this used to be a BOUNDING BOX: the axis-aligned
+   * rectangle around the projected face, which a glyph was centred in. A box
+   * around a parallelogram is not the parallelogram, so the mark floated in
+   * screen space in front of a surface that leans away from it.
+   *
+   * What is carried now is the face itself. `x`/`y`/`width`/`height` are the
+   * face's own rectangle — its real object-space size, centred on where the
+   * face centre projects — and `transform` is the 2x2 that maps that rectangle
+   * onto the projection. No fitting and no fudge is involved: under an
+   * orthographic camera the projection is linear, so the images of the face's
+   * two axes ARE the matrix, and they are read straight off `project`.
+   *
+   *   column 1 = project(+X)        the face's own rightward edge
+   *   column 2 = -project(+Y)       the face's own downward edge (screen y
+   *                                 counts down, object Y counts up)
+   *
+   * A point `d` from the centre of the unprojected rectangle lands at
+   * `centre + dx*col1 + dy*col2`, which is exactly where the face point at that
+   * offset projects. Applied about the box's own centre — which is where CSS
+   * `transform-origin` already sits — the glyph becomes paint ON the face.
    */
   readonly face: {
     readonly x: number;
     readonly y: number;
     readonly width: number;
     readonly height: number;
+    /** `[a, b, c, d]` of an SVG/CSS `matrix(a,b,c,d,0,0)`, about the centre. */
+    readonly transform: readonly [number, number, number, number];
   };
 }
 
@@ -524,10 +548,32 @@ export function getSnakeCubeArt(options: CubeArtOptions = {}): CubeArt {
   }
 
   const hull = convexHull(projectedAll);
-  const minX = Math.min(...projectedAll.map((p) => p[0])) - inkRatio;
-  const maxX = Math.max(...projectedAll.map((p) => p[0])) + inkRatio;
-  const minY = Math.min(...projectedAll.map((p) => p[1])) - inkRatio;
-  const maxY = Math.max(...projectedAll.map((p) => p[1])) + inkRatio;
+  const rawMinX = Math.min(...projectedAll.map((p) => p[0])) - inkRatio;
+  const rawMaxX = Math.max(...projectedAll.map((p) => p[0])) + inkRatio;
+  const rawMinY = Math.min(...projectedAll.map((p) => p[1])) - inkRatio;
+  const rawMaxY = Math.max(...projectedAll.map((p) => p[1])) + inkRatio;
+
+  /**
+   * THE VIEWBOX IS SQUARED, AND THAT IS A CORRECTNESS FIX RATHER THAN TIDINESS.
+   *
+   * The projected cube is 2.7% narrower than it is tall, and the surface is
+   * drawn with `preserveAspectRatio="xMidYMid meet"` inside a square element —
+   * so the renderer was already fitting the drawing to the HEIGHT and centring
+   * it, leaving 0.85px of letterbox down each side of a 62px button. Anything
+   * positioned as a percentage of the ELEMENT (the glyph slot is) was therefore
+   * being placed against a box the drawing does not fill, which put the glyph
+   * ~1px left of the face and ~3% too wide.
+   *
+   * Padding the viewBox to a square, centred, is what `meet` was doing anyway:
+   * the rendering is byte-identical, and percentages of the element are now
+   * percentages of the drawing. A glyph can only be painted onto the face if
+   * the two coordinate systems agree about where the face is.
+   */
+  const span = Math.max(rawMaxX - rawMinX, rawMaxY - rawMinY);
+  const minX = (rawMinX + rawMaxX) / 2 - span / 2;
+  const maxX = minX + span;
+  const minY = (rawMinY + rawMaxY) / 2 - span / 2;
+  const maxY = minY + span;
 
   // Object-space Y projects to a straight line on screen, so the fall's two
   // endpoints are two screen heights and one gradient serves every facet of a
@@ -543,25 +589,31 @@ export function getSnakeCubeArt(options: CubeArtOptions = {}): CubeArt {
     to: bandColorAt(base, emissive, emissiveIntensity, tones[band], tones.fall, -0.5),
   }));
 
-  // The flat front face (+Z), inscribed. Its projection is a parallelogram; the
-  // rectangle taken here is the intersection of its own bounding box with the
-  // vertical strip its two side edges leave clear, so a glyph inside it is
-  // clear of the chamfer at every column.
-  const frontFace = facets.find((f) => f.normal[2] === 1);
-  const frontPts = (frontFace?.points ?? []).map((p) =>
-    project([p[0] + offsets[0], p[1], p[2]] as unknown as Vec3)
-  );
-  const frontRight = (frontFace?.points ?? []).map((p) =>
-    project([p[0] + offsets[offsets.length - 1], p[1], p[2]] as unknown as Vec3)
-  );
-  const faceXs = [...frontPts, ...frontRight].map((p) => p[0]);
-  const faceYs = [...frontPts, ...frontRight].map((p) => p[1]);
-  const faceX0 = Math.min(...faceXs);
-  const faceX1 = Math.max(...faceXs);
-  // The parallelogram leans, so the safe height is its bbox less the lean.
-  const lean = Math.abs(project([0, 0, 1])[1] - project([0, 0, 0])[1]) * 0;
-  const faceY0 = Math.min(...faceYs) + lean;
-  const faceY1 = Math.max(...faceYs) - lean;
+  // ---------------------------------------------------------------------------
+  // The flat front face (+Z), as a plane rather than as a box.
+  //
+  // The face is a rectangle in the plane z = +0.5: `2 * inner` tall, and as wide
+  // as the row's flat fronts span once the chamfer has taken its share at each
+  // end. Its centre is the object's own centre pushed forward to that plane, so
+  // the whole face is fixed by three numbers and the two projected axes.
+  // ---------------------------------------------------------------------------
+  const inner = 0.5 - chamfer;
+  const faceHeight = 2 * inner;
+  const faceWidth = (cubes - 1) + 2 * inner;
+  const faceCentre = project([0, 0, 0.5]);
+  // The images of the face's own axes. `-project(+Y)` because object Y counts
+  // up and the drawing's y counts down; it is the face's DOWNWARD edge that a
+  // top-left-anchored box needs.
+  const axisX = project([1, 0, 0]);
+  const axisYUp = project([0, 1, 0]);
+  const faceTransform: readonly [number, number, number, number] = [
+    round(axisX[0]),
+    round(axisX[1]),
+    round(-axisYUp[0]),
+    round(-axisYUp[1]),
+  ];
+  const faceX0 = faceCentre[0] - faceWidth / 2;
+  const faceY0 = faceCentre[1] - faceHeight / 2;
 
   const art: CubeArt = {
     width: round(maxX - minX),
@@ -585,8 +637,9 @@ export function getSnakeCubeArt(options: CubeArtOptions = {}): CubeArt {
     face: {
       x: round(faceX0),
       y: round(faceY0),
-      width: round(faceX1 - faceX0),
-      height: round(faceY1 - faceY0),
+      width: round(faceWidth),
+      height: round(faceHeight),
+      transform: faceTransform,
     },
   };
   artCache.set(key, art);

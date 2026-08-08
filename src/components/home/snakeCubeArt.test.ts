@@ -30,6 +30,8 @@ import {
   classifyFacet,
   getSnakeCubeArt,
   getSnakeCubeBandColors,
+  CUBE_VIEW_AZIMUTH,
+  CUBE_VIEW_ELEVATION,
 } from './snakeCubeArt';
 import {
   GUIDE_PALETTE,
@@ -166,6 +168,95 @@ describe('the drawing', () => {
     expect(art.face.y).toBeGreaterThanOrEqual(vy);
     expect(art.face.x + art.face.width).toBeLessThanOrEqual(vx + vw);
     expect(art.face.y + art.face.height).toBeLessThanOrEqual(vy + vh);
+  });
+
+  it('is drawn on a SQUARE viewBox, so a percentage of the button is a percentage of the drawing', () => {
+    // The surface is `xMidYMid meet` inside a square element: whichever axis is
+    // longer sets the scale and the other is letterboxed. The glyph slot is
+    // positioned as a percentage of the ELEMENT, so the two only agree when the
+    // drawing fills it. Squaring the viewBox is what makes the glyph land where
+    // the geometry says the face is.
+    const [, , vw, vh] = art.viewBox.split(' ').map(Number);
+    expect(vw).toBeCloseTo(vh, 6);
+    expect(art.width).toBeCloseTo(art.height, 6);
+  });
+});
+
+/**
+ * THE GLYPH IS PAINT ON THE FACE. (Owner ruling, 2026-08-08: "the symbols on
+ * the face look straight versus the face actually has an angle".)
+ *
+ * The claim under test is not "there is a transform" but that the transform IS
+ * the projection: the unprojected face rectangle, run through the matrix about
+ * its own centre, has to land exactly where the projected face corners are.
+ * That is checked against `project` re-derived here from the two ratified angle
+ * constants, so the assertion cannot drift with the implementation.
+ */
+describe('the front face carries its own plane', () => {
+  const art = getSnakeCubeArt({ role: 'body', profile: GUIDE });
+
+  /** The module's camera, rebuilt from the exported angles alone. */
+  const project = (p: readonly [number, number, number]): [number, number] => {
+    const toCamera = [
+      Math.sin(CUBE_VIEW_AZIMUTH) * Math.cos(CUBE_VIEW_ELEVATION),
+      Math.sin(CUBE_VIEW_ELEVATION),
+      Math.cos(CUBE_VIEW_AZIMUTH) * Math.cos(CUBE_VIEW_ELEVATION),
+    ];
+    const rl = Math.hypot(toCamera[2], -toCamera[0]);
+    const right = [toCamera[2] / rl, 0, -toCamera[0] / rl];
+    const up = [
+      toCamera[1] * right[2] - toCamera[2] * right[1],
+      toCamera[2] * right[0] - toCamera[0] * right[2],
+      toCamera[0] * right[1] - toCamera[1] * right[0],
+    ];
+    const dot = (a: readonly number[], b: readonly number[]) =>
+      a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    return [dot(p, right), -dot(p, up)];
+  };
+
+  it('maps every corner of the face rectangle onto the projected face', () => {
+    const [a, b, c, d] = art.face.transform;
+    const cx = art.face.x + art.face.width / 2;
+    const cy = art.face.y + art.face.height / 2;
+    const half = art.face.height / 2; // the flat front face is a square
+    for (const [sx, sy] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ]) {
+      // Through the matrix, about the box centre.
+      const dx = sx * half;
+      const dy = sy * half;
+      const drawn = [cx + a * dx + c * dy, cy + b * dx + d * dy];
+      // Where that corner of the real face actually projects. Screen y counts
+      // down and object Y counts up, hence the negated dy.
+      const truth = project([dx, -dy, 0.5]);
+      expect(drawn[0]).toBeCloseTo(truth[0], 3);
+      expect(drawn[1]).toBeCloseTo(truth[1], 3);
+    }
+  });
+
+  it('leans the mark the way the face leans, and never shears it sideways', () => {
+    const [a, b, c, d] = art.face.transform;
+    // The face's own vertical stays vertical on screen: a body cube is not
+    // rotated, so only the horizontal edge recedes.
+    expect(c).toBeCloseTo(0, 6);
+    // Down-and-to-the-right, by the hero angle's own ~5.9 degrees.
+    expect(b).toBeGreaterThan(0);
+    expect((Math.atan(b / d) * 180) / Math.PI).toBeCloseTo(5.89, 1);
+    // Foreshortening, not scaling to nothing: both axes stay near unity.
+    expect(a).toBeGreaterThan(0.9);
+    expect(d).toBeGreaterThan(0.9);
+  });
+
+  it('gives the head the same plane as the body — one creature, one angle', () => {
+    const head = getSnakeCubeArt({ role: 'head', profile: GUIDE });
+    expect(head.face.transform).toEqual(art.face.transform);
+    // ...on a bigger face, because the head is a bigger cube.
+    expect(head.face.height / head.height).toBeGreaterThan(
+      art.face.height / art.height
+    );
   });
 
   it('gives the head a bigger, hotter cube than the body — the row is the creature', () => {
