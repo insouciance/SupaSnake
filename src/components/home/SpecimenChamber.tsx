@@ -59,6 +59,15 @@ import {
   type CosmeticLoadout,
 } from '@/components/home/SnakeCosmetics';
 import { EMPTY_SNAKE_LOADOUT } from '@/lib/cosmetics/snakeCosmetics';
+import {
+  ARMOR_FIXTURE,
+  ARMORED_SEGMENTS,
+  armorFacingYaw,
+} from '@/components/game/screen/armor90s';
+import {
+  PlateCarapace,
+  SegmentGearMount,
+} from '@/components/game/SegmentArmor';
 import { NINETIES_COMPOSITION_ENABLED } from '@/lib/features/ninetiesComposition';
 
 // -----------------------------------------------------------------------------
@@ -704,6 +713,32 @@ interface SpecimenBodyProps {
   bodyGeometry?: THREE.BufferGeometry;
 }
 
+/**
+ * The plate's facing on a chamber segment.
+ *
+ * The board resolves this every frame from two DRAWN positions, because a
+ * segment's heading there is continuous and keeps changing. The chamber's pose
+ * is a fixed curve, so the SAME function is evaluated once per segment against
+ * the pose itself - one law, two clocks, rather than a second rule for the
+ * portrait. `Infinity` as the grid because the chamber is not a torus: a wrap
+ * correction against a board that does not exist is the only way this could be
+ * wrong.
+ */
+function chamberSegmentYaw(index: number): number {
+  const ahead = BASE_POSE[index - 1];
+  const self = BASE_POSE[index];
+  if (!ahead || !self) return 0;
+  return (
+    armorFacingYaw(
+      ahead[0],
+      ahead[2],
+      self[0],
+      self[2],
+      Number.POSITIVE_INFINITY
+    ) ?? 0
+  );
+}
+
 /** The character. Idle = sine undulation traveling down the body
  *  (per-segment phase offset, position-only) + subtle head sway. */
 function SpecimenBody({
@@ -738,6 +773,7 @@ function SpecimenBody({
   });
 
   const bareEyes = !occludesFeature(loadout, 'eyes');
+  const armored = ARMORED_SEGMENTS[ARMOR_FIXTURE];
 
   return (
     <group>
@@ -766,6 +802,19 @@ function SpecimenBody({
             {isHead && bareEyes && <SpecimenEyes animate={animate} />}
             {isHead && <SpecimenMouth />}
             {isHead && <EquippedCosmetics loadout={loadout} />}
+            {/*
+              GEAR (dev fixture). CHAMBER = GAME LAW: the same wearable the
+              board mounts, at the same segment-local anchor, so what the owner
+              judges close up is the object the run draws. It inherits this
+              segment's own scale exactly as the head's cosmetics inherit the
+              head's - which is why one asset fits a 0.76 board cube and a 0.58
+              chamber segment with no per-surface tuning.
+            */}
+            {!isHead && armored.includes(i) && (
+              <SegmentGearMount slot="back" yaw={chamberSegmentYaw(i)}>
+                <PlateCarapace detail="hero" />
+              </SegmentGearMount>
+            )}
           </mesh>
         );
       })}

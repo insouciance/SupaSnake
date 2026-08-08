@@ -119,6 +119,12 @@ import {
   type CosmeticLoadout,
 } from '@/components/home/SnakeCosmetics';
 import { EMPTY_SNAKE_LOADOUT } from '@/lib/cosmetics/snakeCosmetics';
+import {
+  ARMOR_FIXTURE,
+  ARMOR_MOUNT_SCALE,
+  ARMORED_SEGMENTS,
+} from './screen/armor90s';
+import { SegmentArmorRig, writeSegmentArmor } from './SegmentArmor';
 import { centerYFromBase, FLOOR_CLEARANCE } from './ArenaFloor';
 import {
   HEAD_SIZE,
@@ -843,6 +849,14 @@ function InstancedSnakeCore({
   const sealRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.Group>(null);
   const yawRef = useRef(HEAD_FACE_YAW[direction]);
+  /**
+   * GEAR (dev fixture). One group per armoured segment, placed by the frame
+   * loop below rather than by a second `useFrame`: the armour is glued to the
+   * creature, and two callbacks reading the same buffer on different frames is
+   * how a worn item detaches from the thing wearing it.
+   */
+  const armoredSegments = ARMORED_SEGMENTS[ARMOR_FIXTURE];
+  const armorRefs = useRef<(THREE.Group | null)[]>([]);
   // Fusion working set: preallocated typed arrays, hysteresis keyed by CELL.
   // A lazy ref rather than useMemo - it must survive every re-render and it is
   // never a render input.
@@ -996,6 +1010,23 @@ function InstancedSnakeCore({
     } else {
       head.visible = false;
     }
+
+    // GEAR: the armoured segments, on the head's own clock and the head's own
+    // sampler. A no-op when the fixture is off, which is every production
+    // build - `resolveArmorFixture` refuses to read the URL there.
+    if (armoredSegments.length > 0) {
+      writeSegmentArmor(
+        armorRefs.current,
+        armoredSegments,
+        buffer,
+        motion,
+        mode,
+        settle,
+        fusion,
+        elapsed,
+        ARMOR_MOUNT_SCALE
+      );
+    }
   });
 
   return (
@@ -1056,6 +1087,14 @@ function InstancedSnakeCore({
           <EquippedCosmetics loadout={loadout} detail="board" />
         </mesh>
       </group>
+      {/*
+        GEAR. A SIBLING of the head and the trail, not a child of either: it is
+        worn by a body segment, and a body segment is an instance of the trail
+        mesh with no transform to be parented to. The frame loop places it from
+        the same glide sampler the head uses, so the plate holds a rigid
+        distance behind the head at every instant of every tick.
+      */}
+      <SegmentArmorRig segments={armoredSegments} groupRefs={armorRefs} />
     </group>
   );
 }
