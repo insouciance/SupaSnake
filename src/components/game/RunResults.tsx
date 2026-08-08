@@ -1139,7 +1139,10 @@ export function RunResults({
         aria-label="Progression"
         className="order-3 flex flex-col gap-3 sm:order-2"
       >
-        <div className="mx-auto w-full max-w-lg rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] p-3 text-left sm:p-4">
+        <div
+          className="mx-auto w-full max-w-lg rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] p-3 text-left sm:p-4"
+          data-testid="results-digest"
+        >
           <p className="font-body text-sm text-beige/80" data-testid="impact-summary">
             {CAREER_SPINE_V1_ENABLED
               ? settlementPending
