@@ -155,6 +155,59 @@ describe('DailyTakeFloat', () => {
     expect(screen.queryByTestId('daily-take-float-error')).not.toBeInTheDocument();
   });
 
+  /**
+   * THE COIN IS A SEGMENT OF THE SNAKE (owner ruling, 2026-08-08).
+   *
+   * Home's controls are cubes of the creature. This token was the one
+   * pressable left in the old amber-chip grammar, which is exactly what a
+   * player reads as an element that arrived from another product. It now wears
+   * the shipped construction — `SnakeCubeChrome` over `.snake-cube` — and it
+   * REUSES it rather than forking it, which is the part worth pinning: a
+   * second hand-drawn cube would drift from the rail's the first time the
+   * creature is restyled.
+   */
+  it('presses as one of the creature’s cubes, not as a rectangle', async () => {
+    installFetch({ read: liveSlot() });
+    render(<DailyTakeFloat token="tok" />);
+
+    const token = await screen.findByTestId('daily-take-float');
+    expect(token).toHaveClass('snake-cube');
+    // The chrome's own two layers, from the shared component.
+    expect(token.querySelector('.snake-cube__block')).not.toBeNull();
+    expect(token.querySelector('.snake-cube__lift')).not.toBeNull();
+    // The block colour is READ OFF THE ART (`snakeCubeVars`), never typed here.
+    expect(token.style.getPropertyValue('--cube-block')).toMatch(/^#[0-9a-f]{6}$/i);
+    // Nothing left of the rectangle it replaced: no fill, no radius, no border
+    // written at this call site.
+    expect(token.className).not.toContain('bg-venom-orange');
+    expect(token.className).not.toContain('rounded-');
+    expect(token.className).not.toContain('border-');
+  });
+
+  /**
+   * WHAT LEANS AND WHAT DOES NOT.
+   *
+   * `SnakeCubeButton`'s own rule: the glyph slot is projected into the face's
+   * plane, so anything inside it leans with the face — "a badge that leans is
+   * a badge that looks broken". The DNA mark is paint and belongs there; the
+   * amount and the streak are numbers a player reads and must stay square to
+   * the screen, so they ride the cube as siblings of the drawing.
+   */
+  it('keeps the numbers upright and outside the leaning face', async () => {
+    installFetch({ read: liveSlot() });
+    render(<DailyTakeFloat token="tok" />);
+
+    const token = await screen.findByTestId('daily-take-float');
+    const glyphSlot = token.querySelector('.snake-cube__glyph') as HTMLElement;
+    expect(glyphSlot).not.toBeNull();
+    // The face is painted; it carries no text at all.
+    expect(glyphSlot.textContent).toBe('');
+    expect(glyphSlot.querySelector('svg')).not.toBeNull();
+    // And the readable numbers are elsewhere on the button.
+    expect(token).toHaveTextContent('+150');
+    expect(token).toHaveTextContent('3');
+  });
+
   it('carries no daily reading matter, so it cannot become a second daily surface', async () => {
     installFetch({ read: liveSlot() });
     render(<DailyTakeFloat token="tok" />);

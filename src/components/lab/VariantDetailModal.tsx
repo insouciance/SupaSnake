@@ -750,22 +750,70 @@ export function VariantDetailModal({
             <span>Breed</span>
           </button>
 
-          {/* Favorite button */}
+          {/*
+           * SET AS FAVORITE — THE LAB IS NOW THE ONLY PLACE THIS HAPPENS.
+           *
+           * Owner ruling, 2026-08-08: "favorites can only be selected in lab,
+           * not directly there in the game setup modal". Run Setup's CHANGE
+           * chip is deleted, and Setup's own doorway now reads "Change
+           * favorites in the Lab" — which makes this control the destination
+           * of a promise, and it was not in a state to receive one.
+           *
+           * WHAT WAS WRONG WITH IT, all four of them at once:
+           *
+           *   IT NEVER SAID THE WORD. An unlabelled heart at the end of a row
+           *   of three labelled buttons. A player told "favorites are set in
+           *   the Lab" arrives, scans for the word FAVORITE, and finds it
+           *   nowhere on the screen — only in a tooltip they have no reason to
+           *   go looking for. The owner's own rationale is that better players
+           *   swap heirlooms constantly to chase score, so this is a FREQUENT
+           *   action wearing the clothes of a rare one.
+           *
+           *   IT GLOWED. `boxShadow: '0 0 12px -4px #f43f5e'` is a lighting
+           *   effect on a printed object, which the pattern library refuses by
+           *   name. Selected state here is what it is everywhere else in the
+           *   product: a fill step and a contour.
+           *
+           *   IT WAS PALE-LINED. `border-strike-red/60` over `bg-void/60` is a
+           *   translucent keyline — device 4's exact failure case.
+           *
+           *   IT WAS THE DANGER COLOUR. `strike-red` is this product's one
+           *   semantic for loss and failure; it is the colour of the ABANDON
+           *   button. Spending it on "keep this one" told the player the
+           *   opposite of what the control does.
+           *
+           * What it is now: a labelled block that states its state in words,
+           * carries the identity in AMBER — the product's single semantic warm,
+           * "the thing to press" — as a FILL when the flag is on and as ink on
+           * the deck plate when it is off, and says the change with a fill step
+           * rather than with light. The heart stays: it is the one glyph a
+           * player already reads as "favorite" without being taught, and the
+           * word beside it removes any doubt about what the glyph is claiming.
+           *
+           * The accessible names are unchanged on purpose — "Add to
+           * favorites" / "Remove from favorites" already state the ACTION
+           * rather than the state, which is what a button's name should do,
+           * and the collection grid's own announcements are pinned to them.
+           */}
           <button
             type="button"
             onClick={handleFavoriteToggle}
-            className={`btn-arcade flex items-center justify-center py-3 px-3 min-h-[44px] min-w-[44px] border-strike-red/60 bg-void/60 transition-colors ${
-              isFavorited ? 'text-strike-red' : 'text-strike-red/60 hover:text-strike-red'
-            }`}
-            style={
+            className={`flex flex-1 items-center justify-center gap-2 py-3 px-4 text-sm min-h-[44px] whitespace-nowrap ${
+              /* SET: the amber fill, at the button contour and the ink block —
+                 the drop stays the INK tier because an amber object is light
+                 and an ink block under it is exactly what displaces. UNSET:
+                 `.btn-neutral`, which is the deck plate with the VOID block,
+                 the same secondary role BREED wears beside it. */
               isFavorited
-                ? { boxShadow: '0 0 12px -4px #f43f5e' }
-                : undefined
-            }
+                ? 'btn-arcade bg-venom-orange text-ink hover:bg-venom-orange-light'
+                : 'btn-neutral'
+            }`}
             aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
             aria-pressed={isFavorited}
+            data-testid="variant-favorite-toggle"
           >
-            <HeartIcon filled={isFavorited} />
+            <HeartIcon filled={isFavorited} size={18} />
+            <span>{isFavorited ? 'Favorite' : 'Set favorite'}</span>
           </button>
         </div>
       </div>

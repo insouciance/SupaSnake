@@ -90,11 +90,11 @@ export function HeirloomSummary({
        * fits above the fold on a 320x568 phone, so a row saved here is a row
        * the reactor gets.
        */
-      className={`paper-recess mx-auto max-w-lg space-y-0.5 px-2 py-1.5 text-left sm:space-y-1 sm:px-3 sm:py-2 ${className}`}
+      className={`deck-recess mx-auto max-w-lg space-y-0.5 px-2 py-1.5 text-left sm:space-y-1 sm:px-3 sm:py-2 ${className}`}
       data-testid="heirloom-summary"
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <p className="label-arcade shrink-0 text-[10px] leading-none text-ink/60">
+        <p className="label-arcade shrink-0 text-[10px] leading-none text-bone-white/60">
           Heirlooms
         </p>
         {traits.map((id) => (
@@ -107,7 +107,7 @@ export function HeirloomSummary({
 
       {traits.length === 0 && (
         <p
-          className="font-body text-[11px] leading-tight text-ink/70"
+          className="font-body text-[11px] leading-tight text-bone-white/70"
           data-testid="heirloom-empty"
         >
           No heirloom yet — breed in the Lab to fill this slot. Traits are live
@@ -120,7 +120,7 @@ export function HeirloomSummary({
           key={id}
           data-testid={`heirloom-notice-${id}`}
           className={`font-body text-[11px] leading-tight ${
-            tone === 'warning' ? 'text-strike-red' : 'text-ink/70'
+            tone === 'warning' ? 'text-strike-red' : 'text-bone-white/70'
           }`}
         >
           {text}

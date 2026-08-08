@@ -577,7 +577,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
 
       for (const control of [
         page.getByTestId('energy-commit-6'),
-        page.getByRole('link', { name: 'Snake Lab' }),
+        page.getByTestId('run-setup-lab-link'),
         page.getByTestId('earn-start'),
       ]) {
         await control.scrollIntoViewIfNeeded();
@@ -592,25 +592,31 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     }
 
     /*
-     * ONE GESTURE, ONE MEANING (owner item 7, 2026-08-08) — RE-EXPRESSED.
+     * THE DYNASTY-FILTERED PICKER, FROM THE ONE DOOR THAT IS LEFT.
      *
-     * This line used to click the CARD, because the card carried two meanings:
-     * on a house you were not flying it equipped that house's favorite, and on
-     * the house you WERE flying it opened the picker. PRIMAL is the flying
-     * house under these fixtures, so the card was the picker's only door and
-     * this assertion was written against that door.
+     * The fact under test has never changed — "the setup surface can reach the
+     * picker for a NAMED dynasty, on a phone" — but the door has changed twice
+     * and this comment keeps both moves, because the second one reverses the
+     * first.
      *
-     * The two meanings are now two controls. The card selects a house and
-     * nothing else; the small CHANGE chip inside each card opens the picker
-     * for that house's slot. So the fact under test — "the setup surface can
-     * reach the picker for a named dynasty, on a phone" — is unchanged, and it
-     * is asked of the control that now answers it.
+     * It first clicked the CARD, when a card carried two meanings: equip on a
+     * house you were not flying, open the picker on the house you were. Then
+     * the two meanings became two controls and it clicked the CHANGE chip.
+     *
+     * The owner has now deleted that chip outright — "favorites can only be
+     * selected in lab, not directly there in the game setup modal" — with one
+     * exception, which is the door used here: a house with an EMPTY socket has
+     * nothing to fly, so its card means "fill this" and opens the picker
+     * filtered to that house. Under these fixtures the only snake is PRIMAL
+     * and it is the flying one, so COSMIC is the empty socket.
      */
-    await page.getByTestId('run-setup-favorite-change-primal').click();
+    await page.getByTestId('run-setup-favorite-cosmic').click();
     await expect(
-      page.getByRole('heading', { name: 'Choose PRIMAL favorite' })
+      page.getByRole('heading', { name: 'Choose COSMIC favorite' })
     ).toBeVisible();
-    await expect(page.getByTestId('snake-picker-option-run-flow-snake')).toBeVisible();
+    // And the sheet really is filtered to that house: the PRIMAL snake, which
+    // the unfiltered roster does offer, is not on this list.
+    await expect(page.getByTestId('snake-picker-option-run-flow-snake')).toHaveCount(0);
   });
 
   test('Setup survives a Lab detour while current server limits remain authoritative', async ({
@@ -643,7 +649,7 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     }
     await expect(page.getByTestId('energy-summary')).toHaveText('Staked · 4 Energy');
 
-    await page.getByRole('link', { name: 'Snake Lab' }).click();
+    await page.getByTestId('run-setup-lab-link').click();
     await page.waitForURL(/\/lab\?/, { timeout: 60_000 });
     const labUrl = new URL(page.url());
     // `setupMode` is DERIVED from the reactor now, so four seated rods make

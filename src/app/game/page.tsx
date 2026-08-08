@@ -6865,8 +6865,16 @@ export default function GamePage() {
   // Run Flow v1 shows Results until the player asks for SETUP.
   const showResultsLayers = RUN_FLOW_V1_ENABLED && isGameOver && !setupReopened;
 
-  /** The overlay tray wears paper only while it IS Run Setup. */
-  const setupTrayIsPaper =
+  /**
+   * Run Setup is the one state of this overlay that sets its own measure.
+   *
+   * It used to be the one state that set its own MATERIAL as well — the tray
+   * wore `.paper-tray` while it was Setup and the deck frame everywhere else.
+   * The owner's ruling of 2026-08-08 ends that (see the tray below); what
+   * survives is padding, because Setup is denser than Results and a 568px
+   * phone has to fit the reactor above the fold.
+   */
+  const setupTrayIsRunSetup =
     RUN_FLOW_V1_ENABLED && !showResultsLayers && !interruptedRun;
 
   const setupFavoriteRows = favoriteSetupSnakesByDynasty(
@@ -7280,28 +7288,33 @@ export default function GamePage() {
               single bold frame lives here and nothing inside it may draw a
               second one.
 
-              THE TRAY'S MATERIAL FOLLOWS ITS STATE (90S-PATH). Run Setup is
-              the panel between the chamber and the board, and it is printed on
-              the chamber's stock: `.paper-tray` - warm authored fill, ink
-              contour at the tray weight, one hard block. That is the coherence
-              claim of the whole path, because the player then crosses exactly
-              one change of material and it means "the run has started".
-              Results and recovery are read AFTER the board has been seen, so
-              they keep the deck frame; re-dressing them is its own package and
-              inventing a light Results screen here would be scope this ruling
-              did not ask for. */}
+              ONE MATERIAL, EVERY STATE. (Owner ruling, 2026-08-08: "SETUP
+              GOES DARK".)
+
+              What stood here was the opposite rule: Run Setup wore
+              `.paper-tray` because it was "the panel between the chamber and
+              the board, printed on the chamber's stock", and the player was
+              meant to cross exactly one change of material, meaning "the run
+              has started". That argument was answered when HOME went dark. The
+              chamber's stock is no longer paper, so a paper Setup tray was no
+              longer agreeing with the chamber — it was the ONLY cream surface
+              left on the path, and the descent home -> setup -> board broke in
+              the middle instead of at the board.
+
+              So the tray is the deck frame in every state, and the moment the
+              run begins is now said by COMPOSITION rather than by value: the
+              scrim lifts and the board is the whole screen. That is the same
+              amendment `globals.css` records at THE FILL LADDERS — "what
+              distinguishes one moment from another is now COMPOSITION and
+              WARMTH ... never the value of the ground". */}
           <div
-            className={
-              setupTrayIsPaper
-                ? 'paper-tray modal-tray my-auto min-w-0 space-y-6 p-2 text-center animate-pop-in sm:p-6'
-                : `panel-elevated modal-frame modal-tray my-auto min-w-0 space-y-6 p-2 text-center animate-pop-in sm:p-8 ${
-                    isGameOver
-                      ? endReason === 'extracted'
-                        ? '[--glow:#f2a03f]'
-                        : '[--glow:#a3324a]'
-                      : '[--glow:#f2a03f]'
-                  }`
-            }
+            className={`panel-elevated modal-frame modal-tray my-auto min-w-0 space-y-6 p-2 text-center animate-pop-in ${
+              setupTrayIsRunSetup ? 'sm:p-6' : 'sm:p-8'
+            } ${
+              isGameOver && endReason !== 'extracted'
+                ? '[--glow:#a3324a]'
+                : '[--glow:#f2a03f]'
+            }`}
           >
             {/* Constitution §5 / WP-1.06: one consolidated Run Setup page and
                 a three-layer Results screen. The shipped screen below is the

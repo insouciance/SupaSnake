@@ -7,6 +7,7 @@ import {
   type DailyTakeSlot,
 } from '@/lib/game/dailyTake';
 import { DnaGlyph } from '@/components/game/cockpit/CockpitGlyphs';
+import { SnakeCubeChrome, snakeCubeVars } from '@/components/home/SnakeCubeButton';
 import { formatAmount } from '@/shared/format/amount';
 
 /**
@@ -34,10 +35,34 @@ import { formatAmount } from '@/shared/format/amount';
  * destructive — is also why a failure resolves quietly: the day's Take keeps,
  * and the next visit offers it again.
  *
- * WHY AMBER. Venom Orange is the product's single semantic warm and it means
- * "the thing to press". Spent as a FILL with an ink contour and a hard
- * displaced block, never as a keyline or a glow — this is a printed coin lying
- * on the paper room, not a lit UI affordance.
+ * ── THE COIN IS A SEGMENT OF THE SNAKE (owner ruling, 2026-08-08) ────────
+ *
+ * Home's controls stopped being rectangles: "the buttons could look like the
+ * segments of the snake, i.e. cubes ... will make it very coherent, a great
+ * composition." The rail took that ruling and this token did not, which left
+ * exactly one pressable on Home still wearing the old amber-chip grammar —
+ * and one exception is what a player reads as an element that arrived from
+ * somewhere else.
+ *
+ * So the press IS a cube, drawn by `snakeCubeArt.ts` through
+ * `SnakeCubeChrome`, at the rail's own construction and with nothing forked:
+ * the same silhouette, the same authored bands, the same hero angle, the same
+ * block-and-travel press, the same cube-shaped focus ring. The DNA glyph is
+ * paint on its front face, exactly as the rail's icons are.
+ *
+ * THE AMBER SURVIVES THE CHANGE, which is why this is a re-dress and not a
+ * different object. Venom Orange means "the thing to press", and a body
+ * segment of this creature is amber — so the token is still a warm printed
+ * thing you pick up off a dark room, said in the material the rest of Home is
+ * now made of instead of in a rectangle of the same colour.
+ *
+ * WHAT STAYS SQUARE TO THE SCREEN. `SnakeCubeButton`'s own rule: the glyph
+ * slot is projected into the face's plane, so anything inside it LEANS, and
+ * "a badge that leans is a badge that looks broken". The amount and the streak
+ * are numbers a player reads, not paint — so they ride the cube as siblings of
+ * the drawing, upright: the denomination plate under the coin and the streak
+ * badge on its shoulder, both travelling with the cube on press rather than
+ * standing still while it moves.
  *
  * SERVER AUTHORITY IS UNCHANGED. The amount, the tier, the streak and the day
  * are all derived server-side; this component sends a POST with no body to the
@@ -115,48 +140,64 @@ export function DailyTakeFloat({ token, className = '' }: DailyTakeFloatProps) {
   }
 
   return (
-    <div className={`flex flex-col items-center gap-1 ${className}`}>
-      <button
-        type="button"
-        onClick={() => void collect()}
-        disabled={phase === 'collecting'}
-        data-testid="daily-take-float"
-        data-phase={phase}
-        aria-label={
-          streaked
-            ? `Take today's ${amount} DNA. Day ${slot.streakDays} streak.`
-            : `Take today's ${amount} DNA.`
-        }
-        className="pointer-events-auto flex min-h-[52px] -rotate-2 items-center gap-2.5 rounded-[var(--radius-card)] border-[length:var(--ink-w-3)] border-ink bg-venom-orange px-3.5 py-2 text-ink shadow-[var(--ink-drop-3)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--ink-drop-3)] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 disabled:cursor-wait motion-reduce:transition-none motion-reduce:hover:transform-none"
-      >
-        <span
-          aria-hidden="true"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink bg-[#fffdf8] p-1.5 text-ink"
+    <div className={`flex flex-col items-center ${className}`}>
+      {/* The overhang is RESERVED rather than allowed to spill: the plate hangs
+          below the cube and the streak badge past its shoulder, and a token
+          that overlapped whatever Home puts under it would be a layout bug
+          waiting for a longer number. */}
+      <div className="relative -rotate-2 pb-6 pr-2 pt-1">
+        <button
+          type="button"
+          onClick={() => void collect()}
+          disabled={phase === 'collecting'}
+          data-testid="daily-take-float"
+          data-phase={phase}
+          aria-label={
+            streaked
+              ? `Take today's ${amount} DNA. Day ${slot.streakDays} streak.`
+              : `Take today's ${amount} DNA.`
+          }
+          style={snakeCubeVars()}
+          className="snake-cube group pointer-events-auto relative h-[72px] w-[72px] min-h-[44px] min-w-[44px] disabled:cursor-wait"
         >
-          <DnaGlyph />
-        </span>
-        <span className="min-w-0 text-left">
-          <span className="label-arcade block text-[9px] text-ink/70">
-            {phase === 'collecting' ? 'Taking…' : "Today's Take"}
-          </span>
-          <span className="heading-display block whitespace-nowrap text-lg leading-none text-ink">
-            +{formatAmount(amount)}
-          </span>
-        </span>
-        {streaked && (
-          <span className="ml-0.5 shrink-0 rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink bg-ink px-1.5 py-1 text-center">
-            <span className="label-arcade block text-[8px] leading-none text-bone-white/70">
-              Day
+          <SnakeCubeChrome glyphClassName="text-[color:var(--snake-ink)]">
+            <span className="block h-[26px] w-[26px]">
+              <DnaGlyph />
             </span>
-            <span className="heading-display block text-xs leading-tight text-venom-orange">
-              {slot.streakDays}
+          </SnakeCubeChrome>
+
+          {/* THE DENOMINATION PLATE. Upright, because it is a number; printed
+              stock, because a near-white object on the night ground is the
+              strongest value step this palette has and the amount is the one
+              thing on the token a player must read at a glance. */}
+          <span className="absolute -bottom-5 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center whitespace-nowrap rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink bg-[#fffdf8] px-2 py-0.5 text-ink shadow-[var(--ink-drop-void-1)] transition-transform group-active:translate-x-[calc(-50%+3px)] group-active:translate-y-[3px] motion-reduce:transition-none">
+            <span className="label-arcade block text-[8px] leading-none text-ink/70">
+              {phase === 'collecting' ? 'Taking…' : "Today's Take"}
+            </span>
+            <span className="heading-display block text-[15px] leading-tight text-ink">
+              +{formatAmount(amount)}
             </span>
           </span>
-        )}
-      </button>
+
+          {/* THE STREAK, on the cube's shoulder — the same corner and the same
+              overhang the rail's notification badge takes, for the same
+              reason: it is a status mark ON the object rather than part of the
+              object's face. */}
+          {streaked && (
+            <span className="absolute -right-1 -top-1 z-10 rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink bg-ink px-1.5 py-0.5 text-center transition-transform group-active:translate-x-[3px] group-active:translate-y-[3px] motion-reduce:transition-none">
+              <span className="label-arcade block text-[7px] leading-none text-bone-white/70">
+                Day
+              </span>
+              <span className="heading-display block text-[11px] leading-tight text-venom-orange">
+                {slot.streakDays}
+              </span>
+            </span>
+          )}
+        </button>
+      </div>
       {phase === 'error' && (
         <p
-          className="font-body text-[10px] text-ink/60"
+          className="font-body text-[10px] text-bone-white/70"
           role="status"
           data-testid="daily-take-float-error"
         >

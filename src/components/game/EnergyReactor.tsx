@@ -71,10 +71,12 @@ export function EnergyReactor({
   if (!energy) {
     return (
       <section
-        className="paper-recess mx-auto w-full p-4 text-center"
+        className="deck-recess mx-auto w-full p-4 text-center"
         data-testid="energy-commitment"
       >
-        <p className="font-body text-sm text-ink/60">Checking recovered Energy…</p>
+        <p className="font-body text-sm text-bone-white/60">
+          Checking recovered Energy…
+        </p>
       </section>
     );
   }
@@ -111,24 +113,33 @@ export function EnergyReactor({
               cost={ENERGY_LEXICON.cost}
               label="Energy Reactor: what it does"
               testId="energy-commitment"
-              className="label-arcade min-h-[44px] text-[10px] text-ink/60 underline decoration-dotted underline-offset-4"
+              className="label-arcade min-h-[44px] text-[10px] text-bone-white/60 underline decoration-dotted underline-offset-4"
             >
               Energy reactor
             </InfoPopover>
           ) : (
-            <p className="label-arcade text-[10px] text-ink/60">Energy reactor</p>
+            <p className="label-arcade text-[10px] text-bone-white/60">
+              Energy reactor
+            </p>
           )}
           <p
-            className="heading-display text-lg leading-none text-ink sm:text-xl"
+            className="heading-display text-lg leading-none text-bone-white sm:text-xl"
             aria-live="polite"
             data-testid="energy-summary"
           >
             {staked ? `Staked · ${value} Energy` : 'Free play'}
           </p>
         </div>
-        <p className="heading-display shrink-0 text-right text-2xl leading-none text-venom-orange-dark sm:text-3xl">
+        {/* The readout goes UP a rung, not down. `venom-orange-dark` was the
+            member of this hue that reads on cream; on the night ground it is
+            the one that disappears, so the same identity takes its bright
+            member — the standing rule that a hue keeps its hue and changes its
+            VALUE with the surface it is drawn on. */}
+        <p className="heading-display shrink-0 text-right text-2xl leading-none text-venom-orange sm:text-3xl">
           ×{multiplier.toFixed(staked ? 1 : 2)}
-          <span className="label-arcade ml-1 text-[9px] text-ink/50">harvest</span>
+          <span className="label-arcade ml-1 text-[9px] text-bone-white/50">
+            harvest
+          </span>
         </p>
       </div>
 
@@ -146,13 +157,22 @@ export function EnergyReactor({
           onClick={() => requestCommitment(value - 1)}
           disabled={value <= 0}
           data-testid="energy-decrease"
-          className="btn-paper inline-flex min-h-[46px] w-11 shrink-0 items-center justify-center text-xl disabled:opacity-25 sm:min-h-[60px] sm:w-12"
+          /* NEUTRAL, NOT PAPER — the dark ground inverts the hierarchy.
+             `.btn-paper` is a near-white block, and the ruling that permits
+             paper as an OBJECT on a night ground also says why it cannot be
+             the quiet one: "a near-white object on a night ground is the
+             strongest value step available". On cream this was the calm
+             secondary; ported unchanged it became the loudest thing on the
+             tray after PLAY, and a RELEASE control has no business shouting
+             over a CHARGE control. `.btn-neutral` is the deck plate — the
+             secondary role, drawn on the ground it now sits on. */
+          className="btn-neutral inline-flex min-h-[46px] w-11 shrink-0 items-center justify-center text-xl disabled:opacity-25 sm:min-h-[60px] sm:w-12"
         >
           −
         </button>
 
         <div
-          className="paper-recess relative flex min-w-0 flex-1 items-stretch gap-1.5 p-1.5"
+          className="deck-recess relative flex min-w-0 flex-1 items-stretch gap-1.5 p-1.5"
           role="group"
           aria-label={`${value} of ${capacity} rods seated`}
         >
@@ -168,9 +188,16 @@ export function EnergyReactor({
                 className={`min-h-[42px] flex-1 rounded-[var(--radius-chip)] sm:min-h-[48px] border-[length:var(--ink-w-2)] border-ink transition-colors ${
                   seated
                     ? 'bg-venom-orange shadow-[inset_0_-6px_0_rgba(180,102,28,0.55)]'
-                    : reachable
-                      ? 'bg-[color:var(--fill-paper-3)]'
-                      : 'bg-[color:var(--fill-paper-3)] opacity-40'
+                    : /* An UNSEATED rod is an empty socket in the housing, so
+                         it takes the step DOWN from the plate rather than the
+                         step down from paper: same ladder, the deck's rungs.
+                         `--fill-deck-1` against the recess's `--fill-deck-0`
+                         keeps the rod visible as an object while leaving the
+                         seated amber the only thing on the row with any
+                         chroma. */
+                      reachable
+                      ? 'bg-[color:var(--fill-deck-1)]'
+                      : 'bg-[color:var(--fill-deck-1)] opacity-40'
                 }`}
               />
             );
@@ -178,7 +205,7 @@ export function EnergyReactor({
           {!staked ? (
             <span
               aria-hidden="true"
-              className="heading-display pointer-events-none absolute inset-0 flex items-center justify-center text-sm tracking-[0.18em] text-ink"
+              className="heading-display pointer-events-none absolute inset-0 flex items-center justify-center text-sm tracking-[0.18em] text-bone-white"
             >
               FREE PLAY
             </span>
@@ -202,7 +229,7 @@ export function EnergyReactor({
       </div>
 
       {/* FUEL REMAINING, under the housing where a supply reads. */}
-      <p className="mt-1 px-1 text-left font-body text-[10px] leading-snug text-ink/60 sm:mt-1.5 sm:text-[11px]">
+      <p className="mt-1 px-1 text-left font-body text-[10px] leading-snug text-bone-white/60 sm:mt-1.5 sm:text-[11px]">
         <span data-testid="energy-stock">
           Stock {available}/{capacity}
         </span>
@@ -222,7 +249,7 @@ export function EnergyReactor({
           onClick={() => requestCommitment(0)}
           disabled={value === 0}
           data-testid="energy-run-lean"
-          className="btn-paper min-h-[44px] whitespace-nowrap px-3 py-1.5 text-[11px] disabled:opacity-30"
+          className="btn-neutral min-h-[44px] whitespace-nowrap px-3 py-1.5 text-[11px] disabled:opacity-30"
         >
           Go cold · ×0.25
         </button>
@@ -231,7 +258,7 @@ export function EnergyReactor({
           onClick={() => requestCommitment(capacity)}
           disabled={available < capacity || value === capacity}
           data-testid="energy-commit-6"
-          className="btn-paper min-h-[44px] whitespace-nowrap px-3 py-1.5 text-[11px] disabled:opacity-30"
+          className="btn-neutral min-h-[44px] whitespace-nowrap px-3 py-1.5 text-[11px] disabled:opacity-30"
         >
           Full core · ×{energyCommitmentMultiplier(capacity).toFixed(1)}
         </button>
@@ -256,16 +283,22 @@ export function EnergyReactor({
           ariaLabelledBy="energy-max-title"
           ariaDescribedBy="energy-max-description"
           testId="energy-max-confirmation"
-          panelClassName="paper-tray modal-tray-narrow overflow-hidden p-5 text-center"
+          panelClassName="panel-elevated modal-frame modal-tray-narrow overflow-hidden p-5 text-center"
         >
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-[length:var(--ink-w-3)] border-ink bg-venom-orange text-ink shadow-[var(--ink-drop-2)]">
             <IconBolt size={32} />
           </div>
-          <p className="label-arcade mt-4 text-ink/60">Full core</p>
-          <h2 id="energy-max-title" className="heading-display mt-1 text-2xl text-ink">
+          <p className="label-arcade mt-4 text-bone-white/60">Full core</p>
+          <h2
+            id="energy-max-title"
+            className="heading-display mt-1 text-2xl text-bone-white"
+          >
             Seat all {capacity} rods?
           </h2>
-          <p id="energy-max-description" className="mt-2 font-body text-sm leading-snug text-ink/70">
+          <p
+            id="energy-max-description"
+            className="mt-2 font-body text-sm leading-snug text-bone-white/70"
+          >
             This powers a ×{energyCommitmentMultiplier(capacity).toFixed(1)} harvest run. All {capacity} Energy
             are consumed when the run begins and are not refunded after a crash
             or abandonment.
@@ -283,7 +316,7 @@ export function EnergyReactor({
           </button>
           <button
             type="button"
-            className="btn-paper mt-2 min-h-[44px] w-full px-4 py-2 text-xs"
+            className="btn-neutral mt-2 min-h-[44px] w-full px-4 py-2 text-xs"
             onClick={() => setConfirmingMax(false)}
           >
             Keep {value > 0 ? `${value} seated` : 'free play'}

@@ -255,81 +255,102 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
   });
 
   /**
-   * THE SECOND MEANING GETS ITS OWN CONTROL, AND ITS OWN SIZE.
+   * THE CHANGE CHIP IS GONE, AND STAYS GONE.
    *
-   * Changing which snake a house carries is rare for a player who has found
-   * theirs and frequent for one chasing heirlooms, so it is small AND always
-   * visible — never behind a hover, a long press or a menu.
+   * Owner ruling, 2026-08-08: "favorites can only be selected in lab, not
+   * directly there in the game setup modal."
+   *
+   * The assertions this replaces pinned that chip three ways — that it existed
+   * on every card, that it was never nested inside the card button, and that
+   * its 44px target was met by a pseudo-element rather than by inflating its
+   * ink. All three were right about the chip and the chip is not this
+   * surface's to own: which snake a HOUSE carries is a collection decision,
+   * made against the collection, and the Lab is where the collection is.
+   *
+   * This is the assertion that keeps it deleted, because the pressure to put a
+   * one-tap change back on a card is exactly the pressure that put it there.
    */
-  it('changes a house\'s snake from a chip of its own, on every card', () => {
+  it('offers no way to change a house\'s favorite from a full card', () => {
     const onFavoriteDock = jest.fn();
-    const primal = { id: 'primal-favorite', name: 'Moss', generation: 4, dynasty: 'PRIMAL' };
+    const favorites = {
+      CYBER: { id: 'cyber-favorite', name: 'Ouro', generation: 1, dynasty: 'CYBER' },
+      PRIMAL: { id: 'primal-favorite', name: 'Moss', generation: 4, dynasty: 'PRIMAL' },
+      COSMIC: { id: 'cosmic-favorite', name: 'Nova', generation: 2, dynasty: 'COSMIC' },
+    };
+    render(<RunSetupPanel {...props({ favorites, onFavoriteDock })} />);
+
+    for (const dynasty of ['cyber', 'primal', 'cosmic']) {
+      expect(
+        screen.queryByTestId(`run-setup-favorite-change-${dynasty}`)
+      ).toBeNull();
+    }
+    expect(screen.queryByLabelText(/change the .* snake/i)).toBeNull();
+
+    // Every card is one control with one meaning: fly that house.
+    fireEvent.click(screen.getByTestId('run-setup-favorite-primal'));
+    expect(onFavoriteDock).toHaveBeenCalledTimes(1);
+    expect(onFavoriteDock).toHaveBeenCalledWith('PRIMAL', favorites.PRIMAL);
+  });
+
+  /**
+   * THE OWNER'S ONE EXCEPTION — THE EMPTY SOCKET.
+   *
+   * "when no snake has been selected yet, we can provide that menu we already
+   *  have, where you can select one snake from the dynasty as favorite."
+   *
+   * A house with nothing in it cannot mean "fly this", so its card means "fill
+   * this", and `(dynasty, null)` is the call the page already answers with the
+   * dynasty-filtered picker. This is not the old hidden second meaning coming
+   * back: that one lived on a card which also had a first meaning, and a card
+   * with an empty socket has only ever had one thing it could do.
+   */
+  it('opens the picker from an empty socket, and draws it as an empty socket', () => {
+    const onFavoriteDock = jest.fn();
     render(
       <RunSetupPanel
         {...props({
-          favorites: { PRIMAL: primal, COSMIC: null },
+          favorites: { PRIMAL: null, COSMIC: null },
           onFavoriteDock,
         })}
       />
     );
 
-    for (const dynasty of ['cyber', 'primal', 'cosmic']) {
-      fireEvent.click(screen.getByTestId(`run-setup-favorite-change-${dynasty}`));
-    }
-    expect(onFavoriteDock).toHaveBeenNthCalledWith(1, 'CYBER', null);
-    expect(onFavoriteDock).toHaveBeenNthCalledWith(2, 'PRIMAL', null);
-    expect(onFavoriteDock).toHaveBeenNthCalledWith(3, 'COSMIC', null);
+    const empty = screen.getByTestId('run-setup-favorite-primal');
+    expect(empty).toHaveAccessibleName('Choose a PRIMAL favorite');
+    fireEvent.click(empty);
+    expect(onFavoriteDock).toHaveBeenCalledWith('PRIMAL', null);
+
+    // And it says so on its face: no portrait of a snake nobody has chosen.
+    mockPortraitOverride = {
+      CYBER: 'data:image/png;base64,CYBER',
+      PRIMAL: 'data:image/png;base64,PRIMAL',
+      COSMIC: 'data:image/png;base64,COSMIC',
+    };
+    render(
+      <RunSetupPanel
+        {...props({ favorites: { PRIMAL: null, COSMIC: null }, onFavoriteDock })}
+      />
+    );
+    expect(screen.getAllByTestId('run-setup-portrait-cyber')).toHaveLength(1);
+    expect(screen.queryByTestId('run-setup-portrait-primal')).toBeNull();
   });
 
   /**
-   * A BUTTON INSIDE A BUTTON IS NOT A LAYOUT DETAIL.
+   * SELECTED IS JUST A BADGE (owner ruling, 2026-08-08).
    *
-   * It is invalid HTML, and a screen reader will not expose the inner control
-   * at all — so the "change" affordance would exist for a sighted mouse user
-   * and for nobody else. The card and the chip are siblings, and this is the
-   * assertion that keeps them that way when the layout is next tidied.
-   */
-  it('never nests the change chip inside the card button', () => {
-    render(<RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />);
-    for (const dynasty of ['cyber', 'primal', 'cosmic']) {
-      const card = screen.getByTestId(`run-setup-favorite-${dynasty}`);
-      const chip = screen.getByTestId(`run-setup-favorite-change-${dynasty}`);
-      expect(card.tagName).toBe('BUTTON');
-      expect(chip.tagName).toBe('BUTTON');
-      expect(card).not.toContainElement(chip);
-      expect(chip.closest('button')).toBe(chip);
-    }
-  });
-
-  /**
-   * THE INK STAYS SMALL, THE TARGET DOES NOT.
+   * What this replaces asserted a THREE-SIGNAL frame treatment: the selected
+   * card stepped its contour to the tray weight, grew its block a rung, and
+   * rose a rung of its own hue. Every one of those was in the pattern language
+   * and together they still failed the thing they were for — a card that
+   * changes its frame changes its size and its weight, so the row of three
+   * stopped being three comparable objects and the eye had to re-read the
+   * field to find out which one had grown.
    *
-   * The visible chip is about twenty pixels tall — the share of the tray the
-   * owner asked for. The floor is met by a transparent 44x44 pseudo-element
-   * anchored to the chip's own bottom edge, growing the target UPWARD into the
-   * card instead of inflating the drawn object. jsdom has no layout, so what
-   * is pinned is the mechanism: remove the pad and this fails.
+   * So the frame is now IDENTICAL on all three and only the flying card
+   * carries a badge. That is the assertion, from both sides: one badge, and no
+   * card differing from another in contour or block.
    */
-  it('gives the change chip a 44px target without inflating its ink', () => {
-    render(<RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />);
-    const chip = screen.getByTestId('run-setup-favorite-change-cyber');
-    expect(chip.className).toContain('after:h-11');
-    expect(chip.className).toContain('after:w-11');
-    // The block itself: chip radius, ink contour, hard displaced drop, press
-    // collapse — all of it carried by `.ink-chip`, not re-authored here.
-    expect(chip).toHaveClass('ink-chip');
-  });
-
-  /**
-   * THERE IS NO STATE IN WHICH TWO CARDS READ AS SELECTED.
-   *
-   * Selection is said three ways at once and every one of them is exclusive:
-   * the tray-weight contour, the bigger displaced block, and the raised rung
-   * of the house's own fill. Hover moves none of them — a hover that grew the
-   * block would put an unselected card in the selected card's clothes for as
-   * long as a pointer rested on it.
-   */
-  it('marks exactly one card selected, in the pattern language and never with a glow', () => {
+  it('says selected with a badge, and never by re-framing the card', () => {
     render(
       <RunSetupPanel
         {...props({
@@ -348,15 +369,25 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
     expect(pressed).toHaveLength(1);
     expect(pressed[0]).toBe(cards[0]);
 
-    expect(pressed[0].className).toContain('var(--ink-w-3)');
-    expect(pressed[0].className).toContain('var(--ink-drop-3)');
-    for (const card of cards.slice(1)) {
+    // Exactly one badge, on exactly that card.
+    expect(screen.getByTestId('run-setup-flying-badge-cyber')).toBeInTheDocument();
+    expect(screen.queryByTestId('run-setup-flying-badge-primal')).toBeNull();
+    expect(screen.queryByTestId('run-setup-flying-badge-cosmic')).toBeNull();
+    expect(cards[0]).toContainElement(
+      screen.getByTestId('run-setup-flying-badge-cyber')
+    );
+
+    // And the three frames are the same frame. Selection costs the two cards
+    // that are NOT selected nothing at all.
+    for (const card of cards) {
       expect(card.className).toContain('var(--ink-w-2)');
-      expect(card.className).toContain('var(--ink-drop-2)');
-      // The unselected cards may lift on hover; they may not grow their block,
-      // which is the selected card's own signal.
-      expect(card.className).not.toContain('hover:shadow');
+      expect(card.className).toContain('var(--ink-drop-void-2)');
+      expect(card.className).not.toContain('var(--ink-w-3)');
+      expect(card.className).not.toContain('var(--ink-drop-void-3)');
+      // Never a glow, on any of them, in any state.
+      expect(card.className).not.toContain('shadow-glow');
     }
+    expect(cards[0].className).toBe(cards[1].className);
   });
 
   it('names the selected house and its ruleset, and nobody else\'s', () => {
@@ -399,18 +430,34 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
   });
 
   /**
-   * THE TILE CARRIES THE CREATURE (owner item 6, 2026-08-08).
+   * THE PORTRAIT IS THE TRAY FACE (owner ruling, 2026-08-08).
    *
-   *   "should display the actual snake ... just the face almost from the
-   *    front ... almost like a passport picture but at a small angle."
+   *   "the dynasty portrait can fill the 'main' tray of the dynasty selector"
+   *   — the portrait-in-a-tile-in-a-card nesting it replaces: "ridiculous".
+   *
+   * So the picture is not a thumbnail INSIDE the card any more; it is the
+   * card's face. What that means mechanically is that it fills its box and
+   * carries no frame of its own — the card's contour is the only line — and
+   * that is exactly what is pinned, because a tile creeping back around it is
+   * how the nesting got there the first time.
    */
-  it('shows the real snake head on every card once the pictures have been taken', () => {
+  it('fills every full card\'s face with the real snake head', () => {
     mockPortraitOverride = {
       CYBER: 'data:image/png;base64,CYBER',
       PRIMAL: 'data:image/png;base64,PRIMAL',
       COSMIC: 'data:image/png;base64,COSMIC',
     };
-    render(<RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />);
+    render(
+      <RunSetupPanel
+        {...props({
+          favorites: {
+            PRIMAL: { id: 'p', name: 'Moss', generation: 4, dynasty: 'PRIMAL' },
+            COSMIC: { id: 'c', name: 'Nova', generation: 2, dynasty: 'COSMIC' },
+          },
+          onFavoriteDock: jest.fn(),
+        })}
+      />
+    );
 
     for (const dynasty of ['cyber', 'primal', 'cosmic']) {
       const portrait = screen.getByTestId(`run-setup-portrait-${dynasty}`);
@@ -419,6 +466,13 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
         'src',
         `data:image/png;base64,${dynasty.toUpperCase()}`
       );
+      // It fills its face rather than sitting inside it.
+      expect(portrait.className).toContain('h-full');
+      expect(portrait.className).toContain('w-full');
+      // And that face is square, edge to edge, with no frame of its own.
+      const face = portrait.parentElement as HTMLElement;
+      expect(face.className).toContain('aspect-square');
+      expect(face.className).not.toContain('border-');
     }
   });
 
@@ -489,7 +543,15 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
     expect(explainer).toHaveClass('sm:text-[11px]');
   });
 
-  it('keeps the full roster and the Lab one tap away without emphasising either', () => {
+  /**
+   * THE DOORWAY NAMES WHAT LEFT.
+   *
+   * With the CHANGE chip deleted, the Lab link is no longer just a convenient
+   * second exit — it is the ONLY route to setting a favorite, so it says so.
+   * A player who wants a different snake in a house has to be able to read
+   * where that is done off this screen, without having to go and find out.
+   */
+  it('keeps the full roster one tap away and names the Lab as where favorites are set', () => {
     const onChooseSnake = jest.fn();
     const labHref =
       '/lab?returnTo=%2Fgame%3FsetupMode%3Dearn%26setupEnergy%3D4';
@@ -499,10 +561,12 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
 
     fireEvent.click(screen.getByTestId('run-setup-snake-picker-trigger'));
     expect(onChooseSnake).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('link', { name: /Snake Lab/i })).toHaveAttribute(
-      'href',
-      labHref
-    );
+
+    const lab = screen.getByTestId('run-setup-lab-link');
+    expect(lab).toHaveAttribute('href', labHref);
+    expect(lab).toHaveTextContent(/favorites/i);
+    expect(lab).toHaveTextContent(/lab/i);
+    // Neither exit is emphasised: PLAY is still the only `btn-go`.
     expect(container.querySelectorAll('.btn-go')).toHaveLength(1);
   });
 });

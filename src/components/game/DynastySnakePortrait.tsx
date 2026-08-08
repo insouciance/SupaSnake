@@ -96,6 +96,7 @@ import {
   GUIDE_PALETTE,
   IS_SNAKE_90S,
   SNAKE_STYLE_PROFILE,
+  TONE_SIDE,
 } from '@/components/game/screen/snake90s';
 
 /** What the hook hands back: a data URL per dynasty, or nothing for that one. */
@@ -134,18 +135,35 @@ const PORTRAIT_HEAD_YAW = CAMERA_YAW - THREE_QUARTER_OFF_LENS;
 
 /**
  * Framing radius, in head cells. The head is an exact unit cube, so 0.5 is its
- * own half-extent; the rest is the chamber's cosmetic pad — braids fall below
- * the jaw and overhang the sides, and a frame cut to the bare head would
- * guillotine them. The bare head still fills most of the half-frame, which is
- * the passport crop the owner asked for; what the last few percent buy is a
- * visible ring of the room, which is where the house colour is spent (see the
- * portrait ground in `RunSetupPanel`).
+ * own half-extent; the rest is the cosmetic pad — braids fall below the jaw and
+ * overhang the sides, and a frame cut to the bare head would guillotine them.
+ *
+ * WIDENED WITH THE FRAME (owner ruling, 2026-08-08: the portrait fills the
+ * tray). 0.94 was set when this picture was a 44px chip, where a braid tip
+ * running off the edge was a detail nobody could resolve. The picture is now
+ * the whole face of the card at up to ~230px, and at that size a clipped braid
+ * is the first thing the eye lands on — the cosmetics are the part of the
+ * creature the owner's clause says must stay VISIBLE, so they have to be
+ * inside the frame rather than merely accounted for by it.
+ *
+ * 1.18 fits the braid envelope with a ring of room left over. The bare head
+ * still owns the middle of the crop, which is the passport read the ruling
+ * asked for; what the extra buys is that the character arrives whole.
  */
-const PORTRAIT_FIT_RADIUS = 0.94;
+const PORTRAIT_FIT_RADIUS = 1.18;
 const PORTRAIT_FOV = 34;
 
-/** Square, and the same in both axes, so all three tiles crop identically. */
-const PORTRAIT_PX = 256;
+/**
+ * Square, and the same in both axes, so all three tiles crop identically —
+ * and so the picture can be dropped into a square face with `object-cover`
+ * and lose nothing at all. The tile's face IS this frame now (owner ruling,
+ * 2026-08-08: the portrait fills the tray), which is why the resolution went
+ * up: the face was a 56px chip and is now a whole column of the tray, about
+ * 230 CSS px on the desktop measure and 118 on a 390px phone. 384 covers the
+ * larger of those at 2x and the smaller at 3x; it is still ONE frame and
+ * three readbacks, so the cost of the change is memory and not time.
+ */
+const PORTRAIT_PX = 384;
 
 const PORTRAIT_DISTANCE =
   PORTRAIT_FIT_RADIUS /
@@ -165,20 +183,111 @@ const PORTRAIT_TARGET = new THREE.Vector3(0, -0.04, 0);
 // -----------------------------------------------------------------------------
 
 /**
- * Portrait-local clones of the game's shared segment materials, exactly as the
- * chamber keeps its own. The game's cache is never mutated.
+ * THE CREATURE CARRIES ITS HOUSE — portraits, and only portraits.
  *
- * `Material.copy()` DROPS `onBeforeCompile`, so a clone arrives with the
- * guide's palette assigned and its 90s cel shader missing — a portrait lit by
- * this rig's lamps beside a board painted by its own authored faces. Re-hang it
- * or the tile shows a different animal from the one that launches.
+ * Owner ruling, 2026-08-08, overruling the one-colour law for this surface by
+ * name: CYBER, PRIMAL and COSMIC each get a house-tinted snake in their
+ * portrait. What stood before was the shipped character law — `snake90s.ts`
+ * resolves every dynasty's head through `forcedHeadBaseColor`, so all three
+ * heads really are one amber creature — and the tile spent the house colour on
+ * the GROUND RING behind the head instead. The owner reviewed that and moved
+ * the colour onto the animal.
+ *
+ * ── THE TINT IS AUTHORED, NOT WASHED ─────────────────────────────────────
+ *
+ * A hue rotation over the amber render would have been one line and would have
+ * produced three versions of the same picture in fancy dress: the bands would
+ * keep amber's relative values, the shadow would go grey-of-another-hue, and
+ * the creature would read as a recolour rather than as a character of that
+ * house. So nothing here washes pixels. Two authored facts build a real
+ * five-band tone family per house, and BOTH of them already exist in the
+ * product:
+ *
+ *   THE BASE is the dynasty's OWN snake colour — `GAME_MATERIAL_PROFILES
+ *   [dynasty].snake.baseColor`, which is the colour the creature had before
+ *   `ninetiesGuide` forced the three of them to amber. The portrait un-forces
+ *   it. Nothing new is invented and nothing is picked by eye.
+ *
+ *   THE BANDS are the guide's own `SNAKE_FACE_TONES`, untouched. They are
+ *   multipliers on the base, so a different base yields a different FAMILY
+ *   rather than a tinted copy — and `TONE_DOWN`'s own comment already names
+ *   the three shadows this produces: "PRIMAL #98e15a -> #514c15 dark olive,
+ *   not grey; CYBER #2de7ff -> #144e4e deep teal, not slate; COSMIC #b58cff
+ *   -> #612c4e deep plum, not charcoal". The generalisation was written down
+ *   before it was ever drawn; this is the surface that spends it.
+ *
+ * ── THE EMISSIVE IS THE HOUSE'S OWN MID TONE ─────────────────────────────
+ *
+ * The guide forces every emissive to `GUIDE_PALETTE.midtone`, and an orange
+ * lamp inside a cyan head is a muddy head. The replacement is not a fourth
+ * swatch per house: the guide's own mid tone IS its highlight run through
+ * `TONE_SIDE` — the file says so, and the arithmetic agrees to two units
+ * (#ffc53d x TONE_SIDE = #f38522 against the stated #f5811f). So a house's
+ * emissive is that house's base through the same multiplier. One rule,
+ * derived from the guide, generalised without a single authored hex:
+ *
+ *      CYBER   #2de7ff -> #2a9d9e      PRIMAL  #98e15a -> #919834
+ *      COSMIC  #b58cff -> #ad5d9e
+ *
+ * The INTENSITY is left exactly where the clone found it, which is the
+ * dynasty's own `headEmissiveIntensity` scaled by `HEAD_EMISSIVE_SCALE`. A
+ * portrait that also re-weighted the lamp would be authoring a second
+ * material rather than un-forcing one.
+ *
+ * ── SCOPE ────────────────────────────────────────────────────────────────
+ *
+ * The board is untouched. These are portrait-local clones — the game's shared
+ * material cache is never mutated — so the creature that launches is still the
+ * one amber animal the character law describes, and the ruling stays exactly
+ * as narrow as it was written.
+ *
+ * `Material.copy()` DROPS `onBeforeCompile`, so a clone arrives with its
+ * colours assigned and its 90s cel shader missing — a portrait lit by this
+ * rig's lamps beside a board painted by its own authored faces. Re-hang it or
+ * the tile shows a different animal from the one that launches. It is re-hung
+ * AFTER the colours are set, because the shader is what spends them.
  */
 const portraitMaterialCache = new Map<string, THREE.MeshToonMaterial>();
+
+/**
+ * A house's mid tone: its base through `TONE_SIDE`, in the linear working
+ * space the shader's own multiply happens in.
+ *
+ * `THREE.Color` holds linear-sRGB under three's colour management, which is
+ * the space `diffuseColor.rgb * toneMul` runs in — so this is the same
+ * multiplication the GPU does, done once on the CPU.
+ */
+export function houseMidTone(baseColor: string): THREE.Color {
+  const tone = new THREE.Color(baseColor);
+  tone.r *= TONE_SIDE[0];
+  tone.g *= TONE_SIDE[1];
+  tone.b *= TONE_SIDE[2];
+  return tone;
+}
+
+/**
+ * The two colours a house's portrait is painted from, as hex.
+ *
+ * Exported so the tint LAW can be asserted rather than the rendering: a
+ * portrait is a WebGL readback and there is no WebGL in jest, so the thing a
+ * test can hold is that each house's base is that house's own authored snake
+ * colour and its lamp is that colour's own mid tone.
+ */
+export function portraitHouseTint(dynasty: SetupDynasty): {
+  base: string;
+  midTone: string;
+} {
+  const base = getGameMaterialProfile(dynasty).snake.baseColor;
+  return { base, midTone: `#${houseMidTone(base).getHexString()}` };
+}
 
 function getPortraitHeadMaterial(dynasty: SetupDynasty): THREE.MeshToonMaterial {
   let material = portraitMaterialCache.get(dynasty);
   if (!material) {
     material = getSnakeSegmentMaterial(dynasty, true).clone();
+    const baseColor = getGameMaterialProfile(dynasty).snake.baseColor;
+    material.color.set(baseColor);
+    material.emissive.copy(houseMidTone(baseColor));
     applySnakeFaceShading(material, {
       role: 'head',
       cacheKey: `setup-portrait:${dynasty}:head`,

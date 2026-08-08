@@ -651,6 +651,25 @@ a.snake-cube[aria-disabled='true'] {
   border-radius: var(--radius-card);
 }
 
+/* THE SAME RECESS, ON THE DARK GROUND. (Owner ruling, 2026-08-08 — SETUP
+   GOES DARK.)
+
+   `.paper-recess` and this are ONE object drawn on two grounds, and the
+   ladder makes that literal: a recess is the step DOWN from the surface it
+   is cut into, so on paper it is `--fill-paper-2` under `--fill-paper-1`
+   and on the deck it is `--fill-deck-0` under `--fill-deck-1`. Same rule,
+   same radius, same refusal of a border — a recess is a fill step, which is
+   exactly the case device 4 exists to refuse.
+
+   It is a class rather than a utility written at each call site because
+   three surfaces inside the Setup tray share it, and a recess that is
+   spelled out three times is a recess that will be spelled differently the
+   fourth time. */
+.deck-recess {
+  background: var(--fill-deck-0);
+  border-radius: var(--radius-card);
+}
+
 /* -----------------------------------------------------------------------
    THE MODAL SCRIM - one backdrop, one dialect.
 

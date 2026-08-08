@@ -96,8 +96,14 @@ describe('HeirloomSummary', () => {
   it('keeps the recess, and only its padding got smaller', () => {
     render(<HeirloomSummary traits={[]} slots={1} />);
     const block = screen.getByTestId('heirloom-summary');
-    // Still a recess cut into the paper tray — one tray, one frame.
-    expect(block).toHaveClass('paper-recess');
+    /*
+     * Still a recess cut into the Setup tray — one tray, one frame. The tray
+     * went DARK on the owner's 2026-08-08 ruling, so the recess it is cut into
+     * takes the deck's rung of the same ladder instead of paper's. It is the
+     * identical object and the identical rule; what changed is the ground the
+     * whole surface is drawn on.
+     */
+    expect(block).toHaveClass('deck-recess');
     expect(block).toHaveClass('py-1.5');
     expect(block).not.toHaveClass('p-2');
     // The empty-state note keeps every word and loses only its leading.
