@@ -1330,7 +1330,350 @@ amendment rather than of the system. Candidate answers, in my order of preferenc
 
 ---
 
-*Written 8 August 2026 against Constitution v1.16. Every number marked in §3 is a
-hypothesis with a named test in the amendment draft's §17 additions. Where this
-document is wrong, it should be amended honestly: name the rule, pay the cost,
-record the overturn.*
+---
+
+## Appendix A · Schema DDL draft
+
+**Not a migration.** No file under `supabase/migrations/` is created by this
+document. This is the DDL a future WP-G-1 would carry, written out so it can be
+reviewed before it is applied to anything. Follows the house conventions migration
+069 established: named constraints, extension by drop-and-re-add of the full list,
+one authored TypeScript list with a parity test, and **in-transaction assertions
+that fail the migration rather than trusting it**.
+
+```sql
+BEGIN;
+
+-- ---------------------------------------------------------------------------
+-- 1. The catalog.
+--
+--    NOTE THE COLUMN THAT IS ABSENT: there is no `price_eur` and no
+--    `stripe_price_id`. `cosmetic_definitions` (022) has both. That asymmetry
+--    is the §10.4 enforcement expressed in the schema itself — a rig has no
+--    representation for a euro price, so selling one is not a policy violation
+--    that review must catch, it is a column that does not exist.
+-- ---------------------------------------------------------------------------
+CREATE TABLE gear_definitions (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gear_key         TEXT NOT NULL UNIQUE,
+  slot             TEXT NOT NULL,
+  display_name     TEXT NOT NULL,
+  condition_key    TEXT NOT NULL,
+  rank_bonus_bps   INTEGER[] NOT NULL,
+  level_bonus_bps  INTEGER NOT NULL DEFAULT 20,   -- 20 bps = 0.20 pp
+  max_rank         SMALLINT NOT NULL DEFAULT 6,
+  acquisition_kind TEXT NOT NULL,
+  dna_price        INTEGER,
+  content_version  TEXT NOT NULL,
+  active           BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT gear_definitions_slot_valid CHECK (slot IN (
+    'eyes','crest','jaw','plate_1','plate_2','plate_3','plate_4')),
+  CONSTRAINT gear_definitions_condition_valid CHECK (condition_key IN (
+    'none','banker','deep','clean','woven','patient')),
+  CONSTRAINT gear_definitions_acquisition_valid CHECK (acquisition_kind IN (
+    'milestone','dna_shelf','season','ladder')),
+  CONSTRAINT gear_definitions_rank_bonus_shape CHECK (
+    array_length(rank_bonus_bps, 1) = max_rank),
+  -- A dna_shelf rig MUST be priced and nothing else may be.
+  CONSTRAINT gear_definitions_price_iff_shelf CHECK (
+    (acquisition_kind = 'dna_shelf') = (dna_price IS NOT NULL)),
+  CONSTRAINT gear_definitions_price_positive CHECK (
+    dna_price IS NULL OR dna_price > 0)
+);
+
+-- ---------------------------------------------------------------------------
+-- 2. Ownership and state. Rule 6: rows are never deleted and never written
+--    downward. The rank/level interlock (§3.1) is DECLARED, not assumed —
+--    a bug that promotes a level past its rank ceiling fails the write.
+-- ---------------------------------------------------------------------------
+CREATE TABLE player_gear (
+  player_id   UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  gear_id     UUID NOT NULL REFERENCES gear_definitions(id),
+  rank        SMALLINT NOT NULL DEFAULT 1,
+  level       SMALLINT NOT NULL DEFAULT 1,
+  acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  PRIMARY KEY (player_id, gear_id),
+  CONSTRAINT player_gear_rank_range  CHECK (rank BETWEEN 1 AND 6),
+  CONSTRAINT player_gear_level_range CHECK (level BETWEEN 1 AND 60),
+  CONSTRAINT player_gear_level_within_rank CHECK (level <= rank * 10)
+);
+
+-- ---------------------------------------------------------------------------
+-- 3. Slot unlocks — monotonic by construction. There is no `closed_at`.
+-- ---------------------------------------------------------------------------
+CREATE TABLE player_gear_slots (
+  player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  slot      TEXT NOT NULL,
+  opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (player_id, slot),
+  CONSTRAINT player_gear_slots_valid CHECK (slot IN (
+    'eyes','crest','jaw','plate_1','plate_2','plate_3','plate_4'))
+);
+
+-- ---------------------------------------------------------------------------
+-- 4. The equipped set. One row per slot, mirroring player_loadout (022/069).
+--    The composite FK is what makes "equip something you do not own"
+--    unrepresentable rather than merely rejected by a guard.
+-- ---------------------------------------------------------------------------
+CREATE TABLE player_gear_loadout (
+  player_id   UUID NOT NULL,
+  slot        TEXT NOT NULL,
+  gear_id     UUID NOT NULL,
+  equipped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (player_id, slot),
+  FOREIGN KEY (player_id, gear_id) REFERENCES player_gear(player_id, gear_id)
+    ON DELETE CASCADE,
+  CONSTRAINT player_gear_loadout_slot_valid CHECK (slot IN (
+    'eyes','crest','jaw','plate_1','plate_2','plate_3','plate_4'))
+);
+
+-- ---------------------------------------------------------------------------
+-- 5. Lane grants. The PRIMARY KEY *is* the abuse defence (§5.3 A7/A8):
+--    one grant per (player, lane, period), enforced by the index rather than
+--    by the caller remembering to check.
+-- ---------------------------------------------------------------------------
+CREATE TABLE gear_scale_grants (
+  player_id   UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  lane_key    TEXT NOT NULL,
+  period_key  TEXT NOT NULL,
+  centiscales INTEGER NOT NULL,
+  rate_bps    INTEGER NOT NULL DEFAULT 10000,  -- Slipstream rate applied
+  granted_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (player_id, lane_key, period_key),
+  CONSTRAINT gear_scale_grants_positive CHECK (centiscales > 0),
+  CONSTRAINT gear_scale_grants_lane_valid CHECK (lane_key IN (
+    'signal','take','hunt','victory','ascension','ladder'))
+);
+
+-- ---------------------------------------------------------------------------
+-- 6. The Slipstream rate — a stored server fact, never a client computation.
+-- ---------------------------------------------------------------------------
+CREATE TABLE player_gear_catchup (
+  player_id       UUID PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+  rate_bps        INTEGER NOT NULL DEFAULT 10000,
+  owned_power_bps INTEGER NOT NULL DEFAULT 0,
+  computed_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT player_gear_catchup_rate_bounded CHECK (
+    rate_bps BETWEEN 10000 AND 20000)
+);
+
+-- ---------------------------------------------------------------------------
+-- 7. The balance and the ledger. NO NEW LEDGER (doctrine FM-1): the existing
+--    transactions table already carries a currency-type column (migration 009
+--    writes 'dna' into it), so Scales extend the vocabulary rather than
+--    founding a second authority for "what did this player earn and spend".
+-- ---------------------------------------------------------------------------
+ALTER TABLE players
+  ADD COLUMN centiscales BIGINT NOT NULL DEFAULT 0,
+  ADD CONSTRAINT players_centiscales_non_negative CHECK (centiscales >= 0);
+
+-- Session stamping, beside the existing Ascendance freeze (§7.2).
+ALTER TABLE game_sessions
+  ADD COLUMN gear_power_bps        INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN gear_loadout_snapshot JSONB   NOT NULL DEFAULT '[]'::JSONB,
+  ADD COLUMN gear_content_version  TEXT,
+  ADD CONSTRAINT game_sessions_gear_power_bounded CHECK (
+    gear_power_bps BETWEEN 0 AND 40000),        -- A0: far above the x2.19 kit
+  ADD CONSTRAINT game_sessions_gear_snapshot_bounded CHECK (
+    jsonb_array_length(gear_loadout_snapshot) <= 7);
+
+-- ---------------------------------------------------------------------------
+-- 8. IN-TRANSACTION ASSERTIONS. House law: a migration proves its own
+--    postconditions and aborts rather than leaving a half-true schema.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_slots      INTEGER;
+  v_priced     INTEGER;
+  v_bad_levels INTEGER;
+BEGIN
+  -- The seven-slot vocabulary must be complete and no wider.
+  SELECT COUNT(DISTINCT slot) INTO v_slots FROM gear_definitions;
+  IF v_slots <> 7 THEN
+    RAISE EXCEPTION
+      'MIGRATION_0NN_GEAR_SLOTS_INCOMPLETE: expected 7 slots seeded, found %', v_slots;
+  END IF;
+
+  -- §10.4, asserted rather than trusted: no rig may carry a euro price. This
+  -- is belt-and-braces against the column ever being added by a later hand.
+  SELECT COUNT(*) INTO v_priced
+  FROM information_schema.columns
+  WHERE table_name = 'gear_definitions'
+    AND column_name IN ('price_eur', 'stripe_price_id');
+  IF v_priced <> 0 THEN
+    RAISE EXCEPTION
+      'MIGRATION_0NN_GEAR_MUST_NOT_BE_SELLABLE: found % commerce column(s) on gear_definitions', v_priced;
+  END IF;
+
+  -- The interlock must hold for every existing row, not just future writes.
+  SELECT COUNT(*) INTO v_bad_levels FROM player_gear WHERE level > rank * 10;
+  IF v_bad_levels <> 0 THEN
+    RAISE EXCEPTION
+      'MIGRATION_0NN_GEAR_LEVEL_EXCEEDS_RANK: % row(s) violate the rank ceiling', v_bad_levels;
+  END IF;
+
+  RAISE NOTICE 'Gear schema: % slots, % definitions, 0 commerce columns, interlock clean.',
+    v_slots, (SELECT COUNT(*) FROM gear_definitions);
+END;
+$$;
+
+COMMIT;
+```
+
+**Parity discipline.** The slot list and condition list each appear in four places
+(two CHECK constraints, an RPC guard, a TypeScript constant). Migration 069 already
+solved this: one authored list in `src/shared/game/gearSlots.ts`, and
+`gearSlots.migration.test.ts` reads the SQL text and fails the build on drift. Reuse
+it verbatim rather than inventing a second mechanism.
+
+---
+
+## Appendix B · RPC signatures and authority boundaries
+
+The column that matters is the last one. **"Client" means a signed-in player's
+browser may invoke it through an API route; "Settlement" and "Cron" mean the
+`service_role` path only, and the client-facing GRANT is deliberately absent.**
+Getting this table wrong is how a client writes a balance.
+
+| RPC | Signature | May be called by | Authority note |
+|---|---|---|---|
+| `read_gear_state` | `(p_player_id UUID) → TABLE(...)` | **Client** (own row only) | The single authority for "what does this player own, wear, and hold" — one round trip, the 069 `read_snake_loadout` pattern. Read-only; RLS restricts to `auth.uid()`. |
+| `equip_gear` | `(p_player_id UUID, p_slot TEXT, p_gear_id UUID) → JSONB` | **Client** | Writes a *selection*, never a balance. Rejects an unopened slot and unowned gear; the composite FK makes the latter unrepresentable anyway. Atomic per slot (migration 064's ordered-write pattern). |
+| `unequip_gear` | `(p_player_id UUID, p_slot TEXT) → JSONB` | **Client** | Deletes a selection row only. Never touches `player_gear` — Rule 6. |
+| `upgrade_gear_level` | `(p_player_id UUID, p_gear_id UUID, p_target_level SMALLINT, p_request_id UUID) → JSONB` | **Client** | **Recomputes the price server-side from the level curve; never accepts a client quote.** Checks the rank ceiling, debits DNA under a player-row lock, writes the ledger. Idempotent on `p_request_id`. |
+| `promote_gear_rank` | `(p_player_id UUID, p_gear_id UUID, p_request_id UUID) → JSONB` | **Client** | Debits centiscales, increments rank by exactly one, records the provenance mark. Idempotent. Never decrements. |
+| `grant_gear_scales` | `(p_player_id UUID, p_lane_key TEXT, p_period_key TEXT, p_base_centiscales INTEGER) → JSONB` | **Settlement + Cron only** | The faucet. Applies the stored Slipstream rate, inserts `ON CONFLICT DO NOTHING`. **No client-facing GRANT exists**; a client that could call this could mint Scales. |
+| `stamp_gear_into_session` | `(p_session_id UUID, p_player_id UUID) → JSONB` | **Settlement only** (run start) | Freezes `gear_power_bps` + snapshot + content version into the session. The client never sends gear power; it is read from the server's own tables at start. |
+| `recompute_gear_catchup` | `() → INTEGER` | **Cron only** | Daily. Percentiles over accounts with a valid run in 28 days; writes `player_gear_catchup`. |
+| `standard_issue_rank` | `(p_rank SMALLINT, p_season TEXT) → INTEGER` | **Cron only** (quarterly) | Raises every owned rig below `p_rank` to `p_rank`. Monotonic (`WHERE rank < p_rank`), idempotent, never writes downward. |
+| `open_gear_slot` | `(p_player_id UUID, p_slot TEXT) → JSONB` | **Settlement only** | Slots open from banked-run and Mastery counts the server already holds. A client-callable version would be a client-granted slot. |
+
+**Three boundary rules, stated once:**
+
+1. **The client may spend and select. It may never grant.** Every faucet RPC
+   (`grant_gear_scales`, `open_gear_slot`, `standard_issue_rank`) is service-role
+   only. Every sink RPC is client-callable because spending your own balance is a
+   player decision (§4's Rule 6 carve-out for player-directed spends).
+2. **Prices are recomputed, never quoted.** `upgrade_gear_level` takes a *target
+   level*, not a cost. The client's displayed price is a preview; the server's is
+   the transaction.
+3. **Idempotency is structural, not procedural.** `p_request_id` on the two spend
+   RPCs and the `(player, lane, period)` primary key on grants mean a replayed call
+   is a no-op at the storage layer, not at the guard layer (doctrine FM-11: guard
+   after mutation is the failure; here there is nothing to guard).
+
+---
+
+## Appendix C · The effort-lane readings spec
+
+The constraint that shapes this appendix: **§12.2 caps daily ritual surfaces at 1 and
+recurring clan surfaces at 1, and §12.4 lists "a new daily surface" as a forbidden
+response.** So no lane may be a screen, a task list, a claim, or a notification.
+Every lane is a *reading* of an event an existing surface already produces.
+
+For each: the surface, the exact event read, what is granted, the period key that
+makes it idempotent, and the compliance argument.
+
+### C.1 SIGNAL — the daily ritual
+
+- **Existing surface:** World Signal (§7.2). Already the one sanctioned daily surface.
+- **Event read:** the server-side completion of the day's chosen Signal objective —
+  the same settlement that already pays the 150-DNA first-completion bonus.
+- **Grant:** 10 centiscales. **Period key:** `signal:<UTC date>`.
+- **Compliance:** adds no surface, no tap, and no notification. The Signal's own
+  Results line gains a clause, not a screen. **Rule 5:** a missed day costs 10
+  centiscales of *opportunity*; nothing is owed and nothing decays.
+- **Why it is the largest daily lane:** the Signal is the one activity the
+  Constitution wants to be habitual, and it is Energy-free and objective-choice-based
+  (§7.2), so it is the lane least biased toward strong players.
+
+### C.2 TAKE — the first banked run of the day
+
+- **Existing surface:** the Daily Take (§7.2), the only literal collect in the game.
+- **Event read:** the same first-run-of-UTC-day settlement that computes the Take.
+- **Grant:** 4 centiscales, **flat**. **Period key:** `take:<UTC date>`.
+- **Compliance:** rides an existing economic collect; adds no second tap. The Take's
+  own streak multiplier is **deliberately not applied** — §7.2 binds the streak to
+  "the Take only — never run payouts, never Yield, never anything else," and letting
+  a streak multiply Scales would make an absence compound, which Rule 5 forbids in
+  substance if not in letter.
+
+### C.3 HUNT — filling the clan battle
+
+- **Existing surface:** the World Serpent Clan Energy Battle (§7.3), the one
+  sanctioned recurring clan surface.
+- **Event read:** the player's five best-five contribution slots are all filled with
+  valid results at cycle settlement. Not "played five runs" — *filled the five*,
+  which is the metric the surface already computes and displays.
+- **Grant:** 25 centiscales. **Period key:** `hunt:cycle-<index>`.
+- **Compliance:** the battle already settles on an hourly idempotent job (§7.3
+  operating cost); this reads its output. No queue, no opt-in, no battle screen.
+- **Why best-five and not run count:** run count is farmable and the Constitution
+  already chose best-five as the anti-volume bound. Reusing it means the lane
+  inherits an abuse property that was already reasoned about.
+
+### C.4 VICTORY — the winning side
+
+- **Existing surface:** the same battle settlement.
+- **Event read:** the settled victor side, for eligible contributors.
+- **Grant:** 10 centiscales, **capped at 70 per player per calendar month**, and
+  granted only if the clan's battle Depth exceeded that account's own trailing-median
+  contribution. **Period key:** `victory:cycle-<index>`.
+- **Compliance:** §7.3 already grants "a stronger bounded reward" to the winning
+  side; this is that reward's Scale component, bounded the same way.
+- **The two locks are the win-trading defence (§5.3 A5):** pairing is deterministic
+  and lazy (§9.4) so the opponent cannot be chosen, and the trailing-median condition
+  means a thrown battle pays nothing to either side.
+
+### C.5 ASCENSION — the monthly league
+
+- **Existing surface:** Ascension (§6.1), explicitly "an aggregation view of the
+  skill number, not a third number" — so it is not a surface under the cap.
+- **Event read:** the tier held at cycle close.
+- **Grant:** 60 / 100 / 150 centiscales by band. **Period key:** `ascension:<YYYY-MM>`.
+- **Compliance:** Ascension is promotion-only within a cycle and already grants
+  earned-only tier marks; this adds a material to an existing settlement.
+- **Note under A5:** once Ascension re-anchors to best-ten Signal *Yields*, this lane
+  rewards the skill×effort composite directly, which is the thesis on the calendar.
+
+### C.6 LADDER / TRIALS — the skill lane, one-time
+
+- **Existing surface:** the difficulty ladder (§8.6a) and Mastery trials (§8.1,
+  growth slot 3).
+- **Event read:** first clear of a rung per dynasty; first clear of a trial.
+- **Grant:** 100 centiscales each, **once, ever**. **Period key:**
+  `ladder:<rung>:<dynasty>` / `trial:<trial_key>`.
+- **Compliance:** both are existing earned-only credentials with server-stamped runs
+  (§8.6a: "the rung is server-stamped into the run"). No new content is authored.
+- **Why this lane exists at all:** it is the counterweight that keeps "best is both"
+  true in the other direction. A strong newcomer clearing eight rungs and three
+  trials banks 11 Scales on ability alone — nearly three months of a diligent
+  player's cadence. Without it, the material would measure attendance only, and the
+  thesis in §1 would be half a thesis.
+
+### C.7 The compliance summary
+
+| Cap (§12.2) | Before | After |
+|---|---|---|
+| Daily ritual surfaces | 1 (Signal) | **1** (Signal) |
+| Recurring clan surfaces | 1 (Serpent Battle) | **1** (Serpent Battle) |
+| Game modes | 3 | **3** |
+| Results layers | 3 | **3** |
+| Taps open→board / Results→rerun | ≤3 / ≤2 | **≤3 / ≤2** |
+| Commercial surfaces per screen | ≤1; 0 in-run, 0 Results | **unchanged** |
+
+Six lanes, zero new surfaces, zero new taps, zero claims. The only thing added to any
+screen is a line of text on settlements that already happen.
+
+---
+
+*Written 8 August 2026 against Constitution v1.16; §3 regenerated from
+`scripts/sim/gear-economy.mjs` on 8 August 2026. Every number marked in §3 is a
+hypothesis with a named test in the amendment draft's §17 additions, and every table
+in §3 and §3.11 is reproducible with the commands cited there. Where this document is
+wrong, it should be amended honestly: name the rule, pay the cost, record the
+overturn.*
