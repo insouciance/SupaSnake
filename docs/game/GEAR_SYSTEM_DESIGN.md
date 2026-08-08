@@ -70,8 +70,9 @@ the log curve flattens and needs a reset to stay interesting.
 **What transfers, and it is the single most important import in this document.**
 A leaderboard that reads a build-inclusive number can only survive if investment
 power is **logarithmic in investment**. Exponential cost with linear power is not a
-monetization trick here; it is the *fairness mechanism*. It converts a 2× advantage
-in accumulated material into an ~11% advantage in output (§3.7). SupaSnake already
+monetization trick here; it is the *fairness mechanism*. It converts a 1.94×
+advantage in accumulated material into a 12% advantage in output (§3.7). SupaSnake
+already
 ships this shape once — Ascendance pays ×1.02 per generation while breeding cost
 compounds ×1.25 (`supabase/migrations/047_deterministic_lineage_draft.sql:132`).
 Gear copies it deliberately.
@@ -201,13 +202,13 @@ The claim "effort is worth more than skill" and the claim "skill is the bigger
 lever" are both true, and they are not in tension, because they are measured over
 different windows. Numbers, from the shipped curves:
 
-**Within one run, skill is the larger lever.** CYBER's Yield curve steps in
-five-food tiers to ×3 by food 20 and pays **1,210 DNA at 48 foods**
-(`src/shared/game/rulesets.ts`, COSMIC re-basing docstring, verified). The same
-curve pays ≈470 DNA at 24 foods (derived from the documented tier structure).
-Doubling your food count is therefore worth **×2.53**. A complete, fully-maxed
-three-year gear kit is worth **×2.19** (§3.5). *Full gear is worth slightly less
-than doubling a single run.*
+**Within one run, skill is the larger lever.** CYBER's `foodDnaValue` is
+`round(10 × (1 + 0.5 × min(4, floor(n/5))))` (`src/shared/game/rulesets.ts:397`,
+`:240`). Summed exactly: **490 DNA at 24 foods, 1,210 at 48** — the 1,210 matching
+the figure the file's own docstring quotes. Doubling your food count is therefore
+worth **×2.47**, and quadrupling it (12 → 48 foods) is worth ×6.91. A complete,
+fully-maxed three-year gear kit is worth **×2.19** (§3.5). *Full gear is worth
+slightly less than doubling a single run, and far less than piloting one well.*
 
 **Across one month, effort is the larger lever.** Depth is the sum of a member's
 five strongest Yields per 3-day battle cycle (§7.3), and there are roughly ten
@@ -420,12 +421,12 @@ not two**.
 | Level | Cost of that level | Cumulative, one rig | Cumulative, all 7 |
 |---:|---:|---:|---:|
 | 1 | 60 | 60 | 420 |
-| 10 | 166 | 1,053 | 7,371 |
-| 20 | 515 | 4,325 | 30,275 |
-| 30 | 1,600 | 14,490 | 101,430 |
-| 40 | 4,970 | 46,140 | 322,980 |
-| 50 | 15,440 | 141,500 | 990,500 |
-| 60 | 47,960 | 448,000 | 3,136,000 |
+| 10 | 166 | 1,052 | 7,364 |
+| 20 | 517 | 4,322 | 30,254 |
+| 30 | 1,605 | 14,478 | 101,346 |
+| 40 | 4,985 | 46,024 | 322,168 |
+| 50 | 15,482 | 143,998 | 1,007,986 |
+| 60 | 48,086 | 448,296 | 3,138,072 |
 
 **Why exponential at 1.12.** It is the gentlest base that still produces a
 five-order-of-magnitude spread across sixty levels, which is what makes power
@@ -438,7 +439,7 @@ good run credits ≈1,000 base Yield × 10 (commitment) ≈ **10,000 DNA/day**. 
 player recovering the theoretical 24 Energy/day credits ≈**40,000/day**. Against
 that:
 
-- The **first full kit at Rank I** — all seven rigs to level 10 — costs **7,371 DNA**
+- The **first full kit at Rank I** — all seven rigs to level 10 — costs **7,364 DNA**
   and is a day of play. A new player sees +14% Yield in their first session or two.
   This is the direct rejection of Survivor.io's "no benefit until Better grade."
 - The **complete level-60 kit** costs **3.14M DNA**, which no amount of daily play
@@ -491,12 +492,12 @@ logarithmic in Scales by construction.** Everything in §3.7 follows from this l
 
 | Lever | Multiplier | Source |
 |---|---:|---|
-| Doubling a run, 24 → 48 foods (CYBER) | **×2.53** | shipped Yield curve |
+| Doubling a run, 24 → 48 foods (CYBER) | **×2.47** | shipped Yield curve |
 | Complete gear kit, ~2–3 years | **×2.19** | this design |
 | Ascendance at Gen 30 | ×1.71 | `1.02^27` |
 | Ascendance at Gen 50 | ×2.54 | `1.02^47` |
 
-The gear ceiling is set at ×2.19 **because it must be smaller than ×2.53**. The
+The gear ceiling is set at ×2.19 **because it must be smaller than ×2.47**. The
 design target, stated as a law for future tuning: *the complete kit must never be
 worth more than doubling a single run's food count.* Effort is a large lever; skill
 is a larger one, inside the unit the leaderboard measures. That sentence is the
@@ -548,17 +549,18 @@ A complete kit is **175 Scales**.
 
 Now the number this whole design exists to produce. After **twelve months**, the
 floor player holds ≈50 Scales and the full-effort player ≈98 — a **1.94× material
-advantage**. Spread evenly across seven rigs and read through §3.4's logarithmic
-curve:
+advantage**. Spent optimally (raise every rig one rank at a time; marginal power per
+Scale falls monotonically, 3.0 → 1.5 → 0.75 → 0.43 → 0.27 pp, so uniform ranks are
+optimal) and read through §3.4's table:
 
-| | Scales | per rig | rig power | kit power | **Yield multiplier** |
-|---|---:|---:|---:|---:|---:|
-| Floor player, 12 months | 50 | 7.1 | 11.1 pp | 78 pp | **×1.78** |
-| Full-effort player, 12 months | 98 | 14.0 | 14.0 pp | 98 pp | **×1.98** |
+| | Scales | Uniform rank reached | kit power | **Yield multiplier** |
+|---|---:|---|---:|---:|
+| Floor player, 12 months | 50 | **IV** (49 spent) | 77 pp | **×1.77** |
+| Full-effort player, 12 months | 98 | **V** (98 spent) | 98 pp | **×1.98** |
 
-**A 1.94× advantage in accumulated material becomes an 11% advantage in output.**
-The grinder is unmistakably ahead — twenty percentage points of visible kit power,
-higher rank marks, and a complete kit nearly two years sooner — while the
+**A 1.94× advantage in accumulated material becomes a 12% advantage in output.**
+The grinder is unmistakably ahead — a full rank on every rig, twenty-one percentage
+points of visible kit power, and a complete kit nearly two years sooner — while the
 competitive spread stays inside a band that a single better-piloted run erases.
 That is "effort must be rewarded" and "the ladder still means something" holding
 hands, and the only reason it works is that cost is exponential while power is not
@@ -710,8 +712,10 @@ the stamp. Nothing gear-related may persist in browser storage of any kind (Rule
 the recommendation, and §9's D3 gives the owner the alternative.
 
 `npm run verify:constitution` mechanically enforces that both score folds
-(`computeRunTotals` at `rulesets.ts:312`, `computeGenomeRunTotals` at `:499`) do
-nothing but `score += Math.round(FOOD_BASE_SCORE * ruleset.scoreMultiplier(n))`.
+(`computeRunTotals` at `src/shared/game/rulesets.ts:713`, `computeGenomeRunTotals` at
+`:875`, accumulating at `:744` and `:948` — verified 8 August 2026; note that
+`CLAUDE.md` still cites the pre-drift line numbers 312/499) do nothing but
+`score += Math.round(FOOD_BASE_SCORE * ruleset.scoreMultiplier(n))`.
 That verifier is the only *mechanical* fairness proof the product owns. Deleting it
 because the number it guards stopped being public would be trading a machine-checked
 invariant for a policy.
@@ -1071,7 +1075,7 @@ not mine to make.
 
 **D2 · The cadence, and whether 1.94× is the right grinder upside.** §3.6's table
 gives 4.2/month floor and 8.2/month full. Should the spread be wider (a 3× upside
-rewards effort harder and pushes the year-one output gap from 11% to ≈18%) or
+rewards effort harder and pushes the year-one output gap from 12% to ≈19%) or
 narrower? This is the single most consequential dial in the document and it is a
 values question, not a math one.
 
@@ -1083,7 +1087,7 @@ subtraction. **My recommendation is keep** — it is the only mechanical fairnes
 the product owns and it becomes the primary anti-farm signal — but the owner should
 rule, because the maintenance argument on the other side is real.
 
-**D4 · The gear ceiling: is ×2.19 right?** §3.5 sets it below the ×2.53 a pilot gains
+**D4 · The gear ceiling: is ×2.19 right?** §3.5 sets it below the ×2.47 a pilot gains
 by doubling a run, and proposes that relationship as a permanent law. The owner may
 want gear to be a *larger* lever than skill inside one run, which would be the
 strongest possible reading of "effort is worth more than skill." I have argued
