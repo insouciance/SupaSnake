@@ -55,6 +55,11 @@ import {
 } from './aimUtils';
 import { createExactUnitRoundedBoxGeometry } from './screen/gameRenderGeometry';
 import { createInkHullMaterial } from './screen/inkAmber';
+import {
+  boilFrameAt,
+  getSketchCellBoil,
+  getSketchRailBoil,
+} from './screen/sketchStroke';
 
 export interface AimRendererProps {
   /** Snake head cell (null when not playing) */
@@ -185,6 +190,21 @@ const LEAD_WIDTH = 0.28;
 const LEAD_CORNER_RADIUS = 0.09;
 /** Paper. The core the ink edge is drawn around. */
 const LEAD_PAPER = '#ffffff';
+
+/**
+ * GRIDLOCK IS THE MARK'S PURPLE, and it is the Mark's purple at every Dynasty.
+ *
+ * Owner: the cross "should be in The Mark's purple and should look a bit more
+ * sketchy, 90s cartoon... it just looks a bit alien since we have our IP
+ * style". The rails used to take the Dynasty hue, which made the aid a fourth
+ * voice in a conversation the board already has — CYBER cyan, PRIMAL green,
+ * COSMIC violet, and then a rail agreeing with whichever one was speaking.
+ * The aid belongs to the GAME, not to the run, so it wears the game's own
+ * colour and stays legible against all three.
+ *
+ * Read off `assets/brand/supasnake-mark.svg`, same value the surfaces use.
+ */
+const GRIDLOCK_PURPLE = '#a201ae';
 
 const EMPTY_QUEUE: readonly Direction[] = [];
 const EMPTY_SNAKE: readonly Position[] = [];
@@ -594,60 +614,63 @@ interface GridlockProps {
   targets: readonly AimTarget[];
   gridSize: number;
   bufferRef: { readonly current: InterpolationBuffer | null };
-  color: string;
-  laneColor: string;
 }
 
-function Gridlock({ head, targets, gridSize, bufferRef, color, laneColor }: GridlockProps) {
+function Gridlock({ head, targets, gridSize, bufferRef }: GridlockProps) {
   const rowRailRef = useRef<THREE.Mesh>(null);
   const colRailRef = useRef<THREE.Mesh>(null);
   const highlightRef = useRef<THREE.Mesh>(null);
 
-  const rowMaterial = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: laneColor,
-        transparent: true,
-        opacity: 0.14,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    [laneColor]
-  );
-  const colMaterial = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: laneColor,
-        transparent: true,
-        opacity: 0.14,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    [laneColor]
-  );
-  const highlightMaterial = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.3,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    [color]
-  );
+  const railBoil = useMemo(() => getSketchRailBoil(GRIDLOCK_PURPLE), []);
+  const cellBoil = useMemo(() => getSketchCellBoil(GRIDLOCK_PURPLE), []);
+
+  /**
+   * NORMAL BLENDING, NOT ADDITIVE. Additive was the alien part: it made the
+   * rail a light source, so its brightness was decided by whatever it crossed
+   * and it bloomed over the snake. A drawn line is the same line everywhere.
+   * `toneMapped: false` for the same reason the lead dashes set it — a guide
+   * is a drawn value, and the arena's exposure does not get a say in how loud
+   * the aid is.
+   */
+  const drawnRail = (map: THREE.Texture | undefined, opacity: number) =>
+    new THREE.MeshBasicMaterial({
+      map: map ?? null,
+      // The stroke is baked INTO the texture, so the tint must be white or it
+      // would multiply the ink edge as well as the fill. Where no canvas
+      // exists — SSR, jsdom, a locked-down context — the colour carries the
+      // rail on its own rather than leaving a white bar on the board.
+      color: map ? 0xffffff : GRIDLOCK_PURPLE,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      toneMapped: false,
+    });
+
+  const rowMaterial = useMemo(() => drawnRail(railBoil[0], 0.62), [railBoil]);
+  const colMaterial = useMemo(() => drawnRail(railBoil[0], 0.62), [railBoil]);
+  const highlightMaterial = useMemo(() => drawnRail(cellBoil[0], 0.92), [cellBoil]);
   const pipMaterial = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color,
+        color: GRIDLOCK_PURPLE,
         transparent: true,
-        opacity: 0.9,
-        blending: THREE.AdditiveBlending,
+        opacity: 0.92,
         depthWrite: false,
+        toneMapped: false,
         side: THREE.DoubleSide,
       }),
-    [color]
+    []
   );
+
+  /**
+   * The stroke repeats every ~4 cells along a rail, so the wobble reads at the
+   * scale of the board rather than as one long lazy curve over 22 cells. The
+   * frames tile seamlessly by construction (whole-number sine periods), so the
+   * repeat leaves no seam to find.
+   */
+  useEffect(() => {
+    for (const frame of railBoil) frame.repeat.set(gridSize / 4, 1);
+  }, [railBoil, gridSize]);
 
   useEffect(() => {
     return () => {
@@ -686,11 +709,26 @@ function Gridlock({ head, targets, gridSize, bufferRef, color, laneColor }: Grid
     if (highlightRef.current) {
       highlightRef.current.position.set(snapX + 0.5, AIM_Y - 0.01, snapZ + 0.5);
     }
-    // Aligned rails brighten (steady lift + a slow ~0.35Hz breathe)
-    const breathe = Math.sin(time * 2.2) * 0.03;
-    rowMaterial.opacity = (aligned.row ? 0.34 : 0.14) + breathe;
-    colMaterial.opacity = (aligned.col ? 0.34 : 0.14) + breathe;
-    highlightMaterial.opacity = 0.28 + Math.sin(time * 2.2) * 0.05;
+    // THE BOIL. Every rail and the cell share one frame index, because three
+    // lines drawn by the same hand redraw themselves at the same moment.
+    const frame = boilFrameAt(time);
+    if (railBoil.length > 0 && rowMaterial.map !== railBoil[frame]) {
+      rowMaterial.map = railBoil[frame];
+      colMaterial.map = railBoil[frame];
+      rowMaterial.needsUpdate = true;
+      colMaterial.needsUpdate = true;
+    }
+    if (cellBoil.length > 0 && highlightMaterial.map !== cellBoil[frame]) {
+      highlightMaterial.map = cellBoil[frame];
+      highlightMaterial.needsUpdate = true;
+    }
+    // Aligned rails brighten (steady lift + a slow ~0.35Hz breathe). The floor
+    // is higher than it was under additive blending: a normal-blended wash
+    // over a dark board reads dimmer at the same number.
+    const breathe = Math.sin(time * 2.2) * 0.05;
+    rowMaterial.opacity = (aligned.row ? 1 : 0.62) + breathe;
+    colMaterial.opacity = (aligned.col ? 1 : 0.62) + breathe;
+    highlightMaterial.opacity = 0.92 + Math.sin(time * 2.2) * 0.06;
   });
 
   return (
@@ -703,13 +741,18 @@ function Gridlock({ head, targets, gridSize, bufferRef, color, laneColor }: Grid
         rotation-x={-Math.PI / 2}
         scale={[gridSize, 0.92, 1]}
       />
-      {/* Column rail (spans Z at the head's column) */}
+      {/*
+        Column rail (spans Z at the head's column). It is the SAME stroke given
+        a quarter turn in the board plane rather than a second, vertically
+        baked texture — which is also how it would be drawn — so the wobble on
+        the two rails belongs to one hand instead of two.
+      */}
       <mesh
         ref={colRailRef}
         geometry={railGeometry}
         material={colMaterial}
-        rotation-x={-Math.PI / 2}
-        scale={[0.92, gridSize, 1]}
+        rotation={[-Math.PI / 2, 0, Math.PI / 2]}
+        scale={[gridSize, 0.92, 1]}
       />
       {/* Snapped cell highlight - the authoritative cell under the head */}
       <mesh
@@ -1033,6 +1076,8 @@ export function AimRenderer({
   if (!headPosition) return null;
 
   switch (aimSystem) {
+    // Gridlock takes no Dynasty colour: the cross is the game's own aid, and
+    // it wears the Mark's purple at every Dynasty. See GRIDLOCK_PURPLE.
     case 'gridlock':
       return (
         <Gridlock
@@ -1040,8 +1085,6 @@ export function AimRenderer({
           targets={targets}
           gridSize={gridSize}
           bufferRef={bufferRef}
-          color={color}
-          laneColor={laneColor}
         />
       );
     case 'pathline':
