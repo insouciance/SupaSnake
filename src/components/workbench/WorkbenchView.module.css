@@ -386,12 +386,17 @@
   line-height: 1.4;
 }
 
+/* `overflow-x: hidden` is stated rather than left to default: a box with one
+   axis scrollable computes the other from `visible` to `auto`, and a research
+   list that can be dragged sideways is the horizontal-scroll failure the
+   readable-surfaces audit exists to catch. */
 .pickerOptions {
   display: grid;
   min-height: 72px;
   flex: 1 1 auto;
   gap: 7px;
   margin-top: 9px;
+  overflow-x: hidden;
   overflow-y: auto;
   align-content: start;
 }
@@ -495,6 +500,7 @@
   border-radius: var(--radius-card);
   background: var(--deck-0);
   padding: 10px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -508,7 +514,7 @@
   white-space: normal;
 }
 
-.pickerRead { display: grid; gap: 8px; overflow-y: auto; }
+.pickerRead { display: grid; gap: 8px; overflow-x: hidden; overflow-y: auto; }
 
 .pickerRule { display: grid; gap: 5px; }
 .pickerRule p { margin: 0; color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }

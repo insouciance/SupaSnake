@@ -865,9 +865,20 @@ export function ResearchTable({
 }) {
   const [lens, setLens] = useState<GenomeV2ResearchLens>('yield');
   const [openSlot, setOpenSlot] = useState<GenomeV2SlotIndex | null>(null);
-  const [selectedGeneId, setSelectedGeneId] = useState<GenomeV2ActiveGeneId | null>(null);
+  const [selectedId, setSelectedId] = useState<GenomeV2ActiveGeneId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reading = useMemo(() => readGenomeV2Experiment(plan), [plan]);
+
+  /**
+   * A selection is only ever a power this Dynasty can still be offered. Held
+   * as raw state it would survive a specimen switch and point at a gene that
+   * is not in the new pool — the picker would then read out a rule the run
+   * cannot reach and TAKE would fail against the reducer instead of never
+   * being offered. Validating on the way out costs nothing and cannot drift.
+   */
+  const selectedGeneId = selectedId && reading.availableGenes.includes(selectedId)
+    ? selectedId
+    : null;
 
   /** The slot the reducer fills next. Derived, never chosen — see `slotModeFor`. */
   const nextOpenSlot = reading.loci.find((locus) => locus.kind === 'empty')?.slot ?? null;
@@ -898,13 +909,20 @@ export function ResearchTable({
 
   const closePicker = useCallback(() => {
     setOpenSlot(null);
-    setSelectedGeneId(null);
+    setSelectedId(null);
   }, []);
 
   const openPicker = useCallback((slot: GenomeV2SlotIndex) => {
-    setSelectedGeneId(null);
+    setSelectedId(null);
     setOpenSlot((current) => (current === slot ? null : slot));
   }, []);
+
+  // A specimen switch is a different Dynasty with a different pool. The panel
+  // that was asking about the old one has nothing left to say, so it closes
+  // rather than re-rendering itself into a surface about something else.
+  useEffect(() => {
+    closePicker();
+  }, [closePicker, plan.dynasty]);
 
   const commit = useCallback((action: GenomeV2ExperimentAction) => {
     const next: GenomeV2ExperimentPlan = {
@@ -915,7 +933,7 @@ export function ResearchTable({
       readGenomeV2Experiment(next);
       onPlan(next);
       setOpenSlot(null);
-      setSelectedGeneId(null);
+      setSelectedId(null);
       setError(null);
     } catch (caught) {
       setError(
@@ -1023,7 +1041,7 @@ export function ResearchTable({
                     candidateFor={candidateFor}
                     slottedGeneIds={slottedGeneIds}
                     selectedGeneId={selectedGeneId}
-                    onSelect={setSelectedGeneId}
+                    onSelect={setSelectedId}
                     onCommit={commit}
                     onClose={closePicker}
                     annotations={annotations}

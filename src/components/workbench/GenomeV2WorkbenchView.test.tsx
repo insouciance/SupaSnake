@@ -68,6 +68,30 @@ async function renderResearch() {
   return result;
 }
 
+/**
+ * SLOT-FIRST (owner ruling, D1). The powers are no longer a permanent rail at
+ * the foot of the tray; they are the contents of a picker that opens ON the
+ * slot being filled. So every test that used to click a power now opens its
+ * slot first, which is exactly the sequence a player performs.
+ *
+ * Which slot is open is DERIVED, not chosen: `genomeV2Workbench.firstOpenSlot`
+ * fills the lowest empty index and the `thread`/`infuse` actions carry no slot
+ * of their own, so the surface can only honestly offer the cell the reducer
+ * will actually use. On a fresh bench that is slot 0; after one TAKE it is
+ * slot 1. These helpers name that rather than hiding it, because a test that
+ * silently assumed a different cell would be asserting a placement the engine
+ * does not make.
+ */
+function openBenchSlot(slot = 0) {
+  fireEvent.click(screen.getByTestId(`workbench-locus-${slot}`));
+}
+
+function takePower(geneId: string, slot = 0) {
+  openBenchSlot(slot);
+  fireEvent.click(screen.getByTestId(`workbench-gene-${geneId}`));
+  fireEvent.click(screen.getByTestId('workbench-thread'));
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseAuth.mockReturnValue({
@@ -87,6 +111,7 @@ describe('Genome v2 Research table', () => {
 
   it('keeps the full focused gene name visible and every Strain rung at the 44px target contract', async () => {
     await renderResearch();
+    openBenchSlot();
     fireEvent.click(screen.getByTestId('workbench-gene-compound_interest'));
     expect(screen.getByTestId('workbench-focused-gene-name')).toHaveTextContent(
       'Stash'
@@ -102,14 +127,24 @@ describe('Genome v2 Research table', () => {
 
   it('keeps dynasty legality visible instead of flattening every pool', async () => {
     await renderResearch();
+    openBenchSlot();
     expect(screen.queryByTestId('workbench-gene-time_dilation')).not.toBeInTheDocument();
 
+    // Switching specimen is off the tray, so it dismisses the picker the way
+    // any tap outside does. The Dynasty's own pool is read by opening a slot
+    // again — the legality lives in the pool, never in the picker's memory.
     fireEvent.click(screen.getByTestId('workbench-snake-primal'));
+    openBenchSlot();
     expect(screen.getByTestId('workbench-gene-time_dilation')).toBeInTheDocument();
   });
 
   it('shows every gene Strain at first glance, including both halves of a dual-Strain gene', async () => {
     await renderResearch();
+    // FIRST GLANCE IS NOW THE PICKER'S FIRST SCREEN. The contract is unchanged
+    // — both halves of a dual-Strain gene are legible before any inspection,
+    // TACTICAL_GENOME_V2 §2 — but the surface the player meets a power on is
+    // the option list inside the slot's picker, so that is where it is read.
+    openBenchSlot();
     expect(screen.getByTestId('workbench-gene-loan_shark-strain-AURUM')).toBeVisible();
     expect(screen.getByTestId('workbench-gene-loan_shark-strain-UMBRA')).toBeVisible();
 
@@ -129,6 +164,9 @@ describe('Genome v2 Research table', () => {
     );
     expect(screen.getByTestId('workbench-strain-disclosure').textContent?.length).toBeGreaterThan(40);
 
+    // The ladder is a tray readout and stays outside the picker; the Splice
+    // branches belong to a power, so they are read where the power is chosen.
+    openBenchSlot();
     fireEvent.click(screen.getByTestId('workbench-gene-gold_trail'));
     fireEvent.click(screen.getByTestId('workbench-splice-path-splice_gilded_fork'));
     const disclosure = screen.getByTestId('workbench-splice-disclosure');
@@ -139,10 +177,8 @@ describe('Genome v2 Research table', () => {
 
   it('lets the player discover a reaction without ranking the answer', async () => {
     await renderResearch();
-    fireEvent.click(screen.getByTestId('workbench-gene-gold_trail'));
-    fireEvent.click(screen.getByTestId('workbench-thread'));
-    fireEvent.click(screen.getByTestId('workbench-gene-overgrowth'));
-    fireEvent.click(screen.getByTestId('workbench-thread'));
+    takePower('gold_trail', 0);
+    takePower('overgrowth', 1);
 
     expect(screen.getAllByText('The Bag').length).toBeGreaterThan(0);
     const text = screen.getByTestId('workbench-view').textContent ?? '';
@@ -155,6 +191,7 @@ describe('Genome v2 Research table', () => {
     expect(screen.getByTestId('workbench-public-research')).toBeInTheDocument();
     expect(screen.getByTestId('workbench-loci').children).toHaveLength(6);
     fireEvent.click(screen.getByTestId('workbench-snake-primal'));
+    openBenchSlot();
     expect(screen.getByTestId('workbench-gene-time_dilation')).toBeInTheDocument();
     expect(global.fetch).not.toHaveBeenCalled();
 
@@ -186,8 +223,7 @@ describe('Genome v2 Research table', () => {
     await waitFor(() => {
       expect(screen.getByTestId('workbench-snake-cyber')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByTestId('workbench-gene-gold_trail'));
-    fireEvent.click(screen.getByTestId('workbench-thread'));
+    takePower('gold_trail');
     expect(screen.getByText('1 move')).toBeInTheDocument();
 
     authState = { session: null, isAuthenticated: false } as unknown as typeof authState;
@@ -271,8 +307,7 @@ describe('Genome v2 Research table', () => {
     await waitFor(() => {
       expect(screen.getByTestId('workbench-snake-cyber')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByTestId('workbench-gene-gold_trail'));
-    fireEvent.click(screen.getByTestId('workbench-thread'));
+    takePower('gold_trail');
     expect(screen.getByText('1 move')).toBeInTheDocument();
 
     authState = {
@@ -298,8 +333,7 @@ describe('Genome v2 Research table', () => {
     expect(screen.getByText('0 moves')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('workbench-snake-primal'));
-    fireEvent.click(screen.getByTestId('workbench-gene-time_dilation'));
-    fireEvent.click(screen.getByTestId('workbench-thread'));
+    takePower('time_dilation');
     expect(screen.getByText('1 move')).toBeInTheDocument();
   });
 
@@ -321,8 +355,7 @@ describe('Genome v2 Research table', () => {
     await waitFor(() => {
       expect(screen.getByTestId('workbench-snake-cyber')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByTestId('workbench-gene-gold_trail'));
-    fireEvent.click(screen.getByTestId('workbench-thread'));
+    takePower('gold_trail');
     expect(screen.getByText('1 move')).toBeInTheDocument();
 
     authState = {
