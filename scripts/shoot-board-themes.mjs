@@ -75,6 +75,10 @@ const PURPLE = process.env.PURPLE;
  * a crowded board is decided by looking at all three at once, in each theme.
  */
 const FOODS = process.env.FOODS;
+/** Viewport override; see the note where the page is opened. */
+const VW = process.env.VW;
+const VH = process.env.VH;
+const DPR = process.env.DPR;
 
 /**
  * The scene's dynasty for each theme. `?boardTheme` is independent of
@@ -280,9 +284,25 @@ try {
     if (!preset) {
       throw new Error(`unknown mode "${mode}" (board|dense|cubes|foods|heading|zoom|terrain|stats)`);
     }
+    /**
+     * VIEWPORT OVERRIDE - `VW`/`VH`/`DPR`.
+     *
+     * Every mode above is framed at desk size, which is the size a reviewer
+     * looks at and NOT the size the read has to survive. A pickup that is
+     * unmistakable at 1280 wide can lose its outline, its bands and its hole
+     * at phone width, where the board is drawn over a third of the pixels.
+     * So the smallest real board is a thing to LOOK at rather than to assume,
+     * and it is an override rather than a new mode because the question is
+     * the existing frames at a different size.
+     */
+    const viewport = {
+      width: VW === undefined ? preset.viewport.width : Number(VW),
+      height: VH === undefined ? preset.viewport.height : Number(VH),
+    };
     const page = await browser.newPage({
-      viewport: preset.viewport,
-      deviceScaleFactor: preset.deviceScaleFactor,
+      viewport,
+      deviceScaleFactor:
+        DPR === undefined ? preset.deviceScaleFactor : Number(DPR),
     });
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
