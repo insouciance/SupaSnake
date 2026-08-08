@@ -21,6 +21,7 @@ import {
   ARMOR_TONES,
   ARMORED_SEGMENTS,
   armorFacingYaw,
+  armorLeavesItsSegmentVisible,
   armorSeat,
   armorSpansItsSegment,
   armorSpanWorld,
@@ -184,6 +185,23 @@ describe('armor90s: the anchor bounds - it always rests on its own segment', () 
     expect(armorSpansItsSegment(shipped, mount)).toBe(true);
     const widestGap = 1 - Math.min(...shipped.trailFootprint);
     expect(ARMOR_PLATE_LENGTH * mount).toBeGreaterThan(widestGap);
+  });
+
+  it('is SHORTER than the shortest body cube, so the body still shows', () => {
+    // ROUND 1 FAILED THIS, and it is the reason the bound exists. The base
+    // tier was 0.714 of a cell - longer than a free-running cube (0.68) - so
+    // on the board the armoured segments came back as two grey squares in an
+    // orange snake. Gear that hides the thing wearing it has stopped being
+    // worn, which is the "reads as a different creature" failure by name.
+    expect(armorLeavesItsSegmentVisible(shipped, mount)).toBe(true);
+    const shortestCube = Math.min(...shipped.trailFootprint);
+    expect(ARMOR_PLATE_LENGTH * mount).toBeLessThan(shortestCube);
+  });
+
+  it('stays a BAND - much wider across the body than along it', () => {
+    // What the fix above bought, stated positively: from the arena camera an
+    // armoured cell reads orange, a broad steel band, orange.
+    expect(ARMOR_PLATE_WIDTH).toBeGreaterThan(ARMOR_PLATE_LENGTH * 1.8);
   });
 
   it('leaves the two-segment variant reading as TWO pieces of gear', () => {

@@ -300,20 +300,35 @@ export interface ArmorTier {
  * turn visibly swings it. A square plate would track its segment's heading
  * perfectly and show nothing for it.
  *
- * The base tier's length (0.94 local, 0.714 world) is bounded from both sides:
+ * IT IS A BAND, AND THE FIRST BUILD GOT THIS WRONG. Round 1 gave the base tier
+ * a length of 0.94 local (0.714 world), which is LONGER than a free-running body
+ * cube (0.68). On the board that plate covered its cell completely: the armoured
+ * segments came back as two grey squares in an orange snake, which is the
+ * "reads as a different creature" failure the brief rules out by name - worn
+ * gear that hides the thing wearing it has stopped being worn.
+ *
+ * So the base tier is now SHORT along travel and stays wide across it. From the
+ * arena camera an armoured cell reads orange, a broad steel band, orange - the
+ * body is visible fore and aft at every fusion level, and the flare still
+ * changes the silhouette. That is a harness, which is what a strapped-on plate
+ * looks like from above.
+ *
+ * The base tier's length (0.60 local, 0.456 world) is bounded from three sides:
  *
  *   - it must EXCEED THE WIDEST GAP the body ever opens (1 - 0.68 = 0.32 of a
  *     cell), or a plate drawn between two cells could hang over open board. See
  *     `armorSpansItsSegment`.
+ *   - it must stay SHORTER THAN THE SHORTEST BODY CUBE (0.68), or it covers its
+ *     own segment. See `armorLeavesItsSegmentVisible`.
  *   - two armoured segments sit exactly one cell apart, so it must leave them a
- *     gap (1 - 0.714 = 0.286) wider than the ink can paint over from both sides
+ *     gap (1 - 0.456 = 0.544) wider than the ink can paint over from both sides
  *     (2 x 0.052 = 0.104), or the two-segment variant fuses into one slab and
  *     stops being two pieces of gear.
  */
 export const ARMOR_TIERS: readonly ArmorTier[] = [
-  { id: 'plate', width: 1.22, length: 0.94, rise: 0.12, stock: 'iron' },
-  { id: 'lamella', width: 0.94, length: 0.72, rise: 0.22, stock: 'iron' },
-  { id: 'boss', width: 0.6, length: 0.52, rise: 0.31, stock: 'steel' },
+  { id: 'plate', width: 1.22, length: 0.6, rise: 0.11, stock: 'iron' },
+  { id: 'lamella', width: 0.94, length: 0.46, rise: 0.2, stock: 'iron' },
+  { id: 'boss', width: 0.6, length: 0.34, rise: 0.28, stock: 'steel' },
 ];
 
 /** The base tier - the one that carries the silhouette. */
@@ -378,6 +393,23 @@ export function armorSpansItsSegment(
   return ARMOR_PLATE_LENGTH * mountScale > widestGap;
 }
 
+/**
+ * Whether the body still shows fore and aft of the plate.
+ *
+ * The other half of the length bound, and the one round 1 failed. A plate as
+ * long as the cube it is worn on does not read as worn - it reads as a
+ * REPLACEMENT for that segment, which is the "different creature" failure. So
+ * the plate has to be shorter than the SHORTEST cube the body ever draws, or
+ * there is a fusion level at which the orange disappears.
+ */
+export function armorLeavesItsSegmentVisible(
+  profile: SnakeStyleProfile,
+  mountScale: number
+): boolean {
+  const shortestCube = Math.min(...profile.trailFootprint);
+  return ARMOR_PLATE_LENGTH * mountScale < shortestCube;
+}
+
 export interface ArmorSeat {
   /** Centre of the slab, in segment-local units above the top plane. */
   readonly y: number;
@@ -416,10 +448,10 @@ export function armorTierSeat(index: number): ArmorSeat {
  * pixels, and a sub-pixel bright speck on a moving body is scintillation rather
  * than sparkle - the same ruling the shades' lens checker is held to.
  */
-export const ARMOR_RIVET_X = 0.5;
-export const ARMOR_RIVET_Z = 0.34;
-export const ARMOR_RIVET_SIZE = 0.14;
-export const ARMOR_RIVET_RISE = 0.19;
+export const ARMOR_RIVET_X = 0.53;
+export const ARMOR_RIVET_Z = 0.18;
+export const ARMOR_RIVET_SIZE = 0.13;
+export const ARMOR_RIVET_RISE = 0.17;
 
 /**
  * The harness. Two bands lying across the base tier, fore and aft of the tier
@@ -429,10 +461,10 @@ export const ARMOR_RIVET_RISE = 0.19;
  * honest reason: at 24px it is one pixel of dark on a dark plate, which the ink
  * hull is already drawing for free.
  */
-export const ARMOR_STRAP_Z = 0.4;
-export const ARMOR_STRAP_WIDTH = 1.1;
-export const ARMOR_STRAP_LENGTH = 0.1;
-export const ARMOR_STRAP_RISE = 0.175;
+export const ARMOR_STRAP_Z = 0.255;
+export const ARMOR_STRAP_WIDTH = 1.18;
+export const ARMOR_STRAP_LENGTH = 0.07;
+export const ARMOR_STRAP_RISE = 0.155;
 
 // -----------------------------------------------------------------------------
 // The segment anchor - the second kind of mount
