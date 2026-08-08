@@ -275,6 +275,28 @@ collectibles and merch — visible wearables as the brand. **The entire merch an
 surface lives in the skin layer**, which is precisely where §10 already permits
 money. The power layer is a number in a table that no euro can reach.
 
+**The skin layer is deferred (owner ruling, 8 August 2026: "we'll do the skins
+later").** The visual/wearable work is shelved and the *system* is the standing
+focus. This is a clean cut precisely because of the split above: rigs carry every
+number in this document and render as a default appearance; skins add nothing the
+economy reads. Consequences, made explicit so the deferral does not quietly become a
+gap:
+
+- **§8's WP order already puts G-8 (skins) last**, off the critical path, depending
+  only on G-3. No earlier package waits on an asset.
+- **A rig with no skin is not a placeholder.** Every slot ships one default
+  appearance, which is what the run renders. An empty catalog renders as an empty
+  category, never as a promise — migration 069's own rule for `food_skin`.
+- **The renderer is not the blocker, and is further along than the deferral
+  suggests.** The segment-anchor mechanics — attaching a wearable to a moving body
+  segment and keeping it oriented — are built on `feat/armor-wearable` (`4b73e2a`
+  "ARMOR, designed as a wearable"; `db82b6a` "the plate becomes a BAND, and the
+  harness that found it"). That is ready infrastructure to inherit when the skin
+  phase opens, not work to redo.
+- **Nothing in §3, §5, §6, or §7 depends on a single asset existing.** The economy,
+  the integrity posture, the monetization boundary and the schema are all complete
+  against rigs alone. That is the test of whether the split was real, and it passes.
+
 ### 2.2 The slot taxonomy — seven slots
 
 | # | Slot | Worn where | Launch content | Opens at |
@@ -381,6 +403,19 @@ decision beat, no interruption. Rule 1 is untouched.
 ---
 
 ## 3. The upgrade economy
+
+> **Every table in this section is generated.** The model is
+> `scripts/sim/gear-economy.mjs` — deterministic, no `Math.random`, no
+> `Date.now`, no I/O, so two runs on two machines produce identical output.
+> Regenerate with `node scripts/sim/gear-economy.mjs`, and check this document
+> against the model with `node scripts/sim/gear-economy.mjs --validate`
+> (**22/22 figures passing** as of `a53b81d`). If the doc and the model
+> disagree, the model is right.
+>
+> What the model deliberately omits — bank/crash variance, skill improvement
+> over time, clan-battle outcomes beyond a fixed win rate, and churn — all push
+> the reported gap between cohorts *up*. Every fairness number below is
+> therefore a **ceiling on the gap, not an expectation of it**.
 
 ### 3.1 Two axes that interlock instead of competing
 
@@ -544,27 +579,62 @@ A complete kit is **175 Scales**.
 
 | Player | Scales/month | Months to a complete kit | Years |
 |---|---:|---:|---:|
-| Floor (daily only) | 4.2 | 42 | **3.5** |
-| Full (every lane) | 8.2 | 21 | **1.8** |
+| Floor (daily ritual only) | 4.20 | 42 | **3.5** |
+| Full (every lane) | 8.15 | 22 by cadence; **21** with the one-time ladder grants | **1.8** |
 
-Now the number this whole design exists to produce. After **twelve months**, the
-floor player holds ≈50 Scales and the full-effort player ≈98 — a **1.94× material
-advantage**. Spent optimally (raise every rig one rank at a time; marginal power per
-Scale falls monotonically, 3.0 → 1.5 → 0.75 → 0.43 → 0.27 pp, so uniform ranks are
-optimal) and read through §3.4's table:
+Now the tables the whole design exists to produce. `node scripts/sim/gear-economy.mjs`,
+24 months, six cohorts:
 
-| | Scales | Uniform rank reached | kit power | **Yield multiplier** |
-|---|---:|---|---:|---:|
-| Floor player, 12 months | 50 | **IV** (49 spent) | 77 pp | **×1.77** |
-| Full-effort player, 12 months | 98 | **V** (98 spent) | 98 pp | **×1.98** |
+#### Cohort trajectory — kit power and Yield multiplier
 
-**A 1.94× advantage in accumulated material becomes a 12% advantage in output.**
-The grinder is unmistakably ahead — a full rank on every rig, twenty-one percentage
-points of visible kit power, and a complete kit nearly two years sooner — while the
-competitive spread stays inside a band that a single better-piloted run erases.
-That is "effort must be rewarded" and "the ladder still means something" holding
-hands, and the only reason it works is that cost is exponential while power is not
-(§0.2).
+| Month | login_only | casual | full_lane | max_grinder | bot |
+| --- | --- | --- | --- | --- | --- |
+| **1** | 26 pp · ×1.26 | 26 pp · ×1.26 | 38 pp · ×1.38 | 41 pp · ×1.41 | 41 pp · ×1.41 |
+| **3** | 47 pp · ×1.47 | 44 pp · ×1.44 | 62 pp · ×1.62 | 65 pp · ×1.65 | 65 pp · ×1.65 |
+| **6** | 62 pp · ×1.62 | 62 pp · ×1.62 | 77 pp · ×1.77 | 80 pp · ×1.80 | 80 pp · ×1.80 |
+| **12** | 77 pp · ×1.77 | 77 pp · ×1.77 | 98 pp · ×1.98 | 98 pp · ×1.98 | 98 pp · ×1.98 |
+| **18** | 89 pp · ×1.89 | 89 pp · ×1.89 | 110 pp · ×2.10 | 113 pp · ×2.13 | 113 pp · ×2.13 |
+| **24** | 98 pp · ×1.98 | 98 pp · ×1.98 | 119 pp · ×2.19 | 119 pp · ×2.19 | 119 pp · ×2.19 |
+
+#### Scales earned (lifetime, monthly ceiling enforced)
+
+| Month | login_only | casual | full_lane | max_grinder | bot |
+| --- | --- | --- | --- | --- | --- |
+| **1** | 4.2 | 4.8 | 10.2 | 12.2 | 12.2 |
+| **6** | 29.4 | 32.6 | 54.9 | 59.9 | 59.9 |
+| **12** | 54.6 | 55.6 | 103.8 | 108.8 | 108.8 |
+| **24** | 105.0 | 105.4 | 201.6 | 206.6 | 206.6 |
+
+#### The gaps that matter
+
+| Month | login-only gear | full-lane gear | **GEAR gap** | bot gear | **bot vs full-lane** | bot DNA ÷ login-only DNA | **TOTAL gap (gear × Ascendance)** |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **6** | ×1.620 | ×1.770 | **+9.3%** | ×1.800 | **+1.7%** | 19.0× | **+40.9%** |
+| **12** | ×1.770 | ×1.980 | **+11.9%** | ×1.980 | **+0.0%** | 19.2× | **+41.9%** |
+| **18** | ×1.890 | ×2.100 | **+11.1%** | ×2.130 | **+1.4%** | 19.4× | **+42.9%** |
+| **24** | ×1.980 | ×2.190 | **+10.6%** | ×2.190 | **+0.0%** | 19.0× | **+40.3%** |
+
+**A 1.94× advantage in accumulated material becomes a 10.6–11.9% advantage in
+output**, stable across the whole two years. The grinder is unmistakably ahead — a
+full rank on every rig, twenty-one percentage points of visible kit power, and a
+complete kit nearly two years sooner — while the competitive spread stays inside a
+band that a single better-piloted run erases. That is "effort must be rewarded" and
+"the ladder still means something" holding hands, and the only reason it works is
+that cost is exponential while power is not (§0.2).
+
+**The anti-bot claim, proven rather than asserted.** The bot earns **19× the DNA** of
+a login-only player — 10.5M DNA in month 24 alone — and converts it to **+0.0% gear
+advantage** over the diligent human at months 12 and 24. Past month 1 the rank
+ceiling is the binding constraint for *every* cohort, so unlimited DNA buys literally
+nothing once levels sit at their cap. §3.1's interlock is not a nice property; it is
+the entire defence, and it holds numerically.
+
+**And the finding that costs this design something — see §5.6.** The *total*
+multiplier gap is +40%, not +11%, because the remaining +26.5% is **Ascendance**,
+which the bot buys with the DNA gear refuses. That is a pre-existing property of
+uncapped lean runs (§8.6) meeting uncapped Ascendance (§8.2), and ranking Yield is
+what makes it competitively load-bearing for the first time. It is filed as **D11**
+and it is not something gear can fix by itself.
 
 **The curve terminates, on purpose.** Everyone reaches a complete kit; the grinder
 reaches it first. When they do, progression continues two ways: **horizontally**,
@@ -646,6 +716,69 @@ Their next rank promotion on one rig costs 11 Scales — about six weeks of ever
 lane — and buys 1.0 pp plus ten levels worth 2.0 pp, ≈ +3 pp on a 95 pp kit: **a
 3.2% Yield gain for six weeks of effort.** That is what a late-game step is supposed
 to feel like, and it is why the early steps must be as fast as §3.3 makes them.
+
+---
+
+### 3.11 Sensitivity — the three dials the owner must set
+
+`node scripts/sim/gear-economy.mjs --d2 --d4 --slipstream`. Each table is one
+decision from §9, run at three settings so the choice is informed rather than
+guessed.
+
+#### D2 · the grinder dial
+
+| Target ratio | Lane scale k | full-lane Scales/mo | Y1 gear gap | Y2 gear gap | full-lane kit @24mo | months to full kit |
+| --- | --- | --- | --- | --- | --- | --- |
+| **1.50×** | 0.532 | 6.3 | **+6.8%** | **+7.6%** | 113 pp | — |
+| **1.94×** *(doc)* | 0.999 | 8.1 | **+11.9%** | **+10.6%** | 119 pp | 21 |
+| **3.00×** | 2.127 | 12.6 | **+14.5%** | **+4.3%** | 119 pp | 14 |
+
+**Reading — and it inverts the intuition.** A *steeper* grinder dial produces a
+*smaller* long-run gap. At 3× the year-one gap is the widest of the three (+14.5%),
+but by year two it has collapsed to **+4.3%**, because the grinder hits the
+175-Scale terminal ceiling at month 14 and the rest of the field walks up behind
+them. At 1.5× the gap is still *widening* at year two (+6.8% → +7.6%) because nobody
+caps out inside the window. So the ceiling bounds the gap, not the dial; the dial
+only chooses **when the grinder cashes out**. Picking 3× is therefore not the
+"more unfair" option it looks like — it front-loads the reward for effort and brings
+the whole population to parity sooner. The genuinely divergent option is the timid
+one. My recommendation shifts accordingly: **1.94× or 3×, not 1.5×.**
+
+#### D4 · the gear ceiling, against piloting
+
+| Ceiling | pp scale | Full kit | Skill lever 24→48 foods | Gear overtakes piloting? | Food gap that erases full gear | Y1 gear gap |
+| --- | --- | --- | --- | --- | --- | --- |
+| **×1.80** | 0.672 | 80 pp | ×2.47 | no | 24 → 38 foods (+14) | +9.3% |
+| **×2.19** *(doc)* | 1.000 | 119 pp | ×2.47 | no | 24 → 44 foods (+20) | +11.9% |
+| **×2.60** | 1.345 | 160 pp | ×2.47 | **YES — gear wins** | 24 → 51 foods (+27) | +13.9% |
+
+**Reading.** The ×2.47 skill lever is the wall. At ×1.80, an ungeared pilot erases a
+maxed kit by eating **14 more foods** — gear is a nudge and three years of it is
+worth less than a good afternoon's improvement, which under-rewards effort. At
+×2.19, the price is **20 more foods**: a real, respectable gap that a genuinely
+better pilot still clears. At ×2.60 the full kit exceeds the skill lever outright,
+and the honest description of the per-run board becomes *a gear board with a skill
+tiebreak*. **×2.19 is recommended and ×2.60 is the line I would not cross** — but
+§9's D4 stands, because the directive can be read as wanting exactly that crossing.
+
+#### Slipstream · a month-13 arrival, measured at month 18
+
+| Mode | Rate | Joiner kit @18 | Median @18 | Veteran (full-lane) @18 | Joiner vs median | Joiner vs veteran | Months to reach median |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **off** | ×1.0 | 77 pp · ×1.77 | 86 pp | 110 pp · ×2.10 | −4.8% | −15.7% | 11 |
+| **mild** | ×1.5 | 89 pp · ×1.89 | 89 pp | 110 pp · ×2.10 | 0.0% | −10.0% | 5 |
+| **strong** *(doc)* | ×2.0 | 95 pp · ×1.95 | 89 pp | 110 pp · ×2.10 | **+3.2%** | −7.1% | 4 |
+
+**Reading.** The terminal ceiling is already doing most of the catch-up work: even
+with the Slipstream **off**, a month-13 arrival reaches the population median in
+eleven months and sits only 4.8% below it at month 18. The ramp buys *time*, not
+outcome — eleven months becomes five (mild) or four (strong). Two things are worth
+noting: strong overshoots the median slightly (+3.2%), which is the ramp working as
+designed since it exits at the 60th percentile, not the 50th; and no setting lets a
+newcomer pass a dedicated veteran, who stays 7.1% ahead even against the strongest
+ramp. That is the correct shape — catch up to the *field*, never to the person who
+earned it. **Strong is recommended; mild is defensible; off is survivable**, which
+is itself evidence the design does not depend on the mechanism it added.
 
 ---
 
@@ -847,6 +980,54 @@ tick ordering, `verifyOfferTrace`, the duration clamp, and the food-rate bound �
 which is enough, because §5.2 means integrity is not carrying the progression
 system's weight in the first place. When replay ships, it strengthens A1's residual
 leaderboard case; nothing here waits on it.
+
+---
+
+### 5.6 What the simulator found that this design cannot fix alone
+
+The anti-bot argument in §5.2 is correct and the model proves it: **the bot's gear
+advantage over a diligent human is +0.0%**. But the model also measured the thing the
+argument did not look at, and the result is uncomfortable enough to belong here
+rather than in a footnote.
+
+| Cohort, month 24 | DNA earned that month | Gear | Ascendance | **Total multiplier** |
+|---|---:|---:|---:|---:|
+| login-only | 551,259 | ×1.98 | Gen 34 → ×1.85 | **×3.66** |
+| perfect bot | 10,498,867 | ×2.19 | Gen 46 → ×2.34 | **×5.13** |
+| **Ratio** | **19.0×** | **+10.6%** | **+26.5%** | **+40.3%** |
+
+**Two thirds of the bot's residual advantage is Ascendance, not gear.** The
+mechanism is entirely pre-existing: §8.6 lets a player start unlimited lean runs at
+×0.25 harvest with no daily cap (correctly — "Energy never gates playing" is a
+constitutional promise and A0 forbids a ceiling that invalidates honest play), and
+§8.2's Ascendance is uncapped and DNA-fed. Unbounded runs therefore buy unbounded
+DNA, which buys generations forever.
+
+**This is not a defect gear introduced — it is a defect gear's amendment
+*reveals*.** While Score was the ranked number, an unbounded DNA faucet feeding an
+unbounded Yield multiplier had no competitive consequence, because the ladder could
+not read it. A1 makes Yield the ranked number and the faucet becomes load-bearing on
+the same day.
+
+Three things are true at once and all three should be said:
+
+1. **The ×1.25 breeding curve is already compressing hard.** 19× the DNA buys +26.5%
+   of output — the same logarithm doing the same job gear relies on, which is why the
+   number is 26% and not 1,900%.
+2. **Gear is the well-behaved half.** It is the only progression axis in the product
+   with a hard material ceiling and therefore the only one that is structurally
+   bot-proof. That is an argument for the design, not against it.
+3. **The gap is still real, and it is the owner's to price.** Filed as **D11** in §9.
+   The candidate answers, none of which I am authorised to pick: cap the Scale-lane
+   equivalent for breeding; make the ranked board read a best-of-N per season so a
+   volume advantage cannot place; accept it as the honest price of an uncapped
+   Ascendance the Constitution deliberately chose in v1.9 (§15 row 29 already
+   records "accepts a wider earned progression spread"); or leave it and rely on
+   §5.4's review queue, since a bot playing 400 well-piloted runs a day is a hard AI
+   problem before it is an economic one.
+
+**What must not happen is that this stays undiscussed because gear passed its own
+test.** The design's own model is what found it.
 
 ---
 
@@ -1073,11 +1254,14 @@ not mine to make.
 | **COIL** | Snake-native and already ratified vocabulary. | **Already in use** for another meaning — reusing it would be a collision, not a reuse. |
 | **SEED** | Perfect for a genetics game; pairs with DNA, lineage, breeding. | **Direct engineering collision** with RNG seeds and Signal seeds throughout the codebase. Flagged, not recommended. |
 
-**D2 · The cadence, and whether 1.94× is the right grinder upside.** §3.6's table
-gives 4.2/month floor and 8.2/month full. Should the spread be wider (a 3× upside
-rewards effort harder and pushes the year-one output gap from 12% to ≈19%) or
-narrower? This is the single most consequential dial in the document and it is a
-values question, not a math one.
+**D2 · The cadence, and whether 1.94× is the right grinder upside.** §3.6 gives
+4.20/month floor and 8.15/month full. **§3.11's sensitivity run inverted my prior
+here and the owner should read it before choosing:** a steeper dial produces a
+*smaller* long-run gap, because the terminal 175-Scale ceiling — not the dial —
+bounds the spread. At 3× the year-one gap is +14.5% and the year-two gap is
+**+4.3%**; at 1.5× the gap is still widening at year two. The dial chooses *when*
+the grinder cashes out, not how far ahead they finish. **Recommendation: 1.94× or
+3×. Not 1.5×**, which is the only setting that is still diverging at 24 months.
 
 **D3 · Does the build-independent fold survive as PILOT?** §4.3 recommends keeping
 it as a private integrity instrument. The alternative is a clean deletion: retire
@@ -1088,11 +1272,12 @@ the product owns and it becomes the primary anti-farm signal — but the owner s
 rule, because the maintenance argument on the other side is real.
 
 **D4 · The gear ceiling: is ×2.19 right?** §3.5 sets it below the ×2.47 a pilot gains
-by doubling a run, and proposes that relationship as a permanent law. The owner may
-want gear to be a *larger* lever than skill inside one run, which would be the
-strongest possible reading of "effort is worth more than skill." I have argued
-against it — a build lever above the skill lever makes the per-run board a gear board
-— but the directive can be read that way and the call is the owner's.
+by doubling a run, and proposes that relationship as a permanent law. §3.11 prices
+all three options in the unit that matters — **how many extra foods an ungeared pilot
+must eat to erase a maxed kit**: 14 at ×1.80, 20 at ×2.19, 27 at ×2.60. At ×2.60 the
+kit exceeds the skill lever and the per-run board becomes, honestly described, a gear
+board with a skill tiebreak. I recommend ×2.19 and would not cross ×2.60 — but the
+directive can be read as wanting exactly that crossing, and the call is the owner's.
 
 **D5 · The seasonal epoch.** §4.2 resolves the long-outstanding leaderboard-epoch
 question by making the ranked Yield board quarterly. Confirm — this also decides
@@ -1121,6 +1306,27 @@ carry on day one.
 the critical path), so the leaderboard change is made against live gear data instead
 of against this document's estimates. Confirm, or rule that the two must ship
 together.
+
+**D11 · The uncapped DNA faucet meeting uncapped Ascendance — the one the simulator
+found.** §5.6 in full. Gear is bot-proof (+0.0%); Ascendance is not (+26.5% for 19×
+the DNA), and A1's Yield ranking is what makes that competitively load-bearing for
+the first time. This is the only open decision in this document that is **not about
+gear** and it is the one I would put first, because it is a consequence of the
+amendment rather than of the system. Candidate answers, in my order of preference:
+
+1. **Rank the seasonal board on a best-of-N per player per season** (the pattern
+   Depth and Ascension already use — best-five, best-ten). Volume then cannot place,
+   only quality can, and no cap is added to anything a player owns. Cheapest, most
+   constitutional, no new rule.
+2. **Accept it, on the record.** §15 row 29 already says v1.9 "accepts a wider earned
+   progression spread"; this is that decision's bill arriving. Requires no change and
+   one honest sentence in §6.2.
+3. **Cap Ascendance's contribution to the *ranked* number only**, leaving Depth and
+   personal history uncapped. Preserves the pillar, bounds the ladder — but adds a
+   second definition of Yield, which is a dual-source-of-truth smell (FM-1).
+4. **Cap lean-run harvest per day.** Rejected in my view: it collides with "Energy
+   never gates playing" (§8.6) and with A0. Listed only so the option is visibly
+   considered and visibly declined.
 
 ---
 
