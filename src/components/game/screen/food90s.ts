@@ -175,8 +175,15 @@ export const FOOD_PALETTE = {
   /** Sprinkles: two of the bone, one of the pink. Pure drawn marks. */
   sprinkleBone: GUIDE_PALETTE.white,
   sprinklePink: '#ff8fb8',
-  /** The berry. UMBRA - the colour the product already spends on risk. */
-  berry: '#f54263',
+  /**
+   * The berry. Boysenberry magenta - owner-ruled away from the risk pink
+   * because it sat too close to the apple's scarlet ("the berry should be
+   * more distinguishable from the apple, color-wise; the apple stays as
+   * is"). ~50 degrees of hue from the apple, ~45 from the mutation helix's
+   * blue-violet, and still red-dominant so the family's ONE warm tone table
+   * bands it into wine rather than grey.
+   */
+  berry: '#e838b8',
   /** Outline and stem. The snake's warm near-black, not a cool one. */
   ink: GUIDE_PALETTE.ink,
   /** The cartoon glint. A drawn highlight, never a specular. */
