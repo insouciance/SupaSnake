@@ -26,13 +26,13 @@
 | Player Evolution | **Live.** New players receive the seven-Gene starter curriculum; trials run in THE DROP and unlocks are revealed on Results |
 | Public surface | 25 flags, contract hash `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`; health reports 25/25 with no disabled flags |
 | Wardrobe | Server-held; `NEXT_PUBLIC_SNAKE_COSMETICS` live, two cosmetic definitions in the catalog (face + crown) and no food skins by design |
-| Presentation | The ratified 90s composition, live behind `NEXT_PUBLIC_NINETIES_COMPOSITION`; board themes SUPA SNAKE ORANGE / CYAN NEON / DARK NEON, HUD in 90s ink |
+| Presentation | The ratified 90s composition; board themes SUPA SNAKE ORANGE / CYAN NEON / DARK NEON wearing the brand purple (seam underglow + slab frame), HUD in 90s ink; home = dark chamber with the snake-cube rail, brand-purple tokens, vector speed lines |
 | Camera | ET-5 canonical framing: pinned azimuth 0, pitch 28, fit 1.00, fov 44, with a four-wall fairness gate and OrbitControls off the live board |
 | Arrival motion | ET-1b `glide` shipped default: constant-velocity head that never trails the simulation cell, extruded neck, pause settle; `front`/`classic` remain dev A/B pins |
 | Brand | The Mark: rebuilt vector wordmark at locked geometry, first favicon, PWA/maskable icon family |
-| Player-feature baseline | `6c8bf6bfceafe603f66f7ccd948df0a602f24bdf` |
-| Current deployment | `dpl_2STQAbpETrKtMbW4Yzt63AiYLGjT` |
-| Previous deployment | `dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk` (`230fc68`); identical schema, surface, hash and rules version; it gives up the glide arrival motion |
+| Player-feature baseline | `d611525` (the home train) |
+| Current deployment | `dpl_37yqU5ThRqXchWjQTw4wEhYf1ift` |
+| Previous deployment | `dpl_2STQAbpETrKtMbW4Yzt63AiYLGjT` (`6c8bf6b`); identical schema, surface, hash and rules version; it gives up the new home, the board purple and the Daily Take float |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 

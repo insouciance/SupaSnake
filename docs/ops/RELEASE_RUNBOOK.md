@@ -1,32 +1,31 @@
 # Production Release Runbook
 
-Current production baseline: GLIDE
-`6c8bf6bfceafe603f66f7ccd948df0a602f24bdf` — ET-1b constant-velocity arrival
-(PR 110): the head enters its simulation cell the instant the tick fires and
-never trails it, the neck extrudes rear-anchored instead of inflating, pause
-settles to tile centres, and the shipped default arrival mode is `glide` with
-`front`/`classic` kept as dev A/B pins. Owner-ratified on the dev server
-("feels good now"); the second-half head–body gap is deliberately deferred —
-it predates glide and exists in all three modes. Deployed 8 August 2026 by
-successful production workflow `31256859849` (`expected_migrations=none`) as
-deployment `dpl_2STQAbpETrKtMbW4Yzt63AiYLGjT`, on a clean first dispatch. The
-outgoing anchor was `dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk` on `230fc68` (the
-relaunch — the rollback target).
+Current production baseline: THE HOME TRAIN
+`d611525` — the complete home transformation (PR 114, four owner-reviewed
+rounds: dark chamber, the snake-cube rail with PLAY as the head, the Mark at
+1.12× the creature's width, the brand-purple token family, vector speed
+lines, the axis fix, and the mounted Daily Take float), carrying the board's
+brand purple default-on (PR 111, tuned seam underglow + slab frame band),
+the GLIDE release record (PR 112) and the CYBER-ramp determinism fix
+(PR 115). Owner pre-approved the final round sight-unseen and ordered the
+train to production. Deployed 8 August 2026 by successful production
+workflow `31261809434` (`expected_migrations=none`) as deployment
+`dpl_37yqU5ThRqXchWjQTw4wEhYf1ift`. The outgoing anchor was
+`dpl_2STQAbpETrKtMbW4Yzt63AiYLGjT` on `6c8bf6b` (GLIDE — the rollback
+target).
 
-**Nothing about the contract moved.** No migration, so the hosted
-schema stays **001–069** with no pending plan; the public surface stays at
-**25 flags** with `contractHash` equal to `declaredHash` at
-`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`. Canonical
-health reports the exact release SHA, healthy database, project ref
-`gmpwyzqafoyowndbvlma`, and Genome schema/catalog/Ascendance 2/2/2 with eight
-Splices, rules version 2, and neutral 2/3/4 Strain thresholds.
-
-GLIDE was proved at runtime with a baselined discriminator: the `glide` mode
-literal — absent from every previous bundle — is present in two served
-chunks, and the rules chunk carries `snake-rules-2026-08-05.2` byte-identical
-as its sole rules string: no continuity boundary, running sessions
-unaffected. The renderer-only nature of the change is the release's safety
-argument — engine, journal, and server replay are untouched by construction.
+**Nothing about the contract moved.** No migration (schema stays 001–069),
+the public surface stays at 25 flags with `contractHash` = `declaredHash` =
+`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, and the
+rules chunk is untouched. Proved at runtime: canonical health reports the
+exact release SHA; the Mark's purple `#a201ae` is present in the served CSS
+(the token family live — baselined absent before this train); the snake-cube
+rail markup is present in the served home document; `/api/daily-take`
+answers 401-not-404 (the float's read-only endpoint exists and is
+auth-gated). KNOWN TEMPORARY STATE, accepted by owner priority: the Daily
+Take exists on both Home (the new float) and Results (the old tray) until
+PR 113 lands in the next dispatch — server authority holds one slot, so
+collecting either settles both; no double-collect is possible.
 
 This release also ships the **nine-rule pattern library**, recorded in PR 107.
 It is the extrapolation authority for every remaining surface: later packages
