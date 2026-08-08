@@ -37,7 +37,8 @@ import { ArenaFloor } from '@/components/game/ArenaFloor';
 import { ArenaBorder } from '@/components/game/ArenaBorder';
 import { TerrainBlocks } from '@/components/game/TerrainBlocks';
 import { DynamicLights } from '@/components/game/DynamicLights';
-import { FoodBeacon } from '@/components/game/FoodBeacon';
+import { FoodBeacon, foodVariantForGrant } from '@/components/game/FoodBeacon';
+import { resolveFoodGrant } from '@/shared/game/foodGrant';
 import { ExitPortal } from '@/components/game/ExitPortal';
 import { PerfHUD } from '@/components/game/PerfHUD';
 import {
@@ -399,7 +400,22 @@ export default function PerfHarnessPage() {
             laneColor={theme.primary}
           />
         )}
-        <FoodBeacon position={[food.x + 0.5, 0, food.z + 0.5]} color={theme.accent} />
+        {/* The perf fixture is synthetic and grants nothing, so it draws the
+            ordinary apple - stated through the shared resolver rather than
+            hardcoded, so there is one mechanism repo-wide and this harness
+            measures the shape the board actually draws. */}
+        <FoodBeacon
+          position={[food.x + 0.5, 0, food.z + 0.5]}
+          color={theme.accent}
+          variant={foodVariantForGrant(
+            resolveFoodGrant({
+              picks: [],
+              foodEaten: 0,
+              phoenixTriggered: false,
+              foodsOnBoard: 1,
+            })
+          )}
+        />
         <ExitPortal
           position={[exitTile.x + 0.5, 0, exitTile.z + 0.5]}
           ticksRemaining={100}

@@ -44,7 +44,8 @@ import type { RunCockpitModel } from '@/components/game/cockpit/types';
 import { ArenaAssembly } from '@/components/game/arena/ArenaAssembly';
 import { InstancedSnake, InstancedSnakeFallback } from '@/components/game/InstancedSnake';
 import { AssetGate } from '@/components/game/AssetGate';
-import { FoodBeacon } from '@/components/game/FoodBeacon';
+import { FoodBeacon, foodVariantForGrant } from '@/components/game/FoodBeacon';
+import { resolveFoodGrant } from '@/shared/game/foodGrant';
 import { DynamicLights } from '@/components/game/DynamicLights';
 import {
   CameraRig,
@@ -178,6 +179,19 @@ function TrainingBoard({
           <FoodBeacon
             position={[target.x + 0.5, 0, target.z + 0.5]}
             color={theme.accent}
+            /* Off the drill's own engine state, through the one resolver the
+               competitive board uses. Drills carry no genes today, so this
+               resolves to the ordinary apple - but a drill that ever grants
+               one draws it without this line changing. */
+            variant={foodVariantForGrant(
+              resolveFoodGrant({
+                picks: snapshot.state.heldMutations,
+                foodEaten: snapshot.state.foodEaten,
+                phoenixTriggered:
+                  snapshot.state.phoenixTriggeredAtFood !== null,
+                foodsOnBoard: 1,
+              })
+            )}
             visualScale={1.12}
           />
         )}

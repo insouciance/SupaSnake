@@ -436,6 +436,60 @@ export const MUTATION_PHYSICS = {
  * - After a Phoenix trigger at food t, benefit modifiers stop applying to
  *   foods n > t; cost modifiers persist (see file header).
  */
+/**
+ * Does THIS pick turn the n-th food golden?
+ *
+ * Extracted so the economics and the RENDERER read one expression. The board
+ * now draws a golden pickup as a different object, and a beacon that decided
+ * goldenness with its own copy of "every 5th" would be a second source for a
+ * number the payout already owns - the two would drift the first time either
+ * side was tuned, and the board would promise a value the run does not pay.
+ *
+ * Deliberately per-PICK rather than per-run: `foodValueModifier` multiplies
+ * once per qualifying pick, and folding this to a `some()` there would change
+ * what a duplicate pick pays.
+ */
+/**
+ * The minimum a pick has to expose for goldenness to be decidable.
+ *
+ * Structural on purpose. The store mirrors the engine's `GenePick`, whose id
+ * is the WIDER `GeneId` - it names mastery and seasonal genes that are not in
+ * the mutation pool - so a `GenePick[]` is not a `MutationPick[]` and the
+ * compiler is right to say so. Casting between them to satisfy a predicate
+ * that only ever compares one id against one string would be throwing away a
+ * real distinction to buy nothing. This asks for exactly what it reads.
+ */
+export interface FoodPick {
+  readonly id: string;
+  readonly atFood: number;
+}
+
+function pickGrantsGolden(pick: FoodPick, n: number): boolean {
+  return (
+    pick.id === 'gold_trail' &&
+    n > pick.atFood &&
+    (n - pick.atFood) % MUTATION_ECONOMICS.goldTrailEveryNth === 0
+  );
+}
+
+/**
+ * Whether the n-th food is golden - the same question `foodValueModifier`
+ * answers with money, asked by the renderer with a shape.
+ *
+ * READ-ONLY. Nothing here mutates run state or feeds back into the engine;
+ * it is a pure function of picks the store already mirrors.
+ */
+export function isGoldenFood(
+  picks: readonly FoodPick[],
+  n: number,
+  phoenixTriggeredAtFood: number | null = null
+): boolean {
+  const benefitsVoided =
+    phoenixTriggeredAtFood !== null && n > phoenixTriggeredAtFood;
+  if (benefitsVoided) return false;
+  return picks.some((pick) => pickGrantsGolden(pick, n));
+}
+
 export function foodValueModifier(
   picks: MutationPick[],
   n: number,
@@ -448,10 +502,7 @@ export function foodValueModifier(
     if (n <= pick.atFood) continue;
     switch (pick.id) {
       case 'gold_trail':
-        if (
-          !benefitsVoided &&
-          (n - pick.atFood) % MUTATION_ECONOMICS.goldTrailEveryNth === 0
-        ) {
+        if (!benefitsVoided && pickGrantsGolden(pick, n)) {
           mod *= MUTATION_ECONOMICS.goldTrailMultiplier;
         }
         break;

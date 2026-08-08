@@ -130,7 +130,8 @@ import {
 import { CANONICAL_FOV } from '@/components/game/canonicalViewpoint';
 import { FlickSurface } from '@/components/game/FlickSurface';
 import { InputDebugOverlay } from '@/components/game/InputDebugOverlay';
-import { FoodBeacon } from '@/components/game/FoodBeacon';
+import { FoodBeacon, foodVariantForGrant } from '@/components/game/FoodBeacon';
+import { resolveFoodGrant } from '@/shared/game/foodGrant';
 import { ExitPortal } from '@/components/game/ExitPortal';
 import { MutationBeacon } from '@/components/game/MutationBeacon';
 import { MutationChoiceOverlay } from '@/components/game/MutationChoiceOverlay';
@@ -8772,6 +8773,33 @@ function GameBoard({
     (state) => state.revivePhaseTicksRemaining > 0
   );
 
+  // THE FOOD'S GRANT. All three change on an EVENT - a gene pick, an eat, a
+  // Phoenix trigger - which is the same cadence as every other subscription
+  // in this component and never the bare movement of the head.
+  const heldMutations = useGameStore((state) => state.heldMutations);
+  const foodEaten = useGameStore((state) => state.foodEaten);
+  const phoenixTriggered = useGameStore((state) => state.phoenixTriggered);
+
+  /**
+   * What the engine has granted the pickup on the board, as a variant.
+   *
+   * Read-only, and derived rather than stored: the store mirrors the engine,
+   * this reads the mirror, and nothing travels back. The board cannot make a
+   * food golden by drawing it golden.
+   */
+  const foodVariant = useMemo(
+    () =>
+      foodVariantForGrant(
+        resolveFoodGrant({
+          picks: heldMutations,
+          foodEaten,
+          phoenixTriggered,
+          foodsOnBoard: (food ? 1 : 0) + extraFoods.length,
+        })
+      ),
+    [heldMutations, foodEaten, phoenixTriggered, food, extraFoods.length]
+  );
+
   // COSMIC foods carry their constellation glyph color; other dynasties
   // keep the dynasty accent
   const foodColor =
@@ -8933,12 +8961,16 @@ function GameBoard({
         />
       </AssetGate>
 
-      {/* Food - clean voxel block; COSMIC tints the whole wave with its
-          constellation hue, so the wave reads as one object */}
+      {/* Food. The engine's grant decides the SHAPE: a run that has been
+          granted a golden food draws the donut on the cell that carries it,
+          and every other cell draws the ordinary apple. `resolveFoodGrant`
+          is the only thing that decides, and on a constellation wave it
+          declines - see its honesty clause. */}
       {food && (
         <FoodBeacon
           position={[food.x + 0.5, 0, food.z + 0.5]}
           color={foodColor}
+          variant={foodVariant}
           visualScale={HUD_COCKPIT_V1_ENABLED ? 1.12 : 1}
         />
       )}
@@ -8947,6 +8979,7 @@ function GameBoard({
           key={`${extra.x}-${extra.z}`}
           position={[extra.x + 0.5, 0, extra.z + 0.5]}
           color={foodColor}
+          variant={foodVariant}
           visualScale={HUD_COCKPIT_V1_ENABLED ? 1.12 : 1}
         />
       ))}

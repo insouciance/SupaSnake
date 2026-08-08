@@ -49,6 +49,7 @@
 import { useRef, type ReactElement } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { FoodGrant } from '@/shared/game/foodGrant';
 import {
   DONUT_SPRINKLES,
   FOOD_CHIP_INK_HULL_WIDTH,
@@ -73,6 +74,19 @@ import {
 export const ORDINARY_FOOD = 'apple' as const;
 
 export type FoodVariant = 'standard' | typeof ORDINARY_FOOD | 'golden' | 'wager';
+
+/**
+ * THE ENGINE'S GRANT, AS A SHAPE - the one place the two vocabularies meet.
+ *
+ * Every board surface resolves its grant with `resolveFoodGrant` and hands the
+ * answer here, so no call site decides for itself what a golden food looks
+ * like. A grant names itself after the variant that draws it, which is what
+ * makes a future `wager` grant reach the board with no renderer change at all:
+ * the engine starts returning it and this keeps mapping one to one.
+ */
+export function foodVariantForGrant(grant: FoodGrant | null): FoodVariant {
+  return grant ?? 'standard';
+}
 
 interface FoodBeaconProps {
   /** Food position */
