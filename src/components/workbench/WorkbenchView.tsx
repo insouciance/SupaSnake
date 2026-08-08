@@ -770,6 +770,25 @@ function SlotPicker({
                   compact
                   testIdPrefix="workbench-focused-gene"
                 />
+                {/*
+                  THE WAY BACK TO THE LIST. On a landscape phone the panel has
+                  ~176px, and a list plus a read plus an action do not fit in
+                  it — so at that height the list gives way to the read, and
+                  this is what returns it. It deselects and spends nothing,
+                  which is why it sits beside the name rather than among the
+                  commit actions.
+                */}
+                <button
+                  type="button"
+                  className={styles.pickerChange}
+                  onClick={() => {
+                    onSelect(null);
+                    setOpenSpliceId(null);
+                  }}
+                  data-testid="workbench-picker-change"
+                >
+                  CHANGE
+                </button>
               </header>
               <div className={styles.pickerRule}>
                 <p><b>Changes</b>{selectedGene.effect}</p>

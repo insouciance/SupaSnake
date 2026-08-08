@@ -32,12 +32,27 @@
    colour lighter than the fill it sits on drawn as a line.
    ----------------------------------------------------------------------- */
 
-.workbench {
+/*
+ * THE PALETTE IS DECLARED ON EVERY ROOT THIS FILE CAN BE MOUNTED AT, not on
+ * the outermost one. `ResearchTable`, `AuthoritativeRunStudy` and the loading
+ * state are each rendered on their own — the codex route composes them, but
+ * tests and fixtures mount the table alone — and a variable scoped to the
+ * wrapper resolves to nothing when the wrapper is absent. Every fill in this
+ * file would silently become transparent, which is a failure that typechecks,
+ * lints, passes every assertion, and is visible only in a screenshot.
+ */
+.workbench,
+.table,
+.study,
+.loading {
   --deck-0: var(--fill-deck-0);
   --deck-1: var(--fill-deck-1);
   --deck-2: var(--fill-deck-2);
   --quiet: rgb(238 243 247 / 68%);
   --quieter: rgb(238 243 247 / 52%);
+}
+
+.workbench {
   display: grid;
   width: 100%;
   min-width: 0;
@@ -514,6 +529,22 @@
   white-space: normal;
 }
 
+.pickerChange {
+  min-height: 44px;
+  margin-left: auto;
+  border: var(--ink-border-1);
+  border-radius: var(--radius-chip);
+  background: var(--deck-2);
+  padding: 5px 9px;
+  color: var(--bone-white);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  box-shadow: var(--ink-drop-1);
+}
+.pickerChange:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink-stroke); }
+
 .pickerRead { display: grid; gap: 8px; overflow-x: hidden; overflow-y: auto; }
 
 .pickerRule { display: grid; gap: 5px; }
@@ -904,6 +935,35 @@
   .picker[data-has-selection='true'] .pickerOptions { max-height: 96px; }
   .option { flex-direction: column; gap: 5px; }
   .slot { min-height: 104px; }
+}
+
+/*
+ * A landscape phone is ~390px of height for a six-slot bench AND a panel, so
+ * the bench gives up the room. The slot keeps the two things that answer
+ * "which slot is this and what is in it" — its glyph and its name — and drops
+ * the Strain badges, which the picker restates in full on every option and
+ * again on the selected read. Nothing is only legible here.
+ *
+ * Every pixel this buys goes to `roomBelow`, which is what decides how much
+ * of the option list the player sees before it scrolls.
+ */
+@media (max-height: 460px) {
+  /* With ~176px of panel, a list AND a read AND an action do not coexist.
+     Choosing one power hands the panel to that power; CHANGE brings the list
+     back. The commit stays stuck to the floor either way, so the action is
+     never the thing that scrolled away. */
+  .picker[data-has-selection='true'] .pickerOptions,
+  .picker[data-has-selection='true'] .pickerHint { display: none; }
+  .picker[data-has-selection='true'] .pickerSelected { margin-top: 8px; }
+
+  .genomeStage { margin-top: 9px; }
+  .slot { min-height: 74px; gap: 2px; padding: 6px 4px; }
+  .slot .geneStrainBadges { display: none; }
+  .slotRune { width: 20px; height: 20px; }
+  .slotRune b { font-size: 18px; }
+  .stageHint { margin-top: 6px; }
+  .table { padding: 10px; }
+  .tableHeader h3 { font-size: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

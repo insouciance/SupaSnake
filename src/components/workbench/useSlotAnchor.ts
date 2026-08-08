@@ -5,52 +5,31 @@
  *
  * Slot-first means the picker belongs to the slot the player touched, so it is
  * a CHILD of that slot's cell and is centred on it by CSS alone. Everything
- * this hook adds is the correction that keeps that promise on a phone: the
- * panel is nudged horizontally until both its edges are inside the viewport,
- * flipped above the slot when there is more room there, and pulled vertically
- * until its own bottom edge is inside too.
+ * this hook adds is the correction that keeps that promise on a phone, and the
+ * arithmetic for it lives in `slotAnchorGeometry` where it can be tested
+ * without a laid-out browser.
  *
  * It never re-parents the panel and never falls back to a full-screen sheet.
  * A sheet would answer the geometry problem by abandoning the ruling — the
  * bench is supposed to stay one continuous place, and a panel that leaves its
  * slot to become a takeover has stopped saying which slot it is filling.
- *
- * The two mirror refs (`dxRef` / `dyRef`) hold the correction that is CURRENTLY
- * painted, so every pass measures the panel as if uncorrected and produces the
- * same answer from the same layout. Without them a second pass would subtract
- * its own first correction and walk the panel off the screen one resize at a
- * time.
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  IDLE_SLOT_ANCHOR,
+  resolveSlotAnchor,
+  type SlotAnchor,
+} from './slotAnchorGeometry';
 
-export interface SlotAnchor {
-  /** Horizontal correction in px, applied after the centring transform. */
-  dx: number;
-  /** Vertical correction in px, applied after the flip. */
-  dy: number;
-  /** Which side of the slot the panel hangs from. */
-  flip: 'down' | 'up';
-  /** Room the panel may fill before its option list scrolls inside itself. */
-  maxHeight: number;
-}
-
-const GUTTER = 12;
-/** The gap between the slot's edge and the panel, matching the CSS offset. */
-const OFFSET = 10;
-/** Below this a panel cannot show one option and its action, so it scrolls. */
-const MIN_HEIGHT = 176;
-/** A research panel that grows past this stops being readable in one look. */
-const MAX_HEIGHT = 440;
-
-const IDLE: SlotAnchor = { dx: 0, dy: 0, flip: 'down', maxHeight: MAX_HEIGHT };
+export type { SlotAnchor } from './slotAnchorGeometry';
 
 export function useSlotAnchor(openKey: string | null) {
   const anchorRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const dxRef = useRef(0);
   const dyRef = useRef(0);
-  const [anchor, setAnchor] = useState<SlotAnchor>(IDLE);
+  const [anchor, setAnchor] = useState<SlotAnchor>(IDLE_SLOT_ANCHOR);
 
   const measure = useCallback(() => {
     const panel = panelRef.current;
@@ -66,52 +45,27 @@ export function useSlotAnchor(openKey: string | null) {
     const slotBox = slot.getBoundingClientRect();
     if (slotBox.width === 0 && slotBox.height === 0) return;
 
-    const roomBelow = viewportHeight - GUTTER - (slotBox.bottom + OFFSET);
-    const roomAbove = slotBox.top - OFFSET - GUTTER;
-    const flip: SlotAnchor['flip'] = roomBelow >= roomAbove ? 'down' : 'up';
-    const room = flip === 'down' ? roomBelow : roomAbove;
-    const maxHeight = Math.round(
-      Math.min(
-        MAX_HEIGHT,
-        Math.max(MIN_HEIGHT, Math.min(room, viewportHeight - GUTTER * 2))
-      )
-    );
-
-    const panelBox = panel.getBoundingClientRect();
-    const left = panelBox.left - dxRef.current;
-    const right = panelBox.right - dxRef.current;
-    let dx = 0;
-    if (right - left > viewportWidth - GUTTER * 2) {
-      // Wider than the room it has: pin the leading edge rather than centring
-      // the overflow, which would hide BOTH edges instead of one.
-      dx = GUTTER - left;
-    } else if (left < GUTTER) {
-      dx = GUTTER - left;
-    } else if (right > viewportWidth - GUTTER) {
-      dx = viewportWidth - GUTTER - right;
-    }
-
-    const top = panelBox.top - dyRef.current;
-    const bottom = panelBox.bottom - dyRef.current;
-    let dy = 0;
-    if (bottom > viewportHeight - GUTTER) {
-      dy = viewportHeight - GUTTER - bottom;
-    }
-    if (top + dy < GUTTER) {
-      dy = GUTTER - top;
-    }
+    const next = resolveSlotAnchor({
+      slot: slotBox,
+      panel: panel.getBoundingClientRect(),
+      viewportWidth,
+      viewportHeight,
+      appliedDx: dxRef.current,
+      appliedDy: dyRef.current,
+    });
 
     setAnchor((current) =>
-      current.dx === dx
-      && current.dy === dy
-      && current.flip === flip
-      && current.maxHeight === maxHeight
+      current.dx === next.dx
+      && current.dy === next.dy
+      && current.flip === next.flip
+      && current.maxHeight === next.maxHeight
         ? current
-        : { dx, dy, flip, maxHeight }
+        : next
     );
   }, []);
 
-  // The refs mirror what the browser actually painted, after every commit.
+  // The refs mirror what the browser actually painted, after every commit, so
+  // the next pass can subtract it and measure the uncorrected box.
   useLayoutEffect(() => {
     dxRef.current = anchor.dx;
     dyRef.current = anchor.dy;
@@ -121,7 +75,7 @@ export function useSlotAnchor(openKey: string | null) {
     if (openKey === null) {
       dxRef.current = 0;
       dyRef.current = 0;
-      setAnchor((current) => (current === IDLE ? current : IDLE));
+      setAnchor((current) => (current === IDLE_SLOT_ANCHOR ? current : IDLE_SLOT_ANCHOR));
       return;
     }
     measure();
