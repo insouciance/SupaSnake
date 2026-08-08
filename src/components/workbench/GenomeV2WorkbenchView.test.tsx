@@ -4,7 +4,10 @@ import {
   createGenomeV2State,
   genomeV2RunRecord,
   settleGenomeV2,
+  GENOME_V2_SPLICES,
 } from '@/shared/game/genomeV2';
+import { GENOME_V2_GENES, genomeV2ActivePool } from '@/shared/game/genes';
+import { STRAINS } from '@/shared/game/strains';
 
 const mockUseAuth = jest.fn();
 jest.mock('@/lib/auth/AuthProvider', () => ({ useAuth: () => mockUseAuth() }));
@@ -90,6 +93,40 @@ function takePower(geneId: string, slot = 0) {
   openBenchSlot(slot);
   fireEvent.click(screen.getByTestId(`workbench-gene-${geneId}`));
   fireEvent.click(screen.getByTestId('workbench-thread'));
+}
+
+/**
+ * Six CYBER powers that share no Combo recipe with one another.
+ *
+ * A full bench is the only state in which a slot offers SWAP, so the swap and
+ * swap-highlighting contracts have to reach it — but any pair that fuses would
+ * merge two loci into one Combo and leave the bench SHORT of six, which is a
+ * different state wearing the same description. Checked against
+ * `GENOME_V2_SPLICES`: none of Golden Hour, Straight Shot, Loop Trap, Wall
+ * Bounce, Split Bet and Double or Nothing name another as a parent.
+ */
+const NON_COMBINING_SIX = [
+  'gold_trail',
+  'live_wire',
+  'coilkeeper',
+  'wall_rush',
+  'mirror_wager',
+  'loan_shark',
+] as const;
+
+function fillBench() {
+  NON_COMBINING_SIX.forEach((geneId, slot) => takePower(geneId, slot));
+}
+
+/** Every Combo/path mark currently on screen, as rendered text. */
+function marks(): string[] {
+  return screen.queryAllByTestId(/-match$/).map((mark) => mark.textContent ?? '');
+}
+
+function optionOrder(): string[] {
+  return Array.from(screen.getByTestId('workbench-gene-palette').children).map(
+    (option) => option.getAttribute('data-testid') ?? ''
+  );
 }
 
 beforeEach(() => {
@@ -433,5 +470,298 @@ describe('Genome v2 Research table', () => {
       'Dampened · Level I still works; higher levels are capped'
     );
     expect(aurum).not.toHaveTextContent('Minor stays active');
+  });
+});
+
+/**
+ * SWAP — the move slot-first newly makes sayable.
+ *
+ * Gene-first picking could not express this. The rail chose a POWER and the
+ * reducer chose where it landed, so "replace what slot 3 holds" had no
+ * sentence: the only question the surface asked was which power you liked.
+ * Once the slot is the question, replacing its contents becomes a first-class
+ * move — and the only move on this instrument that destroys something.
+ *
+ * These lock the Recode grammar the Constitution already states, at the
+ * surface that now exposes it: a swap is offered only when the bench is full,
+ * it lands in the slot the player pointed at, and what it displaces is gone.
+ */
+describe('Genome v2 Research table · swapping a held slot', () => {
+  it('lands the replacement in the slot the player pointed at and leaves with it', async () => {
+    await renderResearch();
+    fillBench();
+    expect(
+      screen.getByText('All six slots are full. Tap one to swap it.')
+    ).toBeInTheDocument();
+
+    openBenchSlot(0);
+    const picker = screen.getByTestId('workbench-picker');
+    expect(picker).toHaveAttribute('data-mode', 'swap');
+    // The heading names the power leaving, because the slot — not the
+    // catalog — is what the player is being asked about.
+    expect(picker).toHaveTextContent(
+      `swap out ${GENOME_V2_GENES.gold_trail.name}`
+    );
+
+    // Redline shares no recipe with anything held, so this is a swap and only
+    // a swap: no Combo forms to move the result to another locus.
+    fireEvent.click(screen.getByTestId('workbench-gene-zenith_protocol'));
+    const swap = screen.getByTestId('workbench-recode');
+    expect(swap).toBeEnabled();
+    expect(swap).toHaveTextContent('SWAP');
+    fireEvent.click(swap);
+
+    expect(screen.getByTestId('workbench-locus-0')).toHaveTextContent(
+      GENOME_V2_GENES.zenith_protocol.name
+    );
+    expect(screen.getByTestId('workbench-loci')).not.toHaveTextContent(
+      GENOME_V2_GENES.gold_trail.name
+    );
+    // Committing answers the question, so the panel that asked it goes.
+    expect(screen.queryByTestId('workbench-picker')).not.toBeInTheDocument();
+    expect(screen.getByText('7 moves')).toBeInTheDocument();
+  });
+
+  it('warns that the displaced power is gone for good, then never re-offers it', async () => {
+    await renderResearch();
+    fillBench();
+    openBenchSlot(0);
+    fireEvent.click(screen.getByTestId('workbench-gene-zenith_protocol'));
+    // The destruction is stated BEFORE the commit, on the same panel as the
+    // button that performs it — a swap is the one irreversible move here.
+    expect(screen.getByTestId('workbench-picker')).toHaveTextContent(
+      `${GENOME_V2_GENES.gold_trail.name} leaves for good`
+    );
+    fireEvent.click(screen.getByTestId('workbench-recode'));
+
+    // A displaced power has been SEEN, and the pool never re-offers what a run
+    // has already spent. Re-offering it would sell the player a power the
+    // reducer would refuse.
+    openBenchSlot(1);
+    expect(screen.queryByTestId('workbench-gene-gold_trail')).not.toBeInTheDocument();
+  });
+
+  it('offers a read rather than a swap while an open slot remains', async () => {
+    await renderResearch();
+    NON_COMBINING_SIX.slice(0, 5).forEach((geneId, slot) => takePower(geneId, slot));
+
+    // Five held, one open. A swap here would destroy a power to solve a
+    // problem the open slot already solves for free, so the held slot opens
+    // to be READ and the picker says when swapping becomes available.
+    openBenchSlot(0);
+    expect(screen.getByTestId('workbench-picker')).toHaveAttribute('data-mode', 'read');
+    expect(screen.getByTestId('workbench-picker-held')).toHaveTextContent(
+      'Swapping this slot opens once all six are full.'
+    );
+    expect(screen.queryByTestId('workbench-recode')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('workbench-gene-palette')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * HIGHLIGHTING — what the second slot knows that the first cannot.
+ *
+ * A rail at the foot of the tray had no occasion to say this: it was the same
+ * list whatever the bench held. A picker opened at a slot is asked a narrower
+ * question — what goes HERE, next to THAT — so it can mark the options that
+ * combo or share a path with what is already held.
+ *
+ * Every claim below is checked against the rules tables the component reads
+ * (`GENOME_V2_SPLICES` for recipes, `STRAINS` for path names, the catalog for
+ * gene names) rather than against copied strings, so a rename in the rules
+ * moves these tests with it instead of leaving them asserting a dead label.
+ */
+describe('Genome v2 Research table · partner and strain-mate highlighting', () => {
+  it('marks nothing on an empty bench, because there is nothing yet to pair with', async () => {
+    await renderResearch();
+    openBenchSlot(0);
+    expect(marks()).toHaveLength(0);
+    expect(screen.getByTestId('workbench-picker')).toHaveTextContent(
+      'Catalog order · nothing here is ranked.'
+    );
+  });
+
+  it('marks the Combo partners and path-mates of what is already held', async () => {
+    await renderResearch();
+    takePower('gold_trail', 0);
+    openBenchSlot(1);
+
+    // Stash both completes a recipe with Golden Hour and walks the same path,
+    // so it carries both marks. The Combo claim is the strong one — the engine
+    // has projected that threading it FORMS the recipe.
+    const stash = screen.getByTestId('workbench-gene-compound_interest-match');
+    expect(stash).toHaveTextContent(
+      `MAKES ${GENOME_V2_SPLICES.splice_dragon_hoard.name}`
+    );
+    expect(stash).toHaveTextContent(`SHARES ${STRAINS.AURUM.name.toUpperCase()}`);
+
+    // Feast forms a recipe with Golden Hour but walks a different path: a
+    // Combo mark and no path mark. The two facts are independent and neither
+    // is allowed to imply the other.
+    const feast = screen.getByTestId('workbench-gene-overgrowth-match');
+    expect(feast).toHaveTextContent(
+      `MAKES ${GENOME_V2_SPLICES.splice_gilded_fork.name}`
+    );
+    expect(feast).not.toHaveTextContent('SHARES');
+
+    // Double or Nothing shares the path and no recipe: the mirror case.
+    const deal = screen.getByTestId('workbench-gene-loan_shark-match');
+    expect(deal).toHaveTextContent(`SHARES ${STRAINS.AURUM.name.toUpperCase()}`);
+    expect(deal).not.toHaveTextContent('MAKES');
+
+    // A power with neither relation is left alone. Marking everything would
+    // mark nothing.
+    expect(
+      screen.queryByTestId('workbench-gene-live_wire-match')
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('workbench-gene-live_wire')).not.toHaveAttribute(
+      'data-match'
+    );
+  });
+
+  it('highlights without reordering, because catalog order is the only order that ranks nothing', async () => {
+    await renderResearch();
+    takePower('gold_trail', 0);
+    openBenchSlot(1);
+
+    // Sorting the marked options to the top would be a recommendation, which
+    // is the one thing this instrument may never make. The list stays in the
+    // pool's own order and lets the marks do the speaking.
+    expect(optionOrder()).toEqual(
+      genomeV2ActivePool('CYBER')
+        .filter((geneId) => geneId !== 'gold_trail')
+        .map((geneId) => `workbench-gene-${geneId}`)
+    );
+    // Concretely: Feast is marked and still sits behind two unmarked powers.
+    expect(optionOrder().indexOf('workbench-gene-overgrowth')).toBeGreaterThan(
+      optionOrder().indexOf('workbench-gene-live_wire')
+    );
+  });
+
+  it('weakens the Combo claim to a pairing when the move is a swap', async () => {
+    await renderResearch();
+    fillBench();
+    openBenchSlot(0);
+
+    // A swap cannot promise a Combo. The engine only projects `completesSplice`
+    // through a thread, and a full bench has nothing to thread into — so the
+    // strong claim is not merely withheld here, it is unavailable. What is
+    // left is the honest one: these two belong to one recipe.
+    expect(screen.getByTestId('workbench-picker')).not.toHaveTextContent('MAKES');
+
+    const phoenix = screen.getByTestId('workbench-gene-phoenix-match').textContent ?? '';
+    expect(phoenix).toMatch(/^PAIRS WITH /);
+    // Whatever it names must actually be on the bench — a pairing with a power
+    // the player does not hold is not a reason to take anything.
+    const partner = phoenix.replace(/^PAIRS WITH /, '').split('SHARES')[0];
+    expect(NON_COMBINING_SIX.map((geneId) => GENOME_V2_GENES[geneId].name)).toContain(
+      partner
+    );
+
+    // THE EXCLUSION. Stash's only bench partner is Golden Hour, which is the
+    // power this swap removes. Crediting that pairing would sell a Combo that
+    // the very act of taking it destroys, so Stash keeps only the path mark it
+    // earns from Double or Nothing.
+    const stash = screen.getByTestId('workbench-gene-compound_interest-match');
+    expect(stash).not.toHaveTextContent('PAIRS WITH');
+    expect(stash).toHaveTextContent(`SHARES ${STRAINS.AURUM.name.toUpperCase()}`);
+  });
+});
+
+/**
+ * DISMISSAL — the way out of a panel that can spend.
+ *
+ * The rail could not be dismissed because it was never open; it was furniture.
+ * A picker is a question, and a question needs an answer that is not an answer.
+ * Every route out below leaves the plan byte-identical, which is what makes
+ * opening a slot a safe thing to do — and a player who cannot back out of a
+ * surface stops touching it.
+ */
+describe('Genome v2 Research table · dismissing the picker', () => {
+  it('closes on a tap away and spends nothing', async () => {
+    await renderResearch();
+    openBenchSlot(0);
+    fireEvent.click(screen.getByTestId('workbench-gene-gold_trail'));
+    expect(screen.getByTestId('workbench-focused-reaction')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('workbench-picker-catcher'));
+    expect(screen.queryByTestId('workbench-picker')).not.toBeInTheDocument();
+    // A selection is not a purchase. The slot is as open as it was.
+    expect(screen.getByText('0 moves')).toBeInTheDocument();
+    expect(screen.getByTestId('workbench-locus-0')).toHaveTextContent('OPEN');
+  });
+
+  it('closes on Escape and spends nothing', async () => {
+    await renderResearch();
+    openBenchSlot(0);
+    fireEvent.click(screen.getByTestId('workbench-gene-gold_trail'));
+
+    // Escape is the keyboard's tap-away. Without it the panel is a trap for
+    // anyone not using a pointer.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('workbench-picker')).not.toBeInTheDocument();
+    expect(screen.getByText('0 moves')).toBeInTheDocument();
+  });
+
+  it('dismisses through a written NOT NOW rather than a close cross', async () => {
+    await renderResearch();
+    openBenchSlot(0);
+    const picker = screen.getByTestId('workbench-picker');
+
+    // A cross beside a live choice reads as a decision — players click it to
+    // mean "no" and cannot tell it from "cancel my selection" or "undo". On a
+    // surface where the neighbouring buttons SPEND, the way out has to say in
+    // words that it costs nothing.
+    expect(screen.getByTestId('workbench-picker-close')).toHaveTextContent('NOT NOW');
+    const crosses = Array.from(picker.querySelectorAll('button')).filter(
+      (button) =>
+        /^[×✕✖✗xX]$/.test((button.textContent ?? '').trim())
+        || /close/i.test(button.getAttribute('aria-label') ?? '')
+    );
+    expect(crosses).toHaveLength(0);
+
+    fireEvent.click(screen.getByTestId('workbench-picker-close'));
+    expect(screen.queryByTestId('workbench-picker')).not.toBeInTheDocument();
+    expect(screen.getByText('0 moves')).toBeInTheDocument();
+  });
+
+  it('keeps the tap-away catcher alive only while the picker is open', async () => {
+    await renderResearch();
+    // A permanent invisible full-viewport layer would swallow taps meant for
+    // the tray, so it exists exactly as long as there is something to dismiss.
+    expect(screen.queryByTestId('workbench-picker-catcher')).not.toBeInTheDocument();
+    openBenchSlot(0);
+    expect(screen.getByTestId('workbench-picker-catcher')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('workbench-picker-catcher')).not.toBeInTheDocument();
+  });
+
+  it('closes when the slot that opened it is tapped again', async () => {
+    await renderResearch();
+    openBenchSlot(0);
+    expect(screen.getByTestId('workbench-picker')).toBeInTheDocument();
+    // The slot is a toggle: the thing that asked the question withdraws it.
+    openBenchSlot(0);
+    expect(screen.queryByTestId('workbench-picker')).not.toBeInTheDocument();
+    expect(screen.getByText('0 moves')).toBeInTheDocument();
+  });
+
+  it('drops the selection when the question moves to another slot', async () => {
+    await renderResearch();
+    fillBench();
+    openBenchSlot(0);
+    fireEvent.click(screen.getByTestId('workbench-gene-zenith_protocol'));
+    expect(screen.getByTestId('workbench-focused-reaction')).toBeInTheDocument();
+
+    // Tapping another slot moves the picker there rather than costing a tap to
+    // close first — the catcher deliberately sits below the slot row. The
+    // selection must NOT travel: it was an answer to a different question, and
+    // carrying it over would arm a commit the player never aimed at this slot.
+    openBenchSlot(1);
+    expect(screen.getByTestId('workbench-picker')).toHaveTextContent(
+      `swap out ${GENOME_V2_GENES.live_wire.name}`
+    );
+    expect(screen.queryByTestId('workbench-focused-reaction')).not.toBeInTheDocument();
+    expect(screen.getByText('6 moves')).toBeInTheDocument();
   });
 });
