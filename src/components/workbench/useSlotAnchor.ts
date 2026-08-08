@@ -18,15 +18,44 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   IDLE_SLOT_ANCHOR,
+  fitWholeRows,
   resolveSlotAnchor,
   type SlotAnchor,
 } from './slotAnchorGeometry';
 
 export type { SlotAnchor } from './slotAnchorGeometry';
 
-export function useSlotAnchor(openKey: string | null) {
+/**
+ * THE LIST ENDS WHERE A ROW ENDS.
+ *
+ * The height is written straight onto the element rather than through React
+ * state. It is a consequence of layout, and feeding it back through a render
+ * would mean measuring the box the last measurement produced — the loop the
+ * anchor above already has to defend against with `appliedDx`/`appliedDy`.
+ * Here the answer is idempotent instead: release the pin, read what the flex
+ * layout allocates, pin the whole-row height inside it.
+ */
+function fitListToRows(list: HTMLElement | null): void {
+  if (!list) return;
+  list.style.maxHeight = '';
+  const available = list.clientHeight;
+  if (available <= 0) return;
+
+  const listTop = list.getBoundingClientRect().top;
+  const scrolled = list.scrollTop;
+  const rows = Array.from(list.children).map((child) => {
+    const box = child.getBoundingClientRect();
+    return { top: box.top - listTop + scrolled, height: box.height };
+  });
+  if (rows.length === 0) return;
+
+  list.style.maxHeight = `${fitWholeRows({ rows, available })}px`;
+}
+
+export function useSlotAnchor(openKey: string | null, fitKey?: string) {
   const anchorRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const dxRef = useRef(0);
   const dyRef = useRef(0);
   const [anchor, setAnchor] = useState<SlotAnchor>(IDLE_SLOT_ANCHOR);
@@ -81,14 +110,30 @@ export function useSlotAnchor(openKey: string | null) {
     measure();
     // The first pass sets `maxHeight`, which can change the panel's height;
     // the second reads the height that answer produced. Both passes are
-    // idempotent, so a third would return the same numbers.
-    const frame = window.requestAnimationFrame(measure);
+    // idempotent, so a third would return the same numbers. The list is fitted
+    // last, because how many whole rows fit depends on the panel height the
+    // two passes above settled on.
+    const frame = window.requestAnimationFrame(() => {
+      measure();
+      fitListToRows(listRef.current);
+    });
     return () => window.cancelAnimationFrame(frame);
   }, [measure, openKey]);
 
+  // Choosing a Power hands part of the panel to the read of it, so the list
+  // is allocated less room and has to be re-fitted against the new remainder.
+  useLayoutEffect(() => {
+    if (openKey === null) return;
+    const frame = window.requestAnimationFrame(() => fitListToRows(listRef.current));
+    return () => window.cancelAnimationFrame(frame);
+  }, [fitKey, openKey]);
+
   useEffect(() => {
     if (openKey === null) return;
-    const onLayoutChange = () => measure();
+    const onLayoutChange = () => {
+      measure();
+      fitListToRows(listRef.current);
+    };
     window.addEventListener('resize', onLayoutChange);
     window.addEventListener('orientationchange', onLayoutChange);
     window.addEventListener('scroll', onLayoutChange, true);
@@ -99,5 +144,5 @@ export function useSlotAnchor(openKey: string | null) {
     };
   }, [measure, openKey]);
 
-  return { anchorRef, panelRef, anchor };
+  return { anchorRef, panelRef, listRef, anchor };
 }

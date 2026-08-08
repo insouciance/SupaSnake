@@ -104,3 +104,51 @@ export function resolveSlotAnchor(input: {
 
   return { dx: Math.round(dx), dy: Math.round(dy), flip, maxHeight };
 }
+
+/**
+ * A row of the option list, measured from the top of the list's content box.
+ * `top` is scroll-independent: it is where the row sits in the list, not where
+ * it happens to be on screen.
+ */
+export interface OptionRow {
+  top: number;
+  height: number;
+}
+
+/**
+ * THE WHOLE-ROW RULE.
+ *
+ * The option list is a scroll box whose height used to be "whatever the panel
+ * had left" — 282px of remainder against rows 92 to 144px tall, so the box
+ * ended in the MIDDLE of an option and the player's first sight of the
+ * catalog was a sliced card. Nothing about the remainder knew what a row was.
+ *
+ * This is the arithmetic that makes the box end where a row ends. Given the
+ * rows and the height the layout allocated, it answers with the height that
+ * shows as many WHOLE rows as fit and no part of the next one.
+ *
+ *   fits entirely   the content height, so the panel shrinks to its list
+ *   fits partly     the bottom edge of the last row that fits completely
+ *   fits nothing    the first row's height — one whole option is the floor,
+ *                   because a panel showing a fraction of one option is the
+ *                   defect this exists to remove. `ANCHOR_MIN_HEIGHT` is set
+ *                   so this branch does not arise on a real viewport.
+ */
+export function fitWholeRows(input: {
+  rows: readonly OptionRow[];
+  available: number;
+}): number {
+  const { rows, available } = input;
+  if (rows.length === 0) return available;
+
+  const content = rows[rows.length - 1].top + rows[rows.length - 1].height;
+  if (content <= available) return content;
+
+  let fitted = 0;
+  for (const row of rows) {
+    const bottom = row.top + row.height;
+    if (bottom > available) break;
+    fitted = bottom;
+  }
+  return fitted > 0 ? fitted : rows[0].height;
+}

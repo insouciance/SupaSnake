@@ -205,15 +205,74 @@
 
 /* ---------- THE BENCH: six slots, a field separated by gaps ---------- */
 
+/*
+ * THE BENCH MEASURES ITSELF. The column count and the tray height are decided
+ * by the width the ROW actually has, not by the width of the page — the same
+ * six sockets sit inside the table, inside the study specimen and inside a
+ * test fixture, and those three are not the same fraction of a viewport. A
+ * `research`-container query answered the wrong question at 1000px, where six
+ * columns of 143px each wrapped every long Power name while the page still
+ * counted as "wide".
+ */
+.genomeStage,
+.studyBody {
+  container-name: bench;
+  container-type: inline-size;
+}
+
 .genomeStage { margin-top: 14px; }
 
+/*
+ * THE TRAY SIZE IS A CONSTANT, NOT A CONSEQUENCE (owner ruling).
+ *
+ * `--slot-h` is the ONE height every socket wears at this width. It is not a
+ * taste: it is the tallest thing the catalog can put in a socket at that
+ * column width — the longest Power name ("Double or Nothing") over two Path
+ * badges — measured in a real browser and pinned here, with the headroom that
+ * keeps it true when a name grows by a word.
+ *
+ * Why a height and not a min-height. The grid stretches the CELL; the button
+ * inside it was content-sized, so a two-line name stood 163px tall beside a
+ * one-line name's 122px, and on a phone (three columns, two rows) the two
+ * rows disagreed as well. `min-height` cannot fix that — only a height can.
+ *
+ * `Genome*.test.tsx` drives the whole catalog through this budget, so a new
+ * Power whose name would not fit fails there rather than in a screenshot.
+ */
 .slotRow {
+  --slot-h: 132px;
   position: relative;
   z-index: 21;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   align-items: stretch;
+}
+
+/*
+ * THE COLUMN FLOOR IS 150px, and it is measured rather than chosen: below it
+ * the longest name in the catalog ("Double or Nothing", 17 characters) takes a
+ * second line, and below ~135px the two Path badges take a second row. So the
+ * bench drops a column BEFORE the copy starts wrapping, instead of keeping six
+ * columns and paying for them with a taller tray everywhere.
+ *
+ *   6 columns need (W - 5×8) / 6 ≥ 150  →  W ≥ 940
+ *   3 columns need (W - 2×8) / 3 ≥ 150  →  W ≥ 466
+ *   2 columns need (W - 1×8) / 2 ≥ 150  →  W ≥ 308
+ *
+ * A phone keeps three columns below 466 — two would make the bench three rows
+ * tall and swallow half the screen — and pays the taller shared tray for it.
+ */
+@container bench (max-width: 939px) {
+  .slotRow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@container bench (max-width: 465px) {
+  .slotRow { --slot-h: 168px; }
+}
+
+@container bench (max-width: 315px) {
+  .slotRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .slotCell { position: relative; min-width: 0; }
@@ -233,7 +292,7 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 132px;
+  height: var(--slot-h);
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -409,12 +468,21 @@
   display: grid;
   min-height: 72px;
   flex: 1 1 auto;
-  gap: 7px;
+  gap: 6px;
   margin-top: 9px;
   overflow-x: hidden;
   overflow-y: auto;
   align-content: start;
+  /*
+   * The resting height is pinned to whole rows by `fitWholeRows`; this keeps
+   * the promise once the player drags. `proximity` rather than `mandatory`
+   * because a mandatory snap fights a slow drag and steals the small
+   * movements that say "there is more below".
+   */
+  scroll-snap-type: y proximity;
 }
+
+.pickerOptions > * { scroll-snap-align: start; }
 
 /* Selecting one shrinks the list rather than pushing the actions off the
    panel. The read below is what the player is now looking at. */
@@ -429,7 +497,7 @@
   border: var(--ink-border-2);
   border-radius: var(--radius-card);
   background: var(--deck-2);
-  padding: 9px;
+  padding: 8px;
   color: var(--bone-white);
   text-align: left;
   box-shadow: var(--ink-drop-1);
@@ -449,13 +517,23 @@
 }
 
 .option > i { width: 26px; height: 26px; flex: none; color: var(--venom-orange); }
-.optionCopy { min-width: 0; flex: 1; }
-.option strong,
+
+/*
+ * THE ROW IS A STACK OF BANDS, and each band is a line of reading rather than
+ * a margin. `gap` states the rhythm once instead of five `margin-top`s that
+ * had drifted apart (4 / 4 / 5 / 5), and the two wrapping bands below carry
+ * what used to be four separate ones.
+ */
+.optionCopy { display: grid; min-width: 0; flex: 1; gap: 4px; }
+
+/* Name and category on ONE line. The category is a two-word noun; giving it a
+   band of its own cost 22px per option and said nothing more. */
+.optionTitle { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+
 .option small { display: block; overflow-wrap: anywhere; white-space: normal; }
+.option strong { display: block; overflow-wrap: anywhere; white-space: normal; }
 .option strong { font-family: var(--font-display); font-size: 14px; line-height: 1.2; }
 .optionCategory {
-  display: inline-block;
-  margin-top: 4px;
   border-radius: var(--radius-chip);
   background: var(--deck-0);
   padding: 1px 6px;
@@ -467,11 +545,17 @@
   letter-spacing: .07em;
   text-transform: uppercase;
 }
-.option small { margin-top: 4px; color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.35; }
+.option small { color: var(--quiet); font-family: var(--font-body); font-size: 14px; line-height: 1.35; }
 .option[aria-pressed='true'] small,
 .option[aria-pressed='true'] .optionCategory { color: var(--bone-white); }
 
-.optionMatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+/* Paths and Combo calls share one wrapping field: they are all short chips
+   about the same subject, and two fields with their own margins made a row
+   that could not fit a panel. */
+.optionTags { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 4px; }
+.optionTags .geneStrainBadges { margin-top: 0; }
+
+.optionMatches { display: flex; flex-wrap: wrap; gap: 4px; }
 .optionMatches b {
   border: var(--ink-border-1);
   border-radius: var(--radius-chip);
@@ -493,7 +577,6 @@
  */
 .geneEligibility {
   display: block;
-  margin-top: 5px;
   color: var(--quieter);
   font-family: var(--font-body);
   font-size: 12px;
@@ -904,7 +987,6 @@
   .tableHeader { align-items: flex-start; }
   .tableHeader h3 { max-width: 220px; }
   .historyControls span { display: none; }
-  .slotRow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .strainRail { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .reactionField > div { grid-template-columns: 1fr; }
   .studyHeader { align-items: flex-start; flex-direction: column; }
@@ -916,12 +998,10 @@
   .tableHeader { flex-direction: column; }
   .historyControls { align-self: stretch; justify-content: flex-end; }
   .snakeMarks button { flex: 1 1 126px; min-width: 0; }
-  .slot { min-height: 118px; }
   .strainRail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @container research (max-width: 350px) {
-  .slotRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .strainRail { grid-template-columns: 1fr; }
 }
 
@@ -930,11 +1010,25 @@
    a shorter list before it scrolls inside itself. The actions stay stuck to
    the floor either way, so they are never the thing that scrolls away. */
 @media (max-height: 560px) {
-  .picker { width: min(420px, calc(100vw - 24px)); padding: 10px; }
-  .pickerOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .picker[data-has-selection='true'] .pickerOptions { max-height: 96px; }
-  .option { flex-direction: column; gap: 5px; }
-  .slot { min-height: 104px; }
+  /*
+   * A LANDSCAPE PHONE IS SHORT, NOT NARROW. The panel used to keep a portrait
+   * width (420px) in an 844px viewport and then complain about height: the
+   * one-liner wrapped, the Paths and Combo calls wrapped again, and a row
+   * stood 144px tall inside 72px of list. Spending the width the device
+   * actually has puts the rule on one line and the chips on one line, which
+   * is what makes a WHOLE row fit in the room there is.
+   */
+  .picker { width: min(620px, calc(100vw - 24px)); padding: 10px; }
+  /*
+   * ONE COLUMN, WIDER. Two columns of ~190px made every one-liner wrap to
+   * four or five lines, so a landscape option stood 219–261px tall inside a
+   * 179px panel — the list could not show ONE whole row. The same 420px spent
+   * on a single column wraps the same sentence in two lines, and the row
+   * becomes something the panel can hold whole. It is the compaction, not a
+   * subtraction: the option still carries name, category, rule, Paths and
+   * Combo calls.
+   */
+  .option { gap: 8px; }
 }
 
 /*
@@ -957,7 +1051,15 @@
   .picker[data-has-selection='true'] .pickerSelected { margin-top: 8px; }
 
   .genomeStage { margin-top: 9px; }
-  .slot { min-height: 74px; gap: 2px; padding: 6px 4px; }
+  /* Badges gone and the glyph halved, so the shared tray is a different — and
+     smaller — constant here: 84px holds the tallest label at three wide
+     columns, 100px holds it once the columns narrow and the name takes two
+     lines. Both are measured, both are still ONE size for all six. */
+  .slotRow { --slot-h: 84px; }
+  @container bench (max-width: 465px) {
+    .slotRow { --slot-h: 100px; }
+  }
+  .slot { gap: 2px; padding: 6px 4px; }
   .slot .geneStrainBadges { display: none; }
   .slotRune { width: 20px; height: 20px; }
   .slotRune b { font-size: 18px; }

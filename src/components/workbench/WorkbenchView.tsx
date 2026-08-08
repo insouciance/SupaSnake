@@ -568,6 +568,7 @@ function SlotPicker({
   onClose,
   annotations,
   panelRef,
+  listRef,
   anchor,
 }: {
   locus: GenomeV2ResearchLocus;
@@ -581,6 +582,7 @@ function SlotPicker({
   onClose: () => void;
   annotations: Map<GenomeV2ActiveGeneId, { state?: string; nextStep: string }>;
   panelRef: MutableRefObject<HTMLDivElement | null>;
+  listRef: MutableRefObject<HTMLDivElement | null>;
   anchor: { dx: number; dy: number; flip: 'down' | 'up'; maxHeight: number };
 }) {
   const [openSpliceId, setOpenSpliceId] = useState<GenomeV2SpliceId | null>(null);
@@ -671,7 +673,11 @@ function SlotPicker({
               ? 'Marked powers combo or share a path with what you already hold.'
               : 'Catalog order · nothing here is ranked.'}
           </p>
-          <div className={styles.pickerOptions} data-testid="workbench-gene-palette">
+          <div
+            className={styles.pickerOptions}
+            ref={listRef}
+            data-testid="workbench-gene-palette"
+          >
             {options.length === 0 ? (
               <p className={styles.pickerNote} data-testid="workbench-picker-empty">
                 Every power in this Dynasty is already on the bench.
@@ -703,37 +709,52 @@ function SlotPicker({
                 >
                   <i aria-hidden="true"><GeneGlyph id={geneId} /></i>
                   <span className={styles.optionCopy}>
-                    <strong>{gene.name}</strong>
-                    <em className={styles.optionCategory}>{gene.category}</em>
+                    {/*
+                      COMPACTNESS WITHOUT SUBTRACTION. The name and its category
+                      used to occupy a line each, and the Paths and the Combo
+                      calls another two — four stacked bands for four short
+                      words. They now share two wrapping lines. Nothing is
+                      dropped: the same category, the same Paths and the same
+                      Combo claims are all still on the row, which is what lets
+                      the list show whole options instead of slicing one.
+                    */}
+                    <span className={styles.optionTitle}>
+                      <strong>{gene.name}</strong>
+                      <em className={styles.optionCategory}>{gene.category}</em>
+                    </span>
                     <small>{gene.effect}</small>
-                    <GeneStrainBadges
-                      strains={gene.strains}
-                      testIdPrefix={`workbench-gene-${geneId}`}
-                    />
-                    {marked ? (
-                      <span
-                        className={styles.optionMatches}
-                        data-testid={`workbench-gene-${geneId}-match`}
-                      >
-                        {match.formsSpliceId ? (
-                          <b data-kind="combo">
-                            MAKES {GENOME_V2_SPLICES[match.formsSpliceId].name}
-                          </b>
-                        ) : null}
-                        {match.pairsSpliceId && match.partnerGeneId ? (
-                          <b data-kind="combo">
-                            PAIRS WITH {GENOME_V2_GENES[match.partnerGeneId].name}
-                          </b>
-                        ) : null}
-                        {match.sharedStrains.map((strain) => (
-                          <b
-                            key={strain}
-                            data-kind="path"
-                            style={{ '--strain': STRAINS[strain].color } as CSSProperties}
+                    {gene.strains.length > 0 || marked ? (
+                      <span className={styles.optionTags}>
+                        <GeneStrainBadges
+                          strains={gene.strains}
+                          testIdPrefix={`workbench-gene-${geneId}`}
+                        />
+                        {marked ? (
+                          <span
+                            className={styles.optionMatches}
+                            data-testid={`workbench-gene-${geneId}-match`}
                           >
-                            SHARES {STRAINS[strain].name.toUpperCase()}
-                          </b>
-                        ))}
+                            {match.formsSpliceId ? (
+                              <b data-kind="combo">
+                                MAKES {GENOME_V2_SPLICES[match.formsSpliceId].name}
+                              </b>
+                            ) : null}
+                            {match.pairsSpliceId && match.partnerGeneId ? (
+                              <b data-kind="combo">
+                                PAIRS WITH {GENOME_V2_GENES[match.partnerGeneId].name}
+                              </b>
+                            ) : null}
+                            {match.sharedStrains.map((strain) => (
+                              <b
+                                key={strain}
+                                data-kind="path"
+                                style={{ '--strain': STRAINS[strain].color } as CSSProperties}
+                              >
+                                SHARES {STRAINS[strain].name.toUpperCase()}
+                              </b>
+                            ))}
+                          </span>
+                        ) : null}
                       </span>
                     ) : null}
                     {/*
@@ -906,7 +927,10 @@ export function ResearchTable({
     : reading.loci.find((locus) => locus.slot === openSlot) ?? null;
   const openMode = openLocus ? slotModeFor(openLocus, nextOpenSlot) : null;
   const pickerKey = openLocus && openMode ? `${openLocus.slot}:${openMode}` : null;
-  const { anchorRef, panelRef, anchor } = useSlotAnchor(pickerKey);
+  const { anchorRef, panelRef, listRef, anchor } = useSlotAnchor(
+    pickerKey,
+    selectedGeneId ?? 'none'
+  );
 
   /**
    * One authoritative projection for the whole option list, taken only while
@@ -1065,6 +1089,7 @@ export function ResearchTable({
                     onClose={closePicker}
                     annotations={annotations}
                     panelRef={panelRef}
+                    listRef={listRef}
                     anchor={anchor}
                   />
                 ) : null}
