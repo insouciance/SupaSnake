@@ -268,3 +268,54 @@ export async function signInAsGuest(page: Page): Promise<void> {
     );
   }
 }
+
+/**
+ * Open the Workbench's power picker the way a player opens it.
+ *
+ * SLOT-FIRST (owner ruling D1). The powers used to sit on a permanent rail at
+ * the foot of the tray, so any spec could read the catalogue straight off the
+ * page. They now live in a picker rendered inside the slot cell being filled
+ * (`WorkbenchView.tsx` — the picker at the `workbench-picker` testid, its
+ * option list at `workbench-gene-palette`). The catalogue did not shrink and
+ * no power was removed; the surface simply stopped showing six slots' worth of
+ * options to a player who is filling exactly one.
+ *
+ * Which cell is live is DERIVED, never chosen. `slotModeFor` marks the one
+ * honestly-fillable empty cell `take`, because `genomeV2Workbench.firstOpenSlot`
+ * fills the lowest empty index and its action carries no slot of its own — a
+ * picker offered at any other empty cell would promise a placement the engine
+ * will not honour. Once all six are held there is no `take` and every held cell
+ * becomes `swap`. The two modes never coexist, which is what makes `.first()`
+ * below exact rather than lucky: it resolves to the open slot when there is
+ * one, and otherwise to the first swappable slot.
+ *
+ * Returns the picker, so callers can scope assertions to it.
+ */
+export async function openWorkbenchPicker(page: Page): Promise<Locator> {
+  await expect(page.getByTestId('workbench-research-table')).toBeVisible({
+    timeout: 60_000,
+  });
+  const live = page
+    .getByTestId('workbench-loci')
+    .locator('button[data-mode="take"], button[data-mode="swap"]')
+    .first();
+  await expect(live).toBeVisible({ timeout: 30_000 });
+  await live.click();
+  const picker = page.getByTestId('workbench-picker');
+  await expect(picker).toBeVisible({ timeout: 30_000 });
+  return picker;
+}
+
+/**
+ * Dismiss the power picker.
+ *
+ * Not cosmetic housekeeping: `.pickerCatcher` is `position: fixed; inset: 0`,
+ * so while the picker is open it swallows clicks meant for anything else on
+ * the page. A spec that opens the picker to read the catalogue and then wants
+ * to press something else has to close it first — exactly as a player does.
+ * NOT NOW spends nothing.
+ */
+export async function closeWorkbenchPicker(page: Page): Promise<void> {
+  await page.getByTestId('workbench-picker-close').click();
+  await expect(page.getByTestId('workbench-picker')).toHaveCount(0);
+}
