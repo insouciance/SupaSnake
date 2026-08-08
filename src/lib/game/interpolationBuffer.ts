@@ -103,6 +103,18 @@ export interface InterpolationBuffer {
    * cell" at spawn.
    */
   headMoved: boolean;
+  /**
+   * Whether the board is at rest under a pause overlay.
+   *
+   * A paused loop keeps stamping an unmoved snake, and glide's lead is drawn
+   * against a live alpha, so the picture kept re-animating a move that was not
+   * happening. `headMoved` already stops the oscillation; this carries the
+   * RATIFIED POSE on top of it - everything settles onto its tile centre, and
+   * picks the glide back up when play resumes.
+   */
+  paused: boolean;
+  /** When `paused` last changed, for the settle/resume blend. */
+  pausedChangedAt: number;
 }
 
 export function createInterpolationBuffer(
@@ -123,6 +135,11 @@ export function createInterpolationBuffer(
     headOutboundTurnAt: 1,
     headOutboundKnown: false,
     headMoved: false,
+    paused: false,
+    // Far enough in the past that a buffer nobody has paused reads as fully
+    // settled - including in the first frames of a page, where
+    // `performance.now()` is still smaller than the settle beat.
+    pausedChangedAt: Number.NEGATIVE_INFINITY,
   };
 }
 
@@ -142,6 +159,8 @@ export function resetInterpolationBuffer(buffer: InterpolationBuffer): void {
   // A new run's first frames must not lean toward the dead snake's next cell.
   buffer.headOutboundKnown = false;
   buffer.headMoved = false;
+  buffer.paused = false;
+  buffer.pausedChangedAt = Number.NEGATIVE_INFINITY;
 }
 
 /**
@@ -395,6 +414,59 @@ export function getGlideZ(
   if (motion <= 1) return p + (c - p) * motion;
   if (!buffer.headMoved) return c;
   return c + (motion - 1) * glideOutboundZ(buffer, index, motion);
+}
+
+/**
+ * How long the board takes to compose itself onto tile centres when play
+ * stops, and to pick the glide back up when it starts. Short enough to read as
+ * the board settling rather than as an animation of its own.
+ */
+export const REST_SETTLE_MS = 180;
+
+/**
+ * How far the drawn board is toward its rest pose: 0 = the live glide,
+ * 1 = everything composed on tile centres.
+ *
+ * Smoothstepped, and that is not a contradiction of ET-1b's no-easing law:
+ * the law governs the per-tick MOTION clock, which must stay constant-rate
+ * because it repeats forever at the tick rate. This is a one-shot transition
+ * between two poses, and easing both ends is what keeps the pause and the
+ * resume from being the two snaps the settle exists to remove.
+ */
+export function getRestSettle(buffer: InterpolationBuffer, now: number): number {
+  const elapsed = now - buffer.pausedChangedAt;
+  let t = REST_SETTLE_MS > 0 ? elapsed / REST_SETTLE_MS : 1;
+  if (t <= 0) t = 0;
+  else if (t >= 1) t = 1;
+  const eased = t * t * (3 - 2 * t);
+  return buffer.paused ? eased : 1 - eased;
+}
+
+/** Declare whether the board is at rest. Idempotent - re-declaring the same
+ *  state does not restart the settle. */
+export function setPaused(
+  buffer: InterpolationBuffer,
+  paused: boolean,
+  now: number
+): void {
+  if (buffer.paused === paused) return;
+  buffer.paused = paused;
+  buffer.pausedChangedAt = now;
+}
+
+/**
+ * Blend a drawn value toward its rest pose. Every surface glued to the head
+ * settles through this one function, or the guide detaches from the creature
+ * for the length of the settle.
+ */
+export function settleToward(
+  value: number,
+  rest: number,
+  settle: number
+): number {
+  if (settle <= 0) return value;
+  if (settle >= 1) return rest;
+  return value + (rest - value) * settle;
 }
 
 /**

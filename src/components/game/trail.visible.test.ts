@@ -246,11 +246,13 @@ describe('the failure modes the design named explicitly', () => {
     // above 1 is travel toward the next cell; handed to getInterpolatedX it
     // would extrapolate along the INCOMING direction and be wrong at exactly
     // the corners the profile exists to keep continuous.
+    // ...and the glide leg settles onto the tile centre while play is stopped,
+    // rather than resting wherever the lead had reached (GLIDE-2 defect 3).
     expect(renderer).toMatch(
-      /mode === 'glide'\s*\?\s*getGlideX\(buffer, 0, motion\)\s*:\s*getInterpolatedX\(buffer, 0, motion\)/
+      /mode === 'glide'\s*\?\s*settleToward\(getGlideX\(buffer, 0, motion\), buffer\.curr\[0\], settle\)\s*:\s*getInterpolatedX\(buffer, 0, motion\)/
     );
     expect(renderer).toMatch(
-      /mode === 'glide'\s*\?\s*getGlideZ\(buffer, 0, motion\)\s*:\s*getInterpolatedZ\(buffer, 0, motion\)/
+      /mode === 'glide'\s*\?\s*settleToward\(getGlideZ\(buffer, 0, motion\), buffer\.curr\[1\], settle\)\s*:\s*getInterpolatedZ\(buffer, 0, motion\)/
     );
     // ...and the body runs on that same clock. Both `eased` bindings (trail
     // and coil seal) come from the arrival transition; a surviving literal

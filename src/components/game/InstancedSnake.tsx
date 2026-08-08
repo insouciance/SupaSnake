@@ -77,6 +77,8 @@ import {
   getHeadStepZ,
   getInterpolatedX,
   getInterpolatedZ,
+  getRestSettle,
+  settleToward,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
 import {
@@ -570,7 +572,8 @@ export function writeTrailInstances(
   cells: TrailCellState,
   dynasty: DynastyId,
   strainBands: readonly StrainId[],
-  elapsed: number
+  elapsed: number,
+  settle = 0
 ): number {
   const count = buffer.count;
   let n = 0;
@@ -630,7 +633,9 @@ export function writeTrailInstances(
       elapsed,
       isNeck ? neckStepX : 0,
       isNeck ? neckStepZ : 0,
-      alpha
+      // At rest the neck is COMPLETE: a lead of one cell is past any box's
+      // own front, so it holds its whole tile while the board is composed.
+      settleToward(alpha, 1, settle)
     );
   }
 
@@ -886,7 +891,8 @@ function InstancedSnakeCore({
     if (!buffer || !mesh || !seal || !head || !fusion || !cells) return;
 
     const count = buffer.count;
-    const alpha = getAlpha(buffer, performance.now());
+    const now = performance.now();
+    const alpha = getAlpha(buffer, now);
     // Elapsed-time alpha is the truth; `motion` is WHEN inside the interval
     // that truth is drawn. Under ET-1b the head crosses one cell at one speed,
     // half a cell ahead of the plain blend; the trail below reads the same
@@ -894,6 +900,8 @@ function InstancedSnakeCore({
     // AimRenderer for why glide's motion cannot go to getInterpolatedX/Z.
     const mode = getArrivalMode();
     const motion = arrivalMotion(alpha, mode);
+    // GLIDE-2 defect 3: under a pause the board composes onto tile centres.
+    const settle = mode === 'glide' ? getRestSettle(buffer, now) : 0;
     elapsedRef.current += delta;
     const elapsed = elapsedRef.current;
 
@@ -928,7 +936,8 @@ function InstancedSnakeCore({
       cells,
       dynasty,
       strainBands,
-      elapsed
+      elapsed,
+      settle
     );
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) {
@@ -970,11 +979,11 @@ function InstancedSnakeCore({
       head.visible = true;
       head.position.set(
         (mode === 'glide'
-          ? getGlideX(buffer, 0, motion)
+          ? settleToward(getGlideX(buffer, 0, motion), buffer.curr[0], settle)
           : getInterpolatedX(buffer, 0, motion)) + 0.5,
         SNAKE_HEAD_CENTER_Y,
         (mode === 'glide'
-          ? getGlideZ(buffer, 0, motion)
+          ? settleToward(getGlideZ(buffer, 0, motion), buffer.curr[1], settle)
           : getInterpolatedZ(buffer, 0, motion)) + 0.5
       );
       const target = HEAD_FACE_YAW[direction];

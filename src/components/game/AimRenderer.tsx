@@ -41,6 +41,8 @@ import {
   getGlideZ,
   getInterpolatedX,
   getInterpolatedZ,
+  getRestSettle,
+  settleToward,
 } from '@/lib/game/interpolationBuffer';
 import { arrivalMotion, getArrivalMode } from '@/lib/game/arrivalEasing';
 import {
@@ -237,8 +239,19 @@ function sampleDrawnHead(buffer: InterpolationBuffer, now: number) {
   const mode = getArrivalMode();
   const motion = arrivalMotion(getAlpha(buffer, now), mode);
   if (mode === 'glide') {
-    _drawnHead.x = getGlideX(buffer, 0, motion);
-    _drawnHead.z = getGlideZ(buffer, 0, motion);
+    // Under a pause the whole board composes onto tile centres; the telegraph
+    // settles with the head rather than hanging where the glide left it.
+    const settle = getRestSettle(buffer, now);
+    _drawnHead.x = settleToward(
+      getGlideX(buffer, 0, motion),
+      buffer.curr[0],
+      settle
+    );
+    _drawnHead.z = settleToward(
+      getGlideZ(buffer, 0, motion),
+      buffer.curr[1],
+      settle
+    );
   } else {
     _drawnHead.x = getInterpolatedX(buffer, 0, motion);
     _drawnHead.z = getInterpolatedZ(buffer, 0, motion);

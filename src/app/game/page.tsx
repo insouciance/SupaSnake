@@ -184,6 +184,7 @@ import {
   recordTick,
   resetInterpolationBuffer,
   setHeadOutbound,
+  setPaused as setBufferPaused,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
 import {
@@ -3806,12 +3807,23 @@ export default function GamePage() {
     gameRef.current.on('pause', () => {
       setPaused(true);
       setQueuedDirections([]);
+      // The renderer composes the board onto tile centres while play is
+      // stopped (ET-1b): a paused loop keeps stamping an unmoved snake, and a
+      // lead drawn against a live alpha re-animates a move that is not
+      // happening. A ref on the buffer, read per frame - no engine reads this
+      // back, and no React work happens on the render path.
+      if (interpBufferRef.current) {
+        setBufferPaused(interpBufferRef.current, true, performance.now());
+      }
       audioManager.play('pause');
       secureRunBoundary();
     });
 
     gameRef.current.on('resume', () => {
       setPaused(false);
+      if (interpBufferRef.current) {
+        setBufferPaused(interpBufferRef.current, false, performance.now());
+      }
       secureRunBoundary();
     });
 

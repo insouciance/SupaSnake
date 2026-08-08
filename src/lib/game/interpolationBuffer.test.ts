@@ -16,9 +16,13 @@ import {
   getGlideZ,
   getInterpolatedX,
   getInterpolatedZ,
+  getRestSettle,
   recordTick,
   resetInterpolationBuffer,
+  REST_SETTLE_MS,
   setHeadOutbound,
+  setPaused,
+  settleToward,
   type InterpolationBuffer,
 } from './interpolationBuffer';
 import {
@@ -552,6 +556,105 @@ describe('the glide sampler', () => {
       setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
       expect(buffer.headMoved).toBe(true);
       expect(getGlideX(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBeCloseTo(7.5, 12);
+    });
+  });
+
+  describe('the rest pose under a pause', () => {
+    /** Mid-glide, travelling +x, three quarters through the interval. */
+    const gliding = () => {
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5)], 100, 100);
+      setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+      return buffer;
+    };
+    const drawnX = (buffer: InterpolationBuffer, at: number) =>
+      settleToward(
+        getGlideX(buffer, 0, glideArrival(getAlpha(buffer, at))),
+        buffer.curr[0],
+        getRestSettle(buffer, at)
+      );
+
+    it('composes onto the tile centre over the settle beat', () => {
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      // At the instant of the pause nothing has moved yet - no snap.
+      expect(drawnX(buffer, 175)).toBeCloseTo(
+        getGlideX(buffer, 0, glideArrival(getAlpha(buffer, 175))),
+        10
+      );
+      // ...and by the end of the beat it is exactly on the cell.
+      expect(drawnX(buffer, 175 + REST_SETTLE_MS)).toBeCloseTo(6, 10);
+      expect(drawnX(buffer, 175 + REST_SETTLE_MS * 4)).toBeCloseTo(6, 10);
+    });
+
+    it('draws the settle without ever leaving the simulation cell', () => {
+      // The settle competes with an alpha that is still running out - the
+      // pause lands mid-interval - so the drawn head is not monotone for the
+      // remainder of that interval. What must hold is that the pull is
+      // monotone and the head stays on its own tile the whole way.
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      let previous = -1;
+      for (let step = 0; step <= 24; step += 1) {
+        const at = 175 + (REST_SETTLE_MS * step) / 24;
+        const settle = getRestSettle(buffer, at);
+        expect(settle).toBeGreaterThanOrEqual(previous - 1e-12);
+        expect(Math.abs(drawnX(buffer, at) - 6)).toBeLessThanOrEqual(0.5 + 1e-12);
+        previous = settle;
+      }
+      expect(previous).toBe(1);
+    });
+
+    it('picks the glide back up on resume with no position step', () => {
+      // The blend runs both ways, so the frame the overlay clears is the frame
+      // the head starts moving again - from exactly where it was resting.
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      const atRest = drawnX(buffer, 175 + REST_SETTLE_MS * 3);
+      expect(atRest).toBeCloseTo(6, 10);
+
+      const resumedAt = 175 + REST_SETTLE_MS * 3;
+      setPaused(buffer, false, resumedAt);
+      expect(drawnX(buffer, resumedAt)).toBeCloseTo(atRest, 10);
+      // ...and it is back on the live glide once the beat is spent.
+      const settled = resumedAt + REST_SETTLE_MS;
+      expect(getRestSettle(buffer, settled)).toBe(0);
+      expect(drawnX(buffer, settled)).toBeCloseTo(
+        getGlideX(buffer, 0, glideArrival(getAlpha(buffer, settled))),
+        10
+      );
+    });
+
+    it('is exempt from constant speed only while it is settling', () => {
+      // The settle deliberately eases - it is a one-shot pose change, not the
+      // per-tick motion clock. Outside it, nothing is re-timed at all.
+      const buffer = gliding();
+      expect(getRestSettle(buffer, 0)).toBe(0);
+      expect(getRestSettle(buffer, 10_000)).toBe(0);
+      setPaused(buffer, true, 175);
+      expect(getRestSettle(buffer, 175)).toBe(0);
+      expect(getRestSettle(buffer, 175 + REST_SETTLE_MS / 2)).toBeCloseTo(0.5, 10);
+      expect(getRestSettle(buffer, 175 + REST_SETTLE_MS)).toBe(1);
+    });
+
+    it('does not restart the beat when the same state is re-declared', () => {
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      setPaused(buffer, true, 250);
+      expect(buffer.pausedChangedAt).toBe(175);
+    });
+
+    it('is cleared by a reset, and a fresh buffer is never mid-settle', () => {
+      // `performance.now()` is smaller than the settle beat for the first
+      // frames of a page, so a zero stamp would have drawn a brand new board
+      // as if it were recovering from a pause.
+      expect(getRestSettle(createInterpolationBuffer(4), 0)).toBe(0);
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      resetInterpolationBuffer(buffer);
+      expect(buffer.paused).toBe(false);
+      expect(getRestSettle(buffer, 0)).toBe(0);
     });
   });
 
