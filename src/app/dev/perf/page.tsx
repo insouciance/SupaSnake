@@ -307,10 +307,12 @@ export default function PerfHarnessPage() {
         </p>
         <p>
           arrival:{' '}
-          {arrivalLabel === 'front'
-            ? 'FRONT-LOADED (lands at α 0.45, settles)'
-            : 'CLASSIC (lands at α 1.0 — the old lie)'}{' '}
-          · ?arrival=classic|front
+          {arrivalLabel === 'glide'
+            ? 'GLIDE (constant rate, half a cell ahead)'
+            : arrivalLabel === 'front'
+              ? 'FRONT-LOADED (lands at α 0.45, settles)'
+              : 'CLASSIC (lands at α 1.0 — the old lie)'}{' '}
+          · ?arrival=classic|front|glide
         </p>
       </div>
       <Canvas
