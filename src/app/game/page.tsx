@@ -7160,9 +7160,24 @@ export default function GamePage() {
         />
       )}
 
-      {/* Game Over / Start Screen */}
+      {/* Game Over / Start Screen.
+            SCROLL CLEARANCE FOR THE PINNED ACTIONS.
+
+            Results pins REPLAY/SETUP to the bottom of this scrollport so the
+            ruled order can end with them without putting them below the fold.
+            A pinned bar covers whatever scrolls under it, and that includes
+            the destination of a scroll: `scrollIntoView`, and every keyboard
+            focus move, will happily park a control in the covered strip, where
+            it is visible to code and unreachable by a finger.
+
+            `scroll-padding-bottom` is the fix the platform provides for
+            exactly this. It reserves the dock's height at the bottom of every
+            programmatic scroll in this container, so a focused or
+            scrolled-to control always lands ABOVE the bar. Set here rather
+            than on the tray because it belongs to the SCROLLPORT.
+      */}
       {!isPlaying && (
-        <div className="modal-scrim absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
+        <div className="modal-scrim absolute inset-0 z-20 flex items-start justify-center overflow-y-auto scroll-pb-36 p-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:p-4 sm:pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
           {/* ONE tray, ONE outline (owner ruling). This element is the tray for
               every state of the overlay - Run Setup, Results, recovery - so the
               single bold frame lives here and nothing inside it may draw a

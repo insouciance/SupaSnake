@@ -1145,7 +1145,7 @@ export function RunResults({
             onClick={onNextAction}
             data-testid="results-next-action"
             data-next-action={nextAction.id}
-            className="mx-auto flex min-h-[44px] w-full max-w-lg items-center justify-between gap-3 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-[color:var(--fill-deck-2)] px-4 py-3 text-left shadow-[var(--ink-drop-void-2)]"
+            className="mx-auto flex min-h-[44px] w-full max-w-lg scroll-mb-36 items-center justify-between gap-3 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-[color:var(--fill-deck-2)] px-4 py-3 text-left shadow-[var(--ink-drop-void-2)]"
           >
             <span className="min-w-0">
               <span className="heading-display block text-base text-venom-orange">{nextAction.label}</span>
@@ -1159,7 +1159,7 @@ export function RunResults({
             onClick={onNextAction}
             data-testid="results-next-action"
             data-next-action={nextAction.id}
-            className="mx-auto flex min-h-[44px] w-full max-w-lg items-center justify-between gap-3 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-[color:var(--fill-deck-2)] px-4 py-3 text-left shadow-[var(--ink-drop-void-2)]"
+            className="mx-auto flex min-h-[44px] w-full max-w-lg scroll-mb-36 items-center justify-between gap-3 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-[color:var(--fill-deck-2)] px-4 py-3 text-left shadow-[var(--ink-drop-void-2)]"
           >
             <span className="min-w-0">
               <span className="heading-display block text-base text-venom-orange">{nextAction.label}</span>
@@ -1180,7 +1180,7 @@ export function RunResults({
             onClick={onDeclineNextAction}
             data-testid="results-next-action-decline"
             data-next-action-decline={nextAction.id}
-            className="mx-auto flex min-h-[44px] items-center justify-center px-5 font-body text-sm text-beige/60 transition-colors hover:text-bone-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
+            className="mx-auto flex min-h-[44px] scroll-mb-36 items-center justify-center px-5 font-body text-sm text-beige/60 transition-colors hover:text-bone-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
           >
             {nextAction.declineLabel ?? 'Not now'}
           </button>
