@@ -49,6 +49,7 @@ import { StarterSelection } from '@/components/ftue/StarterSelection';
 import { SignalSurface } from '@/components/signal/SignalSurface';
 import { WorldReportCard } from '@/components/report/WorldReportCard';
 import { HomeAnomalyFlash } from '@/components/home/HomeAnomalyFlash';
+import { DailyTakeFloat } from '@/components/engagement/DailyTakeFloat';
 import { onAnalyticsReady, trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
 import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
@@ -900,6 +901,20 @@ export default function Home() {
             cannot stand in front of it (§7.5's "never blocking Launch", Rule
             10). Same authentication gate as the Signal below — a first run is
             never made to compete with a meta surface. */}
+        {/* THE DAILY TAKE, AS A TOKEN (ruling D2). Built on the Results
+            restructure branch and mounted here — its own header carries the
+            reasoning, and the two ship in one train because the Results tray it
+            replaces is cut there.
+
+            DELIBERATELY NOT BEHIND THE FIRST-RUN GATE that the Signal and the
+            World Report below it both take. Those are meta surfaces and a first
+            run is never made to compete with one; this is money the player is
+            already owed, and owed money is never hidden. It renders `null` when
+            there is nothing to collect, so on every other day the dock is
+            exactly the dock that shipped and nothing holds space beside the
+            Signal. */}
+        {isAuthenticated && !needsStarter && <DailyTakeFloat token={token} />}
+
         {isAuthenticated && !needsStarter && <HomeAnomalyFlash token={token} />}
 
         {isAuthenticated &&
