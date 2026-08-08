@@ -922,7 +922,7 @@ function PayoutField({
       >
         <span data-testid="results-payout-worth">{formatAmount(worth)}</span> worth ×
         {factor.toFixed(factor < 1 ? 2 : 1)}{' '}
-        {committed > 0 ? `${committed} Energy` : 'lean harvest'}
+        · {committed > 0 ? `${committed} Energy` : 'lean harvest'}
       </p>
     </div>
   );
@@ -1017,21 +1017,27 @@ export function RunResults({
   }, [impact]);
 
   /*
-    THE ORDER, AND THE ONE PLACE IT BENDS.
+    THE ORDER, AND HOW IT STAYS REACHABLE.
 
-    Ruled information order: Score → Victory Lap → payout facts. Actions come
-    after it on a screen with room for all of it.
+    Ruled information order: Score → Victory Lap → payout facts → actions. That
+    is the DOM order below, at every width, with no reordering trick.
 
-    On a phone there is no such room — the Victory Lap alone measures ~640px at
-    320×568 — so the actions would sit below two full screens of reading, and
-    an earlier ratified round already established that a player must never
-    scroll to act. The reconciliation is that ACTIONS ARE NOT INFORMATION: they
-    move to second position on mobile and the ruled reading order (Score, then
-    the lap, then the facts) is completely intact around them.
+    The problem the order creates is that this screen is TALL — the Victory Lap
+    alone measures ~640px at 320×568, and the whole tray overruns a 1280×900
+    desktop viewport, never mind a phone. Actions ruled to the end are actions
+    below the fold, and an earlier ratified round already established that a
+    player must never scroll in order to act.
 
-    Done with flex `order`, so the DOM order is one order — the mobile one,
-    which is also the order a keyboard should meet these controls in, primary
-    action early.
+    So the action row is STICKY to the bottom of the scrolling overlay. A
+    sticky element pins to the viewport edge while its natural position is
+    still further down the page, which is exactly this case: REPLAY is on
+    screen from the first frame, the information scrolls underneath it, and
+    when the player reaches the true bottom the row settles into its ruled
+    place at the end. One order, always reachable, no duplication.
+
+    It is not a second tray. It carries the tray's OWN fill, so it reads as the
+    panel's floor rather than as a bar laid on top of it, and it draws no
+    border, no radius and no shadow of its own.
   */
   return (
     <div className="flex flex-col gap-5 text-center" data-testid="run-results">
@@ -1039,13 +1045,13 @@ export function RunResults({
       <section
         data-testid="results-layer-1"
         aria-label="Outcome"
-        className="order-1 flex flex-col gap-3"
+        className="flex flex-col gap-3"
       >
         <div>
-          <h2 className={`heading-display heading-ink text-4xl ${head.tone}`} data-testid={head.testId}>
+          <h2 className={`heading-display heading-ink text-3xl [@media(min-height:700px)]:text-4xl ${head.tone}`} data-testid={head.testId}>
             {head.title}
           </h2>
-          <p className="font-body text-sm uppercase tracking-wide text-beige/60">
+          <p className="font-body text-xs uppercase tracking-wide text-beige/60 [@media(min-height:700px)]:text-sm">
             {head.detail}
           </p>
           {!awaitingCanonicalImpact && outcome === 'crashed' && collisionDetail ? (
@@ -1066,14 +1072,14 @@ export function RunResults({
         */}
         <div className="mx-auto">
           <p className="label-arcade text-[10px] text-beige/55">Score · how well you flew</p>
-          <p className="heading-display text-5xl text-bone-white" data-testid="results-score">
+          <p className="heading-display text-4xl text-bone-white [@media(min-height:700px)]:text-5xl" data-testid="results-score">
             {awaitingCanonicalImpact ? 'Finalizing…' : formatAmount(settledScore)}
           </p>
         </div>
 
         {!awaitingCanonicalImpact && personalBest && (
           <p
-            className="mx-auto inline-flex items-center justify-center gap-2 rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink bg-venom-orange px-3 py-1.5 font-display text-sm uppercase text-ink shadow-[var(--ink-drop-1)]"
+            className="mx-auto inline-flex -rotate-1 items-center justify-center gap-1.5 rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink bg-venom-orange px-2.5 py-1 font-display text-xs uppercase tracking-wide text-ink shadow-[var(--ink-drop-1)]"
             data-testid="results-personal-best"
           >
             <IconMedal size={17} /> Personal best
@@ -1094,50 +1100,11 @@ export function RunResults({
         ) : null}
       </section>
 
-      {/* ---------- ACTIONS · second on a phone, last on a desktop ---------- */}
-      <div className="order-2 flex flex-col gap-1.5 sm:order-4">
-        <div
-          className="mx-auto grid w-full max-w-lg grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-center"
-          data-testid="results-action-dock"
-          data-action-surface="integrated"
-        >
-          {/* REPLAY IS THE LABEL (ruling D3). The cost is stated once, below. */}
-          <button
-            type="button"
-            onClick={replayRoutesToSetup ? onSetup : onReplay}
-            disabled={replayDisabled && !replayRoutesToSetup}
-            data-testid="results-replay"
-            data-routes-to={replayRoutesToSetup ? 'setup' : 'run'}
-            className={`btn-go inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap px-8 py-3 text-xl sm:w-auto ${
-              replayDisabled && !replayRoutesToSetup ? 'cursor-wait' : ''
-            }`}
-          >
-            <IconPlay size={20} /> {replayPending ? 'Starting…' : 'REPLAY'}
-          </button>
-          <button
-            type="button"
-            onClick={onSetup}
-            data-testid="results-setup"
-            className="btn-neutral inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap px-6 py-3 sm:w-auto"
-          >
-            <IconReset size={18} /> SETUP
-          </button>
-        </div>
-        <p
-          className="mx-auto max-w-lg font-body text-[11px] leading-snug text-beige/55"
-          data-testid="results-replay-cost"
-        >
-          {replayRoutesToSetup
-            ? 'No Energy left — REPLAY opens Setup with your stake ready, so a free run is one you chose.'
-            : 'REPLAY runs it again on 1 Energy. SETUP reopens the page with your last stake ready.'}
-        </p>
-      </div>
-
       {/* ---------- 2 · THE VICTORY LAP ---------- */}
       <section
         data-testid="results-layer-3"
         aria-label="Progression"
-        className="order-3 flex flex-col gap-3 sm:order-2"
+        className="flex flex-col gap-3"
       >
         <div
           className="mx-auto w-full max-w-lg rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] p-3 text-left sm:p-4"
@@ -1224,7 +1191,7 @@ export function RunResults({
       <section
         data-testid="results-layer-2"
         aria-label="Payout facts"
-        className="order-4 flex flex-col gap-3 sm:order-3"
+        className="flex flex-col gap-3"
       >
         <div className="mx-auto">
           <PayoutField
@@ -1302,6 +1269,55 @@ export function RunResults({
               : 'Settlement recovery is still in progress; this screen never invents an unverified prize.'}
         </p>
       </section>
+      {/*
+        ---------- 4 · ACTIONS · ruled last, pinned so they are never below the fold ----------
+
+        The bottom padding is deliberately generous. Sticky offsets resolve
+        against the SCROLLPORT'S CONTENT BOX, and the overlay scrim carries its
+        own bottom padding (plus a safe-area inset), so `bottom-0` pins this row
+        a dozen-odd pixels above the visual bottom and content scrolls through
+        the gap underneath it. The padding is part of this row's painted box, so
+        it carries the fill down to the edge and closes that gap. The scrim keeps
+        owning the safe-area inset; adding one here too would double-count it on
+        a notched phone.
+      */}
+      <div className="sticky bottom-0 z-10 flex flex-col gap-1.5 bg-[color:var(--fill-deck-1)] pb-5 pt-3 sm:pb-6">
+        <div
+          className="mx-auto grid w-full max-w-lg grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-center"
+          data-testid="results-action-dock"
+          data-action-surface="integrated"
+        >
+          {/* REPLAY IS THE LABEL (ruling D3). The cost is stated once, below. */}
+          <button
+            type="button"
+            onClick={replayRoutesToSetup ? onSetup : onReplay}
+            disabled={replayDisabled && !replayRoutesToSetup}
+            data-testid="results-replay"
+            data-routes-to={replayRoutesToSetup ? 'setup' : 'run'}
+            className={`btn-go inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap px-8 py-3 text-xl sm:w-auto ${
+              replayDisabled && !replayRoutesToSetup ? 'cursor-wait' : ''
+            }`}
+          >
+            <IconPlay size={20} /> {replayPending ? 'Starting…' : 'REPLAY'}
+          </button>
+          <button
+            type="button"
+            onClick={onSetup}
+            data-testid="results-setup"
+            className="btn-neutral inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap px-6 py-3 sm:w-auto"
+          >
+            <IconReset size={18} /> SETUP
+          </button>
+        </div>
+        <p
+          className="mx-auto max-w-lg font-body text-[11px] leading-snug text-beige/55"
+          data-testid="results-replay-cost"
+        >
+          {replayRoutesToSetup
+            ? 'No Energy left — REPLAY opens Setup with your stake ready, so a free run is one you chose.'
+            : 'REPLAY runs it again on 1 Energy. SETUP reopens the page with your last stake ready.'}
+        </p>
+      </div>
     </div>
   );
 }

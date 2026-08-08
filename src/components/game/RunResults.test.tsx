@@ -159,29 +159,38 @@ describe('RunResults constitutional hierarchy', () => {
   });
 
   /**
-   * THE RULED ORDER — Score → Victory Lap → payout facts — with the actions
-   * moved between the first and the second ON A PHONE ONLY, because a player
-   * may never scroll to act and actions are not information.
+   * THE RULED ORDER, in one DOM order at every width: Score → Victory Lap →
+   * payout facts → actions. The actions are STICKY rather than reordered, so
+   * the ruled order holds and a player still never scrolls to reach REPLAY.
    */
-  it('reads Score, then the lap, then the payout facts, with actions last on a desktop', () => {
+  it('reads Score, then the lap, then the payout facts, then the actions', () => {
     const { container } = render(<RunResults {...props()} />);
     const root = container.querySelector('[data-testid="run-results"]')!;
     const children = Array.from(root.children);
     const at = (testId: string) =>
       children.findIndex((child) => child.getAttribute('data-testid') === testId);
 
-    // DOM order is the phone order: outcome+Score, actions, lap, facts.
     expect(at('results-layer-1')).toBe(0);
-    expect(children[1]).toContainElement(screen.getByTestId('results-action-dock'));
-    expect(at('results-layer-3')).toBe(2);
-    expect(at('results-layer-2')).toBe(3);
+    expect(at('results-layer-3')).toBe(1);
+    expect(at('results-layer-2')).toBe(2);
+    expect(children[3]).toContainElement(screen.getByTestId('results-action-dock'));
 
-    // Desktop restores the ruled order by pushing the actions last; the
-    // information around them never reorders.
-    expect(children[1]).toHaveClass('order-2', 'sm:order-4');
-    expect(screen.getByTestId('results-layer-1')).toHaveClass('order-1');
-    expect(screen.getByTestId('results-layer-3')).toHaveClass('order-3', 'sm:order-2');
-    expect(screen.getByTestId('results-layer-2')).toHaveClass('order-4', 'sm:order-3');
+    // No reordering trick: the reading order is the DOM order everywhere.
+    for (const child of children) {
+      expect(child.className).not.toMatch(/(^|\s)(sm:)?order-/);
+    }
+  });
+
+  it('pins the actions to the overlay floor without building a second tray', () => {
+    render(<RunResults {...props()} />);
+    const dock = screen.getByTestId('results-action-dock');
+    expect(dock).toHaveAttribute('data-action-surface', 'integrated');
+    const pinned = dock.parentElement!;
+    expect(pinned).toHaveClass('sticky', 'bottom-0');
+    // The tray's OWN fill, so it reads as the panel floor. No border, no
+    // radius, no shadow, no blur — those would make it a second tray.
+    expect(pinned.className).toContain('bg-[color:var(--fill-deck-1)]');
+    expect(pinned.className).not.toMatch(/border|rounded|shadow|backdrop-blur/);
   });
 
   /**
