@@ -568,7 +568,6 @@ function SlotPicker({
   onClose,
   annotations,
   panelRef,
-  listRef,
   anchor,
 }: {
   locus: GenomeV2ResearchLocus;
@@ -582,7 +581,6 @@ function SlotPicker({
   onClose: () => void;
   annotations: Map<GenomeV2ActiveGeneId, { state?: string; nextStep: string }>;
   panelRef: MutableRefObject<HTMLDivElement | null>;
-  listRef: MutableRefObject<HTMLDivElement | null>;
   anchor: { dx: number; dy: number; flip: 'down' | 'up'; maxHeight: number };
 }) {
   const [openSpliceId, setOpenSpliceId] = useState<GenomeV2SpliceId | null>(null);
@@ -675,7 +673,7 @@ function SlotPicker({
           </p>
           <div
             className={styles.pickerOptions}
-            ref={listRef}
+            data-fit-scroll=""
             data-testid="workbench-gene-palette"
           >
             {options.length === 0 ? (
@@ -811,10 +809,18 @@ function SlotPicker({
                   CHANGE
                 </button>
               </header>
+              {/*
+                THE READ SCROLLS; THE ACTIONS DO NOT LIVE INSIDE IT.
+                The commit row used to be a sticky floor inside this scroll
+                box, which meant it slid OVER the rule it was floating above —
+                "CHANGES" arrived cut in half by the TAKE button. A floor
+                outside the scrolling region cannot cover what it stands on.
+              */}
+              <div className={styles.pickerReadBody} data-fit-scroll="">
               <div className={styles.pickerRule}>
-                <p><b>Changes</b>{selectedGene.effect}</p>
-                <p><b>In full</b>{selectedGene.detail}</p>
-                <p><b>Commits</b>{selectedGene.cost}</p>
+                <p data-fit-row=""><b>Changes</b>{selectedGene.effect}</p>
+                <p data-fit-row=""><b>In full</b>{selectedGene.detail}</p>
+                <p data-fit-row=""><b>Commits</b>{selectedGene.cost}</p>
               </div>
               <div className={styles.spliceBranches}>
                 {paths.length > 0 ? paths.map((path) => (
@@ -827,6 +833,7 @@ function SlotPicker({
                     onClick={() => setOpenSpliceId(
                       openSpliceId === path.id ? null : path.id
                     )}
+                    data-fit-row=""
                     data-testid={`workbench-splice-path-${path.id}`}
                   >
                     <span className={styles.spliceLabel}>
@@ -834,13 +841,14 @@ function SlotPicker({
                       <small>{GENOME_V2_GENES[path.partner].name}</small>
                     </span>
                   </button>
-                )) : <p className={styles.noBranch}>No direct Combo.</p>}
+                )) : <p className={styles.noBranch} data-fit-row="">No direct Combo.</p>}
                 {openSplice ? (
-                  <div className={styles.spliceDisclosure} data-testid="workbench-splice-disclosure">
+                  <div className={styles.spliceDisclosure} data-fit-row="" data-testid="workbench-splice-disclosure">
                     <p><b>Rule</b>{openSplice.rule}</p>
                     <p><b>Cost</b>{openSplice.strategicCost}</p>
                   </div>
                 ) : null}
+              </div>
               </div>
               <div className={styles.commitControls}>
                 {mode === 'take' ? (
@@ -927,7 +935,7 @@ export function ResearchTable({
     : reading.loci.find((locus) => locus.slot === openSlot) ?? null;
   const openMode = openLocus ? slotModeFor(openLocus, nextOpenSlot) : null;
   const pickerKey = openLocus && openMode ? `${openLocus.slot}:${openMode}` : null;
-  const { anchorRef, panelRef, listRef, anchor } = useSlotAnchor(
+  const { anchorRef, panelRef, anchor } = useSlotAnchor(
     pickerKey,
     selectedGeneId ?? 'none'
   );
@@ -1089,7 +1097,6 @@ export function ResearchTable({
                     onClose={closePicker}
                     annotations={annotations}
                     panelRef={panelRef}
-                    listRef={listRef}
                     anchor={anchor}
                   />
                 ) : null}

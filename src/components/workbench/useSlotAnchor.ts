@@ -26,36 +26,53 @@ import {
 export type { SlotAnchor } from './slotAnchorGeometry';
 
 /**
- * THE LIST ENDS WHERE A ROW ENDS.
+ * A SCROLL BOX ENDS WHERE A ROW ENDS.
+ *
+ * Every scroll box in the panel obeys it, not just the option list: the read
+ * of a chosen Power scrolls too, and it was ending mid-Combo-button for
+ * exactly the same reason. A box declares itself with `data-fit-scroll`, and
+ * names its rows with `data-fit-row` when its own children are groups rather
+ * than rows — the option list needs no tags, because there its children ARE
+ * the rows.
  *
  * The height is written straight onto the element rather than through React
  * state. It is a consequence of layout, and feeding it back through a render
  * would mean measuring the box the last measurement produced — the loop the
- * anchor above already has to defend against with `appliedDx`/`appliedDy`.
+ * anchor below already has to defend against with `appliedDx`/`appliedDy`.
  * Here the answer is idempotent instead: release the pin, read what the flex
  * layout allocates, pin the whole-row height inside it.
  */
-function fitListToRows(list: HTMLElement | null): void {
-  if (!list) return;
-  list.style.maxHeight = '';
-  const available = list.clientHeight;
+function fitScrollBox(box: HTMLElement): void {
+  box.style.maxHeight = '';
+  const available = box.clientHeight;
   if (available <= 0) return;
 
-  const listTop = list.getBoundingClientRect().top;
-  const scrolled = list.scrollTop;
-  const rows = Array.from(list.children).map((child) => {
-    const box = child.getBoundingClientRect();
-    return { top: box.top - listTop + scrolled, height: box.height };
+  const marked = box.querySelectorAll<HTMLElement>('[data-fit-row]');
+  const children: Element[] = marked.length > 0
+    ? Array.from(marked)
+    : Array.from(box.children);
+
+  const boxTop = box.getBoundingClientRect().top;
+  const scrolled = box.scrollTop;
+  const rows = children.map((child) => {
+    const rect = child.getBoundingClientRect();
+    return { top: rect.top - boxTop + scrolled, height: rect.height };
   });
   if (rows.length === 0) return;
 
-  list.style.maxHeight = `${fitWholeRows({ rows, available })}px`;
+  box.style.maxHeight = `${fitWholeRows({ rows, available })}px`;
+}
+
+function fitPanelScrollBoxes(panel: HTMLElement | null): void {
+  if (!panel) return;
+  panel
+    .querySelectorAll<HTMLElement>('[data-fit-scroll]')
+    .forEach(fitScrollBox);
 }
 
 export function useSlotAnchor(openKey: string | null, fitKey?: string) {
   const anchorRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
   const dxRef = useRef(0);
   const dyRef = useRef(0);
   const [anchor, setAnchor] = useState<SlotAnchor>(IDLE_SLOT_ANCHOR);
@@ -115,7 +132,7 @@ export function useSlotAnchor(openKey: string | null, fitKey?: string) {
     // two passes above settled on.
     const frame = window.requestAnimationFrame(() => {
       measure();
-      fitListToRows(listRef.current);
+      fitPanelScrollBoxes(panelRef.current);
     });
     return () => window.cancelAnimationFrame(frame);
   }, [measure, openKey]);
@@ -124,7 +141,7 @@ export function useSlotAnchor(openKey: string | null, fitKey?: string) {
   // is allocated less room and has to be re-fitted against the new remainder.
   useLayoutEffect(() => {
     if (openKey === null) return;
-    const frame = window.requestAnimationFrame(() => fitListToRows(listRef.current));
+    const frame = window.requestAnimationFrame(() => fitPanelScrollBoxes(panelRef.current));
     return () => window.cancelAnimationFrame(frame);
   }, [fitKey, openKey]);
 
@@ -132,7 +149,7 @@ export function useSlotAnchor(openKey: string | null, fitKey?: string) {
     if (openKey === null) return;
     const onLayoutChange = () => {
       measure();
-      fitListToRows(listRef.current);
+      fitPanelScrollBoxes(panelRef.current);
     };
     window.addEventListener('resize', onLayoutChange);
     window.addEventListener('orientationchange', onLayoutChange);
@@ -144,5 +161,5 @@ export function useSlotAnchor(openKey: string | null, fitKey?: string) {
     };
   }, [measure, openKey]);
 
-  return { anchorRef, panelRef, listRef, anchor };
+  return { anchorRef, panelRef, anchor };
 }

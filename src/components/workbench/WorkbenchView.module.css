@@ -549,9 +549,24 @@
 
 .pickerOptions > * { scroll-snap-align: start; }
 
-/* Selecting one shrinks the list rather than pushing the actions off the
-   panel. The read below is what the player is now looking at. */
-.picker[data-has-selection='true'] .pickerOptions { flex: 0 1 auto; max-height: 136px; }
+/*
+ * CHOOSING A POWER HANDS THE PANEL TO THAT POWER.
+ *
+ * The list used to shrink to 136px and stay, which bought the worst of both:
+ * the chosen Power was printed TWICE — once as a highlighted row, once as the
+ * read below it — and the read was left with less room than its own copy
+ * needs, so "CHANGES" arrived sliced. The panel is 440px at its tallest and
+ * the full read of a Power is most of that.
+ *
+ * So the list gives way and CHANGE brings it back. This was already the rule
+ * on a landscape phone, argued there as a necessity of 176px; it turns out to
+ * be the right rule at every size, because the reason was never the height —
+ * it was that a list and a read are two answers to the same question.
+ */
+.picker[data-has-selection='true'] .pickerOptions,
+.picker[data-has-selection='true'] .pickerHint { display: none; }
+
+.picker[data-has-selection='true'] .pickerSelected { margin-top: 8px; }
 
 .option {
   display: flex;
@@ -673,6 +688,17 @@
   border-radius: var(--radius-card);
   background: var(--brand-purple-deep);
   padding: 10px;
+  /* The recess itself does not scroll — its BODY does, below. A scroll box
+     that also holds the floor is a scroll box whose floor covers its copy. */
+  overflow: hidden;
+}
+
+.pickerReadBody {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -743,11 +769,10 @@
 .spliceDisclosure b { display: block; color: var(--venom-orange); font-family: var(--font-body); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
 .noBranch { margin: 0; color: var(--quieter); font-family: var(--font-body); font-size: 14px; }
 
-/* The actions never leave the panel: they stick to its floor while the read
-   above them scrolls. */
+/* The actions never leave the panel — and they are no longer STUCK to its
+   floor, they ARE its floor. Sticky put them in the same scroll box as the
+   copy, so they slid across it. */
 .commitControls {
-  position: sticky;
-  bottom: -10px;
   display: flex;
   flex: none;
   flex-wrap: wrap;
@@ -1125,14 +1150,8 @@
  * of the option list the player sees before it scrolls.
  */
 @media (max-height: 460px) {
-  /* With ~176px of panel, a list AND a read AND an action do not coexist.
-     Choosing one power hands the panel to that power; CHANGE brings the list
-     back. The commit stays stuck to the floor either way, so the action is
-     never the thing that scrolled away. */
-  .picker[data-has-selection='true'] .pickerOptions,
-  .picker[data-has-selection='true'] .pickerHint { display: none; }
-  .picker[data-has-selection='true'] .pickerSelected { margin-top: 8px; }
-
+  /* The rule this block used to own — a chosen Power takes the panel — now
+     applies at every size, and is stated once beside `.pickerSelected`. */
   .genomeStage { margin-top: 9px; }
   /* Badges gone and the glyph halved, so the shared tray is a different — and
      smaller — constant here: 84px holds the tallest label at three wide
