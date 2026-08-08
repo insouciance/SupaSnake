@@ -36,10 +36,22 @@ test.describe('home cosmetics', () => {
     await seedConsent(page);
   });
 
-  test('the chamber is never a dark room', async ({ page }) => {
-    // Runs on BOTH legs: the bright chamber is not behind the flag, and the
-    // owner has ruled out black twice. The placeholder is the first paint, so
-    // it is the frame most likely to regress unnoticed.
+  test('the chamber is a lit room and never a page', async ({ page }) => {
+    // OVERTURNED, AND RE-EXPRESSED (owner ruling, 2026-08-08 — "home should be
+    // dark like the other pages"). This test was 'the chamber is never a dark
+    // room' and it gated `luma > 120`, argued from "the owner has ruled out
+    // black twice". The same authority has now ruled the other way, so the
+    // threshold flips rather than the test being deleted.
+    //
+    // What it protects is unchanged in KIND. The chamber is a stage, and a
+    // stage fails in two directions: a room so bright the character is a hole
+    // in it, or a room so uniformly black that there is no stage at all and
+    // the creature floats in a void. The old gate defended one edge; this one
+    // defends both, because a dark ground makes the second failure the live
+    // risk. The room must be dark AND it must have a lamp in it.
+    //
+    // Runs on BOTH legs: the ground is not behind the flag. The placeholder is
+    // the first paint, so it is the frame most likely to regress unnoticed.
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await waitForChamber(page);
 
@@ -68,17 +80,24 @@ test.describe('home cosmetics', () => {
         if (!Number.isFinite(r) || a === 0) continue;
         lumas.push(0.299 * r + 0.587 * g + 0.114 * b);
       }
-      return lumas.length === 0 ? null : Math.min(...lumas);
+      return lumas.length === 0
+        ? null
+        : { min: Math.min(...lumas), max: Math.max(...lumas) };
     });
 
     expect(luma).not.toBeNull();
-    // The threshold separates "warm shadow on paper" from "void", and both
-    // numbers are worth naming so a later edit can see what it is protecting:
-    // the darkest authored stop is the contact shadow #c0a887, luma ~171, and
-    // it is intended — a specimen with no shadow floats. The room this
-    // replaced graded to #04060a, luma ~6, and the ink the creature is drawn
-    // with is #0b1118, luma ~16. Anything approaching those is the regression.
-    expect(luma!).toBeGreaterThan(120);
+    // THE CEILING — this is the dark ruling, made checkable. The brightest
+    // authored stop is the lamp, #2b4869, luma ~67. The page this replaced
+    // graded from #ffffff through #fffaf1 to #faf1e2, luma ~240+. Anything
+    // approaching those is the regression this test now exists for.
+    expect(luma!.max).toBeLessThan(110);
+    // THE FLOOR — and it is the half a straight inversion would have thrown
+    // away. The room's own edge is #0e1c2c, luma ~26, and the creature's ink
+    // is #0b1118, luma ~16: the lamp has to keep the ground ABOVE the line the
+    // character is drawn with, or the bold outline the whole style rests on
+    // has nothing to be bold against. A flat black chamber passes a ceiling
+    // check and is still the failure.
+    expect(luma!.max).toBeGreaterThan(40);
   });
 
   test('the wordmark is announced once, however it is drawn', async ({ page }) => {

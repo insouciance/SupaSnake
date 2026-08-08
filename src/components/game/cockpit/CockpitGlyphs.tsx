@@ -229,20 +229,32 @@ export function GeneGlyph({ id }: { id: string }) {
   );
 }
 
-/** Canonical, curve-capable Genome alphabet. Board/chassis WebGL reliefs use
- * documented low-poly engravings derived from these exact silhouettes. */
-export function StrainGlyph({ id }: { id: StrainId }) {
+/**
+ * Canonical, curve-capable Genome alphabet. Board/chassis WebGL reliefs use
+ * documented low-poly engravings derived from these exact silhouettes.
+ *
+ * `weight` exists because the RACK rung is derived from ONE reading size — "16
+ * to 28px inside a cell of a repeated field" — and Home reads this alphabet
+ * outside that field, at 14 to 16px, scattered on the room and on the
+ * workbench cube. There the rack line lands at 1.3px, which is under every rung
+ * of the `--ink-w` ladder and is exactly the defect the owner named on
+ * 2026-08-08: "those thin lines dont fit the concept". Ruling T-10 says an ink
+ * weight is CHOSEN PER OBJECT, so the object gets to choose it. The default is
+ * unchanged, so every rack that was right stays byte-identical; only a caller
+ * that has measured its own reading size passes anything.
+ */
+export function StrainGlyph({ id, weight }: { id: StrainId; weight?: number }) {
   if (id === 'AURUM') {
-    return <Svg><path d="m12 3 7 5-2.5 10h-9L5 8l7-5Z" /><path d="m5 8 7 4 7-4M12 12v6" /></Svg>;
+    return <Svg weight={weight}><path d="m12 3 7 5-2.5 10h-9L5 8l7-5Z" /><path d="m5 8 7 4 7-4M12 12v6" /></Svg>;
   }
   if (id === 'VOLT') {
-    return <Svg><path d="m13 2-8 11h6l-1 9 9-12h-6V2Z" /></Svg>;
+    return <Svg weight={weight}><path d="m13 2-8 11h6l-1 9 9-12h-6V2Z" /></Svg>;
   }
   if (id === 'FERAL') {
-    return <Svg><path d="M5 19c2-7 4.4-11 7-14 2.6 3 5 7 7 14M8 15l4-3 4 3M12 12v8" /></Svg>;
+    return <Svg weight={weight}><path d="M5 19c2-7 4.4-11 7-14 2.6 3 5 7 7 14M8 15l4-3 4 3M12 12v8" /></Svg>;
   }
   if (id === 'FLUX') {
-    return <Svg><ellipse cx="12" cy="12" rx="6.5" ry="9" /><path d="M3 12h5M16 12h5M12 3v5M12 16v5" /></Svg>;
+    return <Svg weight={weight}><ellipse cx="12" cy="12" rx="6.5" ry="9" /><path d="M3 12h5M16 12h5M12 3v5M12 16v5" /></Svg>;
   }
-  return <Svg><path d="M17.5 17.5A8 8 0 1 1 17.5 6 6.2 6.2 0 0 0 17.5 17.5Z" /><path d="m8 12 2 2 4-5" /></Svg>;
+  return <Svg weight={weight}><path d="M17.5 17.5A8 8 0 1 1 17.5 6 6.2 6.2 0 0 0 17.5 17.5Z" /><path d="m8 12 2 2 4-5" /></Svg>;
 }

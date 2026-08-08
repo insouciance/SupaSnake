@@ -591,7 +591,22 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
       }
     }
 
-    await page.getByTestId('run-setup-favorite-primal').click();
+    /*
+     * ONE GESTURE, ONE MEANING (owner item 7, 2026-08-08) — RE-EXPRESSED.
+     *
+     * This line used to click the CARD, because the card carried two meanings:
+     * on a house you were not flying it equipped that house's favorite, and on
+     * the house you WERE flying it opened the picker. PRIMAL is the flying
+     * house under these fixtures, so the card was the picker's only door and
+     * this assertion was written against that door.
+     *
+     * The two meanings are now two controls. The card selects a house and
+     * nothing else; the small CHANGE chip inside each card opens the picker
+     * for that house's slot. So the fact under test — "the setup surface can
+     * reach the picker for a named dynasty, on a phone" — is unchanged, and it
+     * is asked of the control that now answers it.
+     */
+    await page.getByTestId('run-setup-favorite-change-primal').click();
     await expect(
       page.getByRole('heading', { name: 'Choose PRIMAL favorite' })
     ).toBeVisible();

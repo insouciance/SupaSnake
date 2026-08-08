@@ -61,17 +61,12 @@ const TEXTURES = [
     resizeWidth: 512,
     quality: 85,
   },
-  {
-    source: 'assets/New/TEX_COMIC_SPEED_LINES.png',
-    output: 'public/textures/speed-lines.webp',
-    // Used only as an `alphaMap` at opacity 0.2 - three reads the green
-    // channel and the colour is a flat warm grey, so chroma detail here is
-    // discarded by the renderer before it is ever seen. Greyscaling it first
-    // was measured and saved nothing (WebP already decorrelates chroma), so
-    // the plate stays in colour and unmodified in character.
-    resizeWidth: 512,
-    quality: 85,
-  },
+  // THE SPEED-LINE PLATE IS NO LONGER A RASTER. (Owner ruling, 2026-08-08:
+  // "i think you could remake them as vector art, so they would look better
+  // that way.") Its entry is deleted rather than commented out, because the
+  // chamber now mounts `public/textures/speed-lines.svg` — original vector art
+  // built by `scripts/build-speed-lines.mjs` — and a pipeline that still
+  // emitted the bitmap would be shipping a 500KB asset nothing loads.
 ];
 
 const check = process.argv.includes('--check');

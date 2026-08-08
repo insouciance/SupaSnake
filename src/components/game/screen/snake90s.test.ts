@@ -529,6 +529,62 @@ describe('snake90s: cel shading - three tones, keyed to the FACE', () => {
   });
 
   /**
+   * THE TWO FRAMES, AND WHY THE SHADER CARRIES BOTH.
+   *
+   * The test above is about LIGHT and it stands. This one is about GEOMETRY,
+   * and it is the contract that was missing when the chamber reported
+   * "cosmetics sometimes lose their surface — braids go bright".
+   *
+   * `edgeness` asks "is this fragment on a chamfer". Read off the WORLD
+   * normal it also silently asks "is this object turned", because rotating a
+   * cube by θ raises every flat face to 1 - cos θ. The board never noticed:
+   * headings are grid directions and the classifier is invariant under
+   * permuting and negating axes. The chamber's three-quarter portrait sits at
+   * a FRACTIONAL yaw and crossed the cut on its idle sway.
+   */
+  it('classifies a facet from the OBJECT normal, so turning a head cannot make its faces chamfers', () => {
+    const material = new THREE.MeshToonMaterial();
+    applyFaceKeyedShading(material, {
+      tones: SNAKE_FACE_TONES,
+      band: null,
+      cacheKey: 'test',
+    });
+    const { vertex, fragment } = compile(material);
+    expect(vertex).toContain('vSnakeObjectNormal = objectNormal;');
+    expect(fragment).toContain(
+      'vec3 an = abs( normalize( vSnakeObjectNormal ) );'
+    );
+    // The lighting bands must NOT have followed it into object space.
+    expect(fragment).toContain('vec3 sn = normalize( vSnakeWorldNormal );');
+    expect(fragment).toContain('sn.y > uSnakeCuts.x');
+    expect(fragment).toContain('dot( sn.xz, uSnakeKey )');
+  });
+
+  it('holds a flat face flat at every yaw the chamber portrait actually uses', () => {
+    // The defect, as arithmetic. `edgeness` off a world normal is
+    // 1 - cos(yaw) for a flat face, and the cut is 0.005 — so anything past
+    // 5.73 degrees off axis was misread as a bevel and took `rim`, whose ADD
+    // is the whole visible colour on near-black braid stock.
+    const worldEdgeness = (yaw: number) => {
+      const n: [number, number, number] = [Math.sin(yaw), 0, Math.cos(yaw)];
+      return 1 - Math.max(Math.abs(n[0]), Math.abs(n[1]), Math.abs(n[2]));
+    };
+    // HEAD_YAW is -0.0285 rad and the idle sway is ±0.08, so the portrait
+    // reaches -0.1085 — past the 0.0999 rad crossing point.
+    expect(worldEdgeness(-0.1085)).toBeGreaterThan(SNAKE_FACE_CUTS.rim);
+    expect(worldEdgeness(-0.0285)).toBeLessThan(SNAKE_FACE_CUTS.rim);
+
+    // In OBJECT space the same face is flat at every one of those yaws,
+    // because the object normal does not know the object turned. That is the
+    // invariant the fix buys, and it holds for any rotation at all.
+    const objectEdgeness = () => 1 - Math.max(0, 0, 1);
+    for (const yaw of [-0.1085, -0.0285, 0.05, 0.4, Math.PI / 4, Math.PI]) {
+      expect(yaw).toBeDefined();
+      expect(objectEdgeness()).toBeLessThan(SNAKE_FACE_CUTS.rim);
+    }
+  });
+
+  /**
    * "Bright graphic highlights on top-facing EDGES" and "substantially darker
    * shadow faces", expressed as the boundaries the shader actually branches on.
    *

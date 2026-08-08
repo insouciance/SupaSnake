@@ -1,13 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { HomeCommandRail } from './HomeCommandRail';
 import { NOTIFICATION_TARGETS, useNotificationStore } from '@/lib/stores/notificationStore';
+import { SNAKE_STYLE_PROFILE } from '@/components/game/screen/snake90s';
 
 describe('HomeCommandRail', () => {
   beforeEach(() => {
     useNotificationStore.setState({ notifications: {}, hasHydrated: true });
   });
 
-  it('renders four equal icon-only actions with accessible names', () => {
+  it('renders the row as the creature: a head, three body cubes, all touch-sized', () => {
     render(
       <HomeCommandRail
         onPlay={jest.fn()}
@@ -17,26 +18,82 @@ describe('HomeCommandRail', () => {
       />
     );
 
-    const commands = ['Play', 'Lab', 'Compete', 'You'];
-    const sizes = new Set<string>();
-    for (const name of commands) {
-      const target = screen.getByRole(name === 'Play' ? 'button' : 'link', { name });
-      // The premise is EQUAL and TOUCH-SIZED, not one particular size class.
-      // INK & AMBER took the chip 56px -> 64px so four 2.5px keylines read as
-      // four chips rather than one bar; pinning `h-14` pinned the old room's
-      // number, not the contract. The contract is restated here: every command
-      // is the same size, and none is under the 44px touch floor.
-      expect(target).toHaveClass('min-h-[44px]', 'min-w-[44px]');
-      const size = Array.from(target.classList)
-        .filter((name) => /^[hw]-\d+$/.test(name))
-        .sort()
-        .join(' ');
-      expect(size).not.toBe('');
-      sizes.add(size);
-      expect(target.querySelector('.sr-only')).toHaveTextContent(name);
+    // THE CONTRACT MOVED, AND THIS RECORDS WHAT IT MOVED TO. It used to be
+    // "every command is the same size", which was right while the four were
+    // interchangeable chips. They are now segments of the snake, and the
+    // creature separates its head from its body BY SIZE — so the premise is
+    // that the three destinations are equal to each other, that PLAY leads them
+    // by exactly the profile's own head-to-body ratio, and that nothing falls
+    // under the 44px touch floor.
+    const bodies = ['Lab', 'Compete', 'You'].map((name) =>
+      screen.getByRole('link', { name })
+    );
+    for (const [i, target] of bodies.entries()) {
+      expect(target).toHaveClass('snake-cube', 'min-h-[44px]', 'min-w-[44px]');
+      expect(target).toHaveClass('h-[62px]', 'w-[62px]');
+      expect(target.querySelector('.sr-only')).toHaveTextContent(
+        ['Lab', 'Compete', 'You'][i]
+      );
     }
-    expect(sizes.size).toBe(1);
-    expect(screen.getByTestId('home-command-rail')).toHaveClass('grid-cols-4');
+
+    const play = screen.getByRole('button', { name: 'Play' });
+    expect(play).toHaveClass('snake-cube', 'min-h-[44px]', 'min-w-[44px]');
+    const headPx = Math.round(
+      62 * (SNAKE_STYLE_PROFILE.headSize / SNAKE_STYLE_PROFILE.bodySize)
+    );
+    expect(play).toHaveStyle({ width: `${headPx}px`, height: `${headPx}px` });
+    expect(headPx).toBeGreaterThan(62);
+    expect(play.querySelector('.sr-only')).toHaveTextContent('Play');
+
+    // ONE GUTTER, EVERYWHERE. The rail was four equal grid tracks, and a
+    // fixed-width cube centred in a wider track put its leftover slack into the
+    // gutter — 17px between the body cubes against 12px beside the larger head.
+    // A flex row of intrinsically-sized cubes has no slack to distribute, so
+    // `gap` IS the gutter at every position. `shrink-0` is load-bearing: a
+    // shrunk cube would put slack back.
+    const rail = screen.getByTestId('home-command-rail');
+    expect(rail).toHaveClass('flex', 'justify-center');
+    expect(rail).not.toHaveClass('grid-cols-4');
+    // 12px is the gutter the owner ruled good; below 336px the head plus three
+    // bodies (264px under the shipped guide) plus three 12px gutters will not
+    // fit inside the dock, so the row takes an equal 8px there instead.
+    expect(rail).toHaveClass('gap-2', 'min-[336px]:gap-3');
+    for (const target of [...bodies, play]) {
+      expect(target).toHaveClass('shrink-0');
+      expect(target).not.toHaveClass('mx-auto');
+    }
+  });
+
+  it('paints the glyph into the face plane and leaves the badge square to the screen', () => {
+    useNotificationStore.getState().publish({
+      id: 'lab-ready',
+      title: 'Lab ready',
+      description: 'Evolution available',
+      ...NOTIFICATION_TARGETS.lab,
+      badgeKind: 'exclamation',
+      attentionReason: 'action-required',
+    });
+    render(
+      <HomeCommandRail
+        onPlay={jest.fn()}
+        playDisabled={false}
+        playLabel="Play"
+        playPhase="idle"
+      />
+    );
+
+    const lab = screen.getByRole('link', { name: 'Lab' });
+    const glyph = lab.querySelector('.snake-cube__glyph') as HTMLElement;
+    // The mark is paint ON the leaning face, not a sticker in front of it. The
+    // matrix is the projection of the face's own axes — `snakeCubeArt` derives
+    // it and `snakeCubeArt.test.ts` proves it maps the face corners.
+    expect(glyph.style.transform).toMatch(/^matrix\(/);
+    expect(glyph.querySelector('svg')).not.toBeNull();
+    // A status dot that leans looks broken, so the badge is a sibling of the
+    // drawing on the pressable rather than a child of the projected slot.
+    const badge = screen.getByRole('status', { name: 'New Lab activity' });
+    expect(glyph.contains(badge)).toBe(false);
+    expect(lab.contains(badge)).toBe(true);
   });
 
   it('keeps Play on the existing launch callback and routes the other pillars', () => {

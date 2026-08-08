@@ -68,7 +68,7 @@ export interface CosmeticsMenuProps {
 }
 
 const chipBase =
-  'ink-chip relative flex min-h-[44px] items-center gap-2 rounded-full px-3 py-2 text-left text-xs font-display uppercase tracking-[0.06em] text-ink disabled:cursor-wait disabled:opacity-50';
+  'ink-chip relative flex min-h-[44px] items-center gap-2 px-3 py-2 text-left text-xs font-display uppercase tracking-[0.06em] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink disabled:cursor-wait disabled:opacity-50';
 
 export function CosmeticsMenu({
   catalog,

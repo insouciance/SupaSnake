@@ -101,10 +101,12 @@ async function main() {
   await emit('assets/brand/supasnake-monogram.svg', svgBuf(monoSvg));
 
   // ------------------------------------------------------------- home hero
-  // 441px is the mark's widest CSS box on Home: 6.12em at the lg:text-7xl
-  // step, which is the locked wordmark geometry expressed as a width. The
-  // ladder is that box at 1x/2x/3x.
-  const HERO_1X = 441;
+  // 518px is the mark's widest CSS box on Home: 7.2em at the lg:text-7xl step.
+  // The em figure is `HOME_WORDMARK.widthEm` and it is now set by the owner's
+  // proportion rule - the Mark is at least as wide as the snake, measured off
+  // rendered frames - where it used to be set by the retired type's footprint.
+  // The ladder is that box at 1x/2x/3x.
+  const HERO_1X = 518;
   for (const [suffix, scale] of [['', 1], ['@2x', 2], ['@3x', 3]]) {
     const svg = buildMarkSvg({ width: HERO_1X * scale });
     const buf = svgBuf(svg);

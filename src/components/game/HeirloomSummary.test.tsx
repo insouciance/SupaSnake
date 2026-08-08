@@ -72,4 +72,35 @@ describe('HeirloomSummary', () => {
     const { container } = render(<HeirloomSummary traits={[]} slots={99} />);
     expect(container.querySelectorAll('[data-testid="trait-slot-empty"]')).toHaveLength(2);
   });
+
+  /**
+   * COMPACT, NOT CUT (owner item 5, 2026-08-08).
+   *
+   * "ruleset line and heirloom block can remain, but COMPACT." Every fact this
+   * block ever stated is still stated — the tests above are the proof of that,
+   * and not one of them was weakened to make room. What went is a ROW: the
+   * "Heirlooms" label now sits ON the chip row rather than above it, which is
+   * a label doing what a label does at no cost to what it labels. Setup's
+   * binding constraint is that the Energy reactor still ends above the fold on
+   * a 320x568 phone, so a row saved here is a row the reactor gets.
+   */
+  it('spends one row on the label and the chips together, not two', () => {
+    render(<HeirloomSummary traits={['scavenger']} slots={2} />);
+    const label = screen.getByText('Heirlooms');
+    const chip = screen.getByTestId('trait-chip-scavenger');
+    const empty = screen.getByTestId('trait-slot-empty');
+    expect(label.parentElement).toContainElement(chip);
+    expect(label.parentElement).toContainElement(empty);
+  });
+
+  it('keeps the recess, and only its padding got smaller', () => {
+    render(<HeirloomSummary traits={[]} slots={1} />);
+    const block = screen.getByTestId('heirloom-summary');
+    // Still a recess cut into the paper tray — one tray, one frame.
+    expect(block).toHaveClass('paper-recess');
+    expect(block).toHaveClass('py-1.5');
+    expect(block).not.toHaveClass('p-2');
+    // The empty-state note keeps every word and loses only its leading.
+    expect(screen.getByTestId('heirloom-empty')).toHaveClass('leading-tight');
+  });
 });

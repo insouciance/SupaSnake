@@ -242,7 +242,7 @@ export function SignalSurface({
         aria-expanded={open}
         aria-controls="signal-card"
         data-testid="signal-chip"
-        className="ink-chip label-arcade relative flex items-center gap-2 rounded-full px-3 py-1 text-ink transition-colors hover:bg-venom-orange-light"
+        className="ink-chip label-arcade relative flex items-center gap-2 px-3 py-1 text-ink transition-colors hover:bg-venom-orange-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink"
       >
         {/* A beacon, never a badge with a number counting down. The day is
             open; nothing about it is running out on the player (Rule 5). */}

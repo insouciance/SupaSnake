@@ -77,13 +77,26 @@ export function HeirloomSummary({
        * It becomes a recess cut into the tray: a fill step, no border, because
        * the tray already drew the only frame this surface gets (one tray, one
        * frame).
+       *
+       * ── COMPACT, NOT CUT (owner ruling, 2026-08-08) ────────────────────
+       *
+       * "ruleset line and heirloom block can remain, but COMPACT." Every fact
+       * this block ever stated is still stated: the chips, the empty slots,
+       * the potential of a traitless snake, and every run notice. What went is
+       * WHITESPACE and one line break — the "Heirlooms" label now sits ON the
+       * chip row rather than above it, which is a label doing what a label
+       * does at no cost to what it labels. The recess keeps its padding, only
+       * less of it. Setup's binding constraint is that the Energy reactor
+       * fits above the fold on a 320x568 phone, so a row saved here is a row
+       * the reactor gets.
        */
-      className={`paper-recess mx-auto max-w-lg space-y-1 p-2 text-left sm:space-y-2 sm:p-3 ${className}`}
+      className={`paper-recess mx-auto max-w-lg space-y-0.5 px-2 py-1.5 text-left sm:space-y-1 sm:px-3 sm:py-2 ${className}`}
       data-testid="heirloom-summary"
     >
-      <p className="label-arcade text-ink/60">Heirlooms</p>
-
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <p className="label-arcade shrink-0 text-[10px] leading-none text-ink/60">
+          Heirlooms
+        </p>
         {traits.map((id) => (
           <TraitChip key={id} traitId={id} size="md" interactive />
         ))}
@@ -93,7 +106,10 @@ export function HeirloomSummary({
       </div>
 
       {traits.length === 0 && (
-        <p className="font-body text-xs text-ink/70" data-testid="heirloom-empty">
+        <p
+          className="font-body text-[11px] leading-tight text-ink/70"
+          data-testid="heirloom-empty"
+        >
           No heirloom yet — breed in the Lab to fill this slot. Traits are live
           from the first food of every run.
         </p>
@@ -103,7 +119,7 @@ export function HeirloomSummary({
         <p
           key={id}
           data-testid={`heirloom-notice-${id}`}
-          className={`font-body text-xs ${
+          className={`font-body text-[11px] leading-tight ${
             tone === 'warning' ? 'text-strike-red' : 'text-ink/70'
           }`}
         >

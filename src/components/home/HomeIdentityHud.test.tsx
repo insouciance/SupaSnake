@@ -26,12 +26,15 @@ describe('the mark, under the locked wordmark geometry', () => {
    * that says so. If somebody restyles the heading, the mark silently changes
    * size with it — so the classes are asserted literally.
    */
-  it('keeps the ruling: -2deg tilt, mt-10/sm:mt-14, and the 4xl/6xl/7xl steps', () => {
+  it('keeps the ruling: -2deg tilt, the top margin, and the 4xl/6xl/7xl steps', () => {
     renderHud();
     const heading = screen.getByRole('heading', { level: 1 });
     for (const cls of [
       '-rotate-[2deg]',
-      'mt-10',
+      // The base step moved 40px -> 72px so the bigger Mark clears the wallet
+      // and the Settings cube, which is what lets the phone's column spill back
+      // over both rails. The tilt and the three size steps are untouched.
+      'mt-[4.5rem]',
       'sm:mt-14',
       'text-4xl',
       'sm:text-6xl',
@@ -47,12 +50,13 @@ describe('the mark, under the locked wordmark geometry', () => {
     expect(img).not.toBeNull();
     expect(img).toHaveStyle({ width: `${HOME_WORDMARK.widthEm}em` });
 
-    // 6.12em is the measured ratio of the old wordmark's width to its
-    // font-size, identical at all three breakpoints. These are the pixel
-    // widths it reproduces; if the constant moves, the footprint moved.
-    expect(HOME_WORDMARK.widthEm * 36).toBeCloseTo(220.3, 1);
-    expect(HOME_WORDMARK.widthEm * 60).toBeCloseTo(367.2, 1);
-    expect(HOME_WORDMARK.widthEm * 72).toBeCloseTo(440.6, 1);
+    // 7.2em is set by the owner's proportion rule — the Mark is at least as
+    // wide as the snake — and the constant is checked against the widths it
+    // produces at the three type steps, so a nudge to either cannot pass
+    // unnoticed. The creature measured 468px at 1440 against 525px of Mark.
+    expect(HOME_WORDMARK.widthEm * 36).toBeCloseTo(259.2, 1);
+    expect(HOME_WORDMARK.widthEm * 60).toBeCloseTo(432.0, 1);
+    expect(HOME_WORDMARK.widthEm * 72).toBeCloseTo(518.4, 1);
   });
 
   it('serves the derived ladder and keeps the name in the accessibility tree', () => {
@@ -154,8 +158,16 @@ describe('HomeIdentityHud', () => {
       columnGap: '8px',
       gridTemplateColumns: '44px minmax(0, 1fr) 44px',
     });
+    // The snake and the clan share ONE line now (owner ruling), so the
+    // specimen no longer claims the column's whole width — the ROW does, and
+    // the two of them sit in it with a real gutter between them.
+    expect(screen.getByTestId('home-identity-row')).toHaveClass(
+      'w-full',
+      'flex-wrap',
+      'gap-x-6'
+    );
     const specimen = screen.getByTestId('home-specimen-identity');
-    expect(specimen).toHaveClass('w-full', 'min-w-0', 'text-xs');
+    expect(specimen).toHaveClass('min-w-0', 'text-xs');
     expect(specimen).toHaveAttribute(
       'aria-label',
       'COSMIC SINGULARITY · Gen 999999'
@@ -175,6 +187,9 @@ describe('HomeIdentityHud', () => {
 
     const clan = screen.getByTestId('home-clan-identity');
     expect(clan).toHaveClass('min-w-0', 'max-w-full', 'overflow-hidden');
+    // Only the cube is pressable furniture; the clan's name is type on the
+    // room, set like the specimen's name opposite it.
+    expect(clan.querySelector('.snake-cube')).not.toBeNull();
     expect(clan).toHaveAttribute(
       'aria-label',
       'Clan SINGULARITY SERPENTS, SING'
@@ -186,6 +201,7 @@ describe('HomeIdentityHud', () => {
     );
     expect(screen.getByTestId('home-clan-name')).toHaveClass('min-w-0', 'truncate');
     expect(screen.getByTestId('home-settings')).toHaveClass(
+      'snake-cube',
       'col-start-3',
       'row-start-1',
       'h-11',

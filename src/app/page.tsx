@@ -49,6 +49,7 @@ import { StarterSelection } from '@/components/ftue/StarterSelection';
 import { SignalSurface } from '@/components/signal/SignalSurface';
 import { WorldReportCard } from '@/components/report/WorldReportCard';
 import { HomeAnomalyFlash } from '@/components/home/HomeAnomalyFlash';
+import { DailyTakeFloat } from '@/components/engagement/DailyTakeFloat';
 import { onAnalyticsReady, trackEvent } from '@/lib/analytics/posthog';
 import { AnalyticsEvents } from '@/lib/analytics/events';
 import { FunnelStages, trackFunnelStage } from '@/lib/analytics/funnel';
@@ -845,8 +846,9 @@ export default function Home() {
           authenticated={isAuthenticated}
           dna={stats?.dna ?? null}
           energy={stats?.charge ?? null}
+          dynasty={dynasty}
         />
-        <HomeCodexRelic />
+        <HomeCodexRelic dynasty={dynasty} />
       </div>
 
       {/* The wardrobe takes the dock's place, in the dock's position, so the
@@ -854,7 +856,7 @@ export default function Home() {
           not. */}
       {cosmeticsOpen && (
         <div
-          className="absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-20 flex flex-col items-center gap-3 px-4 animate-fade-up sm:bottom-[calc(1rem+var(--consent-banner-height,0px))]"
+          className="absolute inset-x-0 bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] z-20 flex flex-col items-center gap-3 px-4 animate-fade-up sm:bottom-[calc(2.25rem+var(--consent-banner-height,0px))]"
           data-home-cosmetics-dock
         >
           <CosmeticsMenu
@@ -871,7 +873,7 @@ export default function Home() {
       {/* Context and four equal player destinations. The dock stays clear of
           phone safe areas and the measured desktop consent surface. */}
       <div
-        className={`absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-10 flex flex-col items-center gap-3 px-4 sm:bottom-[calc(1rem+var(--consent-banner-height,0px))] ${HOME_CHROME_TRANSITION} ${
+        className={`absolute inset-x-0 bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] z-10 flex flex-col items-center gap-3 px-4 sm:bottom-[calc(2.25rem+var(--consent-banner-height,0px))] ${HOME_CHROME_TRANSITION} ${
           cosmeticsOpen ? HOME_CHROME_BACK : ''
         }`}
         data-home-command-dock
@@ -899,6 +901,20 @@ export default function Home() {
             cannot stand in front of it (§7.5's "never blocking Launch", Rule
             10). Same authentication gate as the Signal below — a first run is
             never made to compete with a meta surface. */}
+        {/* THE DAILY TAKE, AS A TOKEN (ruling D2). Built on the Results
+            restructure branch and mounted here — its own header carries the
+            reasoning, and the two ship in one train because the Results tray it
+            replaces is cut there.
+
+            DELIBERATELY NOT BEHIND THE FIRST-RUN GATE that the Signal and the
+            World Report below it both take. Those are meta surfaces and a first
+            run is never made to compete with one; this is money the player is
+            already owed, and owed money is never hidden. It renders `null` when
+            there is nothing to collect, so on every other day the dock is
+            exactly the dock that shipped and nothing holds space beside the
+            Signal. */}
+        {isAuthenticated && !needsStarter && <DailyTakeFloat token={token} />}
+
         {isAuthenticated && !needsStarter && <HomeAnomalyFlash token={token} />}
 
         {isAuthenticated &&
@@ -927,7 +943,14 @@ export default function Home() {
               <button
                 key={mission.id}
                 onClick={mission.onSelect}
-                className="animate-fade-up flex items-center gap-2 label-arcade text-ink hover:text-venom-orange-dark transition-colors"
+                /* The mission line is the one piece of type on Home that sits
+                   directly on the ROOM rather than on a chip, so it is the one
+                   the dark ruling actually moves: ink on a night ground is
+                   ink on ink. It takes the bone white the rest of the product
+                   uses over the void, and its hover goes to the amber's LIT
+                   end for the same reason — `venom-orange-dark` was picked to
+                   survive cream and disappears here. */
+                className="animate-fade-up flex items-center gap-2 label-arcade text-bone-white hover:text-venom-orange transition-colors"
               >
                 {mission.beacon && (
                   <span
@@ -940,7 +963,7 @@ export default function Home() {
             ) : (
               <p
                 key={mission.id}
-                className="animate-fade-up label-arcade text-ink/70"
+                className="animate-fade-up label-arcade text-bone-white/70"
               >
                 {mission.text}
               </p>
@@ -973,6 +996,7 @@ export default function Home() {
             playPhase={launchState.phase}
             playErrorId={launchState.error ? 'launch-error' : undefined}
             onReactionChange={setChamberReaction}
+            dynasty={dynasty}
           />
         </div>
       </div>

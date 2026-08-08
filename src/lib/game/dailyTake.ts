@@ -25,6 +25,13 @@
 export const TAKE_COLLECT_ENDPOINT = '/api/daily-take/collect';
 
 /**
+ * The read route (ruling D2). Strictly read-only — it reports the slot and can
+ * never grant it. The Take moved off Results and onto a floating Home element,
+ * and a surface with no settlement payload behind it needs somewhere to ask.
+ */
+export const TAKE_READ_ENDPOINT = '/api/daily-take';
+
+/**
  * The settlement's optional `dailyTake` block, normalised.
  *
  * `firstRunOfDay` is authoritative: the slot renders only when the server says
@@ -55,7 +62,18 @@ function finiteNumber(value: unknown, fallback: number): number {
  */
 export function parseDailyTake(payload: unknown): DailyTakeSlot | null {
   if (!payload || typeof payload !== 'object') return null;
-  const raw = (payload as { dailyTake?: unknown }).dailyTake;
+  return normalizeTakeSlot((payload as { dailyTake?: unknown }).dailyTake);
+}
+
+/**
+ * The same normalisation, applied to a slot that arrived on its own.
+ *
+ * `GET /api/daily-take` answers with the slot itself rather than wrapping it in
+ * a settlement, because the surface that reads it (the Home float, ruling D2)
+ * has no run to settle. The rules are identical: no explicit
+ * `firstRunOfDay: true`, no slot.
+ */
+function normalizeTakeSlot(raw: unknown): DailyTakeSlot | null {
   if (!raw || typeof raw !== 'object') return null;
   const take = raw as Record<string, unknown>;
   if (take.firstRunOfDay !== true) return null;
@@ -68,6 +86,35 @@ export function parseDailyTake(payload: unknown): DailyTakeSlot | null {
     multiplier: Math.max(1, finiteNumber(take.multiplier, 1)),
     collected: take.collected === true,
   };
+}
+
+/**
+ * Read today's Take without collecting it.
+ *
+ * Returns `null` for every shape that is not an offerable Take — flag off,
+ * already collected, unauthenticated, unreachable, or a server that does not
+ * carry the route. The caller renders nothing in all of those cases, which is
+ * the same safe direction the run path takes: an unoffered Take is never a
+ * lost one (§7.2, Rule 5).
+ */
+export async function fetchDailyTake(
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<DailyTakeSlot | null> {
+  let response: Response;
+  try {
+    response = await fetchImpl(TAKE_READ_ENDPOINT, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch {
+    return null;
+  }
+  if (!response.ok) return null;
+  try {
+    return normalizeTakeSlot(await response.json());
+  } catch {
+    return null;
+  }
 }
 
 export type TakeCollectOutcome =

@@ -81,6 +81,7 @@ import { useCollectionStore } from '@/lib/stores/collectionStore';
 import type { DynastyId } from '@/shared/types/game';
 import { GAME_CONFIG } from '@/shared/config/game';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { useSnakeCosmetics } from '@/hooks/useSnakeCosmetics';
 import { AccountUpgradeModal } from '@/components/auth/UpgradePrompt';
 import { PlayerCard } from '@/components/identity/PlayerCard';
 import { HandleClaimModal } from '@/components/identity/HandleClaimModal';
@@ -1391,6 +1392,30 @@ export default function GamePage() {
   const revive = useGameStore((state) => state.revive);
   const aimSystem = useGameStore((state) => state.aimSystem);
   const gameMode = useGameStore((state) => state.gameMode);
+
+  /**
+   * THE SETUP PREVIEW WARDROBE — for the favourite-dock PORTRAITS ONLY.
+   *
+   * `runCosmetics` above is written once, by `applyStartedRun`, from the
+   * server's start manifest, and that ruling stands untouched: what a RUN is
+   * played in comes from the manifest and never from the collection, so a
+   * refresh landing mid-run cannot undress the snake and a recovered run
+   * replays the look it actually had.
+   *
+   * Setup happens BEFORE any manifest exists. The dock portraits still have to
+   * show the player their own snake, so they read the server's current answer
+   * (`GET /api/player/cosmetics`, the same row `read_snake_loadout` gives the
+   * manifest) as an explicit PREVIEW. It is passed to `RunSetupPanel` and
+   * nowhere else — it must never reach `setRunCosmetics`, the start payload,
+   * or the board. Signed out, it is the empty loadout and the portraits render
+   * bare, which is the honest picture.
+   *
+   * The token is withheld while a run is on: the wardrobe is a setup-surface
+   * fact and there is no reason to spend a request on it mid-board.
+   */
+  const { displayLoadout: setupPreviewLoadout } = useSnakeCosmetics(
+    isPlaying ? undefined : session?.access_token
+  );
 
   // Actions are created once when the store is created and are never
   // replaced, so they are READ rather than subscribed to: selecting them
@@ -7630,6 +7655,9 @@ export default function GamePage() {
                   startError={startError}
                   energySelector={energySelectorNode}
                   heirloom={heirloomNode}
+                  /* PORTRAITS ONLY. This is the pre-run preview described at
+                     `setupPreviewLoadout`; it never feeds `runCosmetics`. */
+                  loadout={setupPreviewLoadout}
                 />
               )
             ) : (
