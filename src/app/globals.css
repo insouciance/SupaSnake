@@ -111,16 +111,36 @@
   /* ---------------------------------------------------------------------
      THE FILL LADDERS — device 1, and the reason the line could go.
 
-     Two grounds are legal (T-6): the home/chamber PAPER room and the
-     game's dark DECK. They are not two styles. Each ladder steps the same
-     way — the surface a player acts on steps UP from its ground, a recess
-     cut into that surface steps DOWN — so one recipe describes every panel
-     in the product and only the family changes with the room.
+     ONE GROUND. (Owner ruling, 2026-08-08 — this reverses T-6.)
 
-     PAPER is warm and never neutral: `SpecimenChamber.tsx` already rules
-     that "a shadow on warm paper is warm, not neutral". DECK is cool and
-     low-chroma so that the board's neon stays the only saturated light on
-     the screen.
+       "home should be dark like the other pages."
+
+     T-6 legalised two grounds, the home/chamber PAPER room and the game's
+     dark DECK, and the pattern library's rule 8 turned that into a law of
+     MEANING: "material by moment — paper between runs, deck during". That
+     rule is hereby AMENDED by the owner. The product is DARK THROUGHOUT.
+     What distinguishes one moment from another is now COMPOSITION and
+     WARMTH — where the lamp is, how much of the frame the subject owns,
+     how warm the key on it is — never the value of the ground.
+
+     This is a reversal of a twice-ruled position and it is recorded as one.
+     The argument that carried before was that a bright chamber could not
+     lose its creature against its own room. That argument was never wrong;
+     it was answered the other way. A dark room does not lose a lit subject
+     — it isolates one. The chamber keeps its lamp; the lamp now falls on a
+     night ground instead of on paper, which is what a stage is.
+
+     Each ladder still steps the same way — the surface a player acts on
+     steps UP from its ground, a recess cut into that surface steps DOWN —
+     so one recipe describes every panel in the product.
+
+     PAPER SURVIVES AS AN OBJECT, NOT AS A ROOM. A chip, a card, a tray may
+     still be printed stock: a near-white object on a night ground is the
+     strongest value step available and it is exactly how a 90s console
+     draws a button. What paper may no longer be is the ROOM behind it.
+
+     DECK is cool and low-chroma so that the board's neon stays the only
+     saturated light on the screen.
      --------------------------------------------------------------------- */
   --fill-paper-0: #fffaf1; /* the room: the chamber sweep */
   --fill-paper-1: #fff3df; /* a card lying ON the room */
@@ -136,6 +156,40 @@
   --fill-deck-0: #0d1a26; /* a recess cut INTO an instrument */
   --fill-deck-1: #22384f; /* the instrument plate: steps up off the sky */
   --fill-deck-2: #2d4763; /* a raised / live region on that plate */
+
+  /* ---------------------------------------------------------------------
+     THE NIGHT ROOM — the chamber's own member of the deck family.
+
+     The deck ladder above describes INSTRUMENTS: plates a player acts on,
+     sitting on the board's sky. The chamber is not an instrument, it is a
+     ROOM with a lamp in it, so it needs its own three steps — and they are
+     the same hue family taken darker, because a stage is the deck with the
+     house lights down.
+
+     The ladder is read RADIALLY rather than by elevation: `lamp` is the
+     pool right behind the subject's head, `0` is the room, `edge` is where
+     the room turns away at the corners, and `shadow` is the one value
+     darker than the creature's own ink — which is what makes a contact
+     shadow read as the floor in shade rather than as a hole in it.
+
+     The numbers are set from the contour, not from taste. The creature's
+     ink hull is #0b1118 (luma 16 by Rec.601). `--fill-room-lamp` sits at
+     luma 83 and `--fill-room-0` at 44, so the bold black outline the whole
+     style rests on has a 28-to-51-point step to read against exactly where
+     the character is. `--fill-room-edge` (26) closes toward ink at the
+     corners on purpose: that is the frame going dark, and nothing the
+     player must read lives there. `--fill-room-shadow` (11) is BELOW ink,
+     so the shadow is the darkest value in the composition — never the
+     lightest, which is the global law.
+
+     Saturated, never grey: a shadow is a darker, MORE saturated member of
+     the hue. Compare `--fill-paper-shadow`, which is warm for the same
+     reason on the ground this one replaces.
+     --------------------------------------------------------------------- */
+  --fill-room-lamp: #345a82; /* the pool behind the specimen's head */
+  --fill-room-0: #1a3049; /* the room */
+  --fill-room-edge: #0e1c2c; /* where the room turns away */
+  --fill-room-shadow: #050c14; /* the shade the specimen stands in */
 
   --ink-w-1: 1.5px;
   --ink-w-2: 2.5px;
@@ -227,8 +281,23 @@
      The three values step, and they step SLOWLY: a drawn frame's corner is a
      decision the hand made once, and a 90s cartoon panel turns its corner
      confidently rather than easing around it. A round object whose ROUNDNESS
-     is its shape - the portal dial, an avatar, the Home rail's chips - is not
-     a radius decision at all and stays a circle.
+     is its shape - the portal dial, an avatar - is not a radius decision at
+     all and stays a circle.
+
+     THE HOME RAIL'S CHIPS ARE NOT SUCH AN OBJECT. (Owner ruling, 2026-08-08.)
+
+       "i don't like the round buttons, make em more 90s SNES style."
+
+     The sentence this replaces named "the Home rail's chips" as a shape whose
+     roundness was intrinsic. It was not intrinsic; it was inherited. A pill is
+     the house style of a web application, and the one era this product is
+     drawing from did not have it: a cartridge-era face button is a BLOCK with
+     a hard contour and a hard displaced shadow under it, and it is confident
+     precisely because it refuses to soften its corners. So `.ink-chip` takes
+     the chip radius like every other chip, and the roundness that used to be
+     written at each call site as `rounded-full` is deleted there rather than
+     overridden here — a class that has to fight a utility is a class that has
+     lost.
      --------------------------------------------------------------------- */
   --radius-chip: 4px;
   --radius-card: 8px;
@@ -257,22 +326,84 @@
 
 /* A chip is a card you can press: same outline and block, plus the press.
    The block shrinks under the finger rather than the chip moving away from
-   it, which is how a physical button reads. */
+   it, which is how a physical button reads.
+
+   THE CHIP IS A CARTRIDGE-ERA BLOCK (owner ruling — see the radius roles).
+
+   Three things changed together, because they are one object:
+
+     RADIUS   `--radius-chip`, 4px, the same corner every other chip turns.
+              The `rounded-full` that used to be written at every call site
+              is deleted THERE, so nothing has to be overridden here.
+
+     PRESS    the block collapses AND the chip travels the same distance
+              down-right into the space it vacates, so the chip's own edge
+              lands exactly where the block's edge was. That is `.btn-arcade`'s
+              physics (see THE PRESS IS THE BLOCK, NOT THE BUTTON below), and
+              a chip and a button had no business pressing differently. The
+              old rule shrank the block without moving the chip, which reads
+              as a shadow animating rather than as a thing being pushed.
+
+     DROP     `--ink-drop-void-*`. Home is a night room now, and T-1 already
+              rules the drop by its GROUND: an ink block on a dark ground
+              displaces nothing the eye can find, because ink is at or above
+              the ground's own value. Every consumer of this class is on Home,
+              so the whole family moves at once and nothing else is disturbed.
+
+   The fill stays near-white on purpose. A printed object on a night ground is
+   the strongest value step available and it is exactly how the era drew a face
+   button — bright key on a dark console. Paper stopped being a ROOM; it did
+   not stop being a MATERIAL. */
 .ink-chip {
   border: var(--ink-border-2);
+  border-radius: var(--radius-chip);
   background: #fffdf8;
-  box-shadow: var(--ink-drop-2);
+  box-shadow: var(--ink-drop-void-2);
   transition:
     box-shadow 130ms ease,
     transform 130ms ease,
     background-color 130ms ease;
 }
-.ink-chip:hover { box-shadow: var(--ink-drop-3); }
-.ink-chip:active { box-shadow: 1px 1px 0 var(--ink-stroke); }
+/* THE PRESS BELONGS TO THINGS THAT CAN BE PRESSED.
+   Scoped to `a` and `button` because one consumer of this class is not a
+   control at all — Home's wallet readout is a `<div>` wearing the chip so it
+   matches the row it sits in. Under the old rule it changed its shadow on
+   hover, which was already a small lie; under the press it would physically
+   move, which is a promise of an action that does not exist. The element
+   picks the state up from what it IS, so no call site has to opt out. */
+a.ink-chip:hover,
+button.ink-chip:hover {
+  box-shadow: var(--ink-drop-void-3);
+  transform: translate(-1px, -1px);
+}
+a.ink-chip:active,
+button.ink-chip:active {
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0.72);
+  transform: translate(3px, 3px);
+}
+/* A chip that cannot be pressed does not move under the finger. The call
+   sites used to carry `disabled:hover:translate-y-0` for this; with the press
+   in CSS the guard belongs in CSS too, once, rather than in every string that
+   ever writes `.ink-chip`. The block shrinks to the smallest step instead of
+   vanishing, so a waiting control still reads as an object. */
+button.ink-chip:disabled,
+button.ink-chip[aria-disabled='true'],
+a.ink-chip[aria-disabled='true'] {
+  box-shadow: var(--ink-drop-void-1);
+  transform: none;
+}
 /* The primary action wears the amber - the one warm chip in the row, and the
    product's single semantic warm. Its glyph goes ink, because an orange glyph
-   on an orange chip is the underread this whole block exists to fix. */
-.ink-chip-primary { background: var(--venom-orange); }
+   on an orange chip is the underread this whole block exists to fix.
+
+   It also takes the TRAY weight rather than the button weight. The tiers are
+   chosen by role and this one's role is "the loudest object on the page"; on a
+   block silhouette the contour is most of what carries that, where on a circle
+   the fill was doing it alone. */
+.ink-chip-primary {
+  background: var(--venom-orange);
+  border-width: var(--ink-w-3);
+}
 .ink-chip-primary:hover { background: var(--venom-orange-light); }
 
 /* Selected state for a chip that is a CHOICE rather than an action - the
@@ -281,7 +412,7 @@
 .ink-chip-selected {
   background: var(--ink);
   color: var(--bone-white);
-  box-shadow: var(--ink-drop-3);
+  box-shadow: var(--ink-drop-void-3);
 }
 
 @media (prefers-reduced-motion: reduce) {

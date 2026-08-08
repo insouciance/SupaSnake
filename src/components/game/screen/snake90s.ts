@@ -955,6 +955,49 @@ const BEGIN_VERTEX_HOOK = '#include <begin_vertex>';
 
 const FACE_VARYING = 'varying vec3 vSnakeWorldNormal;';
 /**
+ * OBJECT normal, and the whole reason it exists is that `edgeness` is a
+ * question about GEOMETRY while every other branch is a question about LIGHT.
+ *
+ * THE BUG THIS CLOSES — reported as "the cosmetics in the chamber sometimes
+ * lose their surface, braids don't appear black for a moment but bright".
+ *
+ * `edgeness = 1 - max(|nx|,|ny|,|nz|)` reads 0 on a flat face and 0.29 on a
+ * 45-degree chamfer, and the `rim` cut of 0.005 is set four orders of
+ * magnitude clear of interpolator noise on the strength of that. Both claims
+ * are true of a normal expressed in OBJECT space and neither survives the
+ * world-space read this branch used to take: rotating a cube by θ raises every
+ * one of its flat faces to `1 - cos θ`, so a face is misclassified as a
+ * chamfer the moment the object turns more than 5.73 degrees off axis.
+ *
+ * It never showed on the board because the board is axis-aligned — a segment
+ * yaws to its heading, headings are grid directions, and `max(|x|,|y|,|z|)` is
+ * invariant under permuting and negating axes, so a 90-degree turn changes
+ * nothing. The Specimen Chamber is the one place in the product that puts a
+ * head at a FRACTIONAL yaw: HEAD_YAW is -1.64 degrees and the idle sway swings
+ * it ±0.08 rad, which carries the flat faces across 0.1 rad — the exact cut —
+ * for 17.6% of the cycle, beating against an independent ±0.04 pitch so it
+ * reads as intermittent rather than as a pulse.
+ *
+ * When it crosses, every flat face of the head AND of every cosmetic parented
+ * to it takes `rim` instead of `side`. On the head that is a modest lift on an
+ * already-bright fill. On a braid block, whose stock is near-black and whose
+ * rim is a full gold ADD of [0.69, 0.43, 0.17], the add IS the entire visible
+ * colour — near-black becomes bone-tan, which is precisely "loses its surface
+ * and goes bright".
+ *
+ * THE FIX IS PROVABLY A NO-OP WHERE THE OLD CODE WAS RIGHT. On any
+ * axis-aligned object the object and world normals differ only by a permutation
+ * and a sign, and the classifier is invariant under both — so the board renders
+ * bit-identically and only the fractional-yaw portrait changes. It also, for
+ * free, stops non-uniform scale skewing the classification through the
+ * inverse-transpose, which the cornrow blocks were quietly subject to.
+ *
+ * `objectNormal` rather than the raw `normal` attribute: it is the post-morph,
+ * post-skin normal three has already assembled at this hook, so the classifier
+ * follows the geometry that is actually drawn.
+ */
+const OBJECT_NORMAL_VARYING = 'varying vec3 vSnakeObjectNormal;';
+/**
  * Object-space height on a unit segment, -0.5 .. 0.5.
  *
  * Paid for by the deleted cuff and inherited by the top-lit fall, which is why
@@ -979,6 +1022,11 @@ const HEIGHT_VARYING = 'varying float vSnakeSegmentY;';
  * The world normal, not the object normal, is what makes the key direction a
  * constant: the head yaws to face its heading, and an object-space key would
  * spin the character's lighting every time the player turns.
+ *
+ * That argument governs the four LIGHTING bands and only those. It never
+ * governed `edgeness`, which asks whether a fragment sits on a chamfer — see
+ * `OBJECT_NORMAL_VARYING`. Both normals are carried because the shader is
+ * answering two different questions and they have two different frames.
  */
 const FACE_VERTEX_BODY = [
   NORMAL_HOOK,
@@ -987,6 +1035,7 @@ const FACE_VERTEX_BODY = [
   '  dot( viewMatrix[ 1 ].xyz, transformedNormal ),',
   '  dot( viewMatrix[ 2 ].xyz, transformedNormal )',
   ');',
+  'vSnakeObjectNormal = objectNormal;',
 ].join('\n');
 
 const FACE_FRAGMENT_UNIFORMS = [
@@ -1015,7 +1064,10 @@ function faceFragmentBody(hasFall: boolean): string {
     LIGHTS_END_HOOK,
     '{',
     '  vec3 sn = normalize( vSnakeWorldNormal );',
-    '  vec3 an = abs( sn );',
+    // GEOMETRY, not light: which facet of the drawn box this fragment is on.
+    // Object space, because a chamfer is a chamfer however the object is
+    // turned. See OBJECT_NORMAL_VARYING for the defect this closes.
+    '  vec3 an = abs( normalize( vSnakeObjectNormal ) );',
     '  float edgeness = 1.0 - max( an.x, max( an.y, an.z ) );',
     '  vec3 toneMul;',
     '  vec3 toneAdd;',
@@ -1109,10 +1161,14 @@ export function applyFaceKeyedShading(
     };
 
     shader.vertexShader = shader.vertexShader
-      .replace('void main() {', `${FACE_VARYING}\nvoid main() {`)
+      .replace(
+        'void main() {',
+        `${FACE_VARYING}\n${OBJECT_NORMAL_VARYING}\nvoid main() {`
+      )
       .replace(NORMAL_HOOK, FACE_VERTEX_BODY);
 
-    let fragmentPreamble = `${FACE_VARYING}\n${FACE_FRAGMENT_UNIFORMS}\n`;
+    let fragmentPreamble =
+      `${FACE_VARYING}\n${OBJECT_NORMAL_VARYING}\n${FACE_FRAGMENT_UNIFORMS}\n`;
 
     if (hasFall) {
       shader.uniforms.uSnakeFall = { value: tones.fall };

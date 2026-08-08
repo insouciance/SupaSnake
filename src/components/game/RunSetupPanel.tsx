@@ -7,6 +7,10 @@ import type { StrainId } from '@/shared/game/strains';
 import { IconPlay, IconSnake } from '@/components/ui/icons';
 import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
 import { HOME_WORDMARK } from '@/components/home/HomeIdentityHud';
+import { useDynastySnakePortraits } from '@/components/game/DynastySnakePortrait';
+import { getDynastyScreenTokens } from '@/components/game/screen/gameScreenTokens';
+import type { CosmeticLoadout } from '@/components/home/SnakeCosmetics';
+import { EMPTY_SNAKE_LOADOUT } from '@/lib/cosmetics/snakeCosmetics';
 import {
   SETUP_DYNASTIES,
   type SetupDynasty,
@@ -52,6 +56,19 @@ export interface RunSetupPanelProps {
     favorite: RunSetupSnake | null
   ) => void;
   favoriteBusyId?: string | null;
+  /**
+   * What the player's snake is WEARING, for the dock portraits only.
+   *
+   * This is the server's answer from `GET /api/player/cosmetics`, read on the
+   * setup side as a pre-run PREVIEW. It must never reach `runCosmetics` or the
+   * run itself: the look a run is played in comes from the session-start
+   * manifest and nowhere else, so that a collection refresh landing mid-run
+   * cannot undress the snake and a recovered run replays the look it actually
+   * had (see the ruling at `src/app/game/page.tsx`'s `applyStartedRun`).
+   * Setup is before the manifest exists, which is exactly why a preview is the
+   * honest thing to show here and the only thing this prop may feed.
+   */
+  loadout?: CosmeticLoadout;
   /** Safe Lab doorway carrying only this unsent setup draft. */
   labHref?: string;
 }
@@ -74,6 +91,26 @@ const DYNASTY_FILL: Record<SetupDynasty, string> = {
   COSMIC: '#4b2f80',
 };
 
+/**
+ * ONE STEP UP THE SAME HUE — the raised card (owner item 7, 2026-08-08).
+ *
+ * The fill ladder is how this product says "nearer": paper has four steps, the
+ * deck has its own, and a surface rises by taking the next one, never by
+ * gaining a glow or a keyline. The dynasty fills had exactly one step, so a
+ * selected card had nowhere to rise TO — which is why selection used to be
+ * expressed by swapping the hue out for ink entirely.
+ *
+ * These are the second rung of the same three hues: the identical colour,
+ * lifted about a third in value. So a selected card is still unmistakably its
+ * house — the accent stays spent as FILL — and the thing that changed is
+ * ELEVATION, which is what "selected" means here.
+ */
+const DYNASTY_FILL_RAISED: Record<SetupDynasty, string> = {
+  CYBER: '#157f9c',
+  PRIMAL: '#3f902f',
+  COSMIC: '#653fad',
+};
+
 function setupDynasty(value: string): SetupDynasty {
   const normalized = value.toUpperCase();
   return SETUP_DYNASTIES.find((dynasty) => dynasty === normalized) ?? 'PRIMAL';
@@ -89,50 +126,178 @@ function setupDynasty(value: string): SetupDynasty {
  * snake" button ABOVE the favorites, so the same decision was offered twice in
  * two different shapes — the favorites are the survivor.
  *
- * Selected is INK FILL, paper glyph. The dynasty hue says which house; the ink
- * says which one you are flying. That separation matters because a player who
- * reads "selected" off a hue has to know three hues first.
+ * ── TWO CONTROLS, TWO SIZES (owner item 7, 2026-08-08) ───────────────────
+ *
+ * The card used to carry two meanings on one target: tapping a house you were
+ * NOT flying equipped it, and tapping the house you WERE flying opened the
+ * picker. Same gesture, same pixels, two outcomes — a hidden second meaning,
+ * and the kind a player only discovers by being surprised by it. So the two
+ * are now two controls, sized by how often they are used:
+ *
+ *   THE CARD  — select this dynasty to play. The primary action, and it gets
+ *               the whole card. Tapping the card you are already flying
+ *               re-affirms it: the press physics fire and nothing else
+ *               happens, because "no change" is the honest answer.
+ *   CHANGE    — swap which snake this house carries. A small block chip, one
+ *               tap, never hidden behind a hover or a long press. Rare for a
+ *               player who has found their snake, frequent for one chasing
+ *               heirlooms, so it is small AND always visible rather than
+ *               either large or tucked away.
+ *
+ * They are SIBLINGS, not nested. A button inside a button is invalid HTML and
+ * a screen reader will not expose the inner one at all, so the card cannot
+ * wrap the chip however convenient that would be for layout.
+ *
+ * ── HOW "SELECTED" IS SAID ───────────────────────────────────────────────
+ *
+ * Three signals at once, all of them in the pattern language, none of them a
+ * glow or a pale line:
+ *
+ *   CONTOUR    the card steps from the button weight to the tray weight
+ *              (--ink-w-2 -> --ink-w-3). Only one card can carry it.
+ *   BLOCK      a bigger displaced block (--ink-drop-2 -> -3): further off the
+ *              tray, which is what elevation is here.
+ *   FILL       one rung up the same hue's ladder. The house is still the
+ *              house; it is nearer.
+ *
+ * HOVER DELIBERATELY MOVES NONE OF THEM. If hover grew the block it would
+ * make an unselected card wear the selected card's signal for as long as a
+ * pointer rested on it, which is exactly the ambiguity this is built to
+ * refuse. Hover is a one-pixel lift and nothing more.
  */
 function FavoriteDock({
   dynasty,
   favorite,
   selected,
   busy,
+  portrait,
   onSelect,
+  onChange,
 }: {
   dynasty: SetupDynasty;
   favorite: RunSetupSnake | null;
   selected: boolean;
   busy: boolean;
+  /** A PNG data URL of this dynasty's actual head, when one has been taken. */
+  portrait?: string;
+  /** Fly this dynasty. A no-op on the card already flying. */
   onSelect?: () => void;
+  /** Open the picker for this dynasty's slot. */
+  onChange?: () => void;
 }) {
   return (
+    <div className="relative flex min-w-0 flex-col">
     <button
       type="button"
       onClick={onSelect}
       disabled={!onSelect || busy}
-      aria-pressed={favorite ? selected : undefined}
+      aria-pressed={selected}
       aria-label={
         selected
-          ? `Flying ${favorite?.name ?? dynasty}. Choose a different ${dynasty} snake`
+          ? `Flying ${favorite?.name ?? dynasty}`
           : favorite
-            ? `Switch to your ${dynasty} favorite, ${favorite.name}, generation ${favorite.generation}`
+            ? `Fly ${dynasty} with ${favorite.name}, generation ${favorite.generation}`
             : `Choose a ${dynasty} favorite`
       }
       data-testid={`run-setup-favorite-${dynasty.toLowerCase()}`}
-      className={`relative flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-card)] sm:min-h-[92px] sm:gap-1 border-[length:var(--ink-w-3)] border-ink px-1.5 py-2 text-center transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 disabled:cursor-wait ${
+      /* `flex-1` is load-bearing, not tidying: the grid stretches all three
+         wrappers to the tallest card, and a flex-column child does NOT grow on
+         the main axis by default — so a card with one line of text sat short
+         inside a full-height wrapper and its CHANGE chip, anchored to the
+         wrapper's bottom, hung off the card entirely. */
+      className={`relative flex min-h-[92px] w-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-card)] border-ink px-1.5 pb-[26px] pt-1.5 text-center text-bone-white transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none disabled:cursor-wait sm:min-h-[116px] sm:gap-1 sm:pb-[30px] sm:pt-2 ${
         selected
-          ? 'bg-ink text-bone-white shadow-[var(--ink-drop-3)]'
-          : 'text-bone-white shadow-[var(--ink-drop-2)]'
+          ? 'border-[length:var(--ink-w-3)] shadow-[var(--ink-drop-3)]'
+          : 'border-[length:var(--ink-w-2)] shadow-[var(--ink-drop-2)] hover:-translate-y-px'
       }`}
-      style={selected ? undefined : { backgroundColor: DYNASTY_FILL[dynasty] }}
+      style={{
+        backgroundColor: selected
+          ? DYNASTY_FILL_RAISED[dynasty]
+          : DYNASTY_FILL[dynasty],
+      }}
     >
+      {/*
+       * THE TILE CARRIES THE CREATURE (owner ruling, 2026-08-08).
+       *
+       * "should display the actual snake ... just the face almost from the
+       *  front ... almost like a passport picture but at a small angle."
+       *
+       * So this is a photograph of the REAL head — the same GLB, the same
+       * per-dynasty material, the same cosmetics the board and the chamber
+       * draw — taken once on a hidden canvas and cached. The dynasty
+       * difference is the snake's own colour, which is the owner's clause
+       * verbatim; nothing here paints a swatch.
+       *
+       * The glyph is not a placeholder that failed. It is what the tile has
+       * always shown, and it is what the tile shows again whenever a portrait
+       * is not in hand — no WebGL, a missing model, a readback the browser
+       * refuses, or simply the two frames before the picture exists. The
+       * button is already fully labelled, so nothing is lost with it: a
+       * player never sees an empty frame, and never waits on one.
+       */}
       <span
         aria-hidden="true"
-        className={`inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink p-1 text-ink`}
-        style={{ backgroundColor: selected ? '#fffdf8' : 'rgba(255,253,248,0.85)' }}
+        className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink text-ink ${
+          portrait ? 'h-11 w-11 sm:h-14 sm:w-14' : 'h-7 w-7 p-1'
+        }`}
+        style={
+          portrait
+            ? {
+                // The room the head stands in, as a token: the portrait is a
+                // transparent PNG, so the ground is CSS and follows the page
+                // rather than being baked into three captured images.
+                backgroundColor: 'var(--fill-room-0)',
+                /*
+                 * THE HOUSE IS IN THE LAMP, NOT IN THE CREATURE.
+                 *
+                 * The owner's item 6 asked for "the snake color for the
+                 * dynasties", and the shipped character law refuses it by
+                 * name: `snake90s.ts` resolves EVERY dynasty's head through
+                 * `forcedHeadBaseColor` (the ninetiesGuide profile), because
+                 * "a snake that changes hue with its dynasty is a snake whose
+                 * local colour is contaminated by its surroundings". So the
+                 * three heads really are one amber creature — on the board
+                 * too — and a portrait that tinted them would be the tile
+                 * lying about the snake that is about to launch.
+                 *
+                 * The chamber already solved this: it spends the house colour
+                 * on a RIM LIGHT, not on the fill. A rim would do nothing here
+                 * — the face-keyed shader zeroes every light term — so the
+                 * same idea is spent one step further out, as the pool the
+                 * head is standing in. Same creature, three differently lit
+                 * rooms. It costs no render, survives both flag legs, and is
+                 * the chamber's own `keyColor` rather than a new swatch.
+                 */
+                /*
+                 * Aimed at the RING, not at the middle. The head covers about
+                 * seventy per cent of this square, so a pool that is brightest
+                 * at the centre is a pool nobody ever sees — the colour has to
+                 * peak where the silhouette ends. It reads as a lamp behind
+                 * the creature, and it falls back to the room at the corners
+                 * so the tile still has a dark frame.
+                 */
+                backgroundImage: `radial-gradient(circle at 50% 40%, transparent 44%, ${getDynastyScreenTokens(dynasty).primary}b3 74%, ${getDynastyScreenTokens(dynasty).primary}40 96%, transparent 100%)`,
+              }
+            : {
+                backgroundColor: selected ? '#fffdf8' : 'rgba(255,253,248,0.85)',
+              }
+        }
       >
-        <StrainGlyph id={DYNASTY_STRAIN[dynasty]} />
+        {portrait ? (
+          /* eslint-disable-next-line @next/next/no-img-element -- a data URL
+             the client just produced; there is nothing for the image loader
+             to optimise and a remote round trip would be a regression. */
+          <img
+            src={portrait}
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+            data-testid={`run-setup-portrait-${dynasty.toLowerCase()}`}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <StrainGlyph id={DYNASTY_STRAIN[dynasty]} />
+        )}
       </span>
       <span className="label-arcade block truncate text-[9px] text-bone-white/80">
         {dynasty}
@@ -152,6 +317,35 @@ function FavoriteDock({
         </span>
       )}
     </button>
+
+      {/*
+       * CHANGE — the secondary control, and a SIBLING of the card rather than
+       * a child of it (a nested button is invalid HTML and invisible to a
+       * screen reader). The positioning wrapper exists so the chip can be
+       * centred without a `translate`: `.ink-chip` sets `transform` on hover
+       * and on press, and a centring translate written on the same element
+       * would be thrown away the moment a finger touched it.
+       *
+       * THE INK STAYS SMALL AND THE TARGET GETS BIG. The visible block is
+       * about twenty pixels tall, which is the share of the tray the owner
+       * asked for; the `after` pseudo-element is a transparent 44x44 square
+       * anchored to the chip's own bottom edge, so the touch target meets the
+       * floor by growing UPWARD into the card rather than by inflating the
+       * drawn object or spilling onto the line below.
+       */}
+      <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex justify-center">
+        <button
+          type="button"
+          onClick={onChange}
+          disabled={!onChange || busy}
+          aria-label={`Change the ${dynasty} snake`}
+          data-testid={`run-setup-favorite-change-${dynasty.toLowerCase()}`}
+          className="ink-chip pointer-events-auto relative inline-flex max-w-full items-center justify-center px-1.5 py-[3px] font-display text-[9px] uppercase leading-none tracking-[0.08em] text-ink after:absolute after:bottom-0 after:left-1/2 after:h-11 after:w-11 after:-translate-x-1/2 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink disabled:cursor-wait"
+        >
+          Change
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -194,9 +388,18 @@ export function RunSetupPanel({
   favorites = {},
   onFavoriteDock,
   favoriteBusyId = null,
+  loadout = EMPTY_SNAKE_LOADOUT,
   labHref = '/lab?returnTo=%2Fgame',
 }: RunSetupPanelProps) {
   const selectedDynasty = snake ? setupDynasty(snake.dynasty) : null;
+  /*
+   * ONE canvas, THREE frames, then nothing — see `DynastySnakePortrait.tsx`
+   * for why three live mini-canvases were ruled out before they were written.
+   * The rig is mounted only while a portrait is still missing, and it lives
+   * with the panel, so pressing PLAY releases its context before the board
+   * asks for one.
+   */
+  const { portraits, captureCanvas } = useDynastySnakePortraits(loadout);
 
   const playButton = (
     <button
@@ -216,6 +419,7 @@ export function RunSetupPanel({
       className="relative mx-auto w-full min-w-0 p-0.5 text-center sm:p-2"
       data-testid="run-setup"
     >
+      {captureCanvas}
       {/* The Mark, small, at the head of the tray. Setup is the one surface
           between the chamber and the board, and a printed panel is exactly
           where a logo belongs — it is what makes the tray read as a made
@@ -287,19 +491,34 @@ export function RunSetupPanel({
                     favorite={shown}
                     selected={flying}
                     busy={favoriteBusyId !== null && favoriteBusyId === shown?.id}
+                    portrait={portraits[dynasty]}
                     /*
-                     * EVERY DOCK IS LIVE, and the flying one does the more
-                     * useful thing. A disabled dock is a dead 92px target on
-                     * the surface whose entire job is choosing a snake, and it
-                     * strands a player who wants a DIFFERENT snake of the house
-                     * they are already flying. So: another house equips that
-                     * house's favorite, and your own house opens the picker
-                     * for it — passing null is exactly "choose one for this
-                     * dynasty", which is the same call an empty dock makes.
+                     * ONE GESTURE, ONE MEANING (owner item 7). The card selects
+                     * the house; nothing else. It stays LIVE on the house you
+                     * are already flying — a dead target on the surface whose
+                     * entire job is choosing a snake is the defect the previous
+                     * pass fixed, and it stays fixed — but what it does there
+                     * is re-affirm rather than quietly become a second control.
+                     * The press physics still fire, and no request is spent
+                     * equipping the snake that is already equipped.
                      */
                     onSelect={
                       onFavoriteDock
-                        ? () => onFavoriteDock(dynasty, flying ? null : favorite)
+                        ? () => {
+                            if (flying) return;
+                            onFavoriteDock(dynasty, favorite);
+                          }
+                        : undefined
+                    }
+                    /*
+                     * And the branch that used to hide inside the card gets its
+                     * own control: null is exactly "choose one for this
+                     * dynasty", which is the same call the picker needs whether
+                     * the slot is empty or full.
+                     */
+                    onChange={
+                      onFavoriteDock
+                        ? () => onFavoriteDock(dynasty, null)
                         : undefined
                     }
                   />
@@ -309,16 +528,23 @@ export function RunSetupPanel({
 
             {/* The selected house states its rule in one line. This is part of
                 the pick — it is what the dynasty IS — and not a fourth
-                element; there is no explainer for the two you did not pick. */}
+                element; there is no explainer for the two you did not pick.
+
+                COMPACT, NOT CUT (owner ruling, 2026-08-08): "ruleset line and
+                heirloom block can remain, but COMPACT." Every word of the rule
+                survives; what shrinks is the leading and the type size, and
+                only on the phone — at `sm` the line goes back to 11px, because
+                the constraint being paid for is VERTICAL room on a 568px-tall
+                viewport and a desktop has none of that pressure. */}
             <p
-              className="mt-1 px-1 font-body text-[11px] leading-snug text-ink/70 sm:mt-1.5"
+              className="mt-0.5 px-0.5 font-body text-[10px] leading-tight text-ink/70 sm:mt-1 sm:text-[11px] sm:leading-snug"
               data-testid="ruleset-explainer"
             >
               {selectedDynasty ? `${selectedDynasty} · ` : ''}
               {rulesetExplainer}
             </p>
 
-            {heirloom ? <div className="mt-1 sm:mt-1.5">{heirloom}</div> : null}
+            {heirloom ? <div className="mt-0.5 sm:mt-1">{heirloom}</div> : null}
 
             <div className="flex items-center justify-center gap-2">
               <button

@@ -54,7 +54,16 @@ export function LandingPitch() {
     <section
       id="what-is-supasnake"
       data-testid="landing-pitch"
-      className="app-bg border-t border-scale-blue-light/40 px-4 py-16 text-bone-white sm:px-8 sm:pr-16"
+      /* THE LINE UNDER THE CHAMBER GOES DARK.
+         This was `border-scale-blue-light/40` — a translucent #2b3b4d hairline
+         that lands LIGHTER than the void it edges, which is the pale-line
+         failure the global law retired ("one line colour remains, and it is
+         always the DARKEST value in the composition — never the lightest").
+         It survived the last sweep because it sat under a bright chamber and
+         read as the edge of the page; with Home dark it is a bright rule
+         across a night ground, so it takes the void stroke. Same job, drawn
+         as a score in the surface rather than as a highlight on it. */
+      className="app-bg border-t-[length:var(--ink-w-2)] border-[color:var(--void-stroke)] px-4 py-16 text-bone-white sm:px-8 sm:pr-16"
     >
       <div className="mx-auto max-w-3xl space-y-12">
         <div className="space-y-4">

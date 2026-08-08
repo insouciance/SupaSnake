@@ -927,7 +927,14 @@ export default function Home() {
               <button
                 key={mission.id}
                 onClick={mission.onSelect}
-                className="animate-fade-up flex items-center gap-2 label-arcade text-ink hover:text-venom-orange-dark transition-colors"
+                /* The mission line is the one piece of type on Home that sits
+                   directly on the ROOM rather than on a chip, so it is the one
+                   the dark ruling actually moves: ink on a night ground is
+                   ink on ink. It takes the bone white the rest of the product
+                   uses over the void, and its hover goes to the amber's LIT
+                   end for the same reason — `venom-orange-dark` was picked to
+                   survive cream and disappears here. */
+                className="animate-fade-up flex items-center gap-2 label-arcade text-bone-white hover:text-venom-orange transition-colors"
               >
                 {mission.beacon && (
                   <span
@@ -940,7 +947,7 @@ export default function Home() {
             ) : (
               <p
                 key={mission.id}
-                className="animate-fade-up label-arcade text-ink/70"
+                className="animate-fade-up label-arcade text-bone-white/70"
               >
                 {mission.text}
               </p>

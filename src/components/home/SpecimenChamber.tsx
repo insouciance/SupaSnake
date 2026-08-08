@@ -69,27 +69,43 @@ const REACTION_GLOW: Record<SpecimenReaction, string> = {
 };
 
 /**
- * THE CHAMBER IS BRIGHT NOW.
+ * THE NIGHT ROOM. (Owner ruling, 2026-08-08: "home should be dark like the
+ * other pages." This reverses the twice-ruled bright chamber.)
  *
- * Pass 2's room was rejected outright ("horrible"), and the owner has said
- * "no black" twice, so darkness is treated here as a hard fail rather than a
- * dial. The reference the owner supplied - `assets/Inspiration/Trap_Snake_1`
- * - is the target: the character on a near-white warm studio sweep with one
- * soft contact shadow, no grid, no void, no atmosphere. Everything below is
- * graded against that sheet.
+ * What these four values replace was a photographer's paper sweep, and the
+ * argument that put it there was sound: on a near-white ground the darkest
+ * value in the backdrop is lighter than the lightest value on the creature,
+ * so the character can never be lost against its own room. The owner has
+ * answered that the other way, and the other way is also sound — a dark room
+ * does not lose a lit subject, it ISOLATES one. That is what a stage is, and
+ * it is what every hero shot on the reference sheet actually stands in.
  *
- * Ink stays. The outline is not "black background", it is the drawing, and a
- * dark line is what makes a bright page read as comic art rather than as a
- * blown-out render.
+ * So the sweep becomes a LAMP ON A NIGHT GROUND. The lighting logic is
+ * unchanged in shape — brightest right behind the head, falling away to the
+ * corners, one contact shadow seating the creature on the floor — and only
+ * the family moved. These four are the `--fill-room-*` ladder in
+ * `globals.css`, duplicated here because a WebGL scene cannot read a CSS
+ * custom property; that file carries the reasoning for the numbers.
+ *
+ * `ChamberPlaceholder.tsx` duplicates them a second time, deliberately, and
+ * `ChamberPlaceholder.test.tsx` pins the three files together so no copy can
+ * drift.
  */
-/** The page. The brightest thing in frame, and the frame itself. */
-const PAPER = '#fffaf1';
-/** The sweep where the paper turns away from the light. */
-const PAPER_EDGE = '#faf1e2';
-/** Warm shadow. Never ink: a shadow on warm paper is warm, not neutral. */
-const PAPER_SHADOW = '#c0a887';
-/** The ink the creature is drawn with. */
-const VOID_COLOR = '#0b1118';
+/** The pool right behind the specimen's head. The brightest thing in frame
+ *  after the creature itself — which is the point: it is a lamp, not a page. */
+const ROOM_LAMP = '#345a82';
+/** The room. */
+const ROOM = '#1a3049';
+/** Where the room turns away from the lamp, at the corners. */
+const ROOM_EDGE = '#0e1c2c';
+/**
+ * The shade the specimen stands in. Darker than the creature's own ink and
+ * MORE saturated than the room, never a neutral grey: the old ground's note
+ * ruled that "a shadow on warm paper is warm", and the same rule on a cool
+ * ground makes the shadow the deepest blue in the composition rather than a
+ * hole cut in it.
+ */
+const ROOM_SHADOW = '#050c14';
 
 /**
  * Specimen body plan: head plus THREE pieces.
@@ -618,6 +634,53 @@ function VoxelSpecimen(props: Omit<SpecimenBodyProps, 'headGeometry' | 'bodyGeom
   );
 }
 
+/**
+ * The framed distance, in ONE place.
+ *
+ * Two things now depend on it — where the camera stands, and where the fog
+ * band starts (see FOG_NEAR_OFFSET) — and a second copy of this expression is
+ * exactly how the two would drift apart the next time the pose or the fov
+ * moves. The pushed-in wardrobe distance deliberately does NOT enter here:
+ * the fog is anchored to the FRAMING, so the 0.55s push toward the specimen
+ * moves the creature through a fixed band instead of dragging the band along
+ * with it, which is what makes the approach read as an approach.
+ */
+function framedCameraDistance(
+  fovDegrees: number,
+  width: number,
+  height: number
+): number {
+  return Math.max(
+    MIN_CAMERA_DISTANCE,
+    specimenCameraDistance(
+      POSE_BOUNDS,
+      width,
+      height,
+      THREE.MathUtils.degToRad(fovDegrees),
+      CAMERA_ELEVATION,
+      CAMERA_AZIMUTH,
+      FIT_MARGIN
+    )
+  );
+}
+
+/**
+ * The fog band, re-derived whenever the framing is.
+ *
+ * A component rather than a literal `<fog>` in the Canvas because the band is
+ * a function of the canvas size now, and `useThree(state => state.size)` is
+ * only readable inside it. `attach="fog"` does the same job it did before:
+ * three replaces `scene.fog` wholesale when the args change.
+ */
+function ChamberFog() {
+  const size = useThree((state) => state.size);
+  const fov = useThree(
+    (state) => (state.camera as THREE.PerspectiveCamera).fov
+  );
+  const near = framedCameraDistance(fov, size.width, size.height) + FOG_NEAR_OFFSET;
+  return <fog attach="fog" args={[FOG_COLOR, near, near + FOG_SPAN]} />;
+}
+
 /** Aspect-aware framing + slow lissajous drift.
  *  The camera distance is computed from the pose's bounding sphere against
  *  BOTH the vertical and horizontal fov, so the whole specimen is always
@@ -640,21 +703,9 @@ function CameraRig({
 
   useEffect(() => {
     const persp = camera as THREE.PerspectiveCamera;
-    const vFov = THREE.MathUtils.degToRad(persp.fov);
     const cosE = Math.cos(CAMERA_ELEVATION);
     const sinE = Math.sin(CAMERA_ELEVATION);
-    const distance = Math.max(
-      MIN_CAMERA_DISTANCE,
-      specimenCameraDistance(
-        POSE_BOUNDS,
-        size.width,
-        size.height,
-        vFov,
-        CAMERA_ELEVATION,
-        CAMERA_AZIMUTH,
-        FIT_MARGIN
-      )
-    );
+    const distance = framedCameraDistance(persp.fov, size.width, size.height);
 
     dirRef.current.set(
       Math.sin(CAMERA_AZIMUTH) * cosE,
@@ -715,20 +766,40 @@ function CameraRig({
 }
 
 /**
- * STUDIO LIGHTING ON A BRIGHT PAGE.
+ * STUDIO LIGHTING IN A DARK ROOM — and the lesson from the dark room BEFORE
+ * it is the reason this rig does not simply revert.
  *
- * Pass 2 lit a dark room: a weak key, a coloured rim, and most of the
- * character's surface sitting in the toon ramp's bottom band. That is what
- * made it read as murky, and no amount of background grading fixes a subject
- * that is itself unlit.
+ * Pass 2 lit a dark chamber with a weak key and a coloured rim, and most of
+ * the character's surface sat in the toon ramp's bottom band. It read as
+ * murky, and the finding was that no amount of background grading fixes a
+ * subject that is itself unlit. That is why the bright chamber made the
+ * AMBIENT the dominant term: on a MeshToonMaterial a high ambient pushes the
+ * whole surface into the ramp's upper two bands, which is exactly the flat,
+ * bright, saturated fill a comic character has.
  *
- * So the ambient is now the dominant term. On a MeshToonMaterial a high
- * ambient pushes the whole surface into the ramp's upper two bands, which is
- * exactly the flat, bright, saturated fill a comic character has - the
- * shading is a single deliberate step, not a gradient into shadow. The key
- * then only has to carve that one step, so it is soft and warm rather than
- * hot, and the dynasty colour moves to a gentle rim that separates the
- * silhouette from the paper without tinting the fill.
+ * The ground going dark does not undo that finding — it makes it load-bearing.
+ * So the ambient does not move. The character must be exactly as lit as it
+ * was; what changes is only the terms that describe the ROOM, because those
+ * were describing a room that no longer exists:
+ *
+ *   HEMISPHERE  was bounce off a warm paper sweep. There is no paper to
+ *               bounce off. It becomes the lamp above and the night floor
+ *               below, at a lower strength — a dark floor returns little.
+ *   KEY         one step warmer and one step stronger. In a dark room the key
+ *               is the only thing claiming the subject is lit AT ALL, and the
+ *               warmth is now doing double duty: it is what separates this
+ *               moment from the board's cool one, since the ground no longer
+ *               can (see the amended rule 8 in globals.css).
+ *   RIM         up, and now genuinely earning its place. On the bright ground
+ *               a rim kept the silhouette from dissolving into the paper; on
+ *               this one it draws the dynasty's own colour along the edge that
+ *               faces away from the lamp, which is the single most legible
+ *               thing a dark stage does for a character.
+ *
+ * Under the 90s composition the creature's own shading is env-immune by
+ * construction (`applyFaceKeyedShading` zeroes every reflected-light term), so
+ * these lights reach the genome bands and the classic-style rollback leg. Both
+ * still have to look right, which is why the rig is tuned rather than dimmed.
  */
 function ChamberLights({
   dynasty,
@@ -740,18 +811,21 @@ function ChamberLights({
   const glow = getGameMaterialProfile(dynasty).lighting.keyColor;
   return (
     <>
-      {/* The page's own bounce. This is the brightness, and it is deliberate
-          that it outweighs every directional term in the rig. */}
+      {/* The lamp's fill. This is the brightness, and it is deliberate that
+          it outweighs every directional term in the rig. UNCHANGED across the
+          ground reversal: the creature is exactly as lit as it was. */}
       <ambientLight intensity={1.15} color="#fff6e6" />
-      {/* Bounce from the sweep: warm from below-front, so the underside of
-          the jaw and the belly never fall into a dark band. */}
-      <hemisphereLight args={['#fffaf0', '#e8d5b8', 0.55]} />
-      {/* Key: one soft warm lamp, front-high-right. It exists to place the
-          single toon step, not to light the subject. */}
-      <directionalLight position={[3.5, 4.5, 4.5]} intensity={0.62} color="#ffe9c6" />
-      {/* Rim: dynasty-coloured, from behind-left. On a bright ground a rim is
-          what keeps the silhouette from dissolving into the paper. */}
-      <directionalLight position={[-5, 2.5, -4]} intensity={0.5} color={glow} />
+      {/* The room: lamp above, night floor below. A dark floor returns little,
+          so the ground term is the room's own value and the whole term is
+          weaker than the sweep's bounce was. */}
+      <hemisphereLight args={['#dfe9f5', '#1a3049', 0.38]} />
+      {/* Key: one warm lamp, front-high-right. In a dark room this is what
+          says the subject is lit, so it carries more than it did on paper. */}
+      <directionalLight position={[3.5, 4.5, 4.5]} intensity={0.82} color="#ffe4b8" />
+      {/* Rim: dynasty-coloured, from behind-left, along the edge that faces
+          away from the lamp. The clearest thing a dark stage does for a
+          character, and the one place the house colour is unmistakable. */}
+      <directionalLight position={[-5, 2.5, -4]} intensity={0.7} color={glow} />
       {/* A safe additive whole-character cue for the four Home actions. It
           leaves the cached segment materials untouched and disappears the
           instant the action loses hover/focus/press. */}
@@ -798,7 +872,46 @@ const ORDER_CONTACT = -1;
  * line because the floor fogged toward a lighter grey than the backdrop
  * behind it; matching the three makes the floor dissolve instead of ending.
  */
-const FOG_COLOR = PAPER_EDGE;
+const FOG_COLOR = ROOM_EDGE;
+
+/**
+ * THE FOG IS ANCHORED TO THE SUBJECT, NOT TO THE WORLD. (Task #46.)
+ *
+ * The reported defect was that the specimen "washes out on narrow viewports".
+ * It was fog, and it was measurable rather than a matter of taste.
+ *
+ * `specimenCameraDistance` fits the pose against the HORIZONTAL fov, and
+ * horizontal fov collapses with aspect: at 1440x900 the fit returns 7.6 world
+ * units, at 390x844 it returns 16.8. The fog band was two absolute world
+ * distances, [8, 20], authored against the landscape number — so the band sat
+ * comfortably BEHIND the creature on a desktop and swallowed it whole on a
+ * phone. Measured against the shipped constants, the head sat at 44% fog and
+ * the tail at 100% on a 390-wide viewport, against 0% and 26% at 1440. The
+ * creature was not washed out by the atmosphere plates (they hang behind it
+ * and opt out of fog); it was 44-to-100% mixed into the backdrop colour.
+ *
+ * Two things are wrong with absolute fog here and only one of them is the
+ * phone. The other is that this scene's camera distance is DERIVED, so any
+ * future change to the pose, the fov or the fit margin silently re-times the
+ * aerial perspective. So the band is expressed the way the authored look
+ * actually reads it — as offsets from wherever the camera ended up:
+ *
+ *   near = distance + NEAR_OFFSET   the band starts just past the subject
+ *   far  = near + SPAN              and ends inside the floor
+ *
+ * The two constants are RECOVERED from the shipped desktop framing rather
+ * than chosen, so the look at 1440 is bit-identical to what shipped and every
+ * other aspect is brought to match it: at the landscape asymptote the fit
+ * returns 7.63, and 8 - 7.63 = 0.37, 20 - 8 = 12.
+ *
+ * Anchoring rather than clamping is deliberate. A distance ceiling would have
+ * fixed the fog by re-framing the portrait — cropping the body hard on a
+ * phone to keep the camera near — which changes a composition the owner
+ * approved in order to fix a colour bug he reported. The framing is left
+ * exactly as it was; only the air in front of it is corrected.
+ */
+const FOG_NEAR_OFFSET = 0.37;
+const FOG_SPAN = 12;
 
 /**
  * A radial gradient as raw texture data. `stops` are [t, '#rrggbb', alpha]
@@ -848,42 +961,60 @@ function createRadialTexture(
 }
 
 /**
- * THE SWEEP. A photographer's paper roll: brightest right behind the
- * subject's head, easing to a warm cream at the corners. There is no dark
- * stop anywhere in this ramp, which is the point - the darkest value in the
- * whole backdrop is lighter than the lightest value on the creature, so the
- * character can never be lost against its own room.
+ * THE POOL. The same three-stop ramp the paper sweep used, taken to night:
+ * brightest right behind the subject's head, falling away to the room's own
+ * edge at the corners.
+ *
+ * The ramp's SHAPE is the composition and it is unchanged. What changed is
+ * which end of the value scale it lives on, and therefore what the ramp is
+ * FOR. On paper it was a sweep — the lightest thing in frame, there to stop
+ * the character being lost. Here it is a lamp — the only lift in an otherwise
+ * dark room, there to put the character in the one place the light is. Both
+ * are ways of saying "look here"; this one says it by subtraction.
+ *
+ * The centre stop is `ROOM_LAMP` rather than a white: a specular white core
+ * behind a black-outlined character would silhouette it, and the silhouette
+ * is the one read this style cannot afford to lose — the ink hull has to be
+ * the boldest line in frame, not a gap in a bright disc.
  */
 const backdropTexture = createRadialTexture(128, [
-  [0, '#ffffff', 1],
-  [0.45, PAPER, 1],
-  [1, PAPER_EDGE, 1],
+  [0, ROOM_LAMP, 1],
+  [0.45, ROOM, 1],
+  [1, ROOM_EDGE, 1],
 ]);
 
 /**
- * The floor is the same sweep, a shade warmer where the light lands. On a
- * studio sweep the floor and the wall are literally the same sheet of paper,
- * so the only thing separating them is the contact shadow below.
+ * The floor is the same pool, a shade brighter where the light lands. On a
+ * studio sweep the floor and the wall are literally the same sheet; in a dark
+ * room they are the same darkness under the same lamp, and the only thing
+ * separating them is the contact shadow below.
  */
 const floorTexture = createRadialTexture(128, [
-  [0, '#fffaf2', 1],
-  [0.3, PAPER, 1],
-  [1, PAPER_EDGE, 1],
+  [0, '#3a628d', 1],
+  [0.3, ROOM, 1],
+  [1, ROOM_EDGE, 1],
 ]);
 
 /**
- * Contact occlusion. WARM, and much softer than pass 2's near-opaque ink.
+ * Contact occlusion, in the room's own hue.
  *
  * This is the one shadow in the scene and it is doing the whole job of
- * seating the creature on the floor, which on a bright sweep is the only
- * thing that stops a character floating. A neutral or black shadow on warm
- * paper reads as a hole cut in the page; a warm one reads as the paper in
- * shade.
+ * seating the creature on the floor. The rule that chose it on paper —
+ * "a neutral or black shadow on warm paper reads as a hole cut in the page;
+ * a warm one reads as the paper in shade" — is the same rule that chooses it
+ * here, applied to a cool ground: `ROOM_SHADOW` is a darker, MORE saturated
+ * member of the room's blue, so the disc reads as floor in shade rather than
+ * as an absence of floor.
+ *
+ * It is also the only value in the composition below the creature's own ink,
+ * which is what keeps the contour the boldest LINE while the shadow is the
+ * deepest VALUE. Those are different jobs and this is the scene where they
+ * would otherwise compete.
  */
 const contactTexture = createRadialTexture(64, [
-  [0, PAPER_SHADOW, 0.82],
-  [0.4, PAPER_SHADOW, 0.4],
-  [1, PAPER_SHADOW, 0],
+  [0, ROOM_SHADOW, 0.82],
+  [0.4, ROOM_SHADOW, 0.4],
+  [1, ROOM_SHADOW, 0],
 ]);
 
 /**
@@ -989,49 +1120,58 @@ function ChamberAtmosphere({ animate }: { animate: boolean }) {
     }
     return {
       /**
-       * THE POLARITY FLIP - this is the whole trick for a bright room.
+       * THE POLARITY FLIP, FLIPPED BACK — and the mechanism survives it.
        *
-       * The owner's speed-line plate is white lines on black, and pass 2 blew
-       * it in ADDITIVELY, which is the only thing that works on a dark
-       * backdrop and the one thing that is invisible on a bright one: adding
-       * white to near-white is nothing.
+       * The owner's speed-line plate is white lines on black. Pass 2 blew it
+       * in ADDITIVELY, which works on a dark backdrop and is invisible on a
+       * bright one. The bright chamber therefore stopped using it as a colour
+       * source at all and used it as an ALPHA MASK, drawing a warm grey
+       * through it: three reads `alphaMap` from the green channel, so the
+       * white lines became alpha 1, the black field alpha 0, and the result
+       * was DARK speed lines on a page — which is what a comic does when the
+       * page is white, because there the lines are ink.
        *
-       * So the plate is no longer a colour source at all - it is used as an
-       * ALPHA MASK, and the colour drawn through it is a warm grey. Three
-       * reads the alphaMap from the green channel, so the white lines become
-       * alpha 1 and the black field becomes alpha 0, and the result is DARK
-       * speed lines drawn on the page. That is what a comic actually does:
-       * the lines are ink, not light.
+       * The room is dark again, so the lines are LIGHT again. What does NOT
+       * come back is additive blending: an additive plate has no ceiling, so
+       * it blows out wherever two lines cross and it cannot be reasoned about
+       * against a graded ground. Keeping the alpha-mask mechanism and simply
+       * moving the colour up the value scale gives the same drawn read with a
+       * fill that is authored rather than accumulated — which is the whole
+       * flat-fill discipline this style is built on.
        *
-       * Warm grey rather than ink proper, and 0.2 opacity, because these are
-       * a background texture and the creature's own outline has to stay the
-       * boldest line in frame.
+       * The colour is a LIFTED MEMBER OF THE ROOM'S OWN HUE, not a white.
+       * White speed lines on a night ground would be the pale-line failure at
+       * full frame size, and the creature's outline has to stay the boldest
+       * line in frame whichever direction the contrast runs.
        */
       speed: new THREE.MeshBasicMaterial({
         alphaMap: speed,
-        color: '#b9a68d',
+        color: '#3e6086',
         transparent: true,
-        opacity: 0.2,
+        opacity: 0.26,
         depthWrite: false,
         fog: false,
         toneMapped: false,
       }),
       /**
-       * Paper tooth. The faintest possible fibre over the sweep so the
-       * backdrop reads as printed stock rather than as a CSS gradient. It is
-       * the difference between "bright" and "blank".
+       * Tooth. The faintest possible fibre over the pool so the backdrop
+       * reads as a surface rather than as a CSS gradient. It is the
+       * difference between "dark" and "empty".
+       *
+       * The bright room multiplied this bitmap by a near-white so it
+       * contributed TOOTH without contributing HUE — a full-frame beige
+       * fibre at any real strength tinted the whole page toward itself. The
+       * same trap runs the other way on a night ground: multiplied by a
+       * near-white it would LIFT the whole room toward grey. So the multiply
+       * colour becomes a value sitting between the room and its lamp, which
+       * keeps the plate contributing variance and nothing else.
        */
       paper: new THREE.MeshBasicMaterial({
         map: paper,
         alphaMap: plateAlpha,
         transparent: true,
-        // First render came back noticeably tan, and this plate was the
-        // cause: a full-frame beige fibre bitmap at 0.14 tints the entire
-        // page toward its own colour, which is the opposite of "much
-        // brighter". Halved, and multiplied by a near-white so the texture
-        // contributes TOOTH without contributing HUE.
-        color: '#fffdf7',
-        opacity: 0.07,
+        color: '#2c4a6d',
+        opacity: 0.1,
         depthWrite: false,
         fog: false,
         toneMapped: false,
@@ -1098,16 +1238,27 @@ function ChamberFloor() {
       </mesh>
       {/*
         The grid survives from the original composition - it is the arena's
-        language and the one thing that says this room has a scale - but it is
-        now drawn in warm paper shadow at a third of its old weight. A dark
-        grid on a bright sweep would be the single loudest thing in frame and
-        would turn a portrait back into a technical fixture.
+        language and the one thing that says this room has a scale.
+
+        IT GOES DARKER, NOT LIGHTER, and that is the global law rather than a
+        preference: "one line colour remains, and it is always the DARKEST
+        value in the composition — never the lightest". A pale grid on a dark
+        floor is the white-keyline failure wearing graph paper, and it is
+        precisely the read that makes a 3D scene look like a technical
+        fixture. So the line takes `ROOM_SHADOW`, the same value the contact
+        discs are drawn in — the floor's own shade, scored into it.
+
+        The weight rises from 0.16 to 0.22 because the ground moved: at 0.16
+        against paper the line was a third of its old weight to keep it from
+        shouting, and at the same alpha against a night floor it is simply
+        not there. This is the same line, read at the same strength, on the
+        other side of the value scale.
       */}
       <lineSegments>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[positions, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={PAPER_SHADOW} transparent opacity={0.16} />
+        <lineBasicMaterial color={ROOM_SHADOW} transparent opacity={0.22} />
       </lineSegments>
       {/* One disc per piece. Static: the idle sway is 0.03 cells and a
           shadow that chases it reads as a bug, not as life. */}
@@ -1241,12 +1392,14 @@ export function SpecimenChamber({
             for the lamp to be the centre OF. */}
         <primitive attach="background" object={backdropTexture} />
         {/* Fog starts past the subject and ends inside the floor, so depth
-            reads on the floor plane without dulling the creature. */}
-        {/* Fog matched to the sweep's own edge colour, so the floor dissolves
-            into the backdrop instead of ending at a horizon. On a bright room
-            this is aerial perspective; the moment it differs from the paper by
-            even a shade it becomes a visible seam. */}
-        <fog attach="fog" args={[FOG_COLOR, 8, 20]} />
+            reads on the floor plane without dulling the creature — at EVERY
+            aspect now, which is task #46. See FOG_NEAR_OFFSET.
+
+            Matched to the room's own edge colour, so the floor dissolves into
+            the backdrop instead of ending at a horizon. This is aerial
+            perspective; the moment it differs from the ground by even a shade
+            it becomes a visible seam. */}
+        <ChamberFog />
         <CameraRig animate={animate} pushIn={pushIn} />
         <ChamberLights dynasty={dynasty} reaction={reaction} />
         <ChamberFloor />

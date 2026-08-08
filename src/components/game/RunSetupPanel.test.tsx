@@ -18,6 +18,37 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RunSetupPanel, type RunSetupPanelProps } from './RunSetupPanel';
 
+/**
+ * The portrait hook runs FOR REAL in every test in this file.
+ *
+ * That is the point: jsdom has no WebGL, so the real hook must mount no
+ * canvas, throw nothing, and simply report no portraits — and if it ever stops
+ * being safe there, every assertion below turns red at once, which is a
+ * louder alarm than a dedicated test would be.
+ *
+ * The override exists only so the OPPOSITE case can also be seen. A browser
+ * that has taken the pictures is not reachable from jsdom at all, so the
+ * captured URLs are injected over the real hook's answer rather than faked in
+ * place of it.
+ */
+let mockPortraitOverride: Record<string, string> | null = null;
+jest.mock('./DynastySnakePortrait', () => {
+  const actual = jest.requireActual('./DynastySnakePortrait');
+  return {
+    ...actual,
+    useDynastySnakePortraits: (...args: unknown[]) => {
+      const real = actual.useDynastySnakePortraits(...args);
+      return mockPortraitOverride
+        ? { ...real, portraits: mockPortraitOverride }
+        : real;
+    },
+  };
+});
+
+afterEach(() => {
+  mockPortraitOverride = null;
+});
+
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({
@@ -182,7 +213,23 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
     expect(screen.getByText(/gen 7/i)).toBeInTheDocument();
   });
 
-  it('switches house through the dock callback, and opens the picker on your own', () => {
+  /**
+   * ONE GESTURE, ONE MEANING (owner item 7, 2026-08-08) — RE-EXPRESSED.
+   *
+   * The assertion this replaces read: "CYBER is the flying dynasty here. Its
+   * dock is NOT dead ... so it asks for a pick instead of re-equipping what is
+   * already equipped", and pinned `('CYBER', null)` on that tap. The reasoning
+   * was sound and the outcome was not: the same gesture on the same pixels
+   * meant "equip that house" on two cards and "open the picker" on the third,
+   * and a player only ever finds a hidden second meaning by being surprised by
+   * it.
+   *
+   * What survives verbatim is the part that was actually load-bearing: the
+   * flying card is still LIVE, not a dead target. What changed is what it does
+   * — it re-affirms, spending no request to equip the snake already equipped —
+   * and the picker branch moved out to a control of its own, tested below.
+   */
+  it('selects a house from the card, and the card you are already flying re-affirms rather than meaning something else', () => {
     const onFavoriteDock = jest.fn();
     const primal = { id: 'primal-favorite', name: 'Moss', generation: 4, dynasty: 'PRIMAL' };
     render(
@@ -199,12 +246,117 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
     expect(onFavoriteDock).toHaveBeenNthCalledWith(1, 'PRIMAL', primal);
     expect(onFavoriteDock).toHaveBeenNthCalledWith(2, 'COSMIC', null);
 
-    // CYBER is the flying dynasty here. Its dock is NOT dead — a dead 92px
-    // target on the surface whose job is choosing a snake would strand a
-    // player who wants a different snake of the house they already fly — so
-    // it asks for a pick instead of re-equipping what is already equipped.
-    fireEvent.click(screen.getByTestId('run-setup-favorite-cyber'));
-    expect(onFavoriteDock).toHaveBeenNthCalledWith(3, 'CYBER', null);
+    // CYBER is the flying dynasty. The card is enabled — it presses, it takes
+    // focus, it is not a dead target — and it asks the page for nothing.
+    const flying = screen.getByTestId('run-setup-favorite-cyber');
+    expect(flying).toBeEnabled();
+    fireEvent.click(flying);
+    expect(onFavoriteDock).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * THE SECOND MEANING GETS ITS OWN CONTROL, AND ITS OWN SIZE.
+   *
+   * Changing which snake a house carries is rare for a player who has found
+   * theirs and frequent for one chasing heirlooms, so it is small AND always
+   * visible — never behind a hover, a long press or a menu.
+   */
+  it('changes a house\'s snake from a chip of its own, on every card', () => {
+    const onFavoriteDock = jest.fn();
+    const primal = { id: 'primal-favorite', name: 'Moss', generation: 4, dynasty: 'PRIMAL' };
+    render(
+      <RunSetupPanel
+        {...props({
+          favorites: { PRIMAL: primal, COSMIC: null },
+          onFavoriteDock,
+        })}
+      />
+    );
+
+    for (const dynasty of ['cyber', 'primal', 'cosmic']) {
+      fireEvent.click(screen.getByTestId(`run-setup-favorite-change-${dynasty}`));
+    }
+    expect(onFavoriteDock).toHaveBeenNthCalledWith(1, 'CYBER', null);
+    expect(onFavoriteDock).toHaveBeenNthCalledWith(2, 'PRIMAL', null);
+    expect(onFavoriteDock).toHaveBeenNthCalledWith(3, 'COSMIC', null);
+  });
+
+  /**
+   * A BUTTON INSIDE A BUTTON IS NOT A LAYOUT DETAIL.
+   *
+   * It is invalid HTML, and a screen reader will not expose the inner control
+   * at all — so the "change" affordance would exist for a sighted mouse user
+   * and for nobody else. The card and the chip are siblings, and this is the
+   * assertion that keeps them that way when the layout is next tidied.
+   */
+  it('never nests the change chip inside the card button', () => {
+    render(<RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />);
+    for (const dynasty of ['cyber', 'primal', 'cosmic']) {
+      const card = screen.getByTestId(`run-setup-favorite-${dynasty}`);
+      const chip = screen.getByTestId(`run-setup-favorite-change-${dynasty}`);
+      expect(card.tagName).toBe('BUTTON');
+      expect(chip.tagName).toBe('BUTTON');
+      expect(card).not.toContainElement(chip);
+      expect(chip.closest('button')).toBe(chip);
+    }
+  });
+
+  /**
+   * THE INK STAYS SMALL, THE TARGET DOES NOT.
+   *
+   * The visible chip is about twenty pixels tall — the share of the tray the
+   * owner asked for. The floor is met by a transparent 44x44 pseudo-element
+   * anchored to the chip's own bottom edge, growing the target UPWARD into the
+   * card instead of inflating the drawn object. jsdom has no layout, so what
+   * is pinned is the mechanism: remove the pad and this fails.
+   */
+  it('gives the change chip a 44px target without inflating its ink', () => {
+    render(<RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />);
+    const chip = screen.getByTestId('run-setup-favorite-change-cyber');
+    expect(chip.className).toContain('after:h-11');
+    expect(chip.className).toContain('after:w-11');
+    // The block itself: chip radius, ink contour, hard displaced drop, press
+    // collapse — all of it carried by `.ink-chip`, not re-authored here.
+    expect(chip).toHaveClass('ink-chip');
+  });
+
+  /**
+   * THERE IS NO STATE IN WHICH TWO CARDS READ AS SELECTED.
+   *
+   * Selection is said three ways at once and every one of them is exclusive:
+   * the tray-weight contour, the bigger displaced block, and the raised rung
+   * of the house's own fill. Hover moves none of them — a hover that grew the
+   * block would put an unselected card in the selected card's clothes for as
+   * long as a pointer rested on it.
+   */
+  it('marks exactly one card selected, in the pattern language and never with a glow', () => {
+    render(
+      <RunSetupPanel
+        {...props({
+          favorites: { PRIMAL: null, COSMIC: null },
+          onFavoriteDock: jest.fn(),
+        })}
+      />
+    );
+
+    const cards = ['cyber', 'primal', 'cosmic'].map((dynasty) =>
+      screen.getByTestId(`run-setup-favorite-${dynasty}`)
+    );
+    const pressed = cards.filter(
+      (card) => card.getAttribute('aria-pressed') === 'true'
+    );
+    expect(pressed).toHaveLength(1);
+    expect(pressed[0]).toBe(cards[0]);
+
+    expect(pressed[0].className).toContain('var(--ink-w-3)');
+    expect(pressed[0].className).toContain('var(--ink-drop-3)');
+    for (const card of cards.slice(1)) {
+      expect(card.className).toContain('var(--ink-w-2)');
+      expect(card.className).toContain('var(--ink-drop-2)');
+      // The unselected cards may lift on hover; they may not grow their block,
+      // which is the selected card's own signal.
+      expect(card.className).not.toContain('hover:shadow');
+    }
   });
 
   it('names the selected house and its ruleset, and nobody else\'s', () => {
@@ -244,6 +396,97 @@ describe('RunSetupPanel — element (a), Dynasty Favorites', () => {
       />
     );
     expect(screen.queryByTestId('heirloom-summary')).toBeNull();
+  });
+
+  /**
+   * THE TILE CARRIES THE CREATURE (owner item 6, 2026-08-08).
+   *
+   *   "should display the actual snake ... just the face almost from the
+   *    front ... almost like a passport picture but at a small angle."
+   */
+  it('shows the real snake head on every card once the pictures have been taken', () => {
+    mockPortraitOverride = {
+      CYBER: 'data:image/png;base64,CYBER',
+      PRIMAL: 'data:image/png;base64,PRIMAL',
+      COSMIC: 'data:image/png;base64,COSMIC',
+    };
+    render(<RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />);
+
+    for (const dynasty of ['cyber', 'primal', 'cosmic']) {
+      const portrait = screen.getByTestId(`run-setup-portrait-${dynasty}`);
+      expect(portrait.tagName).toBe('IMG');
+      expect(portrait).toHaveAttribute(
+        'src',
+        `data:image/png;base64,${dynasty.toUpperCase()}`
+      );
+    }
+  });
+
+  /**
+   * FAILURE IS INVISIBLE (doctrine principle 1).
+   *
+   * No WebGL, a 404 on the model, a readback the browser refuses, or simply
+   * the frames before the picture exists — all of them are the same thing to
+   * the player: the card it has always drawn. jsdom IS one of those cases, so
+   * this test needs no arrangement at all, which is exactly why it is worth
+   * writing: the fallback is the default and not a branch someone remembered.
+   */
+  it('falls back to the strain glyph, silently, when a portrait is not in hand', () => {
+    render(<RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />);
+    expect(screen.queryByTestId('run-setup-portrait-cyber')).toBeNull();
+    // The card is unchanged and fully labelled: nothing about the decision is
+    // carried by the picture.
+    expect(screen.getByTestId('run-setup-favorite-cyber')).toBeEnabled();
+    expect(screen.getByText('Ouro')).toBeInTheDocument();
+    // And no canvas was ever mounted, because there is no WebGL to mount into.
+    expect(screen.queryByTestId('setup-portrait-rig')).toBeNull();
+  });
+
+  /**
+   * A PORTRAIT IS DECORATION BESIDE AN ALREADY-LABELLED BUTTON.
+   *
+   * It carries an empty alt AND `aria-hidden`, and the card's accessible name
+   * is the same string with the picture as without it. A decorative image that
+   * announced itself would make a screen reader read the snake's identity
+   * twice — once as a label and once as an image — for a picture that adds
+   * nothing a label cannot say.
+   */
+  it('keeps the portrait out of the accessible name entirely', () => {
+    const { rerender } = render(
+      <RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />
+    );
+    const bare = screen
+      .getByTestId('run-setup-favorite-cyber')
+      .getAttribute('aria-label');
+
+    mockPortraitOverride = { CYBER: 'data:image/png;base64,CYBER' };
+    rerender(<RunSetupPanel {...props({ onFavoriteDock: jest.fn() })} />);
+
+    const portrait = screen.getByTestId('run-setup-portrait-cyber');
+    expect(portrait).toHaveAttribute('alt', '');
+    expect(portrait).toHaveAttribute('aria-hidden', 'true');
+    expect(
+      screen.getByTestId('run-setup-favorite-cyber').getAttribute('aria-label')
+    ).toBe(bare);
+  });
+
+  /**
+   * COMPACT, NOT CUT (owner item 5, 2026-08-08).
+   *
+   * "ruleset line and heirloom block can remain, but COMPACT." Both facts stay
+   * — the house's rule is still stated in full, and the heirloom block is
+   * still mounted inside element (a). What shrank is leading and type size,
+   * and only where the pressure is: at `sm` the line returns to 11px, because
+   * what is being bought is vertical room on a 568px-tall phone and a desktop
+   * has none of that pressure.
+   */
+  it('states the ruleset in full, at the tightened phone metrics', () => {
+    render(<RunSetupPanel {...props()} />);
+    const explainer = screen.getByTestId('ruleset-explainer');
+    expect(explainer).toHaveTextContent('CYBER accelerates as you eat.');
+    expect(explainer).toHaveClass('text-[10px]');
+    expect(explainer).toHaveClass('leading-tight');
+    expect(explainer).toHaveClass('sm:text-[11px]');
   });
 
   it('keeps the full roster and the Lab one tap away without emphasising either', () => {

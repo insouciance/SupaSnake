@@ -38,15 +38,20 @@ interface DestinationDefinition {
 }
 
 /**
- * Glyph colours, chosen for a LIGHT ground.
+ * Glyph colours, chosen for a LIGHT CHIP — and that is why the dark-ground
+ * ruling does not move them.
  *
- * The same adaptive rule the outline system uses applies to the mark, not just
- * to the line: an identity keeps its hue and changes its VALUE with the surface
- * it is drawn on. These three used to be `cosmic-glow`, `rarity-legendary` and
- * `pulse`, which was correct over the old dark room and is wrong over the paper
- * sweep - `cosmic-glow` resolves to #FFD700 and `rarity-legendary` to #fbbf24,
- * so on cream the Lab and Compete glyphs were two near-identical golds at
- * roughly 1.3:1 against their own chip. Same families, darker end.
+ * The adaptive rule is that an identity keeps its hue and changes its VALUE
+ * with the surface it is DRAWN ON, and the surface these are drawn on is the
+ * chip, not the room. `.ink-chip` is still near-white stock; paper stopped
+ * being the room and did not stop being the material. So the reasoning that
+ * set these survives the reversal intact: they used to be `cosmic-glow`,
+ * `rarity-legendary` and `pulse`, which resolve to #FFD700 and #fbbf24, and on
+ * cream the Lab and Compete glyphs were two near-identical golds at roughly
+ * 1.3:1 against their own chip. Same families, darker end.
+ *
+ * Had the chips gone dark with the room, all three would have had to move back
+ * up. They did not, so these are left exactly as measured.
  */
 const DESTINATIONS: DestinationDefinition[] = [
   {
@@ -78,20 +83,43 @@ const DESTINATIONS: DestinationDefinition[] = [
 ];
 
 /**
- * The drawn chip (owner: more contrast against the bright ground, slightly
- * bigger, bold outline from the outline tokens).
+ * The drawn chip — now a cartridge-era BLOCK. (Owner: "i don't like the round
+ * buttons, make em more 90s SNES style.")
  *
- * These controls sit on the Specimen Chamber's near-white paper sweep, so the
- * adaptive rule in globals.css selects the INK stroke - `.ink-chip` carries
- * `--ink-border-2` (the button weight) plus `--ink-drop-2`. See that block for
- * why the contrast has to come from the chip's AREA and not from the glyph's
- * colour: a 24px stroked icon on cream is mostly holes.
+ * Three utilities left this string and none of them was replaced by another:
  *
- * 56px -> 64px, which keeps the row inside a 19rem rail with a real gutter, so
- * four chips with 2.5px keylines never read as one bar.
+ *   `rounded-full`        the roundness lived HERE, not in `.ink-chip` — the
+ *                         class never declared a radius at all. Deleting it is
+ *                         therefore the entire shape change, and the chip
+ *                         inherits `--radius-chip` (4px) like every other chip
+ *                         in the product. A class that has to fight a utility
+ *                         is a class that has lost, so the fight is removed
+ *                         rather than won.
+ *   `hover:-translate-y-0.5`
+ *   `active:translate-y-0`
+ *                         the press is now the BLOCK, in CSS, where the
+ *                         box-shadow it has to stay in step with lives. A
+ *                         transform authored in one file and a shadow in
+ *                         another cannot be kept in phase, and the old pair
+ *                         were not: the chip lifted on hover while its block
+ *                         stayed put, and on press the block shrank while the
+ *                         chip did not move into the space it vacated.
+ *
+ * The chip keeps its AREA, and that was always the load-bearing decision: the
+ * contrast has to come from the chip rather than from the glyph, because a
+ * 24px stroked icon is mostly holes. 64px square holds the row inside a 19rem
+ * rail with a real gutter, so four blocks with 2.5px contours never read as
+ * one bar — if anything a square reads as more separate than a circle did,
+ * because the gutter is now a constant width down its whole height.
+ *
+ * The focus ring goes INSET. An offset ring draws in the room, and the room is
+ * dark: Tailwind's default offset colour is white, which would put a pale
+ * halo around every chip on a night ground — the exact keyline the global law
+ * retired. Inside the near-white chip an ink ring is unmissable and needs no
+ * ground to sit on, so it is correct whatever the ground is ruled to be next.
  */
 const controlClass =
-  'ink-chip group relative mx-auto flex h-16 w-16 min-h-[44px] min-w-[44px] items-center justify-center rounded-full hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 active:translate-y-0 disabled:cursor-wait disabled:opacity-40 disabled:hover:translate-y-0';
+  'ink-chip group relative mx-auto flex h-16 w-16 min-h-[44px] min-w-[44px] items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink disabled:cursor-wait disabled:opacity-40';
 
 export function HomeCommandRail({
   onPlay,

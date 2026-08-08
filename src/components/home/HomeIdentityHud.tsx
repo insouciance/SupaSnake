@@ -148,11 +148,17 @@ export function HomeIdentityHud({
     >
       <div className="col-start-2 row-start-1 mx-auto flex w-full min-w-0 flex-col items-center">
         {/* Bigger, and pushed clear of the top edge into the chamber's open
-            paper. The accent glow is gone with the dark room that justified
-            it - on a near-white sweep a warm glow is invisible, and the ink
-            stroke is what separates the wordmark from the page now. The tilt
-            stays at the established -2 degrees; the per-letter character
-            turns against it so the line reads as lettered, not as rotated. */}
+            room. The tilt stays at the established -2 degrees; the per-letter
+            character turns against it so the line reads as lettered, not as
+            rotated.
+
+            NOTHING HERE MOVED WITH THE GROUND, and that is the point. The
+            note this replaces argued that the accent glow could go because a
+            warm glow is invisible on a near-white sweep — true then, and no
+            longer the reason. The mark is a drawn IMAGE now, with its own
+            purple field and its own ink edge baked into the artwork, so it
+            carries its separation with it and owes the room nothing. It was
+            designed on dark; on dark is where it sings. */}
         <h1 className="heading-display heading-lettered mt-10 -rotate-[2deg] text-4xl sm:mt-14 sm:text-6xl lg:text-7xl">
           {/* The accessible wordmark. The mark is an image with an empty alt,
               so the name has to be carried here - and with the lettering now
@@ -189,7 +195,9 @@ export function HomeIdentityHud({
 
         {specimen ? (
           <p
-            className="mt-2 flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap font-display text-xs uppercase text-ink sm:text-base"
+            /* Sits on the room, not on a chip — so it follows the ground.
+               See the mission line in `page.tsx` for the same move. */
+            className="mt-2 flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap font-display text-xs uppercase text-bone-white sm:text-base"
             aria-label={specimenLabel ?? undefined}
             title={specimenLabel ?? undefined}
             data-testid="home-specimen-identity"
@@ -217,7 +225,7 @@ export function HomeIdentityHud({
         {clan ? (
           <Link
             href="/clan"
-            className="ink-chip pointer-events-auto mt-2 inline-flex min-h-7 min-w-0 max-w-full items-center gap-1.5 overflow-hidden rounded-full px-2.5 text-ink hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
+            className="ink-chip pointer-events-auto mt-2 inline-flex min-h-7 min-w-0 max-w-full items-center gap-1.5 overflow-hidden px-2.5 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink"
             aria-label={clanLabel ?? undefined}
             title={clanLabel ?? undefined}
             data-testid="home-clan-identity"
@@ -234,7 +242,7 @@ export function HomeIdentityHud({
 
         {authenticated ? (
         <div
-          className="ink-chip pointer-events-auto mx-auto mt-2 inline-flex min-h-9 items-center overflow-hidden rounded-full px-3"
+          className="ink-chip pointer-events-auto mx-auto mt-2 inline-flex min-h-9 items-center overflow-hidden px-3"
           aria-label={`Wallet: ${dna === null ? 'DNA loading' : `${formatAmount(dna)} DNA`}${energy?.visible ? ` and ${energy.available} of ${energy.capacity} Energy` : ''}`}
           data-testid="home-wallet"
         >
@@ -263,7 +271,7 @@ export function HomeIdentityHud({
         href="/settings"
         aria-label="Settings"
         title="Settings"
-        className="ink-chip pointer-events-auto col-start-3 row-start-1 inline-flex h-11 w-11 items-center justify-center justify-self-end self-start rounded-full text-ink hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
+        className="ink-chip pointer-events-auto col-start-3 row-start-1 inline-flex h-11 w-11 items-center justify-center justify-self-end self-start text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink"
         data-testid="home-settings"
       >
         <IconGear size={18} />
