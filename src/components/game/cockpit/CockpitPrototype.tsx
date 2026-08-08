@@ -32,6 +32,8 @@ interface CockpitPrototypeProps {
   arenaVariant?: 'released' | 'cockpit';
   arenaEffects?: boolean;
   arenaDensity?: 'standard' | 'extreme';
+  /** Dev-fixture-only food-state fixture; see ArenaPrototypeCanvas.foodStates. */
+  arenaFoodStates?: 'standard' | 'variants';
   /** Dev-fixture-only tier pin; see ArenaPrototypeCanvas.forceRenderTier. */
   arenaRenderTier?: RenderTier;
   /** Dev-fixture-only pitch escape; see ArenaPrototypeCanvas.pitchDeg. */
@@ -213,6 +215,7 @@ function ArenaPreview({
   arenaVariant,
   arenaEffects,
   arenaDensity,
+  arenaFoodStates,
   arenaRenderTier,
   arenaPitchDeg,
   arenaBoardTheme,
@@ -226,6 +229,7 @@ function ArenaPreview({
   arenaVariant: 'released' | 'cockpit';
   arenaEffects: boolean;
   arenaDensity: 'standard' | 'extreme';
+  arenaFoodStates?: 'standard' | 'variants';
   arenaRenderTier?: RenderTier;
   arenaPitchDeg?: number;
   arenaBoardTheme?: BoardThemeSelection;
@@ -260,6 +264,7 @@ function ArenaPreview({
                   arenaVariant={arenaVariant}
                   effectsEnabled={arenaEffects}
                   density={arenaDensity}
+                  foodStates={arenaFoodStates}
                   forceRenderTier={arenaRenderTier}
                   pitchDeg={arenaPitchDeg}
                   boardThemeSelection={arenaBoardTheme}
@@ -332,6 +337,7 @@ export function CockpitPrototype({
   arenaVariant = 'cockpit',
   arenaEffects = true,
   arenaDensity = 'standard',
+  arenaFoodStates,
   arenaRenderTier,
   arenaPitchDeg,
   arenaBoardTheme,
@@ -469,6 +475,7 @@ export function CockpitPrototype({
             arenaVariant={arenaVariant}
             arenaEffects={arenaEffects}
             arenaDensity={arenaDensity}
+            arenaFoodStates={arenaFoodStates}
             arenaRenderTier={arenaRenderTier}
             arenaPitchDeg={arenaPitchDeg}
             arenaBoardTheme={arenaBoardTheme}

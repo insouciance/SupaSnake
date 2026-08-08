@@ -1,41 +1,69 @@
 'use client';
 
 /**
- * FoodBeacon - the board pickup.
+ * FoodBeacon - the board pickup, drawn as 90S CARTOON FOOD.
  *
- * INK & AMBER, and the ruling that closed the food pass. The nested
- * emissive-core-plus-wireframe-cage beacon is gone: it was an abstract jewel,
- * and food should read as FOOD - something you would recognise as edible in a
- * cartoon.
+ * THE SUPERSESSION. INK & AMBER got the idea right and the material wrong:
+ * food should read as something a cartoon would eat, and it did - but it was
+ * built as a near-sphere lit by the board and lifted by an emissive so large
+ * it erased its own cel bands. This pass keeps the idea, the shapes' ROLES and
+ * every semantic, and rebuilds the surface on the snake's own vocabulary. The
+ * argument for each choice lives in `screen/food90s.ts`; what follows is what
+ * is drawn.
  *
- *   APPLE IS THE ORDINARY FOOD. One shape, everywhere ordinary food appears.
- *   There is no variant switch in board code and no constant to flip - the
- *   board asks for `standard` and gets the apple. Chunky voxel body, ink stem,
- *   one green leaf, one bone pixel glint; the leaf breaks the blob, which is
- *   what keeps it legible at 19px where a symmetric shape is not.
+ *   APPLE   the ordinary food, on every board, in every dynasty. A chunky
+ *           tapered block - barrel-bodied with a shoulder - an ink stem, one
+ *           fat green leaf and a single bone glint. The leaf is not decoration:
+ *           it breaks the silhouette asymmetrically, which is what keeps the
+ *           shape legible at the smallest board scale where a symmetric blob is
+ *           not, and red-against-green is a pairing no other object on the
+ *           board owns.
+ *   DONUT   the golden state. Glazed, sprinkled, and the only ANNULUS in the
+ *           scene - a hole is a shape nothing else has and it reads before the
+ *           gold does. The incumbent earned that property with a gold ring;
+ *           this keeps the property and spends it on an actual food.
+ *   BERRY   the wager state. Wide-shouldered, drawn to a blunt point, and
+ *           wobbling on two frequencies that never resolve - it stands on a
+ *           corner it could fall off, so the shape says risk before the motion
+ *           does. UMBRA, the colour the product already spends on risk.
  *
- * Every shape carries the ink hull and the 3-band toon ramp. Specials stay
- * shape-first, because at 19px only OUTLINE survives:
+ * EVERY STATE IS TOLD APART ON THREE CHANNELS AT ONCE - silhouette, hue family
+ * and motion - and never on brightness, which is the one channel that does not
+ * survive a cheaper tier. `FOOD_STATE_SIGNATURES` states it and the test
+ * asserts it.
  *
- *   GOLDEN  a flat, chunky, tilted gold ring - a coin caught mid-spin. It is
- *           the only ANNULUS on the board: a hole in the middle is a shape no
- *           other object has, and it reads before the gold does.
- *   WAGER   a cube stood on its corner, wobbling on two frequencies that
- *           never resolve. UMBRA oxblood.
+ * ENV-IMMUNITY. Every body runs the snake's face-keyed shading, which zeroes
+ * both reflected-light accumulators and writes an authored band off the world
+ * normal. After that the food's colour is a function of its own surface and
+ * nothing else - not the key light, not the fill, not the board theme standing
+ * behind it. A fruit cannot wash out when the dynasty changes.
  *
- * Cost: 4 draw calls for the ordinary apple (body + hull, leaf + hull; the
- * stem and glint are unlit ink/bone marks that carry no hull), 2 for either
- * special. The old beacon was 2. Geometries live at module scope; body
- * materials are cached per colour (bounded set: dynasty accents + COSMIC glyph
- * colours) and the fixed parts share one material each. Per-frame work is
- * scale and rotation writes only - no allocations, no React state.
+ * Cost: 6 draw calls for the apple (body + hull, leaf + hull, and the stem and
+ * glint as unlit ink marks that carry no hull), 6 for the donut, 5 for the
+ * berry - parity with the beacon this replaces. Geometries and materials live
+ * at module scope and are shared; per-frame work is scale and rotation writes
+ * only, with no allocations, no React state and - deliberately - no brightness
+ * animation at all.
  */
 
 import { useRef, type ReactElement } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { createExactUnitRoundedBoxGeometry } from './screen/gameRenderGeometry';
-import { createInkHullMaterial, getToonGradientMap, INK } from './screen/inkAmber';
+import {
+  DONUT_SPRINKLES,
+  FOOD_CHIP_INK_HULL_WIDTH,
+  FOOD_PALETTE,
+  FOOD_STATE_SIGNATURES,
+  FOOD_TONES,
+  FOOD_TONES_FLAT_FALL,
+  appleBodyGeometry,
+  berryBodyGeometry,
+  chipGeometry,
+  createFoodInkHullMaterial,
+  donutGeometry,
+  getFoodCelMaterial,
+  getFoodFlatMaterial,
+} from './screen/food90s';
 
 /**
  * THE ORDINARY FOOD. `standard` is the board's alias for it - board code names
@@ -49,7 +77,29 @@ export type FoodVariant = 'standard' | typeof ORDINARY_FOOD | 'golden' | 'wager'
 interface FoodBeaconProps {
   /** Food position */
   position: [number, number, number];
-  /** Dynasty accent color (or COSMIC constellation glyph color) */
+  /**
+   * THE OBJECTIVE COLOUR, AND WHY THE ORDINARY FOOD NO LONGER TAKES IT.
+   *
+   * Retained so every existing caller compiles and so the specials keep a
+   * fallback, but the apple is authored scarlet on every board now. Two
+   * reasons, and neither is taste:
+   *
+   *   Nothing dynasty-specific is being given up. All three material profiles
+   *   set `objectiveColor` to the same `systemCyan`, so the shipped food was
+   *   already one fixed colour everywhere - a CYAN apple, and on the cyan-neon
+   *   CYBER board a cyan pickup against a cyan board is the worst pairing the
+   *   palette can produce.
+   *
+   *   A tinted food is not a food. The whole brief is that the pickup belongs
+   *   to the same cartoon as the character, and a cartoon apple is red. Colour
+   *   is the food's IDENTITY here, not a channel for something else to borrow.
+   *
+   * The one thing this drops is COSMIC's per-glyph wave tint. A constellation
+   * wave still reads as one object - its members are the only multi-food state
+   * on the board and they arrive together - but successive waves no longer
+   * differ in hue. Flagged for the owner rather than buried: restoring it is
+   * one line here.
+   */
   color?: string;
   /** Visual-only scale; released default remains 1. */
   visualScale?: number;
@@ -57,135 +107,85 @@ interface FoodBeaconProps {
   variant?: FoodVariant;
 }
 
-/** Nominal food radius. Every variant is built against this one number. */
-const CORE_SIZE = 0.34;
-const CORE_EMISSIVE = 1.6;
 /** Rest height of the item's centre above the board plane. */
 const CENTER_Y = 0.36;
 /** Spawn pop duration (elastic overshoot) */
 const SPAWN_DURATION = 0.45;
 
-/** Body diameter, in cells. Held under a cell so food never crowds a turn. */
-const APPLE_WIDTH = CORE_SIZE * 1.92;
+/** Footprints, straight off the distinctness table - one source, not two. */
+const APPLE_WIDTH = FOOD_STATE_SIGNATURES.apple.footprint;
+const DONUT_WIDTH = FOOD_STATE_SIGNATURES.donut.footprint;
+const BERRY_WIDTH = FOOD_STATE_SIGNATURES.berry.footprint;
 /** A squat apple is a friendly apple: the body is wider than it is tall. */
 const APPLE_SQUASH = 0.88;
+/** The berry is the one body taller than it is wide - that is the taper. */
+const BERRY_STRETCH = 1.08;
 
 /** Idle motion. Ordinary food hovers and turns; it does not tumble. */
 const IDLE_SPIN_RATE = 0.42;
 const IDLE_BOB_RATE = 1.7;
 const IDLE_BOB_HEIGHT = 0.045;
-/** GOLDEN HOUR: a coin caught mid-spin, around the board's up axis only. */
-const RING_SPIN_RATE = 0.62;
-const RING_BOB_RATE = 1.5;
-const RING_BOB_HEIGHT = 0.06;
+/** GOLDEN: a donut turning on the board's up axis, so the hole never hides. */
+const DONUT_SPIN_RATE = 0.62;
+const DONUT_BOB_RATE = 1.5;
+const DONUT_BOB_HEIGHT = 0.06;
 /** The fixed tilt that keeps the annulus off edge-on. */
-const RING_TILT: [number, number, number] = [0.34, 0, 0.12];
+const DONUT_TILT: [number, number, number] = [0.34, 0, 0.12];
 /**
- * WAGER: a die that never quite settles. The two wobble frequencies are
+ * WAGER: a berry that never quite settles. The two wobble frequencies are
  * deliberately incommensurate so the motion never resolves into a loop - risk
  * should feel unsteady, and no other object on the board moves like this.
  */
-const WAGER_SPIN_RATE = 0.55;
-const WAGER_WOBBLE_Z = { rate: 3.1, amplitude: 0.16 } as const;
-const WAGER_WOBBLE_X = { rate: 2.3, phase: 1.1, amplitude: 0.13 } as const;
-const WAGER_HOP = { rate: 2.6, height: 0.055 } as const;
+const BERRY_SPIN_RATE = 0.55;
+const BERRY_WOBBLE_Z = { rate: 3.1, amplitude: 0.16 } as const;
+const BERRY_WOBBLE_X = { rate: 2.3, phase: 1.1, amplitude: 0.13 } as const;
+const BERRY_HOP = { rate: 2.6, height: 0.055 } as const;
 
 // -----------------------------------------------------------------------------
-// Geometry - module scope, never disposed
+// Materials - module scope, shared, never disposed
 // -----------------------------------------------------------------------------
 
-/**
- * The apple body. Radius 0.42 at two rounding segments is as close to a
- * sphere as this family gets while still chamfering like everything else on
- * the board - a real sphere would be the only smooth object in frame and
- * would read as imported from another game.
- */
-const appleBodyGeometry = createExactUnitRoundedBoxGeometry(0.42, 2);
-/** Stem, leaf and glint - small flat parts, so they round less. */
-const chipGeometry = createExactUnitRoundedBoxGeometry(0.16);
-
-/**
- * GOLDEN HOUR. Four radial segments keep the tube faceted, which is what
- * stops a torus reading as the one smooth-shaded import on the board. The
- * tube is deliberately fat: a thin ring vanishes at phone scale, and the
- * whole point of the shape is the HOLE.
- */
-const goldRingGeometry = new THREE.TorusGeometry(CORE_SIZE * 0.92, 0.1, 4, 18);
-goldRingGeometry.rotateX(Math.PI / 2);
-
-/**
- * WAGER: a cube on its corner. Rotating the GEOMETRY, not the mesh, keeps the
- * idle wobble free to be its own motion.
- */
-const wagerGeometry = new THREE.BoxGeometry(
-  CORE_SIZE * 0.88,
-  CORE_SIZE * 0.88,
-  CORE_SIZE * 0.88
-);
-wagerGeometry.rotateX(Math.PI / 4);
-wagerGeometry.rotateZ(Math.atan(Math.SQRT1_2));
-
-// -----------------------------------------------------------------------------
-// Materials
-// -----------------------------------------------------------------------------
-
-/** Variant palette. Both specials sit in colours the product already owns. */
-const VARIANT_COLOR: Partial<Record<FoodVariant, string>> = {
-  golden: '#f5c542', // AURUM
-  wager: '#f54263', // UMBRA
-};
-
-/**
- * The leaf is the one part that never takes the dynasty accent. A cyan apple
- * is still an apple; a cyan LEAF is a shape with no meaning. One fixed fresh
- * green is the whole "this is produce" signal and it costs one material.
- */
-const LEAF_GREEN = '#7fbd48';
-
-// --- Per-color body material cache (bounded: 3 accents + 3 glyph colors) ---
-const coreMaterialCache = new Map<string, THREE.MeshToonMaterial>();
-
-// INK & AMBER: one hull for every food body.
-const coreHullMaterial = createInkHullMaterial();
+const bodyHullMaterial = createFoodInkHullMaterial();
 /** Fine parts get a fine line, or the ink swallows the leaf. */
-const chipHullMaterial = createInkHullMaterial(0.022);
+const chipHullMaterial = createFoodInkHullMaterial(FOOD_CHIP_INK_HULL_WIDTH);
 
-function getCoreMaterial(color: string): THREE.MeshToonMaterial {
-  let material = coreMaterialCache.get(color);
-  if (!material) {
-    material = new THREE.MeshToonMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: CORE_EMISSIVE,
-      gradientMap: getToonGradientMap(),
-    });
-    coreMaterialCache.set(color, material);
-  }
-  return material;
-}
+const appleMaterial = getFoodCelMaterial(FOOD_PALETTE.appleSkin, FOOD_TONES);
+const berryMaterial = getFoodCelMaterial(FOOD_PALETTE.berry, FOOD_TONES);
+/**
+ * The glaze and the greenery take the FLAT-FALL table. The top-lit fall is
+ * keyed to raw object-space height on a unit body; on a ring laid flat and on
+ * a leaf a tenth of a cell thick it would not draw a gradient, only a constant
+ * tax on the authored colour.
+ */
+const glazeMaterial = getFoodCelMaterial(
+  FOOD_PALETTE.glaze,
+  FOOD_TONES_FLAT_FALL
+);
+const leafMaterial = getFoodCelMaterial(
+  FOOD_PALETTE.leaf,
+  FOOD_TONES_FLAT_FALL
+);
 
 /** Stem: ink, unlit, so it stays a drawn mark at any scale. */
-const inkPartMaterial = new THREE.MeshBasicMaterial({
-  color: INK,
-  toneMapped: false,
-});
+const inkPartMaterial = getFoodFlatMaterial(FOOD_PALETTE.ink);
 /** The cartoon highlight. Unlit bone - it is a drawn glint, not a specular. */
-const glintMaterial = new THREE.MeshBasicMaterial({
-  color: '#fdf6ea',
-  toneMapped: false,
-});
-const leafMaterial = new THREE.MeshToonMaterial({
-  color: LEAF_GREEN,
-  emissive: LEAF_GREEN,
-  emissiveIntensity: 0.5,
-  gradientMap: getToonGradientMap(),
-});
+const glintMaterial = getFoodFlatMaterial(FOOD_PALETTE.glint);
+const sprinkleBoneMaterial = getFoodFlatMaterial(FOOD_PALETTE.sprinkleBone);
+const sprinklePinkMaterial = getFoodFlatMaterial(FOOD_PALETTE.sprinklePink);
 
 // -----------------------------------------------------------------------------
 // Parts
 // -----------------------------------------------------------------------------
 
-/** One outlined part. `ink="none"` for marks that ARE the ink. */
+/**
+ * One outlined part.
+ *
+ * The hull is mounted as a CHILD of the mesh it outlines rather than a
+ * sibling, so it inherits the same transform automatically. The hull shader
+ * divides its offset by world scale, so the line stays the same weight on a
+ * 0.66-wide apple and a 0.12-wide sprinkle alike. `ink="none"` for marks that
+ * ARE the ink.
+ */
 function Part({
   position,
   scale,
@@ -199,7 +199,7 @@ function Part({
   rotation?: [number, number, number];
   material: THREE.Material;
   geometry?: THREE.BufferGeometry;
-  ink?: 'core' | 'chip' | 'none';
+  ink?: 'body' | 'chip' | 'none';
 }) {
   return (
     <mesh
@@ -213,7 +213,7 @@ function Part({
       {ink !== 'none' && (
         <mesh
           geometry={geometry}
-          material={ink === 'core' ? coreHullMaterial : chipHullMaterial}
+          material={ink === 'body' ? bodyHullMaterial : chipHullMaterial}
           renderOrder={-1}
         />
       )}
@@ -224,42 +224,116 @@ function Part({
 /**
  * THE APPLE - the ordinary food, on every board, in every dynasty.
  *
- * Cool + cute is a proportion problem, not a decoration problem: the body is
- * wider than it is tall, the stem is short and tilted (an upright stem reads
- * as a bomb fuse), and the leaf sits high and to one side so the silhouette is
+ * Cool and cute is a proportion problem, not a decoration problem: the body is
+ * wider than it is tall, the stem is short and tilted (an upright stem reads as
+ * a bomb fuse), and the leaf sits high and to one side so the silhouette is
  * asymmetric. The single bone pixel is the entire cartoon read - the same
  * pixel-glint vocabulary the snake's eyes use, so the food and the character
  * are drawn by one hand.
  */
-function Apple({ material }: { material: THREE.Material }) {
+function Apple() {
   return (
     <group>
       <Part
         position={[0, 0, 0]}
         scale={[APPLE_WIDTH, APPLE_WIDTH * APPLE_SQUASH, APPLE_WIDTH]}
-        material={material}
+        material={appleMaterial}
         geometry={appleBodyGeometry}
-        ink="core"
+        ink="body"
       />
       {/* Stem: short, tilted, ink. */}
       <Part
-        position={[0.02, APPLE_WIDTH * 0.5, 0]}
-        scale={[0.055, 0.17, 0.055]}
+        position={[0.02, APPLE_WIDTH * 0.42, 0]}
+        scale={[0.06, 0.18, 0.06]}
         rotation={[0, 0, -0.3]}
         material={inkPartMaterial}
         ink="none"
       />
-      {/* Leaf: one flat blade off the stem, tipped up and swept back. */}
+      {/* Leaf: one fat blade off the stem, tipped up and swept back. Chunky
+          rather than thin - a blade thinner than the ink line is a line. */}
       <Part
-        position={[0.17, APPLE_WIDTH * 0.56, 0.02]}
-        scale={[0.24, 0.045, 0.13]}
+        position={[0.19, APPLE_WIDTH * 0.5, 0.02]}
+        scale={[0.27, 0.1, 0.16]}
         rotation={[0, -0.35, 0.42]}
         material={leafMaterial}
       />
       {/* The glint. Upper-left of the body, flat on its face. */}
       <Part
-        position={[-0.14, 0.11, APPLE_WIDTH * 0.44]}
-        scale={[0.085, 0.085, 0.03]}
+        position={[-0.15, 0.1, APPLE_WIDTH * 0.42]}
+        scale={[0.09, 0.09, 0.03]}
+        material={glintMaterial}
+        ink="none"
+      />
+    </group>
+  );
+}
+
+/**
+ * THE DONUT - the golden state.
+ *
+ * The sprinkles are unlit drawn marks scattered around the ring at authored
+ * angles: they cost no outline, they read as texture rather than as parts, and
+ * they are what stops a fat amber torus reading as the coin it replaced.
+ */
+function Donut() {
+  return (
+    <group scale={DONUT_WIDTH}>
+      <mesh geometry={donutGeometry} material={glazeMaterial} castShadow>
+        <mesh
+          geometry={donutGeometry}
+          material={bodyHullMaterial}
+          renderOrder={-1}
+        />
+      </mesh>
+      {DONUT_SPRINKLES.map(([angle, tilt], index) => (
+        <Part
+          key={angle}
+          position={[
+            Math.cos(angle) * 0.28,
+            0.1,
+            Math.sin(angle) * 0.28,
+          ]}
+          scale={[0.11, 0.035, 0.045]}
+          rotation={[0, -angle + tilt, 0]}
+          material={
+            index % 2 === 0 ? sprinkleBoneMaterial : sprinklePinkMaterial
+          }
+          ink="none"
+        />
+      ))}
+    </group>
+  );
+}
+
+/**
+ * THE BERRY - the wager state. A calyx of two leaves and one glint; the taper
+ * does the rest.
+ */
+function Berry() {
+  return (
+    <group>
+      <Part
+        position={[0, 0, 0]}
+        scale={[BERRY_WIDTH, BERRY_WIDTH * BERRY_STRETCH, BERRY_WIDTH]}
+        material={berryMaterial}
+        geometry={berryBodyGeometry}
+        ink="body"
+      />
+      <Part
+        position={[0.11, BERRY_WIDTH * 0.5, 0.04]}
+        scale={[0.24, 0.08, 0.13]}
+        rotation={[0, -0.4, 0.24]}
+        material={leafMaterial}
+      />
+      <Part
+        position={[-0.12, BERRY_WIDTH * 0.44, -0.06]}
+        scale={[0.22, 0.08, 0.12]}
+        rotation={[0, 2.5, -0.2]}
+        material={leafMaterial}
+      />
+      <Part
+        position={[-0.13, 0.08, BERRY_WIDTH * 0.38]}
+        scale={[0.08, 0.08, 0.03]}
         material={glintMaterial}
         ink="none"
       />
@@ -281,14 +355,13 @@ function resolveVariant(variant: FoodVariant): Exclude<FoodVariant, 'standard'> 
 
 export function FoodBeacon({
   position,
-  color = '#22d3ee',
   visualScale = 1,
   variant = 'standard',
 }: FoodBeaconProps) {
   const groupRef = useRef<THREE.Group>(null);
   const idleRef = useRef<THREE.Group>(null);
-  const wagerRef = useRef<THREE.Mesh>(null);
-  const ringRef = useRef<THREE.Group>(null);
+  const berryRef = useRef<THREE.Group>(null);
+  const donutRef = useRef<THREE.Group>(null);
   // Spawn tracking: re-pop whenever the food moves to a new cell (the
   // component instance persists across spawns)
   const lastXRef = useRef(position[0]);
@@ -296,8 +369,6 @@ export function FoodBeacon({
   const spawnAtRef = useRef<number | null>(null);
 
   const resolved = resolveVariant(variant);
-  // A special's colour is its own; ordinary food takes the dynasty accent.
-  const coreMaterial = getCoreMaterial(VARIANT_COLOR[resolved] ?? color);
 
   useFrame(({ clock }, delta) => {
     const time = clock.getElapsedTime();
@@ -312,8 +383,8 @@ export function FoodBeacon({
     }
     const age = time - spawnAtRef.current;
 
-    // Elastic spawn pop - bigger overshoot than the old beacon so a new
-    // objective announces itself across the board
+    // Elastic spawn pop - a new objective announces itself by SIZE, which
+    // survives every tier, rather than by a flash, which does not.
     let spawnScale = 1;
     if (age >= 0 && age < SPAWN_DURATION) {
       const t = age / SPAWN_DURATION;
@@ -332,28 +403,26 @@ export function FoodBeacon({
       idleRef.current.rotation.y += delta * IDLE_SPIN_RATE;
       idleRef.current.position.y = Math.sin(time * IDLE_BOB_RATE) * IDLE_BOB_HEIGHT;
     }
-    // Idempotent time-based write - shared material, every instance agrees.
-    coreMaterial.emissiveIntensity =
-      CORE_EMISSIVE * (1 + Math.sin(time * 2.2) * 0.15);
 
-    // GOLDEN HOUR: the spin is around the board's up axis and the tilt is
-    // fixed, so the annulus is never edge-on - the hole is the shape, and a
-    // hole you cannot see is not a shape.
-    if (ringRef.current) {
-      ringRef.current.rotation.y += delta * RING_SPIN_RATE;
-      ringRef.current.position.y = Math.sin(time * RING_BOB_RATE) * RING_BOB_HEIGHT;
+    // GOLDEN: the spin is around the board's up axis and the tilt is fixed, so
+    // the annulus is never edge-on - the hole is the shape, and a hole you
+    // cannot see is not a shape.
+    if (donutRef.current) {
+      donutRef.current.rotation.y += delta * DONUT_SPIN_RATE;
+      donutRef.current.position.y =
+        Math.sin(time * DONUT_BOB_RATE) * DONUT_BOB_HEIGHT;
     }
 
-    // WAGER: a die that never quite settles.
-    if (wagerRef.current) {
-      wagerRef.current.rotation.y += delta * WAGER_SPIN_RATE;
-      wagerRef.current.rotation.z =
-        Math.sin(time * WAGER_WOBBLE_Z.rate) * WAGER_WOBBLE_Z.amplitude;
-      wagerRef.current.rotation.x =
-        Math.sin(time * WAGER_WOBBLE_X.rate + WAGER_WOBBLE_X.phase) *
-        WAGER_WOBBLE_X.amplitude;
-      wagerRef.current.position.y =
-        Math.abs(Math.sin(time * WAGER_HOP.rate)) * WAGER_HOP.height;
+    // WAGER: a berry that never quite settles.
+    if (berryRef.current) {
+      berryRef.current.rotation.y += delta * BERRY_SPIN_RATE;
+      berryRef.current.rotation.z =
+        Math.sin(time * BERRY_WOBBLE_Z.rate) * BERRY_WOBBLE_Z.amplitude;
+      berryRef.current.rotation.x =
+        Math.sin(time * BERRY_WOBBLE_X.rate + BERRY_WOBBLE_X.phase) *
+        BERRY_WOBBLE_X.amplitude;
+      berryRef.current.position.y =
+        Math.abs(Math.sin(time * BERRY_HOP.rate)) * BERRY_HOP.height;
     }
   });
 
@@ -361,35 +430,20 @@ export function FoodBeacon({
   if (resolved === ORDINARY_FOOD) {
     body = (
       <group ref={idleRef}>
-        <Apple material={coreMaterial} />
+        <Apple />
       </group>
     );
   } else if (resolved === 'golden') {
     body = (
-      <group ref={ringRef} rotation={RING_TILT}>
-        <mesh geometry={goldRingGeometry} material={coreMaterial} castShadow>
-          <mesh
-            geometry={goldRingGeometry}
-            material={coreHullMaterial}
-            renderOrder={-1}
-          />
-        </mesh>
+      <group ref={donutRef} rotation={DONUT_TILT}>
+        <Donut />
       </group>
     );
   } else {
     body = (
-      <mesh
-        ref={wagerRef}
-        geometry={wagerGeometry}
-        material={coreMaterial}
-        castShadow
-      >
-        <mesh
-          geometry={wagerGeometry}
-          material={coreHullMaterial}
-          renderOrder={-1}
-        />
-      </mesh>
+      <group ref={berryRef}>
+        <Berry />
+      </group>
     );
   }
 

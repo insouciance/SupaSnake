@@ -20,6 +20,9 @@
  * - ?arena=released|cockpit (WebGL renderer only)
  * - ?effects=off (raw scene-cost comparison)
  * - ?density=extreme (actual long coiled snake + dense causal terrain)
+ * - ?foods=variants (the golden and wager pickups beside the ordinary one, so
+ *   the food states can be told apart in one frame - the board itself only
+ *   ever mounts the ordinary pickup, so they meet nowhere else)
  * - ?pitch=1..88 (WebGL renderer only - judge board art at a candidate
  *   camera pitch in degrees from zenith. ET-5 ratified one viewpoint for the
  *   played board; this is a judging escape on a route that 404s in
@@ -243,6 +246,9 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
         arenaVariant={first(params.arena) === 'released' ? 'released' : 'cockpit'}
         arenaEffects={first(params.effects) !== 'off'}
         arenaDensity={first(params.density) === 'extreme' ? 'extreme' : 'standard'}
+        arenaFoodStates={
+          first(params.foods) === 'variants' ? 'variants' : 'standard'
+        }
         arenaRenderTier={parseRenderTier(first(params.tier))}
         arenaPitchDeg={parsePitchDeg(first(params.pitch))}
         arenaBoardTheme={parseBoardThemeSelection(first(params.boardTheme))}
