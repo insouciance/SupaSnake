@@ -80,6 +80,12 @@ interface ArenaPrototypeCanvasProps {
   effectsEnabled?: boolean;
   density?: 'standard' | 'extreme';
   /**
+   * Dev-fixture-only: `variants` adds the golden and wager pickups beside the
+   * ordinary one so all three food states can be judged in a single frame.
+   * See `FOOD_GOLDEN`. The live board never sets this.
+   */
+  foodStates?: 'standard' | 'variants';
+  /**
    * Dev-fixture-only: pin the governor to one tier so a verifier or a human
    * can measure a specific tier's output (e.g. the floor's luminance
    * repayment) reproducibly instead of waiting for the governor to wander
@@ -193,6 +199,25 @@ const STATIC_SNAKE: readonly Position[] = [
 const FOOD = { x: 14, y: 0, z: 6 } as const;
 const MUTATION = { x: 16, y: 0, z: 13 } as const;
 const PORTAL = { x: 4, y: 0, z: 3 } as const;
+
+/**
+ * THE FOOD-STATE FIXTURE (`/dev/cockpit?foods=variants`).
+ *
+ * The board only ever mounts the ordinary pickup, so the states that have to
+ * be told apart at a glance - ordinary, golden, wager - never appear in one
+ * frame anywhere a human can look at them. The distinctness rule is asserted
+ * in `food90s.test.ts`, but "asserted" and "looked at side by side on a
+ * crowded board in three themes" are different claims, and only the second one
+ * answers whether a player can read it at 175ms.
+ *
+ * Review tooling: this places the two specials NEXT TO the ordinary food that
+ * is already in the fixture, on the free column outside the dense coil (which
+ * spans x 3..16) and inside the terrain border (which fills the outer two
+ * rings). Nothing here reaches a player - `/dev/cockpit` 404s in production -
+ * and the standard fixture is untouched.
+ */
+const FOOD_GOLDEN = { x: 17, y: 0, z: 5 } as const;
+const FOOD_WAGER = { x: 17, y: 0, z: 9 } as const;
 
 function buildDenseSnake(): readonly Position[] {
   const cells: Position[] = [];
@@ -400,6 +425,7 @@ function PrototypeScene({
   arenaVariant = 'cockpit',
   effectsEnabled = true,
   density = 'standard',
+  foodStates = 'standard',
   forceRenderTier,
   pitchDeg,
   boardThemeSelection,
@@ -575,6 +601,20 @@ function PrototypeScene({
         color={GAME_SCREEN_COLORS.systemCyan}
         visualScale={1.12}
       />
+      {foodStates === 'variants' ? (
+        <>
+          <FoodBeacon
+            position={[FOOD_GOLDEN.x + 0.5, 0, FOOD_GOLDEN.z + 0.5]}
+            variant="golden"
+            visualScale={1.12}
+          />
+          <FoodBeacon
+            position={[FOOD_WAGER.x + 0.5, 0, FOOD_WAGER.z + 0.5]}
+            variant="wager"
+            visualScale={1.12}
+          />
+        </>
+      ) : null}
       <MutationBeacon
         position={[MUTATION.x + 0.5, 0, MUTATION.z + 0.5]}
         ticksRemaining={28}
@@ -664,6 +704,7 @@ export function ArenaPrototypeCanvas({
   arenaVariant = 'cockpit',
   effectsEnabled = true,
   density = 'standard',
+  foodStates = 'standard',
   forceRenderTier,
   pitchDeg,
   boardThemeSelection,
@@ -693,6 +734,7 @@ export function ArenaPrototypeCanvas({
           ?.id ?? 'stone'
       }
       data-fixture-seam-lines={boardSeamLines ? 'on' : 'off'}
+      data-fixture-food-states={foodStates}
       // The review harness reads this back off the host element, so a shot's
       // filename is checked against what actually rendered rather than against
       // what the URL asked for.
@@ -723,6 +765,7 @@ export function ArenaPrototypeCanvas({
           arenaVariant={arenaVariant}
           effectsEnabled={effectsEnabled}
           density={density}
+          foodStates={foodStates}
           forceRenderTier={forceRenderTier}
           pitchDeg={pitchDeg}
           boardThemeSelection={boardThemeSelection}

@@ -65,6 +65,16 @@ const PREFIX = process.env.PREFIX ?? '';
  * this value.
  */
 const PURPLE = process.env.PURPLE;
+/**
+ * THE FOOD-STATE FIXTURE. `FOODS=variants` puts the golden and wager pickups
+ * on the board beside the ordinary one (`?foods=variants`).
+ *
+ * The played board only ever mounts the ordinary pickup, so the three states
+ * that have to be told apart at a glance exist in one frame nowhere else. A
+ * distinctness rule can be unit-tested; whether a player reads it at 175ms on
+ * a crowded board is decided by looking at all three at once, in each theme.
+ */
+const FOODS = process.env.FOODS;
 
 /**
  * The scene's dynasty for each theme. `?boardTheme` is independent of
@@ -92,7 +102,8 @@ function url(theme, extra = '') {
   const snake = SNAKE === undefined ? '' : `&snake90s=${SNAKE}`;
   const pitch = PITCH === undefined ? '' : `&pitch=${PITCH}`;
   const purple = PURPLE === undefined ? '' : `&boardPurple=${PURPLE}`;
-  return `${BASE}/dev/cockpit?renderer=webgl&state=active&dynasty=${dynasty}&boardTheme=${theme}${extra}${tier}${snake}${pitch}${purple}`;
+  const foods = FOODS === undefined ? '' : `&foods=${FOODS}`;
+  return `${BASE}/dev/cockpit?renderer=webgl&state=active&dynasty=${dynasty}&boardTheme=${theme}${extra}${tier}${snake}${pitch}${purple}${foods}`;
 }
 
 /**
@@ -131,6 +142,7 @@ async function readStats(page) {
       triangles: Number(host.dataset.triangles),
       tier: host.dataset.renderTier,
       theme: host.dataset.fixtureBoardTheme,
+      foods: host.dataset.fixtureFoodStates,
       purple: host.dataset.fixtureBoardPurple,
     };
   }, BOARD);
@@ -193,6 +205,24 @@ const MODES = {
     crop: { x: 0.27, y: 0.17, width: 0.16, height: 0.18 },
     name: (theme) => `${PREFIX}heading-${theme}${suffix}.png`,
   },
+  /**
+   * THE FOOD CLOSE-UP - the supersession judgement.
+   *
+   * Same crop, same scale, same pose on both legs, so an old apple and a new
+   * one can be laid side by side without either being re-cropped by hand. The
+   * question this frame answers is the resemblance law: does the pickup belong
+   * to the same cartoon as the character standing next to it? That is decided
+   * at the scale the owner annotates at, not at board scale.
+   *
+   * Run it with FOODS=variants and all three states are in the crop together.
+   */
+  foods: {
+    viewport: { width: 1280, height: 820 },
+    deviceScaleFactor: 4,
+    query: '&density=extreme',
+    crop: { x: 0.52, y: 0.1, width: 0.36, height: 0.34 },
+    name: (theme) => `${PREFIX}foods-${theme}${suffix}.png`,
+  },
   zoom: {
     viewport: { width: 1280, height: 820 },
     deviceScaleFactor: 4,
@@ -248,7 +278,7 @@ try {
   } else {
     const preset = MODES[mode];
     if (!preset) {
-      throw new Error(`unknown mode "${mode}" (board|dense|cubes|heading|zoom|terrain|stats)`);
+      throw new Error(`unknown mode "${mode}" (board|dense|cubes|foods|heading|zoom|terrain|stats)`);
     }
     const page = await browser.newPage({
       viewport: preset.viewport,
@@ -281,6 +311,7 @@ try {
           // a variant while showing the shipped board.
           purple: stats.purple,
           tier: stats.tier,
+          foods: stats.foods,
           file,
         })
       );
