@@ -508,6 +508,53 @@ describe('the glide sampler', () => {
     });
   });
 
+  describe('a head that is not travelling has nothing to lead toward', () => {
+    it('rests on its tile centre at spawn, whatever direction it faces', () => {
+      // The defect this gate exists for: at spawn the loop is not armed, alpha
+      // reads 1, and the lead put the head half a cell along its facing before
+      // the run had started. The first snapshot seeds prev = curr, so it is
+      // stationary by construction and must draw on the centre.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(10, 10), seg(10, 11)], 100, 0);
+      setHeadOutbound(buffer, 0, -1, GLIDE_MOTION_AT_TICK_START);
+      expect(buffer.headMoved).toBe(false);
+      for (const alpha of [0, 0.25, 0.5, 0.75, 1]) {
+        expect(getGlideX(buffer, 0, glideArrival(alpha))).toBe(10);
+        expect(getGlideZ(buffer, 0, glideArrival(alpha))).toBe(10);
+      }
+    });
+
+    it('rests on its tile centre on any stationary stamp', () => {
+      // A paused loop re-stamps an unmoved snake; each stamp restarts alpha,
+      // and without this gate the head re-ran the lead every time - the
+      // oscillation between the cell and the first half of the next one.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5), seg(4, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5), seg(5, 5)], 100, 100);
+      expect(buffer.headMoved).toBe(true);
+      recordTick(buffer, [seg(6, 5), seg(5, 5)], 100, 200);
+      expect(buffer.headMoved).toBe(false);
+      setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+      for (const alpha of [0, 0.5, 1]) {
+        expect(getGlideX(buffer, 0, glideArrival(alpha))).toBe(6);
+        expect(getGlideZ(buffer, 0, glideArrival(alpha))).toBe(5);
+      }
+      // The body rests with it - nothing moved, so nothing leads.
+      expect(getGlideX(buffer, 1, GLIDE_MOTION_AT_TICK_END)).toBe(5);
+    });
+
+    it('resumes leading on the first stamp that moves the head again', () => {
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(6, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5)], 100, 100);
+      expect(buffer.headMoved).toBe(false);
+      recordTick(buffer, [seg(7, 5)], 100, 200);
+      setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+      expect(buffer.headMoved).toBe(true);
+      expect(getGlideX(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBeCloseTo(7.5, 12);
+    });
+  });
+
   it('is cleared by a reset, so a new run never leans toward the dead one', () => {
     const buffer = createInterpolationBuffer(4);
     recordTick(buffer, [seg(5, 5)], 100, 0);

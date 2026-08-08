@@ -92,6 +92,17 @@ export interface InterpolationBuffer {
    * publishing" (the arena prototypes, which fall back to the live heading).
    */
   headOutboundKnown: boolean;
+  /**
+   * Whether the head changed cell on the most recent stamp.
+   *
+   * The outbound lead is only legitimate for a head that is actually
+   * travelling. A stationary stamp - the first snapshot of a run, the ready
+   * screen, a paused loop re-stamping an unmoved snake - must draw the head on
+   * its tile centre, not half a cell along its facing. Anticipating a move
+   * that is not happening is what put the head "already ahead by about half a
+   * cell" at spawn.
+   */
+  headMoved: boolean;
 }
 
 export function createInterpolationBuffer(
@@ -111,6 +122,7 @@ export function createInterpolationBuffer(
     headOutboundPriorZ: 0,
     headOutboundTurnAt: 1,
     headOutboundKnown: false,
+    headMoved: false,
   };
 }
 
@@ -129,6 +141,7 @@ export function resetInterpolationBuffer(buffer: InterpolationBuffer): void {
   buffer.headOutboundTurnAt = 1;
   // A new run's first frames must not lean toward the dead snake's next cell.
   buffer.headOutboundKnown = false;
+  buffer.headMoved = false;
 }
 
 /**
@@ -167,6 +180,11 @@ export function recordTick(
     prev[i * 2] = curr[i * 2];
     prev[i * 2 + 1] = curr[i * 2 + 1];
   }
+
+  // The first snapshot seeds prev = curr, so it reads as stationary and the
+  // head rests on its tile - which is the correct picture on the ready screen.
+  buffer.headMoved =
+    count > 0 && (curr[0] !== prev[0] || curr[1] !== prev[1]);
 
   buffer.count = count;
   // The first snapshot seeds prev === curr, so it is semantically stable, not
@@ -361,6 +379,8 @@ export function getGlideX(
   const p = buffer.prev[index * 2];
   const c = buffer.curr[index * 2];
   if (motion <= 1) return p + (c - p) * motion;
+  // A snake that did not move has nothing to lead toward.
+  if (!buffer.headMoved) return c;
   return c + (motion - 1) * glideOutboundX(buffer, index, motion);
 }
 
@@ -373,6 +393,7 @@ export function getGlideZ(
   const p = buffer.prev[index * 2 + 1];
   const c = buffer.curr[index * 2 + 1];
   if (motion <= 1) return p + (c - p) * motion;
+  if (!buffer.headMoved) return c;
   return c + (motion - 1) * glideOutboundZ(buffer, index, motion);
 }
 
