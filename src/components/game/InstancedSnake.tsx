@@ -71,6 +71,8 @@ import { GAME_CONFIG } from '@/shared/config/game';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
 import {
   getAlpha,
+  getGlideX,
+  getGlideZ,
   getInterpolatedX,
   getInterpolatedZ,
   type InterpolationBuffer,
@@ -824,10 +826,13 @@ function InstancedSnakeCore({
 
     const count = buffer.count;
     const alpha = getAlpha(buffer, performance.now());
-    // ET-1: elapsed-time alpha is the truth; `motion` is WHEN inside the
-    // interval that truth is drawn. The head lands by ARRIVAL_ALPHA and
-    // settles; the trail below reads the same clock.
-    const motion = arrivalMotion(alpha, getArrivalMode());
+    // Elapsed-time alpha is the truth; `motion` is WHEN inside the interval
+    // that truth is drawn. Under ET-1b the head crosses one cell at one speed,
+    // half a cell ahead of the plain blend; the trail below reads the same
+    // clock. The mode also picks the SAMPLER - see sampleDrawnHead's note in
+    // AimRenderer for why glide's motion cannot go to getInterpolatedX/Z.
+    const mode = getArrivalMode();
+    const motion = arrivalMotion(alpha, mode);
     elapsedRef.current += delta;
     const elapsed = elapsedRef.current;
 
@@ -903,9 +908,13 @@ function InstancedSnakeCore({
     if (count > 0) {
       head.visible = true;
       head.position.set(
-        getInterpolatedX(buffer, 0, motion) + 0.5,
+        (mode === 'glide'
+          ? getGlideX(buffer, 0, motion)
+          : getInterpolatedX(buffer, 0, motion)) + 0.5,
         SNAKE_HEAD_CENTER_Y,
-        getInterpolatedZ(buffer, 0, motion) + 0.5
+        (mode === 'glide'
+          ? getGlideZ(buffer, 0, motion)
+          : getInterpolatedZ(buffer, 0, motion)) + 0.5
       );
       const target = HEAD_FACE_YAW[direction];
       // Shortest-path wrap into [-PI, PI), then exponential damp

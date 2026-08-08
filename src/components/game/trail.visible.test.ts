@@ -233,22 +233,28 @@ describe('the failure modes the design named explicitly', () => {
   });
 
   /**
-   * ET-1. The unit tests prove the curve; this proves the curve is WIRED - the
-   * same class of gap this file exists for. A front-loaded easing module that
-   * nothing imports would pass every test it owns and change nothing on screen.
+   * ET-1/ET-1b. The unit tests prove the profile; this proves it is WIRED -
+   * the same class of gap this file exists for. An arrival module that nothing
+   * imports would pass every test it owns and change nothing on screen.
    */
-  it('the head and the trail are both drawn on the front-loaded arrival clock', () => {
+  it('the head and the trail are both drawn on the active arrival clock', () => {
     const renderer = stripComments(read(RENDERER));
     expect(renderer).toContain("from '@/lib/game/arrivalEasing'");
     // The head's position blend is the re-timed one, not raw elapsed alpha.
+    expect(renderer).toMatch(/const motion = arrivalMotion\(alpha, mode\)/);
+    // ...and the mode picks the SAMPLER as well as the timing. Glide's motion
+    // above 1 is travel toward the next cell; handed to getInterpolatedX it
+    // would extrapolate along the INCOMING direction and be wrong at exactly
+    // the corners the profile exists to keep continuous.
     expect(renderer).toMatch(
-      /const motion = arrivalMotion\(alpha, getArrivalMode\(\)\)/
+      /mode === 'glide'\s*\?\s*getGlideX\(buffer, 0, motion\)\s*:\s*getInterpolatedX\(buffer, 0, motion\)/
     );
-    expect(renderer).toContain('getInterpolatedX(buffer, 0, motion)');
-    expect(renderer).toContain('getInterpolatedZ(buffer, 0, motion)');
+    expect(renderer).toMatch(
+      /mode === 'glide'\s*\?\s*getGlideZ\(buffer, 0, motion\)\s*:\s*getInterpolatedZ\(buffer, 0, motion\)/
+    );
     // ...and the body runs on that same clock. Both `eased` bindings (trail
     // and coil seal) come from the arrival transition; a surviving literal
-    // smoothstep here would be a body accordioning under a landed head.
+    // smoothstep here would be a body accordioning under the head.
     expect(renderer).not.toMatch(/alpha \* alpha \* \(3 - 2 \* alpha\)/);
     expect(
       renderer.match(/const eased = arrivalTransition\(alpha, getArrivalMode\(\)\)/g)
@@ -259,9 +265,16 @@ describe('the failure modes the design named explicitly', () => {
     // A telegraph bound to the head must not read a different curve than the
     // head, or the guide detaches from the creature it belongs to for most of
     // every interval - which is the ET-1 defect, reintroduced one layer up.
+    //
+    // ONE composition, three consumers (the lead, the rails, the drone). Three
+    // copies is how one of them drifts onto a different curve; that the count
+    // is pinned here is the point.
     const aim = stripComments(read(AIM));
     expect(aim).toContain("from '@/lib/game/arrivalEasing'");
-    expect(aim.match(/arrivalMotion\(/g)).toHaveLength(3);
+    expect(aim.match(/arrivalMotion\(/g)).toHaveLength(1);
+    expect(aim.match(/sampleDrawnHead\(buffer, /g)).toHaveLength(3);
+    expect(aim).toContain('getGlideX(buffer, 0, motion)');
+    expect(aim).toContain('getGlideZ(buffer, 0, motion)');
     expect(aim).not.toMatch(/const alpha = getAlpha\(buffer, (now|performance)/);
   });
 
