@@ -398,6 +398,21 @@ export function getGlideZ(
 }
 
 /**
+ * The unit direction of the head's most recent move, wrap-corrected.
+ *
+ * This is the travel axis the cell behind the head extrudes along - not the
+ * outbound (where it is going next) but the inbound (how it got here), which
+ * is the axis the vacated tile has to be filled along.
+ */
+export function getHeadStepX(buffer: InterpolationBuffer): number {
+  return unitStep(buffer.curr[0] - buffer.prev[0]);
+}
+
+export function getHeadStepZ(buffer: InterpolationBuffer): number {
+  return unitStep(buffer.curr[1] - buffer.prev[1]);
+}
+
+/**
  * Publish the direction the next tick will move the head in.
  *
  * `motion` is the glide motion at the moment of the call, so a turn admitted

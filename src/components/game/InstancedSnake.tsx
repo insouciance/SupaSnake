@@ -73,6 +73,8 @@ import {
   getAlpha,
   getGlideX,
   getGlideZ,
+  getHeadStepX,
+  getHeadStepZ,
   getInterpolatedX,
   getInterpolatedZ,
   type InterpolationBuffer,
@@ -93,6 +95,7 @@ import {
 import {
   createTrailCellState,
   resetTrailCells,
+  trailCellIndex,
   trailCellX,
   trailCellZ,
   updateTrailCells,
@@ -457,6 +460,17 @@ export interface TrailInstanceSink {
   setColorAt(index: number, color: THREE.Color): void;
 }
 
+/**
+ * One occupied cell.
+ *
+ * A non-zero `extrudeX`/`extrudeZ` EXTRUDES the box along that axis instead of
+ * scaling it: the rear face - the boundary the cell shares with the body
+ * behind it - stays pinned, and the front face sits `lead` cells ahead of the
+ * tile centre, clamped to the box's own front. The rear face never moves at
+ * any lead. That is the owner's ruling for the neck (GLIDE-2 defect 2) and the
+ * one ruled exception to the cube law: a cell entering under a gliding head is
+ * a box growing forward, not a small cube inflating in the middle of a tile.
+ */
 function writeTrailCell(
   sink: TrailInstanceSink,
   instance: number,
@@ -468,7 +482,10 @@ function writeTrailCell(
   cells: TrailCellState,
   dynasty: DynastyId,
   strainBands: readonly StrainId[],
-  elapsed: number
+  elapsed: number,
+  extrudeX = 0,
+  extrudeZ = 0,
+  lead = 0
 ): number {
   if (instance >= TRAIL_INSTANCE_CAPACITY || transition <= 0.001) {
     return instance;
@@ -488,12 +505,33 @@ function writeTrailCell(
   const height = cubic
     ? edge
     : getTrailHeight(representative, length) * breathe * transition;
+  // Rear-anchored extrusion. The front face lands where the head's trailing
+  // face is - `lead` cells ahead of this tile's centre - until the box is
+  // whole, after which it stays whole. Rear face pinned at -half throughout,
+  // so the centre moves by exactly half of what the length is missing.
+  let spanX = footprint;
+  let spanZ = footprint;
+  let offsetX = 0;
+  let offsetZ = 0;
+  if (extrudeX !== 0 || extrudeZ !== 0) {
+    const half = footprint / 2;
+    const front = lead < half ? lead : half;
+    const extruded = front + half;
+    const shift = (front - half) / 2;
+    if (extrudeX !== 0) {
+      spanX = extruded;
+      offsetX = extrudeX * shift;
+    } else {
+      spanZ = extruded;
+      offsetZ = extrudeZ * shift;
+    }
+  }
   _position.set(
-    trailCellX(cells, cell) + 0.5,
+    trailCellX(cells, cell) + 0.5 + offsetX,
     centerYFromBase(FLOOR_CLEARANCE, height),
-    trailCellZ(cells, cell) + 0.5
+    trailCellZ(cells, cell) + 0.5 + offsetZ
   );
-  _scale.set(footprint, height, footprint);
+  _scale.set(spanX, height, spanZ);
   _matrix.compose(_position, _identityQuaternion, _scale);
   sink.setMatrixAt(instance, _matrix);
   writeCellColor(
@@ -537,7 +575,23 @@ export function writeTrailInstances(
   const count = buffer.count;
   let n = 0;
 
-  const eased = arrivalTransition(alpha, getArrivalMode());
+  const mode = getArrivalMode();
+  const eased = arrivalTransition(alpha, mode);
+
+  // ET-1b: THE NECK. The cell the head just left does not inflate in place -
+  // it extrudes out of the tile behind it, its front face chasing the head's
+  // trailing face. Under glide the head's trailing face starts exactly on this
+  // tile's centre and advances one cell per interval, so the lead in cells IS
+  // alpha: half the tile filled at the tick (replacing the departing head
+  // cube's trailing half, so the handoff is continuous), whole before the
+  // midpoint, still after. Clamped to the box's own front, so it is already at
+  // its persistent size when the next tick makes it an ordinary body cell.
+  const necking = mode === 'glide' && buffer.headMoved;
+  const neckCell = necking
+    ? trailCellIndex(cells, buffer.prev[0], buffer.prev[1])
+    : -1;
+  const neckStepX = necking ? getHeadStepX(buffer) : 0;
+  const neckStepZ = necking ? getHeadStepZ(buffer) : 0;
 
   // Persistent cells never translate. A newly deposited cell grows into the
   // previous head tile as the head leaves it; nothing else in the coil moves.
@@ -558,18 +612,25 @@ export function writeTrailInstances(
     const length = persistent
       ? buffer.prevCount + (count - buffer.prevCount) * eased
       : count;
+    // The neck is the one entering cell that carries full size from the start
+    // and grows only in length; any other entrant (growth, revive) keeps the
+    // ordinary taper, which is not the artefact the owner flagged.
+    const isNeck = !persistent && cell === neckCell;
     n = writeTrailCell(
       sink,
       n,
       cell,
       representative,
       length,
-      transition,
+      isNeck ? 1 : transition,
       fusion,
       cells,
       dynasty,
       strainBands,
-      elapsed
+      elapsed,
+      isNeck ? neckStepX : 0,
+      isNeck ? neckStepZ : 0,
+      alpha
     );
   }
 

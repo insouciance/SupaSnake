@@ -257,8 +257,31 @@ describe('the failure modes the design named explicitly', () => {
     // smoothstep here would be a body accordioning under the head.
     expect(renderer).not.toMatch(/alpha \* alpha \* \(3 - 2 \* alpha\)/);
     expect(
-      renderer.match(/const eased = arrivalTransition\(alpha, getArrivalMode\(\)\)/g)
+      renderer.match(/const eased = arrivalTransition\(alpha, (mode|getArrivalMode\(\))\)/g)
     ).toHaveLength(2);
+  });
+
+  /**
+   * GLIDE-2 defect 2, wired. The geometry is proven in InstancedSnake.trail;
+   * this proves the neck is IDENTIFIED and fed, because a rear-anchored
+   * extrusion nothing ever passes a travel axis to is just the old centre
+   * scale with three more parameters.
+   */
+  it('extrudes the neck out of the tile the head just left', () => {
+    const renderer = stripComments(read(RENDERER));
+    // The neck is the previous head cell, and only under a glide that moved.
+    expect(renderer).toContain(
+      "const necking = mode === 'glide' && buffer.headMoved"
+    );
+    expect(renderer).toMatch(
+      /trailCellIndex\(cells, buffer\.prev\[0\], buffer\.prev\[1\]\)/
+    );
+    // Travel axis is the head's own step, so a torus crossing extrudes toward
+    // the seam rather than backwards across the board.
+    expect(renderer).toContain('getHeadStepX(buffer)');
+    expect(renderer).toContain('getHeadStepZ(buffer)');
+    // Rear pinned, front chasing: the centre shift is half the missing length.
+    expect(renderer).toContain('const shift = (front - half) / 2');
   });
 
   it('THE LEAD samples the head on the same clock the head is drawn with', () => {
