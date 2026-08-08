@@ -5,6 +5,8 @@ import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
 import { IconBolt, IconDna, IconGear, IconShield } from '@/components/ui/icons';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
 import { formatAmount } from '@/shared/format/amount';
+import { SnakeCubeChrome, snakeCubeVars } from './SnakeCubeButton';
+import type { DynastyId } from '@/shared/types/game';
 
 /**
  * The mobile header is a symmetric three-column grid: an empty rail, the
@@ -66,17 +68,39 @@ const HOME_HEADER_GRID_STYLE = {
  * type now sets the image, and the box cannot drift from the ruling without the
  * ruling itself being edited.
  *
- * `WIDTH_EM` is measured, not chosen. The old wordmark was rendered in Chromium
- * at all three breakpoints and its width divided by its font-size:
+ * `WIDTH_EM` WAS measured off the type this replaced - 220.32/36, 367.25/60 and
+ * 440.66/72, a single 6.120 at every step because the type scaled linearly - and
+ * that number is now SUPERSEDED. It reproduced the old wordmark's footprint
+ * exactly, which was the right goal while the question was "does the drawing
+ * fit where the type sat"; it is the wrong goal now that the owner has ruled on
+ * the composition instead:
  *
- *     mobile   220.32px / 36px = 6.120
- *     tablet   367.25px / 60px = 6.120
- *     desktop  440.66px / 72px = 6.120
+ *     "The Mark should be at least as wide as the snake. i don't really like
+ *      the proportions right now, so we have to improve that!"
  *
- * A single ratio at every step, because the type scaled linearly. Setting the
- * mark to 6.12em therefore reproduces the old footprint exactly: 220px, 367px
- * and 441px. `mark.png` is 441px wide for that reason - 1x is the widest box
- * the mark ever occupies, so the desktop hero is served at native resolution.
+ * THE NEW NUMBER IS ALSO MEASURED, against the thing the rule names. The
+ * creature's silhouette was measured off rendered frames at four viewports by
+ * the same warm-pixel mask the axis work uses (`scripts/shoot-home-axis.mjs`) -
+ * the Mark's own box excluded, so the two are never measuring each other:
+ *
+ *     viewport      mark 6.12em   creature   ratio
+ *     1440            446px        468px     0.95
+ *      768            372px        392px     0.95
+ *      390            223px        232px     0.96
+ *      320            194px        179px     1.09
+ *
+ * The Mark was NARROWER than the snake at every step except the one where it
+ * had already run out of screen - which is exactly the complaint, arrived at
+ * from the measurement rather than from the eye. 7.2em clears the rule with
+ * room at every breakpoint (1.11, 1.10, 1.12, and 1.45 at 320 where the
+ * creature is small because the camera has pulled back), and it is a SCALE of
+ * the mount box: the drawing's aspect, its internal geometry and the family
+ * derived from it are untouched, which is the half of the original lock that
+ * still stands.
+ *
+ * `mark.png` is regenerated at the new 1x width for the same reason it was 441:
+ * 1x must be the widest box the mark ever occupies, or the desktop hero is
+ * served upscaled.
  *
  * The mark is TALLER than the type it replaces (159px against 102px at the
  * desktop step) and that is correct: the extra height is the purple shape, and
@@ -89,11 +113,11 @@ const HOME_HEADER_GRID_STYLE = {
  * traced from; the drawing did not change, its margin did.
  */
 export const HOME_WORDMARK = Object.freeze({
-  /** Measured from the ruling's own geometry; see above. */
-  widthEm: 6.12,
+  /** Set from the snake-width rule; see above. */
+  widthEm: 7.2,
   /** Intrinsic size of the 1x delivery, for aspect-ratio and CLS. */
-  intrinsicWidth: 441,
-  intrinsicHeight: 159,
+  intrinsicWidth: 518,
+  intrinsicHeight: 186,
 });
 
 export interface HomeSpecimenIdentity {
@@ -119,6 +143,8 @@ interface HomeIdentityHudProps {
   authenticated: boolean;
   dna: number | null;
   energy: HomeWalletEnergy | null;
+  /** The creature in the chamber, so its cubes and the header's agree. */
+  dynasty?: DynastyId;
 }
 
 /**
@@ -132,6 +158,7 @@ export function HomeIdentityHud({
   authenticated,
   dna,
   energy,
+  dynasty,
 }: HomeIdentityHudProps) {
   const specimenLabel = specimen
     ? `${specimen.variantName} · Gen ${specimen.generation}`
@@ -146,7 +173,21 @@ export function HomeIdentityHud({
       style={HOME_HEADER_GRID_STYLE}
       data-home-identity-hud
     >
-      <div className="col-start-2 row-start-1 mx-auto flex w-full min-w-0 flex-col items-center">
+      {/* THE COLUMN TAKES ITS RAILS BACK ON A PHONE.
+
+          The header is a symmetric three-column grid and the identity column is
+          the middle one, so at 320 it is 192px wide against a 296px screen -
+          which is why the Mark alone among the four breakpoints could not reach
+          the width the snake rule asks for. Below `sm` the column spills back
+          over both rails.
+
+          It is safe because it is only HORIZONTAL room, and the two things
+          living in those rails are pinned to the TOP: the wallet ends at 34px
+          and the Settings cube at 60px, while the Mark starts at 72px
+          (`mt-[4.5rem]`). The grid template is untouched, so the geometry
+          contract the narrow-viewport regression measures still describes
+          exactly what it did. */}
+      <div className="col-start-2 row-start-1 mx-auto flex w-full min-w-0 flex-col items-center max-sm:-mx-[52px] max-sm:w-[calc(100%+104px)]">
         {/* Bigger, and pushed clear of the top edge into the chamber's open
             room. The tilt stays at the established -2 degrees; the per-letter
             character turns against it so the line reads as lettered, not as
@@ -159,7 +200,7 @@ export function HomeIdentityHud({
             purple field and its own ink edge baked into the artwork, so it
             carries its separation with it and owes the room nothing. It was
             designed on dark; on dark is where it sings. */}
-        <h1 className="heading-display heading-lettered mt-10 -rotate-[2deg] text-4xl sm:mt-14 sm:text-6xl lg:text-7xl">
+        <h1 className="heading-display heading-lettered mt-[4.5rem] -rotate-[2deg] text-4xl sm:mt-14 sm:text-6xl lg:text-7xl">
           {/* The accessible wordmark. The mark is an image with an empty alt,
               so the name has to be carried here - and with the lettering now
               drawn rather than typed, this is the ONLY place the wordmark
@@ -193,92 +234,159 @@ export function HomeIdentityHud({
           </picture>
         </h1>
 
-        {specimen ? (
-          <p
-            /* Sits on the room, not on a chip — so it follows the ground.
-               See the mission line in `page.tsx` for the same move. */
-            className="mt-2 flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap font-display text-xs uppercase text-bone-white sm:text-base"
-            aria-label={specimenLabel ?? undefined}
-            title={specimenLabel ?? undefined}
-            data-testid="home-specimen-identity"
+        {/* ONE LINE, WITH ROOM BETWEEN THEM. (Owner ruling, 2026-08-08.)
+
+              "keep the selected snake and the clan there, but in one line, not
+               beneath each other, just make sure there's 'sensible' space
+               between them."
+
+            The two of them stacked was three rows of small type under the Mark
+            and it read as a list of properties. Side by side they read as what
+            they are: who this snake is, and who it runs with. The gap is a real
+            gutter rather than a word space, and it grows with the viewport,
+            because "sensible space" at 320 and at 1440 are not the same number.
+
+            They wrap rather than crush at the narrowest widths — the pair is
+            `flex-wrap`, so a long name and a long clan on a 320px phone become
+            two lines instead of two ellipses. One line is the composition; two
+            legible lines beat one unreadable one. */}
+        {specimen || clan ? (
+          <div
+            className="mt-2 flex w-full min-w-0 flex-wrap items-center justify-center gap-x-6 gap-y-1.5 sm:gap-x-10"
+            data-testid="home-identity-row"
           >
-            {specimen.lineageStrain ? (
-              <span
-                className="inline-flex h-4 w-4 shrink-0 [&_svg]:h-full [&_svg]:w-full"
-                style={{ color: STRAINS[specimen.lineageStrain].color }}
-                title={`${STRAINS[specimen.lineageStrain].name} Genome lineage`}
-                aria-hidden="true"
-                data-testid="home-lineage-rune"
+            {specimen ? (
+              <p
+                /* Sits on the room, not on a cube — it is a readout, and the
+                   cube is reserved for things you can press. */
+                className="flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap font-display text-xs uppercase text-bone-white sm:text-base"
+                aria-label={specimenLabel ?? undefined}
+                title={specimenLabel ?? undefined}
+                data-testid="home-specimen-identity"
               >
-                <StrainGlyph id={specimen.lineageStrain} />
-              </span>
+                {specimen.lineageStrain ? (
+                  <span
+                    className="inline-flex h-4 w-4 shrink-0 [&_svg]:h-full [&_svg]:w-full"
+                    style={{ color: STRAINS[specimen.lineageStrain].color }}
+                    title={`${STRAINS[specimen.lineageStrain].name} Genome lineage`}
+                    aria-hidden="true"
+                    data-testid="home-lineage-rune"
+                  >
+                    <StrainGlyph id={specimen.lineageStrain} />
+                  </span>
+                ) : null}
+                <span className="min-w-0 truncate" data-testid="home-specimen-name">
+                  {specimen.variantName}
+                </span>
+                <span className="shrink-0" data-testid="home-specimen-generation">
+                  {' '}· Gen {specimen.generation}
+                </span>
+              </p>
             ) : null}
-            <span className="min-w-0 truncate" data-testid="home-specimen-name">
-              {specimen.variantName}
-            </span>
-            <span className="shrink-0" data-testid="home-specimen-generation">
-              {' '}· Gen {specimen.generation}
-            </span>
-          </p>
-        ) : null}
 
-        {clan ? (
-          <Link
-            href="/clan"
-            className="ink-chip brand-keyline pointer-events-auto mt-2 inline-flex min-h-7 min-w-0 max-w-full items-center gap-1.5 overflow-hidden px-2.5 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink"
-            aria-label={clanLabel ?? undefined}
-            title={clanLabel ?? undefined}
-            data-testid="home-clan-identity"
-          >
-            <IconShield size={13} className="shrink-0" />
-            <span
-              className="min-w-0 truncate whitespace-nowrap font-body text-[10px] font-bold uppercase tracking-[0.1em]"
-              data-testid="home-clan-name"
-            >
-              {clan.name}
-            </span>
-          </Link>
+            {clan ? (
+              /* A CONTROL, so it is a segment of the snake — and only the cube
+                 is. The clan's NAME stands beside it on the room, set exactly
+                 like the specimen's name opposite, because the two halves of
+                 this line are the same KIND of information and dressing one of
+                 them in a chip would say they were not. What you press is the
+                 cube; what you read is type. */
+              <Link
+                href="/clan"
+                className="pointer-events-auto flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-bone-white"
+                aria-label={clanLabel ?? undefined}
+                title={clanLabel ?? undefined}
+                data-testid="home-clan-identity"
+              >
+                <span
+                  className="snake-cube h-9 w-9 shrink-0 sm:h-10 sm:w-10"
+                  style={snakeCubeVars({ dynasty })}
+                >
+                  <SnakeCubeChrome
+                    dynasty={dynasty}
+                    glyphClassName="text-[color:var(--snake-ink)]"
+                  >
+                    <IconShield size={15} />
+                  </SnakeCubeChrome>
+                </span>
+                <span
+                  className="min-w-0 truncate whitespace-nowrap font-display text-xs uppercase tracking-[0.06em] sm:text-base"
+                  data-testid="home-clan-name"
+                >
+                  {clan.name}
+                </span>
+              </Link>
+            ) : null}
+          </div>
         ) : null}
+      </div>
 
-        {authenticated ? (
+      {/* THE WALLET LEAVES THE CENTRE STACK. (Owner ruling, 2026-08-08: "try to
+          place the wallet (DNA, Energy) somewhere else".)
+
+          It sits at the top LEFT, opposite Settings, and the pairing is the
+          argument for the position: the two corners of the header now carry one
+          readout and one control, which is the same split the identity line
+          below makes. It is off the Mark's axis, so the composition the round is
+          rebalancing does not have to carry it, and it is where a currency
+          readout is looked for.
+
+          IT WEARS NOTHING. No cube, no chip, no fill, no contour — type and two
+          glyphs, directly on the room, exactly like the mission line. That is
+          not restraint, it is the rule: the cube means "this can be pressed",
+          and the strongest way to keep that promise honest is that the one
+          element on Home which cannot be pressed refuses every part of it.
+
+          It overflows the 44px rail on purpose. The header's three-column
+          geometry is a contract the narrow-viewport regression measures, and it
+          is about where the IDENTITY column starts and ends; a display item
+          allowed to spill leftward into its own margin does not move either
+          edge, so the contract is untouched. */}
+      {authenticated ? (
         <div
-          className="ink-chip pointer-events-auto mx-auto mt-2 inline-flex min-h-9 items-center overflow-hidden px-3"
+          className="col-start-1 row-start-1 flex w-max items-center gap-2 self-start justify-self-start pt-0.5"
           aria-label={`Wallet: ${dna === null ? 'DNA loading' : `${formatAmount(dna)} DNA`}${energy?.visible ? ` and ${energy.available} of ${energy.capacity} Energy` : ''}`}
           data-testid="home-wallet"
         >
           <span className="inline-flex items-center gap-1.5" title="DNA">
-            <IconDna size={14} className="text-[#1d6b3f]" />
-            <span className="font-mono text-[10px] font-bold text-ink">
+            <IconDna size={15} className="text-[#69d38d]" />
+            <span className="font-mono text-[11px] font-bold text-bone-white">
               {dna === null ? '—' : formatAmount(dna)}
             </span>
           </span>
           {energy?.visible ? (
             <>
-              <span className="mx-2 h-4 w-[length:var(--ink-w-1)] bg-ink" aria-hidden="true" />
+              <span
+                className="h-3.5 w-[length:var(--ink-w-1)] bg-bone-white/40"
+                aria-hidden="true"
+              />
               <span className="inline-flex items-center gap-1.5" title="Recovered Energy">
-                <IconBolt size={14} className="text-venom-orange-dark" />
-                <span className="font-mono text-[10px] font-bold text-ink">
+                <IconBolt size={15} className="text-venom-orange" />
+                <span className="font-mono text-[11px] font-bold text-bone-white">
                   {energy.available}/{energy.capacity}
                 </span>
               </span>
             </>
           ) : null}
         </div>
-        ) : null}
-      </div>
+      ) : null}
 
       <Link
         href="/settings"
         aria-label="Settings"
         title="Settings"
-        /* A control, so it wears the Mark's keyline like the rail does. The
-           wallet readout above deliberately does not: it is a <div>, it cannot
-           be pressed, and the loudest edge on the page must not promise an
-           action that does not exist. */
-        className="ink-chip brand-keyline pointer-events-auto col-start-3 row-start-1 inline-flex h-11 w-11 items-center justify-center justify-self-end self-start text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink"
+        /* A control, so it is a segment of the snake like everything else on
+           Home that can be pressed. */
+        className="snake-cube pointer-events-auto col-start-3 row-start-1 h-11 w-11 justify-self-end self-start"
+        style={snakeCubeVars({ dynasty })}
         data-testid="home-settings"
       >
-        <IconGear size={18} />
+        <SnakeCubeChrome
+          dynasty={dynasty}
+          glyphClassName="text-[color:var(--snake-ink)]"
+        >
+          <IconGear size={18} />
+        </SnakeCubeChrome>
       </Link>
     </header>
   );

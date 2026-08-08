@@ -16,6 +16,9 @@ import {
   IconTrophy,
   type IconProps,
 } from '@/components/ui/icons';
+import { SNAKE_STYLE_PROFILE } from '@/components/game/screen/snake90s';
+import { SnakeCubeChrome, snakeCubeVars } from './SnakeCubeButton';
+import type { DynastyId } from '@/shared/types/game';
 
 export type HomeCommand = 'play' | 'lab' | 'compete' | 'you';
 
@@ -26,6 +29,14 @@ interface HomeCommandRailProps {
   playPhase: string;
   playErrorId?: string;
   onReactionChange?: (command: HomeCommand | null) => void;
+  /**
+   * The dynasty of the snake in the chamber. Under the shipped style the base
+   * colour is forced to the guide's amber for all three, so this moves only the
+   * emissive by a hundredth — it is threaded anyway so a future style that
+   * un-forces the colour makes the dock follow the creature standing above it
+   * rather than quietly disagreeing with it.
+   */
+  dynasty?: DynastyId;
 }
 
 interface DestinationDefinition {
@@ -38,20 +49,21 @@ interface DestinationDefinition {
 }
 
 /**
- * Glyph colours, chosen for a LIGHT CHIP — and that is why the dark-ground
- * ruling does not move them.
+ * THE GLYPHS GO INK, ALL OF THEM. (The surface changed; the rule did not.)
  *
- * The adaptive rule is that an identity keeps its hue and changes its VALUE
- * with the surface it is DRAWN ON, and the surface these are drawn on is the
- * chip, not the room. `.ink-chip` is still near-white stock; paper stopped
- * being the room and did not stop being the material. So the reasoning that
- * set these survives the reversal intact: they used to be `cosmic-glow`,
- * `rarity-legendary` and `pulse`, which resolve to #FFD700 and #fbbf24, and on
- * cream the Lab and Compete glyphs were two near-identical golds at roughly
- * 1.3:1 against their own chip. Same families, darker end.
+ * The standing rule is that an identity keeps its hue and changes its VALUE
+ * with the surface it is DRAWN ON. That surface used to be a near-white chip,
+ * which is why these were `cosmic-dim`, `venom-orange-dark` and `pulse` — three
+ * dark marks on cream. The surface is now a segment of the snake: a saturated
+ * amber face at roughly 60% luminance, and the guide has exactly one accent for
+ * something drawn ON the creature, which is its own warm near-black.
  *
- * Had the chips gone dark with the room, all three would have had to move back
- * up. They did not, so these are left exactly as measured.
+ * Measured against the front face (`side` band, #ed9a30 at the glyph's height),
+ * the three old colours land at 1.5:1, 1.9:1 and 1.4:1 — all of them illegible,
+ * and two of them nearly invisible. `GUIDE_PALETTE.ink` lands at 7.6:1. The
+ * dynasty hues have not been suppressed; they were never carried HERE. Lab is
+ * COSMIC on the Lab screen, and a 24px stroked icon was always the weakest
+ * possible place to say so.
  */
 const DESTINATIONS: DestinationDefinition[] = [
   {
@@ -60,8 +72,7 @@ const DESTINATIONS: DestinationDefinition[] = [
     label: 'Lab',
     Icon: IconFlask,
     notificationDestination: 'lab',
-    // COSMIC, at its deep value rather than its glow.
-    color: 'text-cosmic-dim',
+    color: 'text-[color:var(--snake-ink)]',
   },
   {
     command: 'compete',
@@ -69,8 +80,7 @@ const DESTINATIONS: DestinationDefinition[] = [
     label: 'Compete',
     Icon: IconTrophy,
     notificationDestination: 'clan',
-    // The amber, taken dark: a struck-metal trophy, not a lit one.
-    color: 'text-venom-orange-dark',
+    color: 'text-[color:var(--snake-ink)]',
   },
   {
     command: 'you',
@@ -78,60 +88,44 @@ const DESTINATIONS: DestinationDefinition[] = [
     label: 'You',
     Icon: IconMedal,
     notificationDestination: 'identity',
-    color: 'text-pulse',
+    color: 'text-[color:var(--snake-ink)]',
   },
 ];
 
 /**
- * The drawn chip — now a cartridge-era BLOCK. (Owner: "i don't like the round
- * buttons, make em more 90s SNES style.")
+ * THE ROW IS THE CREATURE. (Owner ruling, 2026-08-08 — this replaces both the
+ * SNES block and the purple keyline that answered the two rounds before it.)
  *
- * Three utilities left this string and none of them was replaced by another:
+ *   "the buttons could look like the segments of the snake, i.e. cubes, that'd
+ *    make more sense ... will make it very coherent, a great composition."
  *
- *   `rounded-full`        the roundness lived HERE, not in `.ink-chip` — the
- *                         class never declared a radius at all. Deleting it is
- *                         therefore the entire shape change, and the chip
- *                         inherits `--radius-chip` (4px) like every other chip
- *                         in the product. A class that has to fight a utility
- *                         is a class that has lost, so the fight is removed
- *                         rather than won.
- *   `hover:-translate-y-0.5`
- *   `active:translate-y-0`
- *                         the press is now the BLOCK, in CSS, where the
- *                         box-shadow it has to stay in step with lives. A
- *                         transform authored in one file and a shadow in
- *                         another cannot be kept in phase, and the old pair
- *                         were not: the chip lifted on hover while its block
- *                         stayed put, and on press the block shrank while the
- *                         chip did not move into the space it vacated.
+ * So the dock is a head and three body segments, drawn by the creature's own
+ * law — see `snakeCubeArt.ts`. Every rectangle utility that used to be in this
+ * string is gone, because there is no rectangle left to style: no fill, no
+ * border, no radius, no ring.
  *
- * The chip keeps its AREA, and that was always the load-bearing decision: the
- * contrast has to come from the chip rather than from the glyph, because a
- * 24px stroked icon is mostly holes. 64px square holds the row inside a 19rem
- * rail with a real gutter, so four blocks with 2.5px contours never read as
- * one bar — if anything a square reads as more separate than a circle did,
- * because the gutter is now a constant width down its whole height.
+ * WHY PLAY IS THE HEAD RATHER THAN A WIDER BUTTON. The ruling permits a wide
+ * control to be a fused segment ROW instead of a stretched cube, and that would
+ * have worked. The head is the better answer because the creature already makes
+ * it: the head is a larger cube (`headSize` 0.9 against `bodySize` 0.78) on a
+ * brighter base carrying nearly three times the emissive, and it is the end the
+ * character sheet calls alive. Hierarchy bought from the character costs the
+ * composition nothing and says something; hierarchy bought from width would
+ * have had to be paid for out of the rail's gutters.
  *
- * The focus ring goes INSET. An offset ring draws in the room, and the room is
- * dark: Tailwind's default offset colour is white, which would put a pale
- * halo around every chip on a night ground — the exact keyline the global law
- * retired. Inside the near-white chip an ink ring is unmissable and needs no
- * ground to sit on, so it is correct whatever the ground is ruled to be next.
- *
- * THE MARK'S KEYLINE, WORN BY THE ROW. (Owner ruling, 2026-08-08: "the buttons
- * dont fit the style… maybe the buttons have a similar style to the logo with
- * the purple 'outline'.")
- *
- * `.brand-keyline` is the Mark's own construction — a purple field closed by a
- * darker purple stroke, outside the chip's ink contour — and `globals.css`
- * carries the derivation. What matters HERE is that it is the whole answer to
- * the complaint: the row already had the right BODY (a flat block, a hard
- * contour, a displaced shadow, a real press) and was simply not speaking the
- * logo's language at its edge. Nothing about the block changes; the edge joins
- * the family.
+ * THE HEAD OVERFLOWS ITS CELL, ON PURPOSE AND WITHIN THE GUTTER. Four equal
+ * columns of a 19rem rail are 67px wide at the `sm` gap. The body cubes take
+ * 62px and the head takes 62 x 1.154 = 71.5px, so PLAY reaches 2.25px into each
+ * of its gutters and leaves 7.5px of clear room where the others leave 12px.
+ * That is the creature's own spacing — the head sits closer to the first body
+ * segment than the body segments sit to each other — and it is why the grid is
+ * not restructured to make room.
  */
 const controlClass =
-  'ink-chip brand-keyline group relative mx-auto flex h-16 w-16 min-h-[44px] min-w-[44px] items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink disabled:cursor-wait disabled:opacity-40';
+  'snake-cube group relative mx-auto h-[62px] w-[62px] min-h-[44px] min-w-[44px] disabled:cursor-wait disabled:opacity-40';
+
+/** The head's own size step, taken from the profile rather than chosen. */
+const HEAD_SCALE = SNAKE_STYLE_PROFILE.headSize / SNAKE_STYLE_PROFILE.bodySize;
 
 export function HomeCommandRail({
   onPlay,
@@ -140,6 +134,7 @@ export function HomeCommandRail({
   playPhase,
   playErrorId,
   onReactionChange,
+  dynasty,
 }: HomeCommandRailProps) {
   const notifications = useNotificationStore((state) => state.notifications);
   const [hovered, setHovered] = useState<HomeCommand | null>(null);
@@ -173,13 +168,12 @@ export function HomeCommandRail({
 
   return (
     <nav
-      className="grid w-[min(19rem,100%)] grid-cols-4 gap-2 sm:gap-3"
+      className="grid w-[min(19rem,100%)] grid-cols-4 items-center gap-2 sm:gap-3"
       aria-label="Home actions"
       data-testid="home-command-rail"
     >
-      {/* Play is the one amber chip in the row, and its glyph goes ink: on the
-          filled chip the accent has moved from the mark to its ground, which
-          is what makes it the loudest thing in the dock. */}
+      {/* PLAY is the head: the biggest, hottest cube in the row, and the end of
+          the creature the sheet calls alive. */}
       <button
         type="button"
         onClick={onPlay}
@@ -187,13 +181,24 @@ export function HomeCommandRail({
         aria-label={playLabel}
         aria-describedby={playErrorId}
         title={playLabel}
-        className={`${controlClass} ink-chip-primary text-ink`}
+        className={controlClass}
+        style={{
+          ...snakeCubeVars({ role: 'head', dynasty }),
+          width: `${Math.round(62 * HEAD_SCALE)}px`,
+          height: `${Math.round(62 * HEAD_SCALE)}px`,
+        }}
         data-testid="launch-cta"
         data-launch-phase={playPhase}
         data-home-command="play"
         {...interactionProps('play')}
       >
-        <IconPlay size={28} />
+        <SnakeCubeChrome
+          role="head"
+          dynasty={dynasty}
+          glyphClassName="text-[color:var(--snake-ink)]"
+        >
+          <IconPlay size={26} />
+        </SnakeCubeChrome>
         <span className="sr-only">{playLabel}</span>
       </button>
 
@@ -209,19 +214,25 @@ export function HomeCommandRail({
             href={recognitionTarget ?? href}
             aria-label={label}
             title={label}
-            className={`${controlClass} ${color}`}
+            className={controlClass}
+            style={snakeCubeVars({ dynasty })}
             data-home-command={command}
             {...interactionProps(command)}
           >
-            <span className="relative inline-flex h-8 w-8 items-center justify-center">
-              <Icon size={28} />
-              <NotificationBadge
-                kind={badge.kind}
-                count={badge.count}
-                label={`New ${label} activity`}
-                className="absolute -right-1 -top-1"
-              />
-            </span>
+            <SnakeCubeChrome dynasty={dynasty} glyphClassName={color}>
+              <span className="relative inline-flex items-center justify-center">
+                <Icon size={24} />
+                {/* The badge rides the cube's own corner rather than the glyph's
+                    box, so it is never tucked inside the front face where the
+                    chamfer would crop it. */}
+                <NotificationBadge
+                  kind={badge.kind}
+                  count={badge.count}
+                  label={`New ${label} activity`}
+                  className="absolute -right-3 -top-3"
+                />
+              </span>
+            </SnakeCubeChrome>
             <span className="sr-only">{label}</span>
           </Link>
         );

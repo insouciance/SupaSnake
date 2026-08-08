@@ -346,63 +346,41 @@
   --brand-mark-ink: #0b0410;
 
   /* ---------------------------------------------------------------------
-     THE MARK'S KEYLINE, LIFTED AS A CONSTRUCTION. (Owner ruling, 2026-08-08.)
+     THE CREATURE'S OWN BLACK — the third one, and it has to be its own.
 
-       "the buttons dont fit the style… maybe the buttons have a similar
-        style to the logo with the purple 'outline'"
-
-     What the Mark actually does — read off the SVG rather than described from
-     memory — is FOUR concentric decisions, from the inside out:
-
-       1 the amber letterform
-       2 a heavy ink stroke on it, painted UNDER the fill (`paint-order`), so
-         the letter keeps its colour and gains an edge instead of losing
-         weight to one
-       3 the purple burst FIELD the letters sit on
-       4 a thin, much darker purple stroke closing that field, mitred rather
-         than rounded so the corners stay sharp
-
-     A button already ships 1 and 2: a flat authored fill inside an ink
-     contour at the card weight. So the family resemblance the owner is asking
-     for is precisely steps 3 and 4, and this is them — a purple BAND outside
-     the ink contour, closed by a darker purple hairline. That is why this is
-     not a 2px purple border: a single stroke would be the pale-keyline
-     failure wearing a new colour, where the band-plus-keyline is a FIELD with
-     an edge, which is what the drawing does.
-
-     Drawn as spread rings rather than as border-width, for the same reason
-     `.modal-frame` is: a border-width change moves every child inside the
-     element, and these chips are laid out on a 4-column grid whose gutters are
-     load-bearing. A ring costs no layout at all.
-
-     The ratio is the Mark's, not a taste: its keyline is 3.5 units against a
-     14-unit letter ink, so the closing stroke is a QUARTER of the weight of
-     the ink it companions. `--ink-w-1` against the chip's `--ink-w-2` contour
-     keeps that relationship at button scale.
+     `GUIDE_PALETTE.ink`, quoted from `snake90s.ts`. The style guide's reason
+     for it is the same argument that keeps `--brand-mark-ink` separate: "a
+     blue-black outline on an orange character reads cold and fights the
+     palette it is drawn around". So the product has three near-blacks and each
+     one belongs to the palette it is drawn around — a blue black for the
+     product's own surfaces, a purple black for the Mark, a WARM black for the
+     snake. Anything drawn ON a segment of the snake — a button's glyph, a
+     button's label — takes this one.
      --------------------------------------------------------------------- */
-  --brand-keyline-w: 3px;
-  --brand-keyline:
-    0 0 0 var(--brand-keyline-w) var(--brand-purple),
-    0 0 0 calc(var(--brand-keyline-w) + var(--ink-w-1)) var(--brand-purple-ink);
+  --snake-ink: #12100d;
 
-  /* The block under a keylined object.
+  /* ---------------------------------------------------------------------
+     THE PURPLE IS THE MARK'S, AND IT STAYS THE MARK'S. (Owner ruling,
+     2026-08-08, superseding the keyline construction that stood here.)
 
-     It carries SPREAD equal to the whole ring stack, which the product's other
-     drops do not need: an un-spread drop offset by 3px sits entirely underneath
-     a 4.5px ring and displaces nothing the eye can find. Spreading it to the
-     ring's own width puts the block back where the grammar wants it — one hard
-     offset measured from the object's OUTERMOST edge.
+     The block this replaces lifted the Mark's purple field-plus-keyline onto
+     the buttons. The owner reviewed it live and declined it — "just putting a
+     purple borderline around them isnt enough" — and then, rather than asking
+     for a better version of the same idea, moved the buttons somewhere else
+     entirely:
 
-     It is purple, not black, and that is the Mark's ruling rather than a
-     flourish: the burst's own shade is `#7D0275`, a deeper and more saturated
-     member of its hue. `--brand-purple-deep` is that same decision taken one
-     step further so it still reads as shade on a night ground. */
-  --brand-drop-1:
-    2px 2px 0 calc(var(--brand-keyline-w) + var(--ink-w-1)) var(--brand-purple-deep);
-  --brand-drop-2:
-    3px 3px 0 calc(var(--brand-keyline-w) + var(--ink-w-1)) var(--brand-purple-deep);
-  --brand-drop-3:
-    5px 5px 0 calc(var(--brand-keyline-w) + var(--ink-w-1)) var(--brand-purple-deep);
+       "the buttons could look like the segments of the snake, i.e. cubes,
+        that'd make more sense, and then we have synergies from doing the cubes
+        of the snake anyways in this round. and will make it very coherent, a
+        great composition."
+
+     So the purple's job is now settled by SUBJECT rather than by surface: it
+     belongs to the Mark, to the speed lines the Mark's palette drew, and to the
+     creature's silhouette — the places where the logo is speaking. A control is
+     not the logo speaking; a control is a piece of the character. The tokens
+     above therefore stay exactly as they are and nothing here dresses a
+     rectangle in them. See `.snake-cube` below and `snakeCubeArt.ts`.
+     --------------------------------------------------------------------- */
 }
 
 /* -----------------------------------------------------------------------
@@ -517,47 +495,103 @@ a.ink-chip[aria-disabled='true'] {
 }
 
 /* -----------------------------------------------------------------------
-   THE KEYLINED CONTROL — the Mark's construction, worn by a button.
+   THE HOME CONTROL IS A SEGMENT OF THE SNAKE. (Owner ruling, 2026-08-08.)
 
-   AN OPT-IN MODIFIER, NOT A CHANGE TO `.ink-chip`, and the blast radius is the
-   reason. `.ink-chip` is worn by seven files, and two of them are not Home:
-   `RunSetupPanel` (the pre-run tray) and `SignalSurface`. The ruling that
-   promoted the purple scoped it to the HOME screen and said the game-wide
-   extension comes later, so a class that every consumer inherits would have
-   taken Setup and the Signal with it and pre-empted a decision the owner has
-   not made yet. Adding a modifier keeps the extension a one-word edit at each
-   call site when that ruling arrives, and keeps it OFF everywhere until it does.
+     "the buttons could look like the segments of the snake, i.e. cubes ...
+      will make it very coherent, a great composition."
 
-   WHICH HOME CHIPS WEAR IT: the ones you can PRESS. The rail's four
-   destinations, the settings gear and the clan link are controls; Home's wallet
-   readout is a `<div>` wearing the chip so it matches the row it sits in, and
-   giving a display the loudest edge on the page would promise an action that
-   does not exist. That is the same distinction the press itself already makes
-   (the `a`/`button` scoping above), so the two rules agree by construction.
+   The DRAWING lives in `snakeCubeArt.ts`, which derives the cube's silhouette,
+   its five authored bands and its ink hull from the shipped snake style — see
+   that file for why it is drawn rather than rendered, and for the measurement
+   that proves the colours are the creature's own. This block owns only what a
+   segment does under a finger.
+
+   WHAT IS DELIBERATELY ABSENT: fill, border, radius and box-shadow. A cube
+   button has no rectangle anywhere in it, so every property that would draw one
+   is cleared rather than overridden. The old `.ink-chip` stays exactly as it is
+   for the surfaces that are not Home (Setup's tray, the Signal); this is a
+   separate class rather than a redefinition for the same reason the keyline
+   modifier was — `.ink-chip` is worn by seven files and two of them are outside
+   the ruling's scope.
+
+   THE PRESS IS THE BLOCK, AND ONLY ONE LAYER MOVES. The block is drawn once at
+   `--cube-press` down-right and never animates; the face travels into it, so
+   its own silhouette lands exactly where the block's was. Animating both is how
+   a shadow gets out of phase with the object casting it.
    ----------------------------------------------------------------------- */
-.brand-keyline {
-  box-shadow: var(--brand-keyline), var(--brand-drop-2);
+/* `:where()` holds this at zero specificity, so a call site that needs the cube
+   ABSOLUTELY placed — the workbench, pinned to the right edge of the chamber —
+   sets `absolute` as a utility and wins. Either position makes the element a
+   containing block, which is all the two inset layers need. Declared apart from
+   the block below because the rest of that block must NOT be this easy to
+   override. */
+:where(.snake-cube) {
+  position: relative;
 }
-a.ink-chip.brand-keyline:hover,
-button.ink-chip.brand-keyline:hover {
-  box-shadow: var(--brand-keyline), var(--brand-drop-3);
+.snake-cube {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  /* Overridden per call site from the art itself, so a restyle of the creature
+     cannot leave its shadow behind. The literal is the body cube's `down` band
+     and exists only so the layer is never unpainted before hydration. */
+  --cube-block: #7a2f06;
+  --cube-press: 3px;
 }
-/* The press is still THE BLOCK: it collapses to a bare ring stack and the chip
-   travels down-right into the space it vacated. The keyline rides along rather
-   than being suppressed — it is the object's own edge, and an edge does not
-   disappear because a finger is on it. */
-a.ink-chip.brand-keyline:active,
-button.ink-chip.brand-keyline:active {
-  box-shadow: var(--brand-keyline);
+.snake-cube__block {
+  position: absolute;
+  inset: 0;
+  transform: translate(var(--cube-press), var(--cube-press));
+  pointer-events: none;
 }
-button.ink-chip.brand-keyline:disabled,
-button.ink-chip.brand-keyline[aria-disabled='true'],
-a.ink-chip.brand-keyline[aria-disabled='true'] {
-  box-shadow: var(--brand-keyline), var(--brand-drop-1);
+.snake-cube__lift {
+  position: absolute;
+  inset: 0;
+  transition: transform 130ms ease;
+}
+.snake-cube__glyph {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+a.snake-cube:hover .snake-cube__lift,
+button.snake-cube:hover:not(:disabled) .snake-cube__lift {
+  transform: translate(-1px, -1px);
+}
+a.snake-cube:active .snake-cube__lift,
+button.snake-cube:active:not(:disabled) .snake-cube__lift {
+  transform: translate(var(--cube-press), var(--cube-press));
+}
+/* A control that cannot be pressed does not move, and its block shrinks to the
+   smallest step rather than vanishing — a waiting control is still an object. */
+button.snake-cube:disabled,
+button.snake-cube[aria-disabled='true'],
+a.snake-cube[aria-disabled='true'] {
+  --cube-press: 2px;
+}
+/* THE FOCUS RING IS THE CUBE'S OWN SHAPE. An outline would draw the rectangle
+   this whole class exists to delete, so the block layer is what announces
+   focus: bone white, un-offset and grown, which puts a hard cube-shaped halo
+   all the way round the silhouette. It needs no ground to sit on and it cannot
+   be mistaken for the drop, which points down-right and is never white. */
+.snake-cube:focus-visible {
+  outline: none;
+}
+.snake-cube:focus-visible .snake-cube__block {
+  --cube-block: var(--bone-white);
+  transform: scale(1.09);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ink-chip { transition: none; }
+  .snake-cube__lift { transition: none; }
 }
 
 /* -----------------------------------------------------------------------

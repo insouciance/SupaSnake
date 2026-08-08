@@ -1,13 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { HomeCommandRail } from './HomeCommandRail';
 import { NOTIFICATION_TARGETS, useNotificationStore } from '@/lib/stores/notificationStore';
+import { SNAKE_STYLE_PROFILE } from '@/components/game/screen/snake90s';
 
 describe('HomeCommandRail', () => {
   beforeEach(() => {
     useNotificationStore.setState({ notifications: {}, hasHydrated: true });
   });
 
-  it('renders four equal icon-only actions with accessible names', () => {
+  it('renders the row as the creature: a head, three body cubes, all touch-sized', () => {
     render(
       <HomeCommandRail
         onPlay={jest.fn()}
@@ -17,25 +18,33 @@ describe('HomeCommandRail', () => {
       />
     );
 
-    const commands = ['Play', 'Lab', 'Compete', 'You'];
-    const sizes = new Set<string>();
-    for (const name of commands) {
-      const target = screen.getByRole(name === 'Play' ? 'button' : 'link', { name });
-      // The premise is EQUAL and TOUCH-SIZED, not one particular size class.
-      // INK & AMBER took the chip 56px -> 64px so four 2.5px keylines read as
-      // four chips rather than one bar; pinning `h-14` pinned the old room's
-      // number, not the contract. The contract is restated here: every command
-      // is the same size, and none is under the 44px touch floor.
-      expect(target).toHaveClass('min-h-[44px]', 'min-w-[44px]');
-      const size = Array.from(target.classList)
-        .filter((name) => /^[hw]-\d+$/.test(name))
-        .sort()
-        .join(' ');
-      expect(size).not.toBe('');
-      sizes.add(size);
-      expect(target.querySelector('.sr-only')).toHaveTextContent(name);
+    // THE CONTRACT MOVED, AND THIS RECORDS WHAT IT MOVED TO. It used to be
+    // "every command is the same size", which was right while the four were
+    // interchangeable chips. They are now segments of the snake, and the
+    // creature separates its head from its body BY SIZE — so the premise is
+    // that the three destinations are equal to each other, that PLAY leads them
+    // by exactly the profile's own head-to-body ratio, and that nothing falls
+    // under the 44px touch floor.
+    const bodies = ['Lab', 'Compete', 'You'].map((name) =>
+      screen.getByRole('link', { name })
+    );
+    for (const [i, target] of bodies.entries()) {
+      expect(target).toHaveClass('snake-cube', 'min-h-[44px]', 'min-w-[44px]');
+      expect(target).toHaveClass('h-[62px]', 'w-[62px]');
+      expect(target.querySelector('.sr-only')).toHaveTextContent(
+        ['Lab', 'Compete', 'You'][i]
+      );
     }
-    expect(sizes.size).toBe(1);
+
+    const play = screen.getByRole('button', { name: 'Play' });
+    expect(play).toHaveClass('snake-cube', 'min-h-[44px]', 'min-w-[44px]');
+    const headPx = Math.round(
+      62 * (SNAKE_STYLE_PROFILE.headSize / SNAKE_STYLE_PROFILE.bodySize)
+    );
+    expect(play).toHaveStyle({ width: `${headPx}px`, height: `${headPx}px` });
+    expect(headPx).toBeGreaterThan(62);
+    expect(play.querySelector('.sr-only')).toHaveTextContent('Play');
+
     expect(screen.getByTestId('home-command-rail')).toHaveClass('grid-cols-4');
   });
 

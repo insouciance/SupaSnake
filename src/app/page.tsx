@@ -845,8 +845,9 @@ export default function Home() {
           authenticated={isAuthenticated}
           dna={stats?.dna ?? null}
           energy={stats?.charge ?? null}
+          dynasty={dynasty}
         />
-        <HomeCodexRelic />
+        <HomeCodexRelic dynasty={dynasty} />
       </div>
 
       {/* The wardrobe takes the dock's place, in the dock's position, so the
@@ -854,7 +855,7 @@ export default function Home() {
           not. */}
       {cosmeticsOpen && (
         <div
-          className="absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-20 flex flex-col items-center gap-3 px-4 animate-fade-up sm:bottom-[calc(1rem+var(--consent-banner-height,0px))]"
+          className="absolute inset-x-0 bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] z-20 flex flex-col items-center gap-3 px-4 animate-fade-up sm:bottom-[calc(2.25rem+var(--consent-banner-height,0px))]"
           data-home-cosmetics-dock
         >
           <CosmeticsMenu
@@ -871,7 +872,7 @@ export default function Home() {
       {/* Context and four equal player destinations. The dock stays clear of
           phone safe areas and the measured desktop consent surface. */}
       <div
-        className={`absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-10 flex flex-col items-center gap-3 px-4 sm:bottom-[calc(1rem+var(--consent-banner-height,0px))] ${HOME_CHROME_TRANSITION} ${
+        className={`absolute inset-x-0 bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] z-10 flex flex-col items-center gap-3 px-4 sm:bottom-[calc(2.25rem+var(--consent-banner-height,0px))] ${HOME_CHROME_TRANSITION} ${
           cosmeticsOpen ? HOME_CHROME_BACK : ''
         }`}
         data-home-command-dock
@@ -980,6 +981,7 @@ export default function Home() {
             playPhase={launchState.phase}
             playErrorId={launchState.error ? 'launch-error' : undefined}
             onReactionChange={setChamberReaction}
+            dynasty={dynasty}
           />
         </div>
       </div>
