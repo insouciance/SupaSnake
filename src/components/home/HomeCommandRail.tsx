@@ -117,9 +117,21 @@ const DESTINATIONS: DestinationDefinition[] = [
  * halo around every chip on a night ground — the exact keyline the global law
  * retired. Inside the near-white chip an ink ring is unmissable and needs no
  * ground to sit on, so it is correct whatever the ground is ruled to be next.
+ *
+ * THE MARK'S KEYLINE, WORN BY THE ROW. (Owner ruling, 2026-08-08: "the buttons
+ * dont fit the style… maybe the buttons have a similar style to the logo with
+ * the purple 'outline'.")
+ *
+ * `.brand-keyline` is the Mark's own construction — a purple field closed by a
+ * darker purple stroke, outside the chip's ink contour — and `globals.css`
+ * carries the derivation. What matters HERE is that it is the whole answer to
+ * the complaint: the row already had the right BODY (a flat block, a hard
+ * contour, a displaced shadow, a real press) and was simply not speaking the
+ * logo's language at its edge. Nothing about the block changes; the edge joins
+ * the family.
  */
 const controlClass =
-  'ink-chip group relative mx-auto flex h-16 w-16 min-h-[44px] min-w-[44px] items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink disabled:cursor-wait disabled:opacity-40';
+  'ink-chip brand-keyline group relative mx-auto flex h-16 w-16 min-h-[44px] min-w-[44px] items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink disabled:cursor-wait disabled:opacity-40';
 
 export function HomeCommandRail({
   onPlay,

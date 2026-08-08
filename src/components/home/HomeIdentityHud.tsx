@@ -225,7 +225,7 @@ export function HomeIdentityHud({
         {clan ? (
           <Link
             href="/clan"
-            className="ink-chip pointer-events-auto mt-2 inline-flex min-h-7 min-w-0 max-w-full items-center gap-1.5 overflow-hidden px-2.5 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink"
+            className="ink-chip brand-keyline pointer-events-auto mt-2 inline-flex min-h-7 min-w-0 max-w-full items-center gap-1.5 overflow-hidden px-2.5 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink"
             aria-label={clanLabel ?? undefined}
             title={clanLabel ?? undefined}
             data-testid="home-clan-identity"
@@ -271,7 +271,11 @@ export function HomeIdentityHud({
         href="/settings"
         aria-label="Settings"
         title="Settings"
-        className="ink-chip pointer-events-auto col-start-3 row-start-1 inline-flex h-11 w-11 items-center justify-center justify-self-end self-start text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink"
+        /* A control, so it wears the Mark's keyline like the rail does. The
+           wallet readout above deliberately does not: it is a <div>, it cannot
+           be pressed, and the loudest edge on the page must not promise an
+           action that does not exist. */
+        className="ink-chip brand-keyline pointer-events-auto col-start-3 row-start-1 inline-flex h-11 w-11 items-center justify-center justify-self-end self-start text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink"
         data-testid="home-settings"
       >
         <IconGear size={18} />

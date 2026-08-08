@@ -4,6 +4,7 @@ import { join } from 'path';
 import {
   HOME_SPECIMEN_PIECES,
   specimenCameraDistance,
+  specimenOpticalShift,
 } from './specimenCameraFit';
 
 const chamberSource = readFileSync(
@@ -149,5 +150,68 @@ describe('Specimen Chamber aerial perspective', () => {
     const landscape = framed(1440, 900);
     expect(landscape + chamberNumber('FOG_NEAR_OFFSET')).toBeCloseTo(8, 1);
     expect(chamberNumber('FOG_SPAN')).toBe(12);
+  });
+});
+
+/**
+ * THE OPTICAL AXIS (Home Round 2, item 3).
+ *
+ * Owner: "the logo, the snake below and the buttons dont appear properly
+ * aligned — logo centre, snake offset a bit to the right, buttons centre
+ * again." These pin the behaviour that answers it, so a future pose or camera
+ * edit cannot quietly put the creature back off-axis.
+ */
+describe('Specimen Chamber optical axis', () => {
+  /** The shipped pose, projected onto the camera's right axis at the framing
+   *  distance the chamber actually solves. Numbers verified against the
+   *  rendered frame, not against the model that produced them. */
+  const SHIPPED = [
+    { lateral: -0.399, depth: 7.26, width: 1.276 },
+    { lateral: 0.518, depth: 8.256, width: 0.817 },
+    { lateral: 1.368, depth: 8.973, width: 0.74 },
+    { lateral: 2.239, depth: 9.546, width: 0.664 },
+  ];
+
+  it('centres the drawn silhouette rather than a weighted framing point', () => {
+    const shift = specimenOpticalShift(SHIPPED);
+    // With the aim moved by this much, the leftmost and rightmost angular
+    // reaches of the creature are equal and opposite — which is what "on the
+    // axis" means for a shape rather than for a point.
+    const edge = (piece: (typeof SHIPPED)[number], sign: number) =>
+      (piece.lateral - shift + (sign * piece.width) / 2) / piece.depth;
+    const low = Math.min(...SHIPPED.map((p) => edge(p, -1)));
+    const high = Math.max(...SHIPPED.map((p) => edge(p, 1)));
+    expect(low + high).toBeCloseTo(0, 6);
+  });
+
+  it('moves the aim toward the trailing body, never toward the head', () => {
+    // The head is the NEAREST and largest piece and sits left of the old aim;
+    // the body tapers away to screen right. So the correction is positive. A
+    // negative result would mean the solve had been pointed at the wrong end
+    // of the creature.
+    const shift = specimenOpticalShift(SHIPPED);
+    expect(shift).toBeGreaterThan(0.3);
+    expect(shift).toBeLessThan(0.8);
+  });
+
+  it('weights the near head against the far tail by depth, not in world space', () => {
+    // The same pose with perspective removed — every piece at one depth — is
+    // the orthographic answer, and it over-corrects. Keeping these apart is
+    // the whole reason the solve divides by depth; if they ever agree, the
+    // division has been dropped.
+    const flat = SHIPPED.map((p) => ({ ...p, depth: 8.5 }));
+    expect(specimenOpticalShift(flat)).toBeGreaterThan(
+      specimenOpticalShift(SHIPPED) + 0.15
+    );
+  });
+
+  it('is stable and side-effect free', () => {
+    const before = JSON.stringify(SHIPPED);
+    expect(specimenOpticalShift(SHIPPED)).toBeCloseTo(
+      specimenOpticalShift(SHIPPED),
+      12
+    );
+    expect(JSON.stringify(SHIPPED)).toBe(before);
+    expect(specimenOpticalShift([])).toBe(0);
   });
 });

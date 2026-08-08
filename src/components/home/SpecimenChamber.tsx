@@ -36,7 +36,11 @@ import {
 } from '@/components/game/SnakeModel';
 import { getSnakeRoundedGeometry } from '@/components/game/screen/gameRenderGeometry';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
-import { getToonGradientMap } from '@/components/game/screen/inkAmber';
+import {
+  createInkHullMaterial,
+  getToonGradientMap,
+  INK_HULL_WIDTH,
+} from '@/components/game/screen/inkAmber';
 import {
   applyFaceKeyedShading,
   applySnakeFaceShading,
@@ -46,7 +50,10 @@ import {
   IS_SNAKE_90S,
   SNAKE_STYLE_PROFILE,
 } from '@/components/game/screen/snake90s';
-import { specimenCameraDistance } from '@/components/home/specimenCameraFit';
+import {
+  specimenCameraDistance,
+  specimenOpticalShift,
+} from '@/components/home/specimenCameraFit';
 import {
   EquippedCosmetics,
   occludesFeature,
@@ -384,6 +391,107 @@ const POSE_BOUNDS = (() => {
   };
 })();
 
+/**
+ * The lens. Written here rather than only on the `<Canvas camera>` prop because
+ * the optical-axis solve below needs the same number, and a second literal is
+ * how the two would drift the next time the framing is re-tuned.
+ */
+const CAMERA_FOV = 46;
+
+/**
+ * The camera's own basis, at module scope. `viewDir` points from the aim toward
+ * where the camera stands; `forward` is the direction it looks; `cameraRight`
+ * is screen-right in world space, and it is the axis the whole alignment
+ * question is asked along.
+ */
+const CAMERA_VIEW_DIR = new THREE.Vector3(
+  Math.sin(CAMERA_AZIMUTH) * Math.cos(CAMERA_ELEVATION),
+  Math.sin(CAMERA_ELEVATION),
+  Math.cos(CAMERA_AZIMUTH) * Math.cos(CAMERA_ELEVATION)
+);
+const CAMERA_FORWARD = CAMERA_VIEW_DIR.clone().negate();
+const CAMERA_RIGHT = new THREE.Vector3()
+  .crossVectors(CAMERA_FORWARD, new THREE.Vector3(0, 1, 0))
+  .normalize();
+
+/**
+ * THE AXIS TRIM — the owner's live tuning lever for item 3.
+ *
+ * Cells along screen-right, added to the solved shift. Zero means "exactly
+ * where the maths put it"; positive nudges the creature right, negative left.
+ * It exists because "aligned" is finally a judgement made with eyes, and the
+ * solve should be adjustable without anybody having to edit the derivation.
+ */
+const SPECIMEN_AXIS_TRIM = 0;
+
+/**
+ * THE OPTICAL AXIS, SOLVED. See `specimenOpticalShift` for the derivation and
+ * for why the head-weighted framing anchor was the wrong point to aim at.
+ *
+ * The solve needs a distance, and the distance depends on the bounds, which are
+ * measured about the aim — a circle. It is cut by solving the aim ONCE at a
+ * fixed reference framing rather than at the live one. That is legitimate
+ * because the aim is a world-space point: once the camera looks at it, that
+ * point is at the centre of the canvas at EVERY distance and aspect. The
+ * reference only decides how perspective weights the near head against the far
+ * tail while choosing it, and that weighting moves by well under a pixel across
+ * the range of framings the chamber actually renders.
+ *
+ * A cube is not a sphere: seen at the chamber's azimuth an axis-aligned box
+ * presents |cos| + |sin| of its own width, about 1.28 cells per cell here. The
+ * factor is applied to every piece, but it does NOT cancel out of the answer —
+ * the two silhouette edges sit at different depths — so it is carried rather
+ * than dropped.
+ */
+const POSE_AIM = (() => {
+  const referenceDistance = Math.max(
+    MIN_CAMERA_DISTANCE,
+    specimenCameraDistance(
+      POSE_BOUNDS,
+      1440,
+      900,
+      THREE.MathUtils.degToRad(CAMERA_FOV),
+      CAMERA_ELEVATION,
+      CAMERA_AZIMUTH,
+      FIT_MARGIN
+    )
+  );
+  const presentedWidth =
+    Math.abs(Math.cos(CAMERA_AZIMUTH)) + Math.abs(Math.sin(CAMERA_AZIMUTH));
+  const placements = BASE_POSE.map(([x, y, z], i) => {
+    const rel = new THREE.Vector3(x, y, z).sub(POSE_BOUNDS.center);
+    return {
+      lateral: rel.dot(CAMERA_RIGHT),
+      depth: referenceDistance + rel.dot(CAMERA_FORWARD),
+      width: pieceScale(i) * presentedWidth,
+    };
+  });
+  const shift = specimenOpticalShift(placements) + SPECIMEN_AXIS_TRIM;
+  return POSE_BOUNDS.center.clone().addScaledVector(CAMERA_RIGHT, shift);
+})();
+
+/**
+ * The fit, re-measured about the AIM.
+ *
+ * `POSE_BOUNDS` stays exactly as it was and keeps its job — it is the anchor
+ * the reference distance is solved from. But the half-extents that decide
+ * whether the creature fits have to be measured from the point the camera
+ * actually looks at, or the aim's shift would eat into one side's margin and
+ * crop the tail on a narrow screen. Same pad, same rule, new origin.
+ */
+const AIM_BOUNDS = (() => {
+  let halfX = 0;
+  let halfZ = 0;
+  let maxY = 0;
+  for (const [x, y, z] of BASE_POSE) {
+    halfX = Math.max(halfX, Math.abs(x - POSE_AIM.x));
+    halfZ = Math.max(halfZ, Math.abs(z - POSE_AIM.z));
+    maxY = Math.max(maxY, y);
+  }
+  const pad = SPECIMEN_HEAD_SCALE * 0.42;
+  return { halfX: halfX + pad, halfZ: halfZ + pad, halfY: maxY / 2 + pad };
+})();
+
 // -----------------------------------------------------------------------------
 // Materials / geometry - shared caches, no per-render allocation
 // -----------------------------------------------------------------------------
@@ -434,6 +542,56 @@ const eyeGlintMaterial = new THREE.MeshBasicMaterial({
 // decided here first. Same material as the board, so the creature does not
 // change identity when Play is pressed.
 const specimenHullMaterial = createSnakeInkHullMaterial();
+
+/**
+ * THE PURPLE RIM — item 4, and THE constant to turn.
+ *
+ * Owner: "maybe the snake could have a purple glow."
+ *
+ * This is the visible width of the purple band, in board cells, measured
+ * OUTSIDE the creature's black ink line. It is the one number the look is
+ * tuned with: 0 removes the rim entirely, and roughly `INK_HULL_WIDTH` (0.058)
+ * makes the purple exactly as heavy as the ink it companions. Raising it past
+ * about 0.12 starts to close the gaps between coil pieces, which is the same
+ * failure a bolder ink line has and the reason that one stopped at 0.058.
+ */
+const SPECIMEN_PURPLE_RIM = 0.062;
+
+/**
+ * WHY THIS IS A HULL AND NOT A LIGHT.
+ *
+ * The obvious reading of "give it a purple glow" is a coloured rim light, and
+ * on this creature that does nothing at all: under the 90s composition
+ * `applyFaceKeyedShading` zeroes every reflected-light term, so the character's
+ * bands come from its own authored tones and a light aimed at it cannot change
+ * them. That is a deliberate law — the snake looks the same in the chamber as
+ * on the board — and the fix for the owner's note must not be to break it.
+ *
+ * A blurred halo is out for a second, independent reason: the glow is retired
+ * for UI chrome, and while THIS is scene rather than chrome, a soft bloom is a
+ * lighting effect and everything in this style is a drawn object.
+ *
+ * So the rim is DRAWN, with the mechanism the creature's own outline already
+ * uses — a second inverted hull, back faces pushed out along their normals,
+ * one extra draw call and no shader of its own. Depth does the composition for
+ * free: the ink hull is expanded less, so its back faces sit NEARER the camera
+ * and win the overlap, leaving purple visible only in the band beyond the ink.
+ * The result is amber creature, black ink line, purple field — which is
+ * precisely how the Mark is built (amber letterform, heavy ink stroke, purple
+ * burst behind it), so the rim is not a new idea applied to the snake, it is
+ * the logo's own construction wrapped around the character.
+ *
+ * It tints NOTHING. The creature's front faces render over both hulls, so the
+ * one-character-colour law holds exactly: this is environment ON the creature,
+ * never a colour OF it.
+ */
+const specimenRimMaterial = createInkHullMaterial(
+  INK_HULL_WIDTH + SPECIMEN_PURPLE_RIM
+);
+// `--brand-purple`: the Mark's own burst fill. A WebGL scene cannot read a CSS
+// custom property, so the value is duplicated here the way the room ladder
+// already is; `globals.css` carries the derivation and the source of the hex.
+specimenRimMaterial.color.set('#a201ae');
 
 /**
  * Eyes on the head's camera-facing side - the single strongest "this is a
@@ -606,6 +764,14 @@ function SpecimenBody({
             geometry={geometry}
             material={getHeroMaterial(dynasty, isHead)}
           >
+            {/* The purple rim sits OUTSIDE the ink line, so it is drawn first
+                and the ink covers it everywhere the two overlap. See
+                SPECIMEN_PURPLE_RIM. */}
+            <mesh
+              geometry={geometry}
+              material={specimenRimMaterial}
+              renderOrder={-2}
+            />
             <mesh
               geometry={geometry}
               material={specimenHullMaterial}
@@ -653,7 +819,7 @@ function framedCameraDistance(
   return Math.max(
     MIN_CAMERA_DISTANCE,
     specimenCameraDistance(
-      POSE_BOUNDS,
+      AIM_BOUNDS,
       width,
       height,
       THREE.MathUtils.degToRad(fovDegrees),
@@ -713,12 +879,12 @@ function CameraRig({
       Math.cos(CAMERA_AZIMUTH) * cosE
     );
     baseRef.current
-      .copy(POSE_BOUNDS.center)
+      .copy(POSE_AIM)
       .addScaledVector(dirRef.current, distance);
     camera.position
       .copy(baseRef.current)
       .addScaledVector(dirRef.current, -CHAMBER_PUSH_IN_DISTANCE * pushRef.current);
-    camera.lookAt(POSE_BOUNDS.center);
+    camera.lookAt(POSE_AIM);
     camera.updateMatrixWorld();
     // Reduced-motion uses frameloop="demand". Changing the camera in an
     // effect does not schedule a frame by itself, so without this invalidation
@@ -735,7 +901,7 @@ function CameraRig({
     camera.position
       .copy(baseRef.current)
       .addScaledVector(dirRef.current, -CHAMBER_PUSH_IN_DISTANCE * pushRef.current);
-    camera.lookAt(POSE_BOUNDS.center);
+    camera.lookAt(POSE_AIM);
     camera.updateMatrixWorld();
     invalidate();
   }, [animate, pushIn, camera, invalidate]);
@@ -759,7 +925,7 @@ function CameraRig({
     camera.position.y =
       base.y - dir.y * push + Math.sin(t * DRIFT_W2 + 1.3) * amplitude * 0.6;
     camera.position.z = base.z - dir.z * push;
-    camera.lookAt(POSE_BOUNDS.center);
+    camera.lookAt(POSE_AIM);
   });
 
   return null;
@@ -1102,6 +1268,15 @@ const contactGeometry = new THREE.PlaneGeometry(1, 1);
  * duplicated Suspense/error fallback pair is gone.
  */
 
+/**
+ * How strongly the drawn burst reads against the night room. The plate's own
+ * strokes carry relative weights between themselves; this is the one number
+ * that sets the whole layer's presence, and it is deliberately well under half
+ * — the speed lines are the air in the room, and the moment they compete with
+ * the creature's outline the composition has inverted.
+ */
+const SPEED_LINE_STRENGTH = 0.55;
+
 function ChamberAtmosphere({ animate }: { animate: boolean }) {
   // WebP derivatives of the owner's plates, produced by
   // `scripts/optimize-textures.mjs` straight from the authored PNGs rather
@@ -1109,7 +1284,7 @@ function ChamberAtmosphere({ animate }: { animate: boolean }) {
   // Both are downscaled to 512: one is an alphaMap at 0.2 and the other a
   // map at 0.07, and neither renders a pixel of the detail it was carrying.
   const [speed, paper] = useTexture([
-    '/textures/speed-lines.webp',
+    '/textures/speed-lines.svg',
     '/textures/paper-fiber.webp',
   ]);
   const speedRef = useRef<THREE.Mesh>(null);
@@ -1120,35 +1295,33 @@ function ChamberAtmosphere({ animate }: { animate: boolean }) {
     }
     return {
       /**
-       * THE POLARITY FLIP, FLIPPED BACK — and the mechanism survives it.
+       * THE PLATE IS DRAWN NOW, NOT PHOTOGRAPHED. (Owner ruling, 2026-08-08.)
        *
-       * The owner's speed-line plate is white lines on black. Pass 2 blew it
-       * in ADDITIVELY, which works on a dark backdrop and is invisible on a
-       * bright one. The bright chamber therefore stopped using it as a colour
-       * source at all and used it as an ALPHA MASK, drawing a warm grey
-       * through it: three reads `alphaMap` from the green channel, so the
-       * white lines became alpha 1, the black field alpha 0, and the result
-       * was DARK speed lines on a page — which is what a comic does when the
-       * page is white, because there the lines are ink.
+       *   "the speed lines in the background: i think you could remake them as
+       *    vector art, so they would look better that way… they can also be
+       *    simpler in 90s cartoon style, bolder."
        *
-       * The room is dark again, so the lines are LIGHT again. What does NOT
-       * come back is additive blending: an additive plate has no ceiling, so
-       * it blows out wherever two lines cross and it cannot be reasoned about
-       * against a graded ground. Keeping the alpha-mask mechanism and simply
-       * moving the colour up the value scale gives the same drawn read with a
-       * fill that is authored rather than accumulated — which is the whole
-       * flat-fill discipline this style is built on.
+       * The bitmap this replaces was a dense photographic radial texture, used
+       * as an ALPHA MASK with a flat colour drawn through it — the whole
+       * apparatus existing because the source was white-lines-on-black and the
+       * room's polarity kept changing underneath it. None of that is needed
+       * once the art is authored: `public/textures/speed-lines.svg` is
+       * eighteen flat-filled wedges on transparency, in the room's own blue
+       * with four in the Mark's purple, so it is simply a `map` and the
+       * colours are the ones the design ruled. See
+       * `scripts/build-speed-lines.mjs` for the construction and for why there
+       * is no keyline on them.
        *
-       * The colour is a LIFTED MEMBER OF THE ROOM'S OWN HUE, not a white.
-       * White speed lines on a night ground would be the pale-line failure at
-       * full frame size, and the creature's outline has to stay the boldest
-       * line in frame whichever direction the contrast runs.
+       * It is also why the plate can be BOLD without shouting. A drawn wedge
+       * carries its weight in its shape, so the strength below can stay low
+       * enough that the creature's ink outline is still the boldest line in
+       * frame — which is the rule a full-frame element has to answer to,
+       * whichever direction its contrast runs.
        */
       speed: new THREE.MeshBasicMaterial({
-        alphaMap: speed,
-        color: '#3e6086',
+        map: speed,
         transparent: true,
-        opacity: 0.26,
+        opacity: SPEED_LINE_STRENGTH,
         depthWrite: false,
         fog: false,
         toneMapped: false,
@@ -1191,7 +1364,7 @@ function ChamberAtmosphere({ animate }: { animate: boolean }) {
   // azimuth turn outside an elevation tilt points local +Z down the camera
   // axis, which makes local -Z "straight back from the subject".
   return (
-    <group position={POSE_BOUNDS.center} rotation={[0, CAMERA_AZIMUTH, 0]}>
+    <group position={POSE_AIM} rotation={[0, CAMERA_AZIMUTH, 0]}>
       <group rotation={[-CAMERA_ELEVATION, 0, 0]}>
         <mesh
           ref={speedRef}
@@ -1385,7 +1558,7 @@ export function SpecimenChamber({
         frameloop={frameloop}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false, powerPreference: 'low-power' }}
-        camera={{ fov: 46, near: 0.1, far: 48 }}
+        camera={{ fov: CAMERA_FOV, near: 0.1, far: 48 }}
         onCreated={() => onReady?.()}
       >
         {/* A graded backdrop, not a flat void: the chamber needs a centre

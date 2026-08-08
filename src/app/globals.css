@@ -302,6 +302,107 @@
   --radius-chip: 4px;
   --radius-card: 8px;
   --radius-tray: 26px;
+
+  /* ---------------------------------------------------------------------
+     THE BRAND PURPLE. (Owner ruling, 2026-08-08 — this overturns §H T-1,
+     "purple is logo-only".)
+
+       "the purple from the logo looks really cool, but the fact that this
+        colour isnt present anywhere else makes it look alien, the whole
+        thing isnt a coherent composition, so use that purple more… we must
+        use that purple as a characteristic and defining colour in the game."
+
+     T-1 confined the purple to the Mark on the argument that a logo may hold
+     a colour nothing else is allowed, because that is what makes it the
+     signature. The owner has answered the other way, and the answer is the
+     stronger one: a signature colour that appears exactly once does not read
+     as a signature, it reads as a STICKER — an asset that arrived from
+     another product and was pasted on. A brand colour earns its status by
+     recurring.
+
+     THE VALUES ARE READ OFF THE DRAWING, never picked to match it. Every one
+     of these is a literal fill or stroke in `assets/brand/supasnake-mark.svg`,
+     which is the vector the whole `public/brand/*` family is generated from by
+     `scripts/build-brand-assets.mjs`. Re-deriving a hex by eye from a PNG is
+     how a palette drifts from its own logo, so the ladder is quoted:
+
+       --brand-purple        the burst's fill. THE signature.
+       --brand-purple-shade  the burst's own displaced shadow, drawn as the
+                             same path filled and offset by (3,4) under a clip.
+                             It is the Mark's proof that a shadow here is a
+                             darker, MORE saturated member of the hue — the
+                             fill ladder's rule, stated in the artwork.
+       --brand-purple-deep   the inner recess inside the burst.
+       --brand-purple-ink    the burst's keyline stroke (width 3.5, mitred).
+       --brand-mark-ink      the lettering's ink (width 14, round join). It is
+                             NOT `--ink-stroke`: the Mark's black is a purple
+                             black and the product's is a blue black, and they
+                             must not be aliased to each other.
+     --------------------------------------------------------------------- */
+  --brand-purple: #a201ae;
+  --brand-purple-shade: #7d0275;
+  --brand-purple-deep: #33012d;
+  --brand-purple-ink: #170116;
+  --brand-mark-ink: #0b0410;
+
+  /* ---------------------------------------------------------------------
+     THE MARK'S KEYLINE, LIFTED AS A CONSTRUCTION. (Owner ruling, 2026-08-08.)
+
+       "the buttons dont fit the style… maybe the buttons have a similar
+        style to the logo with the purple 'outline'"
+
+     What the Mark actually does — read off the SVG rather than described from
+     memory — is FOUR concentric decisions, from the inside out:
+
+       1 the amber letterform
+       2 a heavy ink stroke on it, painted UNDER the fill (`paint-order`), so
+         the letter keeps its colour and gains an edge instead of losing
+         weight to one
+       3 the purple burst FIELD the letters sit on
+       4 a thin, much darker purple stroke closing that field, mitred rather
+         than rounded so the corners stay sharp
+
+     A button already ships 1 and 2: a flat authored fill inside an ink
+     contour at the card weight. So the family resemblance the owner is asking
+     for is precisely steps 3 and 4, and this is them — a purple BAND outside
+     the ink contour, closed by a darker purple hairline. That is why this is
+     not a 2px purple border: a single stroke would be the pale-keyline
+     failure wearing a new colour, where the band-plus-keyline is a FIELD with
+     an edge, which is what the drawing does.
+
+     Drawn as spread rings rather than as border-width, for the same reason
+     `.modal-frame` is: a border-width change moves every child inside the
+     element, and these chips are laid out on a 4-column grid whose gutters are
+     load-bearing. A ring costs no layout at all.
+
+     The ratio is the Mark's, not a taste: its keyline is 3.5 units against a
+     14-unit letter ink, so the closing stroke is a QUARTER of the weight of
+     the ink it companions. `--ink-w-1` against the chip's `--ink-w-2` contour
+     keeps that relationship at button scale.
+     --------------------------------------------------------------------- */
+  --brand-keyline-w: 3px;
+  --brand-keyline:
+    0 0 0 var(--brand-keyline-w) var(--brand-purple),
+    0 0 0 calc(var(--brand-keyline-w) + var(--ink-w-1)) var(--brand-purple-ink);
+
+  /* The block under a keylined object.
+
+     It carries SPREAD equal to the whole ring stack, which the product's other
+     drops do not need: an un-spread drop offset by 3px sits entirely underneath
+     a 4.5px ring and displaces nothing the eye can find. Spreading it to the
+     ring's own width puts the block back where the grammar wants it — one hard
+     offset measured from the object's OUTERMOST edge.
+
+     It is purple, not black, and that is the Mark's ruling rather than a
+     flourish: the burst's own shade is `#7D0275`, a deeper and more saturated
+     member of its hue. `--brand-purple-deep` is that same decision taken one
+     step further so it still reads as shade on a night ground. */
+  --brand-drop-1:
+    2px 2px 0 calc(var(--brand-keyline-w) + var(--ink-w-1)) var(--brand-purple-deep);
+  --brand-drop-2:
+    3px 3px 0 calc(var(--brand-keyline-w) + var(--ink-w-1)) var(--brand-purple-deep);
+  --brand-drop-3:
+    5px 5px 0 calc(var(--brand-keyline-w) + var(--ink-w-1)) var(--brand-purple-deep);
 }
 
 /* -----------------------------------------------------------------------
@@ -413,6 +514,46 @@ a.ink-chip[aria-disabled='true'] {
   background: var(--ink);
   color: var(--bone-white);
   box-shadow: var(--ink-drop-void-3);
+}
+
+/* -----------------------------------------------------------------------
+   THE KEYLINED CONTROL — the Mark's construction, worn by a button.
+
+   AN OPT-IN MODIFIER, NOT A CHANGE TO `.ink-chip`, and the blast radius is the
+   reason. `.ink-chip` is worn by seven files, and two of them are not Home:
+   `RunSetupPanel` (the pre-run tray) and `SignalSurface`. The ruling that
+   promoted the purple scoped it to the HOME screen and said the game-wide
+   extension comes later, so a class that every consumer inherits would have
+   taken Setup and the Signal with it and pre-empted a decision the owner has
+   not made yet. Adding a modifier keeps the extension a one-word edit at each
+   call site when that ruling arrives, and keeps it OFF everywhere until it does.
+
+   WHICH HOME CHIPS WEAR IT: the ones you can PRESS. The rail's four
+   destinations, the settings gear and the clan link are controls; Home's wallet
+   readout is a `<div>` wearing the chip so it matches the row it sits in, and
+   giving a display the loudest edge on the page would promise an action that
+   does not exist. That is the same distinction the press itself already makes
+   (the `a`/`button` scoping above), so the two rules agree by construction.
+   ----------------------------------------------------------------------- */
+.brand-keyline {
+  box-shadow: var(--brand-keyline), var(--brand-drop-2);
+}
+a.ink-chip.brand-keyline:hover,
+button.ink-chip.brand-keyline:hover {
+  box-shadow: var(--brand-keyline), var(--brand-drop-3);
+}
+/* The press is still THE BLOCK: it collapses to a bare ring stack and the chip
+   travels down-right into the space it vacated. The keyline rides along rather
+   than being suppressed — it is the object's own edge, and an edge does not
+   disappear because a finger is on it. */
+a.ink-chip.brand-keyline:active,
+button.ink-chip.brand-keyline:active {
+  box-shadow: var(--brand-keyline);
+}
+button.ink-chip.brand-keyline:disabled,
+button.ink-chip.brand-keyline[aria-disabled='true'],
+a.ink-chip.brand-keyline[aria-disabled='true'] {
+  box-shadow: var(--brand-keyline), var(--brand-drop-1);
 }
 
 @media (prefers-reduced-motion: reduce) {
