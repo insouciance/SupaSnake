@@ -58,8 +58,10 @@ import {
   getDynastyScreenTokens,
 } from '@/components/game/screen/gameScreenTokens';
 import {
+  BOARD_PURPLE_DEFAULT,
   BOARD_THEME_STONE,
   resolveBoardTheme,
+  type BoardPurpleMode,
   type BoardThemeSelection,
 } from '@/components/game/screen/boardThemes';
 import { IS_SNAKE_90S } from '@/components/game/screen/snake90s';
@@ -113,6 +115,17 @@ interface ArenaPrototypeCanvasProps {
    * describes, `?gridlines=1` is the board that was reviewed before it.
    */
   boardSeamLines?: boolean;
+  /**
+   * THE BRAND PURPLE PIN (dev-fixture only,
+   * `/dev/cockpit?boardPurple=off|underglow|frame|both`).
+   *
+   * Null - the default, and what every caller but the fixture passes - renders
+   * the RATIFIED board, which since 2026-08-08 wears both the seam underglow
+   * and the slab frame band. `off` is the comparison pin that strips them. See
+   * `applyBoardPurple` for what each variant places and for why none of them
+   * can become the house colour.
+   */
+  boardPurple?: BoardPurpleMode | null;
   /**
    * ET-1 ARRIVAL A/B (dev-fixture only, `/dev/cockpit?arrival=classic|front`).
    *
@@ -391,12 +404,18 @@ function PrototypeScene({
   pitchDeg,
   boardThemeSelection,
   boardSeamLines = false,
+  boardPurple = null,
   arrivalMode = null,
 }: ArenaPrototypeCanvasProps & { isMobile: boolean }) {
   const theme = getDynastyScreenTokens(dynasty);
   const boardTheme = useMemo(
-    () => resolveBoardTheme(boardThemeSelection ?? FIXTURE_BOARD_DEFAULT, dynasty),
-    [boardThemeSelection, dynasty]
+    () =>
+      resolveBoardTheme(
+        boardThemeSelection ?? FIXTURE_BOARD_DEFAULT,
+        dynasty,
+        boardPurple
+      ),
+    [boardThemeSelection, dynasty, boardPurple]
   );
   // The dense fixture is a geometry-cost stress pose and stays posed; the
   // walker takes over the ordinary one, which is the pose the composition and
@@ -649,6 +668,7 @@ export function ArenaPrototypeCanvas({
   pitchDeg,
   boardThemeSelection,
   boardSeamLines = false,
+  boardPurple = null,
   arrivalMode = null,
 }: ArenaPrototypeCanvasProps) {
   const [isMobile, setIsMobile] = useState(false);
@@ -673,6 +693,10 @@ export function ArenaPrototypeCanvas({
           ?.id ?? 'stone'
       }
       data-fixture-seam-lines={boardSeamLines ? 'on' : 'off'}
+      // The review harness reads this back off the host element, so a shot's
+      // filename is checked against what actually rendered rather than against
+      // what the URL asked for.
+      data-fixture-board-purple={boardPurple ?? BOARD_PURPLE_DEFAULT}
       data-fixture-arrival={arrivalMode ?? 'posed'}
       style={{ width: '100%', height: '100%', overflow: 'hidden' }}
     >
@@ -703,6 +727,7 @@ export function ArenaPrototypeCanvas({
           pitchDeg={pitchDeg}
           boardThemeSelection={boardThemeSelection}
           boardSeamLines={boardSeamLines}
+          boardPurple={boardPurple}
           arrivalMode={arrivalMode}
         />
         <RenderStatsProbe />

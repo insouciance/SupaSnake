@@ -41,6 +41,15 @@
  *   exactly as it was reviewed, so the instinct can be checked against the two
  *   boards rather than against a description of them. Themed board only; the
  *   stone board's grooves are the only boundary it has.)
+ * - ?boardPurple=off|underglow|frame|both (THE BOARD'S BRAND PURPLE. Ratified
+ *   2026-08-08: the board wears BOTH the seam underglow and the slab frame
+ *   band, on all three themes, with every house's neon untouched on top. That
+ *   is the default here and in the played game - an absent parameter is the
+ *   shipped board, not an absent effect. `off` is the COMPARISON PIN and
+ *   restores the pre-ruling board so the two can be flipped live; `underglow`
+ *   and `frame` isolate one variant each, which is how the pair was judged.
+ *   See `applyBoardPurple` for what each places and for why none of them can
+ *   become the house colour.)
  * - ?snake90s=1|guide|0 (the 90s cartoon character style, see
  *   `src/components/game/screen/snake90s.ts`. Omitted follows
  *   `NEXT_PUBLIC_NINETIES_COMPOSITION`; `guide` is the RATIFIED style, `1` is
@@ -57,7 +66,10 @@
  */
 
 import { notFound } from 'next/navigation';
-import { parseBoardThemeSelection } from '@/components/game/screen/boardThemes';
+import {
+  parseBoardPurpleMode,
+  parseBoardThemeSelection,
+} from '@/components/game/screen/boardThemes';
 import {
   MAX_RENDER_TIER,
   type RenderTier,
@@ -235,6 +247,7 @@ export default async function CockpitFixturePage({ searchParams }: CockpitFixtur
         arenaPitchDeg={parsePitchDeg(first(params.pitch))}
         arenaBoardTheme={parseBoardThemeSelection(first(params.boardTheme))}
         arenaBoardSeamLines={parseFlag(first(params.gridlines))}
+        arenaBoardPurple={parseBoardPurpleMode(first(params.boardPurple))}
         arenaArrivalMode={arrivalMode}
       />
       <SnakeStyleSwitcher params={params} active={first(params.snake90s)} />

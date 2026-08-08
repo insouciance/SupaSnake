@@ -32,6 +32,11 @@
  * at a directory to write into. TIER=0..4 pins the adaptive-quality tier, so
  * the "identity at every tier" contract can be looked at rather than assumed.
  *
+ * PURPLE=underglow|frame|both drives THE BRAND PURPLE EXPERIMENT
+ * (`?boardPurple=`), unset being the shipped board. The judgement sheet is four
+ * passes of `dense` over all three themes - one per variant plus the off
+ * baseline - which is twelve consistently framed shots of a crowded board.
+ *
  * SNAKE=1|guide puts the 90s cartoon character on the board (see
  * `snake90s.ts`). The board and the character are ONE composition and the
  * owner reviews them together, so a board shot with the shipped snake on it is
@@ -53,6 +58,13 @@ const SNAKE = process.env.SNAKE;
  */
 const PITCH = process.env.PITCH;
 const PREFIX = process.env.PREFIX ?? '';
+/**
+ * THE BRAND PURPLE EXPERIMENT: `underglow`, `frame`, `both`, or unset for the
+ * shipped board. Unset is the A side of every pair - the review is four passes
+ * over the same three themes, and the only thing that differs between them is
+ * this value.
+ */
+const PURPLE = process.env.PURPLE;
 
 /**
  * The scene's dynasty for each theme. `?boardTheme` is independent of
@@ -79,7 +91,8 @@ function url(theme, extra = '') {
   const tier = TIER === undefined ? '' : `&tier=${TIER}`;
   const snake = SNAKE === undefined ? '' : `&snake90s=${SNAKE}`;
   const pitch = PITCH === undefined ? '' : `&pitch=${PITCH}`;
-  return `${BASE}/dev/cockpit?renderer=webgl&state=active&dynasty=${dynasty}&boardTheme=${theme}${extra}${tier}${snake}${pitch}`;
+  const purple = PURPLE === undefined ? '' : `&boardPurple=${PURPLE}`;
+  return `${BASE}/dev/cockpit?renderer=webgl&state=active&dynasty=${dynasty}&boardTheme=${theme}${extra}${tier}${snake}${pitch}${purple}`;
 }
 
 /**
@@ -118,6 +131,7 @@ async function readStats(page) {
       triangles: Number(host.dataset.triangles),
       tier: host.dataset.renderTier,
       theme: host.dataset.fixtureBoardTheme,
+      purple: host.dataset.fixtureBoardPurple,
     };
   }, BOARD);
 }
@@ -261,6 +275,11 @@ try {
         JSON.stringify({
           requested: theme,
           rendered: stats.theme,
+          // Read back off the host element rather than echoed from the URL, so
+          // a shot whose filename says "underglow" is PROVEN to have rendered
+          // one - a typo'd flag parses to null and would otherwise be filed as
+          // a variant while showing the shipped board.
+          purple: stats.purple,
           tier: stats.tier,
           file,
         })

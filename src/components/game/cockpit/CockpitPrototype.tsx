@@ -11,7 +11,10 @@ import { GameEnvironment } from '@/components/game/screen/GameEnvironment';
 import { ArenaPrototypeCanvas } from '@/components/game/arena/ArenaPrototypeCanvas';
 import type { ArrivalMode } from '@/lib/game/arrivalEasing';
 import type { RenderTier } from '@/components/game/screen/renderQuality';
-import type { BoardThemeSelection } from '@/components/game/screen/boardThemes';
+import type {
+  BoardPurpleMode,
+  BoardThemeSelection,
+} from '@/components/game/screen/boardThemes';
 import { GeneGlyph as CatalogGeneGlyph } from './CockpitGlyphs';
 import styles from './CockpitPrototype.module.css';
 
@@ -37,6 +40,8 @@ interface CockpitPrototypeProps {
   arenaBoardTheme?: BoardThemeSelection;
   /** THE COMPARE TOGGLE; see ArenaPrototypeCanvas.boardSeamLines. */
   arenaBoardSeamLines?: boolean;
+  /** THE BRAND PURPLE EXPERIMENT; see ArenaPrototypeCanvas.boardPurple. */
+  arenaBoardPurple?: BoardPurpleMode | null;
   /** ET-1 arrival A/B; see ArenaPrototypeCanvas.arrivalMode. */
   arenaArrivalMode?: ArrivalMode | null;
 }
@@ -212,6 +217,7 @@ function ArenaPreview({
   arenaPitchDeg,
   arenaBoardTheme,
   arenaBoardSeamLines,
+  arenaBoardPurple,
   arenaArrivalMode,
 }: {
   state: CockpitPrototypeState;
@@ -224,6 +230,7 @@ function ArenaPreview({
   arenaPitchDeg?: number;
   arenaBoardTheme?: BoardThemeSelection;
   arenaBoardSeamLines?: boolean;
+  arenaBoardPurple?: BoardPurpleMode | null;
   arenaArrivalMode?: ArrivalMode | null;
 }) {
   const portalLive = state === 'portal' || state === 'apex';
@@ -257,6 +264,7 @@ function ArenaPreview({
                   pitchDeg={arenaPitchDeg}
                   boardThemeSelection={arenaBoardTheme}
                   boardSeamLines={arenaBoardSeamLines}
+                  boardPurple={arenaBoardPurple}
                   arrivalMode={arenaArrivalMode}
                 />
               </div>
@@ -328,6 +336,7 @@ export function CockpitPrototype({
   arenaPitchDeg,
   arenaBoardTheme,
   arenaBoardSeamLines,
+  arenaBoardPurple,
   arenaArrivalMode,
 }: CockpitPrototypeProps) {
   const theme = getDynastyScreenTokens(dynasty);
@@ -464,6 +473,7 @@ export function CockpitPrototype({
             arenaPitchDeg={arenaPitchDeg}
             arenaBoardTheme={arenaBoardTheme}
             arenaBoardSeamLines={arenaBoardSeamLines}
+            arenaBoardPurple={arenaBoardPurple}
             arenaArrivalMode={arenaArrivalMode}
           />
         </div>
