@@ -220,7 +220,7 @@ const MODES = {
     viewport: { width: 1280, height: 820 },
     deviceScaleFactor: 4,
     query: '&density=extreme',
-    crop: { x: 0.52, y: 0.1, width: 0.36, height: 0.34 },
+    crop: { x: 0.56, y: 0.24, width: 0.22, height: 0.5 },
     name: (theme) => `${PREFIX}foods-${theme}${suffix}.png`,
   },
   zoom: {

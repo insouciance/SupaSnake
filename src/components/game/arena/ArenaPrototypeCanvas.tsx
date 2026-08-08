@@ -216,8 +216,9 @@ const PORTAL = { x: 4, y: 0, z: 3 } as const;
  * rings). Nothing here reaches a player - `/dev/cockpit` 404s in production -
  * and the standard fixture is untouched.
  */
-const FOOD_GOLDEN = { x: 17, y: 0, z: 5 } as const;
-const FOOD_WAGER = { x: 17, y: 0, z: 9 } as const;
+const FOOD_ORDINARY_ROW = { x: 17, y: 0, z: 5 } as const;
+const FOOD_GOLDEN = { x: 17, y: 0, z: 9 } as const;
+const FOOD_WAGER = { x: 17, y: 0, z: 13 } as const;
 
 function buildDenseSnake(): readonly Position[] {
   const cells: Position[] = [];
@@ -603,6 +604,15 @@ function PrototypeScene({
       />
       {foodStates === 'variants' ? (
         <>
+          {/* A second ORDINARY pickup, in the clear column with the specials.
+              The fixture's own food sits inside the dense coil - which is the
+              worst-case clutter read and worth keeping - but a state
+              comparison needs the three drawn against the same background,
+              or the ordinary one is being judged on a handicap. */}
+          <FoodBeacon
+            position={[FOOD_ORDINARY_ROW.x + 0.5, 0, FOOD_ORDINARY_ROW.z + 0.5]}
+            visualScale={1.12}
+          />
           <FoodBeacon
             position={[FOOD_GOLDEN.x + 0.5, 0, FOOD_GOLDEN.z + 0.5]}
             variant="golden"
