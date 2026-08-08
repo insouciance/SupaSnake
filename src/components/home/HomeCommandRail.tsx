@@ -17,6 +17,7 @@ import {
   type IconProps,
 } from '@/components/ui/icons';
 import { SNAKE_STYLE_PROFILE } from '@/components/game/screen/snake90s';
+import { RAIL_GLYPH_INK } from './homeGlyphInk';
 import { SnakeCubeChrome, snakeCubeVars } from './SnakeCubeButton';
 import type { DynastyId } from '@/shared/types/game';
 
@@ -113,19 +114,67 @@ const DESTINATIONS: DestinationDefinition[] = [
  * composition nothing and says something; hierarchy bought from width would
  * have had to be paid for out of the rail's gutters.
  *
- * THE HEAD OVERFLOWS ITS CELL, ON PURPOSE AND WITHIN THE GUTTER. Four equal
- * columns of a 19rem rail are 67px wide at the `sm` gap. The body cubes take
- * 62px and the head takes 62 x 1.154 = 71.5px, so PLAY reaches 2.25px into each
- * of its gutters and leaves 7.5px of clear room where the others leave 12px.
- * That is the creature's own spacing — the head sits closer to the first body
- * segment than the body segments sit to each other — and it is why the grid is
- * not restructured to make room.
+ * ── ONE COIL, ONE GUTTER. (Owner ruling, 2026-08-08.) ─────────────────────
+ *
+ *   "the cube buttons on the bottom (play, etc) look cool, but the spacing is
+ *    awkward. play and lab have good spacing, but the other 2 are too far
+ *    away."
+ *
+ * THE CAUSE WAS THE GRID, AND IT WAS ARITHMETIC RATHER THAN TASTE. The rail was
+ * four equal tracks with a gap between them, and the cubes were fixed-width
+ * boxes centred in those tracks. A track is 67px ((304 - 3x12) / 4); a body cube
+ * is 62px, so each body track carried 5px of SLACK that `mx-auto` split into
+ * 2.5px per side — and slack lands in the gutter. The head is 78px in that same
+ * 67px track, so it spends 5.5px of OVERHANG per side instead. The gutter a
+ * player sees was therefore never the gap:
+ *
+ *     PLAY -> LAB      12 - 5.5 (head overhang) + 2.5 (Lab's slack)  =  9px
+ *     LAB -> COMPETE   12 + 2.5 + 2.5                                = 17px
+ *     COMPETE -> YOU   12 + 2.5 + 2.5                                = 17px
+ *
+ * A 9px gutter beside the biggest cube and 17px between the small ones: that is
+ * exactly the row the owner described, and neither number was chosen by anyone.
+ * The earlier note here read the narrow one as a deliberate "the head sits
+ * closer to its first body segment", and computed it at 12px from the CLASSIC
+ * profile's head ratio (0.9/0.78) rather than the shipped guide's (0.98/0.78).
+ * Both the reading and the number were wrong; the ruling replaces them.
+ *
+ * THE FIX IS TO STOP DISTRIBUTING SPACE. A flex row of intrinsically-sized
+ * cubes has no slack to distribute, so `gap` IS the gutter, at every position,
+ * whatever size any one cube is.
+ *
+ * AND THE GUTTER IS 12px — the value that was in the stylesheet all along.
+ * Making every gutter literally the measured 9px was tried and shot beside it
+ * (`gap-compare`): a 9px gutter between two 62px cubes is not the same optical
+ * space as a 9px gutter beside a 78px head, and at 9px the drop blocks crowd
+ * the next cube's hull, which is the cube law's "CLEARLY SEPARATED" floor. 12px
+ * is the only gutter in this row a designer ever chose; the 9px was that same
+ * 12px with the head's accidental overhang subtracted from it. So the row is
+ * closed to the one designed number and reads as one evenly articulated coil.
+ *
+ * WHAT 320px COSTS. Under the shipped guide the head is 0.98 against the body's
+ * 0.78, so it draws at 78px and the row is 78 + 3x62 = 264px of cube. Three
+ * 12px gutters put it at 300px, and a 320px viewport leaves 288px inside the
+ * dock's padding. Below 336px the row therefore takes an 8px gutter — still
+ * EQUAL at every position, which is the part of the ruling that is a rule; the
+ * 12px is the part that is a measurement, and a measurement yields to fitting on
+ * the screen. Every viewport at or above 336px gets the ruled value exactly, and
+ * `shoot-home-rail.mjs` measures all four off the rendered page.
  */
 const controlClass =
-  'snake-cube group relative mx-auto h-[62px] w-[62px] min-h-[44px] min-w-[44px] disabled:cursor-wait disabled:opacity-40';
+  'snake-cube group relative h-[62px] w-[62px] min-h-[44px] min-w-[44px] shrink-0 disabled:cursor-wait disabled:opacity-40';
 
 /** The head's own size step, taken from the profile rather than chosen. */
 const HEAD_SCALE = SNAKE_STYLE_PROFILE.headSize / SNAKE_STYLE_PROFILE.bodySize;
+
+/** The body cube's edge, and the head's, in the pixels the rail draws them at. */
+const BODY_PX = 62;
+const HEAD_PX = Math.round(BODY_PX * HEAD_SCALE);
+
+/**
+ * THE GLYPHS TAKE THE BUTTON RUNG OF THE INK LADDER. (Same ruling, item 1 —
+ * the conversion and its arithmetic live in `homeGlyphInk.ts`.)
+ */
 
 export function HomeCommandRail({
   onPlay,
@@ -168,7 +217,7 @@ export function HomeCommandRail({
 
   return (
     <nav
-      className="grid w-[min(19rem,100%)] grid-cols-4 items-center gap-2 sm:gap-3"
+      className="flex w-[min(19rem,100%)] items-center justify-center gap-2 min-[336px]:gap-3"
       aria-label="Home actions"
       data-testid="home-command-rail"
     >
@@ -184,8 +233,8 @@ export function HomeCommandRail({
         className={controlClass}
         style={{
           ...snakeCubeVars({ role: 'head', dynasty }),
-          width: `${Math.round(62 * HEAD_SCALE)}px`,
-          height: `${Math.round(62 * HEAD_SCALE)}px`,
+          width: `${HEAD_PX}px`,
+          height: `${HEAD_PX}px`,
         }}
         data-testid="launch-cta"
         data-launch-phase={playPhase}
@@ -220,19 +269,22 @@ export function HomeCommandRail({
             {...interactionProps(command)}
           >
             <SnakeCubeChrome dynasty={dynasty} glyphClassName={color}>
-              <span className="relative inline-flex items-center justify-center">
-                <Icon size={24} />
-                {/* The badge rides the cube's own corner rather than the glyph's
-                    box, so it is never tucked inside the front face where the
-                    chamfer would crop it. */}
-                <NotificationBadge
-                  kind={badge.kind}
-                  count={badge.count}
-                  label={`New ${label} activity`}
-                  className="absolute -right-3 -top-3"
-                />
-              </span>
+              <Icon size={24} strokeWidth={RAIL_GLYPH_INK} />
             </SnakeCubeChrome>
+            {/* THE BADGE RIDES THE CUBE, NOT THE FACE. It was inside the glyph
+                slot, which was survivable while that slot was a screen-aligned
+                box; the slot is now projected into the front face's plane, and
+                anything inside it leans with the face. A leaning status dot is a
+                broken status dot, so the badge is a sibling of the drawing on
+                the pressable itself — which is also where it always claimed to
+                be, at the cube's own corner rather than tucked inside the face
+                where the chamfer would crop it. */}
+            <NotificationBadge
+              kind={badge.kind}
+              count={badge.count}
+              label={`New ${label} activity`}
+              className="absolute right-0 top-0 z-10 -translate-y-1/3 translate-x-1/3"
+            />
             <span className="sr-only">{label}</span>
           </Link>
         );

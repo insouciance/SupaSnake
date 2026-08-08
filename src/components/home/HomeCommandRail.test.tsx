@@ -45,7 +45,55 @@ describe('HomeCommandRail', () => {
     expect(headPx).toBeGreaterThan(62);
     expect(play.querySelector('.sr-only')).toHaveTextContent('Play');
 
-    expect(screen.getByTestId('home-command-rail')).toHaveClass('grid-cols-4');
+    // ONE GUTTER, EVERYWHERE. The rail was four equal grid tracks, and a
+    // fixed-width cube centred in a wider track put its leftover slack into the
+    // gutter — 17px between the body cubes against 12px beside the larger head.
+    // A flex row of intrinsically-sized cubes has no slack to distribute, so
+    // `gap` IS the gutter at every position. `shrink-0` is load-bearing: a
+    // shrunk cube would put slack back.
+    const rail = screen.getByTestId('home-command-rail');
+    expect(rail).toHaveClass('flex', 'justify-center');
+    expect(rail).not.toHaveClass('grid-cols-4');
+    // 12px is the gutter the owner ruled good; below 336px the head plus three
+    // bodies (264px under the shipped guide) plus three 12px gutters will not
+    // fit inside the dock, so the row takes an equal 8px there instead.
+    expect(rail).toHaveClass('gap-2', 'min-[336px]:gap-3');
+    for (const target of [...bodies, play]) {
+      expect(target).toHaveClass('shrink-0');
+      expect(target).not.toHaveClass('mx-auto');
+    }
+  });
+
+  it('paints the glyph into the face plane and leaves the badge square to the screen', () => {
+    useNotificationStore.getState().publish({
+      id: 'lab-ready',
+      title: 'Lab ready',
+      description: 'Evolution available',
+      ...NOTIFICATION_TARGETS.lab,
+      badgeKind: 'exclamation',
+      attentionReason: 'action-required',
+    });
+    render(
+      <HomeCommandRail
+        onPlay={jest.fn()}
+        playDisabled={false}
+        playLabel="Play"
+        playPhase="idle"
+      />
+    );
+
+    const lab = screen.getByRole('link', { name: 'Lab' });
+    const glyph = lab.querySelector('.snake-cube__glyph') as HTMLElement;
+    // The mark is paint ON the leaning face, not a sticker in front of it. The
+    // matrix is the projection of the face's own axes — `snakeCubeArt` derives
+    // it and `snakeCubeArt.test.ts` proves it maps the face corners.
+    expect(glyph.style.transform).toMatch(/^matrix\(/);
+    expect(glyph.querySelector('svg')).not.toBeNull();
+    // A status dot that leans looks broken, so the badge is a sibling of the
+    // drawing on the pressable rather than a child of the projected slot.
+    const badge = screen.getByRole('status', { name: 'New Lab activity' });
+    expect(glyph.contains(badge)).toBe(false);
+    expect(lab.contains(badge)).toBe(true);
   });
 
   it('keeps Play on the existing launch callback and routes the other pillars', () => {
