@@ -37,7 +37,6 @@ import {
 import { getSnakeRoundedGeometry } from '@/components/game/screen/gameRenderGeometry';
 import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialProfiles';
 import {
-  createInkHullMaterial,
   getToonGradientMap,
   INK_HULL_WIDTH,
 } from '@/components/game/screen/inkAmber';
@@ -544,54 +543,49 @@ const eyeGlintMaterial = new THREE.MeshBasicMaterial({
 const specimenHullMaterial = createSnakeInkHullMaterial();
 
 /**
- * THE PURPLE RIM — item 4, and THE constant to turn.
+ * THE PURPLE RIM IS GONE, AND THIS IS THE RECORD OF WHY.
  *
- * Owner: "maybe the snake could have a purple glow."
+ * It shipped in Round 2 as a second inverted hull outside the ink one, argued
+ * from the Mark's stack: amber letterform, heavy ink stroke, purple field. The
+ * stack was right and the EDGE was wrong, which is what the owner said when he
+ * saw it:
  *
- * This is the visible width of the purple band, in board cells, measured
- * OUTSIDE the creature's black ink line. It is the one number the look is
- * tuned with: 0 removes the rim entirely, and roughly `INK_HULL_WIDTH` (0.058)
- * makes the purple exactly as heavy as the ink it companions. Raising it past
- * about 0.12 starts to close the gaps between coil pieces, which is the same
- * failure a bolder ink line has and the reason that one stopped at 0.058.
+ *   "either it's properly modeled on The Mark, or we don't use it there at all.
+ *    but try to model it — torn out on the bottom, straight on top, sides in
+ *    between." And: he would rather have no rim than an approximate one.
+ *
+ * IT WAS TRIED, PROPERLY, AND IT DID NOT READ. The attempt is in the branch's
+ * history (`specimenTornRim.ts`): the brand tracer's own two rules ported to a
+ * world normal — `LIT_CORE` [-45, +5] degrees ruled dead straight, amplitude
+ * graded by how far the silhouette faces down — driving a per-vertex
+ * displacement hashed off object position, on a subdivided copy of the segment
+ * fine enough to cut teeth. It behaved exactly as specified: the top edge came
+ * out ruled and clean, the bottom varied, the sides sat between them, and it
+ * was stable frame to frame.
+ *
+ * It still looked like a smudge. Two things defeat it and neither is a tuning
+ * problem. An inverted hull's outer edge is the MAXIMUM of a displaced surface,
+ * so it rounds teeth off instead of cutting them — the Mark's tear is a drawn
+ * polyline with spikes, and a hull cannot make a spike. And the band the
+ * composition can carry is four to ten pixels, at which width variation reads
+ * as fuzz; this codebase already has the ruling for that (`markGeometry.mjs`:
+ * "roughness is a reproduction fault pretending to be craft").
+ *
+ * REMOVING IT IS ALSO WHAT THE ROUND ASKS FOR ON ITS OWN TERMS. Home's
+ * pressables are now segments of this creature, drawn with this creature's warm
+ * black. A snake wearing a second, purple outline that none of its own buttons
+ * wear is the one object in the composition that does not belong to it. The
+ * Mark carries the purple — 18% wider this round — and so do the speed lines,
+ * which is where the logo is speaking.
+ *
+ * AND IT CLOSES A REPORTED DEFECT AT ITS CAUSE. The owner: "the cosmetics sit
+ * above the purple frame of the snake ... currently the purple frame sits above
+ * the cosmetics and that's wrong." A hull expanded past the shades and through
+ * the braids is genuinely in front of them, so no sort could have fixed it; the
+ * only real fixes were to stop it competing for depth or to stop drawing it.
+ * The creature's own ink hull is unaffected and unchanged — it is thinner, it
+ * is depth-tested, and every cosmetic has always resolved in front of it.
  */
-const SPECIMEN_PURPLE_RIM = 0.062;
-
-/**
- * WHY THIS IS A HULL AND NOT A LIGHT.
- *
- * The obvious reading of "give it a purple glow" is a coloured rim light, and
- * on this creature that does nothing at all: under the 90s composition
- * `applyFaceKeyedShading` zeroes every reflected-light term, so the character's
- * bands come from its own authored tones and a light aimed at it cannot change
- * them. That is a deliberate law — the snake looks the same in the chamber as
- * on the board — and the fix for the owner's note must not be to break it.
- *
- * A blurred halo is out for a second, independent reason: the glow is retired
- * for UI chrome, and while THIS is scene rather than chrome, a soft bloom is a
- * lighting effect and everything in this style is a drawn object.
- *
- * So the rim is DRAWN, with the mechanism the creature's own outline already
- * uses — a second inverted hull, back faces pushed out along their normals,
- * one extra draw call and no shader of its own. Depth does the composition for
- * free: the ink hull is expanded less, so its back faces sit NEARER the camera
- * and win the overlap, leaving purple visible only in the band beyond the ink.
- * The result is amber creature, black ink line, purple field — which is
- * precisely how the Mark is built (amber letterform, heavy ink stroke, purple
- * burst behind it), so the rim is not a new idea applied to the snake, it is
- * the logo's own construction wrapped around the character.
- *
- * It tints NOTHING. The creature's front faces render over both hulls, so the
- * one-character-colour law holds exactly: this is environment ON the creature,
- * never a colour OF it.
- */
-const specimenRimMaterial = createInkHullMaterial(
-  INK_HULL_WIDTH + SPECIMEN_PURPLE_RIM
-);
-// `--brand-purple`: the Mark's own burst fill. A WebGL scene cannot read a CSS
-// custom property, so the value is duplicated here the way the room ladder
-// already is; `globals.css` carries the derivation and the source of the hex.
-specimenRimMaterial.color.set('#a201ae');
 
 /**
  * Eyes on the head's camera-facing side - the single strongest "this is a
@@ -764,14 +758,6 @@ function SpecimenBody({
             geometry={geometry}
             material={getHeroMaterial(dynasty, isHead)}
           >
-            {/* The purple rim sits OUTSIDE the ink line, so it is drawn first
-                and the ink covers it everywhere the two overlap. See
-                SPECIMEN_PURPLE_RIM. */}
-            <mesh
-              geometry={geometry}
-              material={specimenRimMaterial}
-              renderOrder={-2}
-            />
             <mesh
               geometry={geometry}
               material={specimenHullMaterial}

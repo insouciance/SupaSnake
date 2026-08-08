@@ -100,15 +100,17 @@ async function shoot(browser, viewport, label) {
       const node = document.querySelector(selector);
       if (!node) return null;
       const r = node.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width };
     };
     const mark = rect('[data-home-identity-hud] h1');
+    const markImage = rect('[data-home-identity-hud] h1 img');
     const dock = rect('[data-home-command-dock]');
     const relic = rect('[data-testid="home-codex-relic"]');
     return {
       top: mark ? Math.ceil(mark.bottom) + 8 : 0,
       bottom: dock ? Math.floor(dock.top) - 8 : window.innerHeight,
       relic,
+      markImage,
     };
   });
 
@@ -141,6 +143,10 @@ async function shoot(browser, viewport, label) {
 
   let report = null;
   let centroidPx = null;
+  // Hoisted: the silhouette box is both the axis measurement and the snake half
+  // of the proportion rule, and the overlay below draws it.
+  let lo = 0;
+  let hi = info.width - 1;
   if (count > 0) {
     let weighted = 0;
     for (let x = 0; x < info.width; x++) weighted += columns[x] * x;
@@ -148,8 +154,6 @@ async function shoot(browser, viewport, label) {
     // Trim 2% off each tail before taking the box, so one stray lit pixel
     // cannot define the silhouette the way a hard min/max would.
     let acc = 0;
-    let lo = 0;
-    let hi = info.width - 1;
     for (let x = 0; x < info.width; x++) {
       acc += columns[x];
       if (acc >= count * 0.02) { lo = x; break; }
@@ -167,6 +171,18 @@ async function shoot(browser, viewport, label) {
       silhouetteMidOffsetPx: +((lo + hi) / 2 - mid).toFixed(1),
       maskPixels: count,
     };
+    // THE PROPORTION RULE (owner, 2026-08-08): "The Mark should be at least as
+    // wide as the snake." The creature's width is the same trimmed silhouette
+    // box the axis uses, and the Mark's is its rendered image box — measured in
+    // the same frame, so the two can never be measured against different states.
+    report.markWidthPx = Math.round(band.markImage?.width ?? 0);
+    report.creatureWidthPx = hi - lo;
+    report.markToSnake = +(report.markWidthPx / (report.creatureWidthPx || 1)).toFixed(2);
+    console.log(
+      `${label} ${viewport.name}: mark ${report.markWidthPx}px vs snake ` +
+        `${report.creatureWidthPx}px = ${report.markToSnake}x ` +
+        `(rule: >= 1.00)`
+    );
     console.log(
       `${label} ${viewport.name}: silhouette-mid ` +
         `${report.silhouetteMidOffsetPx >= 0 ? '+' : ''}${report.silhouetteMidOffsetPx}px, ` +
@@ -190,6 +206,25 @@ async function shoot(browser, viewport, label) {
       'box-shadow:0 0 0 0.5px rgba(0,0,0,0.55);';
     overlay.appendChild(centre);
     // Where the creature actually is, if it was measured.
+    // The proportion rule, drawn: one bar under the Mark and one under the
+    // creature, at the width each of them actually occupies.
+    if (marks && marks.mark && marks.snake) {
+      for (const [box, color] of [[marks.mark, '#ffc247'], [marks.snake, '#57ff8a']]) {
+        const bar = document.createElement('div');
+        bar.style.cssText =
+          `position:absolute;left:${box.left}px;top:${box.top}px;` +
+          `width:${box.width}px;height:3px;background:${color};` +
+          'box-shadow:0 0 0 1px rgba(0,0,0,0.6);';
+        overlay.appendChild(bar);
+        const cap = document.createElement('div');
+        cap.style.cssText =
+          `position:absolute;left:${box.left}px;top:${box.top + 6}px;` +
+          `color:${color};font:700 12px Helvetica,Arial;` +
+          'text-shadow:0 1px 2px rgba(0,0,0,0.9);';
+        cap.textContent = `${Math.round(box.width)}px`;
+        overlay.appendChild(cap);
+      }
+    }
     if (marks && Number.isFinite(marks.centroid)) {
       const c = document.createElement('div');
       c.style.cssText =
@@ -198,7 +233,17 @@ async function shoot(browser, viewport, label) {
       overlay.appendChild(c);
     }
     document.body.appendChild(overlay);
-  }, centroidPx === null ? null : { centroid: centroidPx });
+  }, {
+    centroid: centroidPx,
+    mark: band.markImage
+      ? {
+          left: band.markImage.left,
+          top: band.markImage.bottom + 6,
+          width: band.markImage.width,
+        }
+      : null,
+    snake: count > 0 ? { left: lo, top: bottom - 14, width: hi - lo } : null,
+  });
 
   await page.screenshot({
     path: join(OUT, `${label}-${viewport.name}.png`),
