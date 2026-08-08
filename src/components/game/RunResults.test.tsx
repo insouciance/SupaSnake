@@ -194,6 +194,35 @@ describe('RunResults constitutional hierarchy', () => {
   });
 
   /**
+   * THE PINNED DOCK MUST NOT EAT THE INVITATION.
+   *
+   * A sticky bar covers whatever sits under it, and an element under it is
+   * still "fully visible" to the browser — so a scroll-into-view does nothing
+   * and the click lands on the bar. Measured: with no clearance the decline
+   * control sat at y=592 under the dock, the scrollport never moved, and the
+   * handler never fired; with the clearance the scrollport moved 206px and it
+   * did. The scrollport carries `scroll-padding-bottom`; these two controls
+   * carry the matching per-element margin so the guarantee survives being
+   * mounted anywhere else.
+   */
+  it('keeps scroll clearance on the invitation controls', () => {
+    render(<RunResults {...props({
+      nextAction: {
+        id: 'curriculum-reveal',
+        label: 'Show me Double or Nothing',
+        description: 'Read what it changes.',
+        href: '/codex',
+        attentionId: 'attention-1',
+      },
+      onDeclineNextAction: jest.fn(),
+    })} />);
+    expect(screen.getByTestId('results-next-action').className).toContain('scroll-mb-36');
+    expect(screen.getByTestId('results-next-action-decline').className).toContain(
+      'scroll-mb-36'
+    );
+  });
+
+  /**
    * RULING D3. REPLAY is the label in both states. With Energy in stock it
    * re-enters the run; with none it opens Setup, where the Reactor is preset
    * to this run's commitment and 0 rods reads as FREE play — instead of
