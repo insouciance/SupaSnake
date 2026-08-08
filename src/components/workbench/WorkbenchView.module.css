@@ -30,6 +30,33 @@
 
    No `filter`, no `box-shadow` with a blur radius, no `text-shadow`, and no
    colour lighter than the fill it sits on drawn as a line.
+
+   THE MARK'S PURPLE, AND WHERE IT WAS DECLINED.
+
+   It is spent at DEPTHS — the two darkest steps of the Mark, used as the fill
+   of a recess or a hole, never as a line, never as a tint over a region. Four
+   places asked for it and were refused, and the arguments are worth more than
+   the placements:
+
+     THE DISMISS CATCHER   a purple veil over the bench is the obvious modal
+                           move and it is wrong here: the catcher sits BELOW
+                           the slot row on purpose, so that tapping ANOTHER
+                           slot moves the picker there instead of costing a
+                           tap to close first. Greying those slots would tell
+                           the player they are dead while they are still live.
+     THE TRAY, THE PANEL   the largest fills on the surface. Purple there is
+                           the wash the ruling forbids, and it would break the
+                           DECK ladder that separates regions by step alone.
+     THE PATH BADGES       their colour is DATA. Five hues mean five Paths;
+                           a sixth hue over them destroys the mapping.
+     AMBER                 amber is ruled, and it means one thing — value you
+                           are getting. Repainting a Combo or the open slot
+                           purple would overturn the token and take the
+                           meaning with it.
+
+   Chips and buttons are untouched on purpose: that construction ships from
+   the button round, and two hands on the same object is how a surface ends up
+   with neither.
    ----------------------------------------------------------------------- */
 
 /*
@@ -50,6 +77,23 @@
   --deck-2: var(--fill-deck-2);
   --quiet: rgb(238 243 247 / 68%);
   --quieter: rgb(238 243 247 / 52%);
+
+  /* reconcile with feat/home-dark-round token declarations at train assembly */
+  /*
+   * THE MARK'S PURPLE, read off `assets/brand/supasnake-mark.svg` — all four
+   * are literal fills in the logo, not tints derived from one of them.
+   *
+   * They are declared HERE for the same reason the deck ladder above is: this
+   * stylesheet is mounted at four different roots, and a variable scoped to a
+   * wrapper resolves to nothing when the wrapper is absent. The home branch is
+   * introducing the same four names app-wide; when the train assembles, this
+   * block is the one to delete, not to reconcile value by value — the values
+   * are the same numbers because they are the same logo.
+   */
+  --brand-purple: #a201ae;
+  --brand-purple-shade: #7d0275;
+  --brand-purple-deep: #33012d;
+  --brand-purple-ink: #170116;
 }
 
 .workbench {
@@ -333,8 +377,19 @@
   color: var(--ink);
 }
 
+/*
+ * PURPLE AT A DELIBERATE DEPTH (1 of 3): a socket that burned out.
+ *
+ * Ash and EMPTY both wore `--deck-0` and no block, so the two states differed
+ * by a glyph alone — and they are not the same thing at all. EMPTY is a slot
+ * waiting its turn; Ash is a slot Phoenix SPENT, and it stays spent for the
+ * rest of the run. `--brand-purple-ink` is the darkest step in the Mark and
+ * the only fill on this surface that reads as a hole with a floor rather than
+ * as a slightly darker plate. The accent is spent as a FILL, on one state of
+ * one object, and it makes a permanent consequence look permanent.
+ */
 .slot[data-kind='ash'] {
-  background: var(--deck-0);
+  background: var(--brand-purple-ink);
   color: var(--quieter);
   box-shadow: none;
 }
@@ -449,10 +504,20 @@
   line-height: 1.4;
 }
 
+/*
+ * PURPLE AT A DELIBERATE DEPTH (2 of 3): the panel's quiet plates.
+ *
+ * These are the recesses the picker cuts into itself to say something the
+ * player did not ask for — that this slot is burned out, that the Dynasty has
+ * nothing left to offer, that SWAP opens later. `--brand-purple-deep` steps
+ * them further DOWN than `--deck-0` did, so they read as cut into the panel
+ * rather than laid on it, and it ties the Phoenix note to the Ash socket it
+ * is describing.
+ */
 .pickerNote {
   margin: 8px 0 0;
   border-radius: var(--radius-card);
-  background: var(--deck-0);
+  background: var(--brand-purple-deep);
   padding: 8px 10px;
   color: var(--quiet);
   font-family: var(--font-body);
@@ -588,6 +653,16 @@
 
 .option[aria-pressed='true'] .geneEligibility { color: rgb(238 243 247 / 62%); }
 
+/*
+ * PURPLE AT A DELIBERATE DEPTH (3 of 3): the read of the Power you chose.
+ *
+ * This is the one recess on the surface the player deliberately opened — the
+ * panel gives part of itself to the thing being considered. `--deck-0` made
+ * that a slightly darker blue and the step barely registered against the
+ * panel above it; `--brand-purple-deep` makes the same step unmistakable
+ * without a single new line, which is what "the steps ARE the separation"
+ * asks for. It is a fill on one bounded region, not a tint over the panel.
+ */
 .pickerSelected {
   display: flex;
   min-height: 0;
@@ -596,7 +671,7 @@
   gap: 8px;
   margin-top: 9px;
   border-radius: var(--radius-card);
-  background: var(--deck-0);
+  background: var(--brand-purple-deep);
   padding: 10px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -678,7 +753,15 @@
   flex-wrap: wrap;
   gap: 6px;
   margin: 0 -10px -10px;
-  background: var(--deck-0);
+  /*
+   * THE FLOOR OF THE SAME RECESS, one step deeper. This is not a control and
+   * not a chip: the negative margins make it the plate the recess above ends
+   * on, which is why it takes the depth rather than keeping a `--deck-0` that
+   * would now read as a foreign blue patch inside a purple cut. The BUTTONS
+   * standing on it are deliberately untouched here — that construction ships
+   * from the button round.
+   */
+  background: var(--brand-purple-ink);
   padding: 8px 10px 10px;
 }
 
