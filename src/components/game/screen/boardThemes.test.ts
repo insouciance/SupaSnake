@@ -1,6 +1,7 @@
 import { GAME_SCREEN_COLORS } from './gameScreenTokens';
 import {
   applyBoardPurple,
+  BOARD_PURPLE_DEFAULT,
   BOARD_THEME_BY_DYNASTY,
   BOARD_THEMES,
   boardThemeForDynasty,
@@ -93,7 +94,12 @@ describe('neon dynasty board themes', () => {
     expect(boardThemeForDynasty('PRIMAL').id).toBe('solNeon');
     expect(boardThemeForDynasty('COSMIC').id).toBe('darkNeon');
     THEMES.forEach((theme) => {
-      expect(getBoardTheme(theme.id)).toBe(theme);
+      // The accessor returns the SHIPPED board, which since 2026-08-08 carries
+      // the brand purple - so identity with the authored table is asserted
+      // through the `off` pin, and the default is checked to be the same theme
+      // wearing it rather than a different one.
+      expect(getBoardTheme(theme.id, 'off')).toBe(theme);
+      expect(getBoardTheme(theme.id).id).toBe(theme.id);
       // A theme's declared dynasty and the mapping agree, so the readout on
       // the fixture can never disagree with what is rendering.
       expect(BOARD_THEME_BY_DYNASTY[theme.dynasty]).toBe(theme.id);
@@ -299,19 +305,59 @@ describe('the brand purple experiment', () => {
   });
 
   /**
-   * THE SHIPPED DEFAULT IS UNCHANGED, and this is the test that says so.
+   * THE SHIPPED DEFAULT IS NOW PURPLE, and this is the test that says so.
    *
-   * Nothing about this experiment may reach a player. The three shipped themes
-   * carry NO purple field at all - not a null, not a zero, absent - so every
-   * consumer's `??` fallback takes the branch it took before the experiment
-   * existed and the geometry builder's fast paths stay on their old lines.
+   * OWNER RULING, 2026-08-08, on the twelve review shots and the close-up pair:
+   * "board purple - let's do it. we do both, underglow + frame". So the board a
+   * player sees carries BOTH variants on all three themes, and that is asserted
+   * through the accessors the game actually calls - `boardThemeForDynasty` is
+   * what `src/app/game/page.tsx` resolves its board with.
+   *
+   * `BOARD_THEMES` stays the AUTHORED table, bare, because it is what the tone
+   * ladders are written and tested against; the purple is a derivation over it.
+   * Both facts are asserted here so neither can drift into the other.
    */
-  it('leaves all three shipped themes with no purple on them at all', () => {
+  it('ships both variants on every dynasty, by default, through the accessors', () => {
+    expect(BOARD_PURPLE_DEFAULT).toBe('both');
+    for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
+      const shipped = boardThemeForDynasty(dynasty);
+      expect(shipped.seamUnderglow).toBe(BRAND_PURPLE.shade);
+      expect(shipped.seamUnderglowStrength).toBeGreaterThan(0);
+      expect(shipped.seamUnderglowFloor).toBeDefined();
+      expect(shipped.slabFrameBand).toBeDefined();
+    }
+  });
+
+  it('keeps the authored table bare, so the tone ladders stay readable', () => {
     for (const theme of THEMES) {
       expect(theme.seamUnderglow).toBeUndefined();
       expect(theme.seamUnderglowStrength).toBeUndefined();
       expect(theme.seamUnderglowFloor).toBeUndefined();
       expect(theme.slabFrameBand).toBeUndefined();
+    }
+  });
+
+  /**
+   * THE MEMO'S REQUIREMENT. `ArenaFloor` rebuilds a 24,000-vertex geometry
+   * through a `useMemo` keyed on the theme OBJECT, so an accessor that derived
+   * a fresh theme per call would rebuild the whole board every render. The
+   * table is built once at module load; these have to be the same reference.
+   */
+  it('returns one stable reference per theme and mode', () => {
+    expect(boardThemeForDynasty('CYBER')).toBe(boardThemeForDynasty('CYBER'));
+    expect(getBoardTheme('solNeon', 'off')).toBe(getBoardTheme('solNeon', 'off'));
+    expect(resolveBoardTheme('COSMIC', 'CYBER')).toBe(
+      resolveBoardTheme('COSMIC', 'CYBER')
+    );
+  });
+
+  /** The dev comparison pin, and the only way back to the pre-ruling board. */
+  it('strips the purple entirely for the off pin', () => {
+    for (const dynasty of ['CYBER', 'PRIMAL', 'COSMIC'] as const) {
+      const bare = boardThemeForDynasty(dynasty, 'off');
+      expect(bare.seamUnderglow).toBeUndefined();
+      expect(bare.slabFrameBand).toBeUndefined();
+      expect(bare).toBe(BOARD_THEMES[BOARD_THEME_BY_DYNASTY[dynasty]]);
     }
   });
 
@@ -381,7 +427,7 @@ describe('the brand purple experiment', () => {
    * it is what keeps the underglow from flattening the shoulder-to-wall step
    * the line-free board reads its boundaries from.
    */
-  it('moves the seam chroma without moving its luminance', () => {
+  it('moves the seam hue without moving its luminance', () => {
     for (const theme of THEMES) {
       const derived = applyBoardPurple(theme, 'underglow')!;
       const wall = mixHexSRGB(
@@ -390,7 +436,17 @@ describe('the brand purple experiment', () => {
         derived.seamUnderglowStrength!
       );
       expect(Math.abs(luminance(wall) - luminance(theme.tileWall))).toBeLessThan(6);
-      expect(chroma(wall)).toBeGreaterThan(chroma(theme.tileWall));
+      /**
+       * HUE, NOT CHROMA, is the axis that carries the claim. CYAN's wall is a
+       * dark teal that is already more saturated than the violet it mixes
+       * toward, so its chroma FALLS while its hue swings decisively - measuring
+       * saturation here would assert the opposite of the design on one of the
+       * three boards. What "the seam gets more colour, not more light" means
+       * mechanically is that it moves toward the brand hue at constant value.
+       */
+      expect(hueDistance(wall, BRAND_PURPLE.shade)).toBeLessThan(
+        hueDistance(theme.tileWall, BRAND_PURPLE.shade)
+      );
 
       // And the floor stays under the wall above it, so a seam still reads as
       // a cut rather than as the lit slot `SEAM_GLOW` records from its own
@@ -426,7 +482,13 @@ describe('the brand purple experiment', () => {
     expect(mixHexSRGB('#000000', '#ffffff', 2)).toBe('#ffffff');
   });
 
-  it('reads the URL strictly, and defaults to the shipped board', () => {
+  /**
+   * THE ARRIVAL-MODE IDIOM: null means "the URL said nothing", and the caller
+   * keeps the shipped default. Only `off` turns the purple off, which is why it
+   * has to be a recognised value rather than the absence of one.
+   */
+  it('reads the URL strictly, and says nothing rather than off', () => {
+    expect(parseBoardPurpleMode('off')).toBe('off');
     expect(parseBoardPurpleMode('underglow')).toBe('underglow');
     expect(parseBoardPurpleMode('frame')).toBe('frame');
     expect(parseBoardPurpleMode(' BOTH ')).toBe('both');
@@ -436,5 +498,38 @@ describe('the brand purple experiment', () => {
     expect(parseBoardPurpleMode('on')).toBeNull();
     expect(parseBoardPurpleMode('purple')).toBeNull();
     expect(parseBoardPurpleMode('__proto__')).toBeNull();
+  });
+
+  /** An absent pin resolves to the ratified board, never to a bare one. */
+  it('falls back to the shipped purple when the URL is silent', () => {
+    expect(resolveBoardTheme('CYBER', 'CYBER', null)).toBe(
+      boardThemeForDynasty('CYBER')
+    );
+    expect(resolveBoardTheme('CYBER', 'CYBER', parseBoardPurpleMode('nonsense'))).toBe(
+      boardThemeForDynasty('CYBER')
+    );
+  });
+
+  /**
+   * THE GLOW PROFILE, as a number.
+   *
+   * "make the underglow a little bit more transparent and 'glowy'". What makes
+   * it a glow rather than a fill is that the seam has a PROFILE: the violet
+   * peaks as a thin rim at the base of the wall and falls off both upward,
+   * along the wall's vertex ramp, and downward onto a DIMMER floor. The
+   * prototype had this inverted - a bright flat floor strip - and that is
+   * precisely what read as a drawn lattice. So the floor must stay the quieter
+   * of the two, and this is the test that keeps it there.
+   */
+  it('keeps the seam floor quieter than the wall above it, so the seam has a profile', () => {
+    for (const theme of THEMES) {
+      const lit = applyBoardPurple(theme, 'underglow')!;
+      const wall = mixHexSRGB(
+        theme.tileWall,
+        lit.seamUnderglow!,
+        lit.seamUnderglowStrength!
+      );
+      expect(luminance(lit.seamUnderglowFloor!)).toBeLessThan(luminance(wall));
+    }
   });
 });

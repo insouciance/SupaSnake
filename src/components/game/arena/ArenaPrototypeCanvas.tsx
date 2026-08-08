@@ -58,8 +58,8 @@ import {
   getDynastyScreenTokens,
 } from '@/components/game/screen/gameScreenTokens';
 import {
+  BOARD_PURPLE_DEFAULT,
   BOARD_THEME_STONE,
-  applyBoardPurple,
   resolveBoardTheme,
   type BoardPurpleMode,
   type BoardThemeSelection,
@@ -116,12 +116,14 @@ interface ArenaPrototypeCanvasProps {
    */
   boardSeamLines?: boolean;
   /**
-   * THE BRAND PURPLE EXPERIMENT (dev-fixture only,
-   * `/dev/cockpit?boardPurple=underglow|frame|both`).
+   * THE BRAND PURPLE PIN (dev-fixture only,
+   * `/dev/cockpit?boardPurple=off|underglow|frame|both`).
    *
    * Null - the default, and what every caller but the fixture passes - renders
-   * the production look untouched. See `applyBoardPurple` for what each variant
-   * places and for why neither can become the house colour.
+   * the RATIFIED board, which since 2026-08-08 wears both the seam underglow
+   * and the slab frame band. `off` is the comparison pin that strips them. See
+   * `applyBoardPurple` for what each variant places and for why none of them
+   * can become the house colour.
    */
   boardPurple?: BoardPurpleMode | null;
   /**
@@ -408,8 +410,9 @@ function PrototypeScene({
   const theme = getDynastyScreenTokens(dynasty);
   const boardTheme = useMemo(
     () =>
-      applyBoardPurple(
-        resolveBoardTheme(boardThemeSelection ?? FIXTURE_BOARD_DEFAULT, dynasty),
+      resolveBoardTheme(
+        boardThemeSelection ?? FIXTURE_BOARD_DEFAULT,
+        dynasty,
         boardPurple
       ),
     [boardThemeSelection, dynasty, boardPurple]
@@ -693,7 +696,7 @@ export function ArenaPrototypeCanvas({
       // The review harness reads this back off the host element, so a shot's
       // filename is checked against what actually rendered rather than against
       // what the URL asked for.
-      data-fixture-board-purple={boardPurple ?? 'off'}
+      data-fixture-board-purple={boardPurple ?? BOARD_PURPLE_DEFAULT}
       data-fixture-arrival={arrivalMode ?? 'posed'}
       style={{ width: '100%', height: '100%', overflow: 'hidden' }}
     >

@@ -41,17 +41,15 @@
  *   exactly as it was reviewed, so the instinct can be checked against the two
  *   boards rather than against a description of them. Themed board only; the
  *   stone board's grooves are the only boundary it has.)
- * - ?boardPurple=underglow|frame|both (THE BRAND PURPLE EXPERIMENT. The owner
- *   ruled the Mark's purple a defining brand colour on 2026-08-07, overturning
- *   "purple is logo-only", and approved prototyping it on the gameboard - to be
- *   judged on screen before anything is ratified. `underglow` puts a constant
- *   violet in the floor of every seam and the bottom of every groove wall,
- *   UNDER the house neon rather than over it; `frame` bands the slab's outer
- *   chamfer - the one ring around the play space - the way the Mark's burst
- *   frames the wordmark; `both` is the pair. Absent is the shipped board, and
- *   absent is what every surface other than this route can produce: nothing
- *   here is behind a flag or an env var. See `applyBoardPurple` for the values
- *   and for why neither variant can become the house colour.)
+ * - ?boardPurple=off|underglow|frame|both (THE BOARD'S BRAND PURPLE. Ratified
+ *   2026-08-08: the board wears BOTH the seam underglow and the slab frame
+ *   band, on all three themes, with every house's neon untouched on top. That
+ *   is the default here and in the played game - an absent parameter is the
+ *   shipped board, not an absent effect. `off` is the COMPARISON PIN and
+ *   restores the pre-ruling board so the two can be flipped live; `underglow`
+ *   and `frame` isolate one variant each, which is how the pair was judged.
+ *   See `applyBoardPurple` for what each places and for why none of them can
+ *   become the house colour.)
  * - ?snake90s=1|guide|0 (the 90s cartoon character style, see
  *   `src/components/game/screen/snake90s.ts`. Omitted follows
  *   `NEXT_PUBLIC_NINETIES_COMPOSITION`; `guide` is the RATIFIED style, `1` is
