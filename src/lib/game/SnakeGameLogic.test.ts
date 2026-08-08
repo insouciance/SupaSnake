@@ -794,19 +794,131 @@ describe('SnakeGameLogic', () => {
       expect(primal.getSpeed()).toBe(PRIMAL_SPEED_MS);
     });
 
-    it('ramps speed down with each food on CYBER', () => {
-      const cyber = new SnakeGameLogic({ gridSize: 60, ruleset: RULESETS.CYBER });
+    // The CYBER ramp is a function of `foodEaten`, and `foodEaten` moves only
+    // when a tick actually consumes a food. `tick()` returns early while
+    // `pendingChoice` is open — the mutation offer holds the run for the
+    // player's decision — so a food placed during a held run is never eaten and
+    // the speed correctly does not move.
+    //
+    // These runs therefore pin `rng`. On the default (`options.rng ?? Math.random`)
+    // the mutation cadence is redrawn every process: on ~0.2% of draws the offer
+    // opens at food 9, the tenth placed food is never consumed, and a strict
+    // decrease over ten TICKS reads `Expected: < 169, Received: 169`, since
+    // 169 === speedForFood(9). That was the assertion mis-stating the rule, not
+    // the rule misbehaving — so the assertions below are written against
+    // `foodEaten`, which is what the ruleset actually ramps on.
+    /** An offer-free draw: all ten foods register, so the ramp is unbroken. */
+    const CYBER_RAMP_SEED = 1;
+    /** The draw that broke CI: its mutation offer opens exactly at food 9. */
+    const CYBER_RAMP_HELD_SEED = 19;
+
+    function cyberRun(seed: number): SnakeGameLogic {
+      const cyber = new SnakeGameLogic({
+        gridSize: 60,
+        ruleset: RULESETS.CYBER,
+        rng: mulberry(seed),
+      });
       cyber.start();
+      return cyber;
+    }
+
+    /** Place one food under the head and tick; report whether it registered. */
+    function stepOneFood(engine: SnakeGameLogic): boolean {
+      const before = engine.getState();
+      expect(before.isGameOver).toBe(false);
+      expect(before.isDeathSequence).toBe(false);
+      engine.placeFood({
+        x: before.snake[0].x + 1,
+        y: 0,
+        z: before.snake[0].z,
+      });
+      engine.tick();
+      return engine.getState().foodEaten === before.foodEaten + 1;
+    }
+
+    it('ramps speed down with each food on CYBER', () => {
+      const cyber = cyberRun(CYBER_RAMP_SEED);
       const speeds: number[] = [cyber.getSpeed()];
       for (let i = 0; i < 10; i++) {
-        eatFoods(cyber, 1);
+        expect(stepOneFood(cyber)).toBe(true);
         speeds.push(cyber.getSpeed());
       }
+      expect(cyber.getState().foodEaten).toBe(10);
       for (let i = 1; i < speeds.length; i++) {
         expect(speeds[i]).toBeLessThan(speeds[i - 1]);
       }
       // speed = ruleset.speedForFood(foodEaten) exactly
       expect(cyber.getSpeed()).toBe(RULESETS.CYBER.speedForFood(10));
+    });
+
+    it('holds the CYBER ramp while a mutation offer is open, then resumes', () => {
+      const cyber = cyberRun(CYBER_RAMP_HELD_SEED);
+      for (let i = 0; i < 9; i++) {
+        expect(stepOneFood(cyber)).toBe(true);
+      }
+
+      const held = cyber.getState();
+      expect(held.foodEaten).toBe(9);
+      expect(held.pendingChoice).not.toBeNull();
+      expect(cyber.getSpeed()).toBe(RULESETS.CYBER.speedForFood(9));
+
+      // The tenth food cannot register while the offer holds the run, so the
+      // ramp legitimately stands still at speedForFood(9) === 169.
+      expect(stepOneFood(cyber)).toBe(false);
+      expect(cyber.getState().foodEaten).toBe(9);
+      expect(cyber.getSpeed()).toBe(RULESETS.CYBER.speedForFood(9));
+
+      // Resolve it with the tempo-neutral option: `time_dilation` is the only
+      // gene that moves a non-genome CYBER run's speed (it walks the curve back
+      // by a food offset), so picking anything else leaves the ramp exactly as
+      // the ruleset defines it.
+      const offer = held.pendingChoice!;
+      const neutral = offer.indexOf('time_dilation') === 0 ? 1 : 0;
+      expect(offer[neutral]).not.toBe('time_dilation');
+      expect(cyber.chooseMutation(neutral)).toBe(true);
+
+      expect(stepOneFood(cyber)).toBe(true);
+      expect(cyber.getState().foodEaten).toBe(10);
+      expect(cyber.getSpeed()).toBe(RULESETS.CYBER.speedForFood(10));
+      expect(cyber.getSpeed()).toBeLessThan(RULESETS.CYBER.speedForFood(9));
+    });
+
+    it('holds speed = speedForFood(foodEaten) across the CYBER seed space', () => {
+      // Every draw here is fixed, so this sweep is deterministic. Seeds 1-40
+      // cover the ordinary case (19 among them opens an offer at food 9); the
+      // rest are the draws found to stall the ramp mid-run — 830, 1688, 2405
+      // and 2641 open at food 9, 1510 and 2962 at food 8. Those are precisely
+      // the draws that used to fail CI at random.
+      const seeds = [
+        ...Array.from({ length: 40 }, (_, i) => i + 1),
+        830, 1510, 1688, 2405, 2641, 2962,
+      ];
+      for (const seed of seeds) {
+        const cyber = cyberRun(seed);
+        let previousSpeed = cyber.getSpeed();
+        let previousFood = cyber.getState().foodEaten;
+        for (let i = 0; i < 10; i++) {
+          const ate = stepOneFood(cyber);
+          const state = cyber.getState();
+          const speed = cyber.getSpeed();
+          expect(speed).toBe(RULESETS.CYBER.speedForFood(state.foodEaten));
+          if (ate) {
+            expect(state.foodEaten).toBe(previousFood + 1);
+            expect(speed).toBeLessThan(previousSpeed);
+          } else {
+            // An open decision is the only thing entitled to refuse a food.
+            expect(
+              state.pendingChoice !== null ||
+                state.pendingPortalChoice !== null ||
+                state.pendingSurgeChoice
+            ).toBe(true);
+            expect(state.foodEaten).toBe(previousFood);
+            expect(speed).toBe(previousSpeed);
+          }
+          previousSpeed = speed;
+          previousFood = state.foodEaten;
+        }
+      }
     });
 
     it('never drops below the minimum speed on CYBER', () => {
