@@ -1,6 +1,22 @@
 # The SupaSnake Product Constitution
 
 **Version:** 1.16 · amended 7 August 2026
+**v1.17 amendment (explicit owner rulings, 8 August 2026):** three rulings from
+the owner's decision session are recorded. (a) The run-setup surface is the
+**three-element structure**: Dynasty Favorites, the Energy Reactor (zero rods
+is free play, one rod per press), and PLAY — everything else was ruled noise
+and removed; favorites are **changed only in the Lab**, with setup offering the
+selection menu solely for a dynasty that has no favorite yet. The difficulty
+ladder stays flag-off (`NEXT_PUBLIC_LADDER_V1`), revisited only by the
+data-week difficulty session. (b) **REPLAY with no Energy routes to Setup with
+the commitment preselected** — lean harvest is *chosen*, never silently
+applied; the old wording ("uses 1 Energy when available, otherwise lean") is
+overturned. (c) The **share prompt leaves Results**: the restructured Results
+surface (Score → Victory Lap → payout facts → actions) carries no share
+affordance; sharing lives on the run routes, and the share canvas is rebuilt
+properly under the B7 audit when its turn comes. Recorded as rows 39–41 in
+§15.
+
 **v1.16 amendment (explicit owner ruling, 7 August 2026):** the played board has
 **one camera**, and it is a competitive condition rather than a presentation
 preference. The ratified viewpoint is **azimuth 0** (square-on to the south
@@ -618,8 +634,11 @@ one small convenience at a time. Protected, permanently:
   (skipping setup); SETUP reopens the page. Energy Commitment is part of this
   setup surface: default 1, current stock/recovery/next tick and multiplier visible,
   no required adjustment, and a deliberate two-step selection before all six can be
-  exposed. REPLAY never silently repeats a multi-Energy commitment: it uses 1 Energy
-  when available, otherwise lean.
+  exposed. REPLAY never silently repeats a multi-Energy commitment — and it never
+  silently downgrades one either: with Energy in stock it uses 1 Energy; with
+  none it **routes to Setup with the commitment preselected**, so lean harvest
+  is a choice the player makes with the Reactor in hand, never a surprise on
+  the Results screen (v1.17).
 - **The in-run presentation as shipped** (owner ruling, 25 July 2026; touch amended
   by D2): the board, cockpit HUD, keyboard/flick controls, and decision overlays are
   declared correct as built. They change only where a surrounding-system change forces
@@ -680,8 +699,11 @@ Routine movement is one compact sentence; notable-or-greater movement may offer 
   optional, skippable Victory Lap of at most three grouped collection beats. Each
   tap acknowledges already-secured presentation; Replay never waits for it and one
   action may complete the remaining ceremony. Everything else routes to the
-Chronicle. No commerce (Rule 7). The share prompt is Layer 1, because the share
-artifact is product, not marketing (§11.3).
+Chronicle. No commerce (Rule 7). The share artifact remains product, not
+marketing (§11.3), but the share prompt no longer lives on Results (v1.17):
+the restructured surface is ruled lean, sharing lives on the run routes, and
+the share canvas returns rebuilt under the B7 audit rather than as a tray on
+the one screen every run ends on.
 
 ---
 
@@ -2298,10 +2320,30 @@ deliberately undecided pending data.
     now, first eligible contribution understanding, and D30 by clan status. Improve the
     explanation before increasing prominence; never auto-enrol or create an obligation
     loop.
+37. **Relic cadence 8 ± 2** (v1.15, transcribed from the headnote). The ordinary
+    Gene relic arrives every 6–10 foods, mean 8; validator floor 4; the portal
+    schedule untouched. *Test:* offers read as a build with consequences between
+    them, never a queue.
+38. **The canonical viewpoint** (v1.16, transcribed from the headnote). One
+    camera — azimuth 0, 28° from zenith, fit 1.00, fov 44, far/near 0.68 ruled
+    with the meter visible. *Test:* verifiers pin the measured pose; free camera
+    exists only in dev instruments absent from production builds.
+39. **The three-element setup** (v1.17). Dynasty Favorites, Energy Reactor
+    (0 = free play), PLAY — nothing else; favorites change only in the Lab, with
+    setup's picker reserved for the no-favorite empty state; the ladder stays
+    flag-off pending the data-week difficulty session. *Test:* open → PLAY ≤3
+    taps holds; a first-time player sees zero required configuration; the Lab's
+    SET FAVORITE affordance is labeled and unburied.
+40. **REPLAY lean is chosen** (v1.17). With no Energy, REPLAY routes to Setup
+    with the commitment preselected. *Test:* no run ever starts lean without the
+    Reactor having been on screen; still ≤2 taps to a board.
+41. **The share prompt leaves Results** (v1.17). Sharing lives on the run
+    routes until the B7 rebuild. *Test:* Results carries no share affordance and
+    no commerce; the /r/[seed] artifact remains reachable and spoiler-free.
 
 ---
 
-*Ratified 25 July 2026; amended through v1.14 on 4 August 2026. The owner should be able to read this and recognize their own
+*Ratified 25 July 2026; amended through v1.17 on 8 August 2026. The owner should be able to read this and recognize their own
 game — better organized, with the avoided decisions made and priced. Where it is
 wrong, amend it honestly: name the rule, pay the cost, record the overturn. What it
 must never become is a document that is merely agreed with.*
