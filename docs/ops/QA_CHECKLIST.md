@@ -27,9 +27,9 @@ Design references:
 | Item | Current QA target |
 |---|---|
 | Production | <https://supasnake.com> |
-| Production behavior commit | `e62d3000ae3a1a7ecdb60fea19df1beeb4cff233` — The Mark, ET-3 React-out-of-hot-path, ET-1 front-loaded arrival, and a lockfile advisory clearance |
-| Current deployment | `dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` (`supasnake-jd2djdx9b-josef-bells-projects.vercel.app`), READY/production |
-| Previous deployment | `dpl_7DpLVRtFQv5P9xKLCQWeGTt29wU8` (`fc6fdf3`); identical schema, surface, hash and rules version — the cheapest rollback in the chain |
+| Production behavior commit | `230fc68a2b82c8a5bce1836d88b6689a323cc606` — 90S-Path: home, setup and HUD in the cartoon, plus the nine-rule pattern library |
+| Current deployment | `dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk` (`supasnake-8h3sqhc3r-josef-bells-projects.vercel.app`), READY/production |
+| Previous deployment | `dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` (`e62d300`); identical schema, surface, hash and rules version |
 | Engine rules version | `snake-rules-2026-08-05.2` |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; unsafe for issued v2 sessions |
 | Hosted Supabase | `supasnake`, `eu-central-1`; migrations 001–069 deployed and aligned; no pending migration |
@@ -43,7 +43,7 @@ Design references:
 | Career presentation flag | `NEXT_PUBLIC_CAREER_SPINE_V1=true`; settlement is unconditional |
 | Payments | Stripe sandbox/test mode only |
 | Support/legal contact | `support@supasnake.com` |
-| Canonical source | `main`; canonical health reports exact SHA `e62d3000ae3a1a7ecdb60fea19df1beeb4cff233` |
+| Canonical source | `main`; canonical health reports exact SHA `230fc68a2b82c8a5bce1836d88b6689a323cc606` |
 
 The complete Redesign Wave, post-playtest food/floor fixes,
 pressure/visual-coherence follow-up, D1 dynasty-pressure ruling, and Energy
@@ -84,6 +84,73 @@ retired pre-v2 application as rollback.
       universal optimum.
 - [ ] Force-quit/resume, portal CONTINUE/MUTATE, Recode, BANK, crash, and
       Results/Research handoff pass on desktop and mobile.
+
+### The relaunch production evidence
+
+- Exact main SHA `230fc68a2b82c8a5bce1836d88b6689a323cc606` — 90S-Path: home,
+  setup and HUD in the cartoon (PR 107), carrying the previous release record
+  (PR 108). Production workflow `31229536224` verified 00:14–00:31 UTC and
+  deployed 00:31–00:38:32 UTC on 8 August 2026 with `expected_migrations=none`,
+  as `dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk`
+  (`supasnake-8h3sqhc3r-josef-bells-projects.vercel.app`), on a clean first
+  dispatch. The outgoing anchor was `dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` on
+  `e62d300`.
+- **Nothing about the contract moved.** No migration; hosted schema stays
+  001–069. Public surface stays at 25 flags at hash
+  `127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, and the
+  manifest was verified untouched by PR 107 before dispatch rather than assumed.
+  Probe `cohesive_release_read_only_v5`, 16 keys, verified at the SHA; cron
+  definition hash unchanged.
+- **Relaunch runtime proofs, baselined.** `border-bone` went from 5 occurrences
+  to 0 across the served CSS — the white-border death, literally — and
+  `run-setup-mark` and `home-anomaly-flash` went from absent to present in the
+  rotated page chunks.
+- **The rules chunk moved again**, `2894-38b5465…` → `2894-1080c5e…`, while the
+  version string stayed at `snake-rules-2026-08-05.2`. Apply the recorded rule:
+  the pinning contract keys on the version string, so this is not a continuity
+  boundary. Across three consecutive releases the chunk has moved, held, and
+  moved again with no boundary any time.
+- **Three honest observability limits**, recorded as limits and not as passes:
+  the `energy-reactor` container testid is *not* observable in the initial
+  `/game` chunks even though its children `energy-stock` and `energy-summary`
+  are (likely lazy or conditional mounting — flagged, not inferred);
+  `/api/anomaly` returning 401 is pre-existing and is wiring-intact evidence
+  only; and `run-setup-adjust`, `favorites` and `ruleset-explainer` all
+  pre-existed and are **not** discriminators despite appearing in the diff's
+  added lines.
+- **The nine-rule pattern library** ships with this release and is the
+  extrapolation authority for the remaining surfaces — later packages derive
+  from it rather than re-deciding the grammar per screen.
+- **Product shape changed and one Constitution item is open.** Setup is now
+  three elements (the reactor collapses at 0 = FREE, `gameMode` is derived) and
+  the anomaly lives on home. The §5 amendment for that element-list change is
+  **pending as task 44**: until it lands, the shipped surface and §5 disagree.
+- Known and filed: mobile chamber wash-out is pre-existing (task 46), and
+  PR 107's report carries two owner-veto judgment calls.
+
+### The night of 7–8 August: four releases, one schema
+
+Recorded together because the sequence is the evidence, not any single train:
+
+| SHA | Release | Contract movement |
+|---|---|---|
+| `fb25918` | Wave-2: server-held wardrobe | schema 068 → **069**, surface 23 → 24 |
+| `fc6fdf3` | the 90s cutover | surface 24 → **25**, no migration |
+| `e62d300` | feel and brand | nothing moved |
+| `230fc68` | the relaunch | nothing moved |
+
+The hosted schema has been stable at **001–069** since the first of the four,
+and the engine rules version has been stable at `snake-rules-2026-08-05.2`
+throughout, so no run in flight was interrupted on any of the four cutovers.
+
+**Every failure across the night was a pre-mutation halt** — the deploy job
+skipped, production untouched. That is the fail-closed design holding four times
+over, and it is the reason a night with several red dispatches produced no
+incident.
+
+Still carrying into the next night: the CYBER speed-ramp seed-window flake
+(task 45). In the deploy agent's words, *"it cost a cycle tonight and will
+again"* — which is the right pressure to keep on it.
 
 ### Feel-and-brand production evidence
 
