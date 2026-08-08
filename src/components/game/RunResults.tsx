@@ -1,14 +1,41 @@
 'use client';
 
 /**
- * Results has exactly three constitutional layers:
- * 1. outcome, personal best, share, Daily Take
- * 2. Score and Yield/Depth
- * 3. one server-authored, player-collected victory lap and one next action
+ * RESULTS — restructured (owner ruling 2026-08-05, reconfirmed 2026-08-07).
  *
- * Replay and Setup remain outside the layers and immediately available. No
- * commercial surface, transient build inventory, identity card, or async
- * Analyst request competes with the run's recognition moment.
+ * THE ORDER IS RULED: Score → Victory Lap → payout facts → actions. What the
+ * player did, then the applause, then the arithmetic, then the way out.
+ *
+ * WHAT WAS CUT, and it was cut for the same reason Setup was cut to three
+ * elements: the Daily Take collect tray (a daily that has nothing to do with
+ * this run — it moves to a floating Home element, ruling D2), the Legacy Gen-N
+ * tray with its next-generation projections (a forecast about generations the
+ * player is not in, on the screen that reports the run they just finished),
+ * and the "Share / Download Genome Card" button with the duplicate receipt
+ * attached to it. The genome barcode stays.
+ *
+ * THE NUMBERS RECONCILE, which is the part that had actually broken. Results
+ * used to state a big "Payout" of `yieldDna` — the run's full-strength worth —
+ * and then, elsewhere and smaller, a Victory Lap beat reading "+N DNA" of
+ * `dnaCredited`, which is `yieldDna × the harvest factor`. On a lean run that
+ * factor is 0.25, so the two headline numbers on one screen differed by 4×
+ * with nothing on screen connecting them. Both were correct and the screen was
+ * still lying, because a player reading for three seconds takes the biggest
+ * number as what they got.
+ *
+ * So there is now ONE money field. It shows what was banked. It shows the
+ * multiplication ONLY when the multiplication did something — at ×1.0 the
+ * worth and the banked amount are the same number and stating it twice is the
+ * noise this restructure exists to remove. The Victory Lap's DNA beat reads
+ * `dnaCredited`, and so does this field, so the two now agree by construction.
+ *
+ * Score is not in that field and never derives from it (Rule 2): it is the
+ * skill number, it sits alone with the outcome, and no arithmetic on this
+ * screen connects it to money.
+ *
+ * ONE TRAY, ONE OUTLINE. The overlay wrapper in `app/game/page.tsx` is the
+ * tray. Nothing in this file draws a frame, a second radius or a glow; regions
+ * separate by fill step and by GAP.
  */
 
 import Link from 'next/link';
@@ -16,7 +43,6 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   IconArrowRight,
   IconCheck,
-  IconDna,
   IconGift,
   IconFlask,
   IconLock,
@@ -34,35 +60,20 @@ import {
 } from '@/components/game/cockpit/CockpitGlyphs';
 import { AnalyticsEvents } from '@/lib/analytics/events';
 import { trackEvent } from '@/lib/analytics/posthog';
-import type { DailyTakeSlot } from '@/lib/game/dailyTake';
 import type { ResultsNextAction } from '@/lib/game/resultsNextAction';
 import {
   impactSummary,
   type RunImpact,
   type RunImpactEnvelope,
 } from '@/lib/game/runImpactClient';
-import {
-  formatYieldMultiplier,
-  type AscendanceYieldBreakdown,
-} from '@/shared/game/ascendance';
 import { CAREER_SPINE_V1_ENABLED } from '@/lib/features/careerSpine';
 import { formatAmount } from '@/shared/format/amount';
 import {
   GenomeYieldRecap,
   type GenomeYieldRecapModel,
 } from '@/components/game/genome/GenomeYieldRecap';
-import {
-  AscendanceProgressionInstrument,
-  type AscendanceProgressionModel,
-} from '@/components/progression/AscendanceProgressionInstrument';
 
 export type RunResultsOutcome = 'extracted' | 'crashed';
-export type TakeCollectState =
-  | 'idle'
-  | 'collecting'
-  | 'collected'
-  | 'unavailable'
-  | 'error';
 
 export interface RunResultsClanBattle {
   eligible?: boolean;
@@ -89,13 +100,9 @@ export interface RunResultsProps {
   score: number;
   dnaCredited: number | null;
   yieldDna: number | null;
-  yieldBreakdown: AscendanceYieldBreakdown | null;
   energyCommitted: number;
   commitmentMultiplierBps: number;
   clanBattle: RunResultsClanBattle | null;
-  take: DailyTakeSlot | null;
-  takeState: TakeCollectState;
-  onCollectTake: () => void;
   impact: RunImpactEnvelope | null;
   settlementPending: boolean;
   nextAction: ResultsNextAction;
@@ -111,13 +118,12 @@ export interface RunResultsProps {
   replayPending: boolean;
   replayDisabled: boolean;
   replayEnergy: number;
+  /** The genome barcode. The card's download left with ruling D3's batch. */
   shareArtifact?: ReactNode;
   /** Exact v2 settlement projection; omitted for legacy/unavailable receipts. */
   genomeRecap?: GenomeYieldRecapModel | null;
   /** Opaque, authenticated handoff to the settled run's Research reading. */
   studyGenomeHref?: string | null;
-  /** Exact run-stamped Ascendance presentation, including honest v1 labels. */
-  ascendanceProgression?: AscendanceProgressionModel | null;
   /** Exact local collision fact; display/debug only, never settlement input. */
   collisionDetail?: string | null;
 }
@@ -128,10 +134,7 @@ function headline(outcome: RunResultsOutcome, practice: boolean) {
       testId: 'gameover-practice',
       title: 'Practice Run',
       tone: 'text-beige',
-      detail:
-        outcome === 'extracted'
-          ? 'Extracted — practice, no rewards'
-          : 'Crashed — practice, no rewards',
+      detail: outcome === 'extracted' ? 'Extracted — no rewards' : 'Crashed — no rewards',
     };
   }
   if (outcome === 'extracted') {
@@ -148,21 +151,6 @@ function headline(outcome: RunResultsOutcome, practice: boolean) {
     tone: 'text-strike-red',
     detail: "Crashed — this is what's left",
   };
-}
-
-function takeMessage(state: TakeCollectState, take: DailyTakeSlot): string | null {
-  switch (state) {
-    case 'collecting':
-      return 'Collecting…';
-    case 'collected':
-      return 'Collected. See you tomorrow.';
-    case 'unavailable':
-      return 'Your Take settles with the day.';
-    case 'error':
-      return 'Could not collect right now — it will keep.';
-    default:
-      return take.collected ? 'Already collected today.' : null;
-  }
 }
 
 function motionIsReduced(): boolean {
@@ -186,10 +174,25 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
+/**
+ * A progress bar is a claim about a distance. It is drawn ONLY when the server
+ * supplied the distance.
+ *
+ * It used to fall back to `max(after, before, 1)`, which makes the bar's
+ * maximum equal to its own value — so every uncapped impact rendered a bar
+ * that was exactly 100% full the moment it was collected, whatever had
+ * actually happened. That is a graphic that always says "complete", which is
+ * the same defect as a number that does not add up, drawn instead of written.
+ */
 function ImpactProgress({ impact, collected }: {
   impact: RunImpact;
   collected: boolean;
 }) {
+  const metadataTarget = impact.metadata?.target;
+  const target =
+    typeof metadataTarget === 'number' && Number.isFinite(metadataTarget) && metadataTarget > 0
+      ? metadataTarget
+      : null;
   const hasProgress = impact.before !== undefined && impact.after !== undefined;
   const before = impact.before ?? 0;
   const after = impact.after ?? before;
@@ -201,8 +204,7 @@ function ImpactProgress({ impact, collected }: {
       setDisplayedValue(before);
       return;
     }
-    const reduced = motionIsReduced();
-    if (reduced) {
+    if (motionIsReduced()) {
       setDisplayedValue(after);
       return;
     }
@@ -214,12 +216,23 @@ function ImpactProgress({ impact, collected }: {
     const frame = window.requestAnimationFrame(() => setDisplayedValue(after));
     return () => window.cancelAnimationFrame(frame);
   }, [after, before, collected]);
+
   if (!hasProgress) return null;
-  const metadataTarget = impact.metadata?.target;
-  const max =
-    typeof metadataTarget === 'number' && Number.isFinite(metadataTarget)
-      ? Math.max(metadataTarget, after, 1)
-      : Math.max(after, before, 1);
+
+  const movement = collected
+    ? `${formatAmount(before)} → ${formatAmount(after)}`
+    : `${formatAmount(before)} · ready to advance`;
+
+  if (target === null) {
+    // No distance, no bar — the movement is still stated exactly.
+    return (
+      <p className="mt-1.5 font-mono text-[11px] text-beige/60" data-testid="impact-movement">
+        {movement}
+      </p>
+    );
+  }
+
+  const max = Math.max(target, after, 1);
   const width = Math.max(0, Math.min(100, (displayedValue / max) * 100));
   return (
     <div className="mt-2 space-y-1">
@@ -229,17 +242,15 @@ function ImpactProgress({ impact, collected }: {
         aria-valuemin={0}
         aria-valuemax={max}
         aria-valuenow={displayedValue}
-        className="h-1.5 overflow-hidden rounded-full bg-void-deep/80"
+        className="h-2 overflow-hidden rounded-[var(--radius-chip)] border-[length:var(--ink-w-1)] border-ink bg-[color:var(--fill-deck-0)]"
       >
         <div
-          className="h-full rounded-full bg-cosmic transition-[width] duration-700 ease-out motion-reduce:transition-none"
+          className="h-full bg-venom-orange transition-[width] duration-700 ease-out motion-reduce:transition-none"
           style={{ width: `${width}%` }}
         />
       </div>
-      <p className="font-mono text-[11px] text-beige/60">
-        {collected
-          ? `${formatAmount(before)} → ${formatAmount(after)}`
-          : `${formatAmount(before)} · ready to advance`}
+      <p className="font-mono text-[11px] text-beige/60" data-testid="impact-movement">
+        {movement} · of {formatAmount(max)}
       </p>
     </div>
   );
@@ -255,8 +266,8 @@ interface ClaimBeat {
   collectLabel: string;
   payoff: string;
   impacts: RunImpact[];
-  tone: string;
-  orb: string;
+  /** The beat's authored FILL. Accent is never spent as a keyline. */
+  fill: string;
   action: string;
 }
 
@@ -265,7 +276,6 @@ interface ResultDestinationHighlight {
   label: string;
   headline: string;
   count: number;
-  tone: string;
   Icon: typeof IconUser;
 }
 
@@ -281,11 +291,6 @@ const SIGNIFICANCE_RANK: Record<RunImpact['significance'], number> = {
   milestone: 2,
   historic: 3,
 };
-
-function formatCommitmentMultiplier(bps: number): string {
-  const multiplier = Math.max(0, bps) / 10_000;
-  return multiplier.toFixed(multiplier < 1 ? 2 : 1);
-}
 
 function claimSource(envelope: RunImpactEnvelope): RunImpact[] {
   const byKey = new Map(envelope.impacts.map((impact) => [impact.key, impact]));
@@ -320,21 +325,18 @@ function buildClaimBeats(envelope: RunImpactEnvelope): ClaimBeat[] {
   const beats: ClaimBeat[] = [];
   const credited = envelope.receipt.dnaCredited;
   if (credited > 0) {
-    const committedUnits = envelope.receipt.energyCommitted;
     beats.push({
       id: 'dna',
-      eyebrow: envelope.outcome === 'crashed' ? "What's left" : 'Harvest capsule',
+      eyebrow: envelope.outcome === 'crashed' ? "What's left" : 'Banked',
+      // The SAME number the payout field states. These two used to be
+      // `dnaCredited` and `yieldDna` respectively and could differ by 4×.
       headline: `+${formatAmount(credited)} DNA`,
-      detail:
-        committedUnits > 0
-          ? `${committedUnits} Energy committed · ×${formatCommitmentMultiplier(envelope.receipt.commitmentMultiplierBps)} harvest. Your balance is already secured.`
-          : 'The server has already secured this harvest in your balance.',
-      collectLabel: envelope.outcome === 'crashed' ? 'Collect what is left' : 'Collect DNA',
+      detail: 'Already secured in your balance.',
+      collectLabel: envelope.outcome === 'crashed' ? 'Take what is left' : 'Take the DNA',
       payoff: `${formatAmount(credited)} DNA secured in your vault`,
       impacts: [],
-      tone: 'border-venom-orange/70 bg-venom-orange/10 text-venom-orange',
-      orb: 'border-venom-orange/80 bg-venom-orange/15 text-venom-orange shadow-[0_0_40px_rgba(242,160,63,0.32)]',
-      action: 'border-venom-orange bg-venom-orange text-ink hover:brightness-110',
+      fill: 'var(--venom-orange)',
+      action: 'btn-neutral',
     });
   }
 
@@ -366,9 +368,8 @@ function buildClaimBeats(envelope: RunImpactEnvelope): ClaimBeat[] {
           : 'Accept progress',
       payoff: `${first.headline} added to your career`,
       impacts: career,
-      tone: 'border-cosmic/70 bg-cosmic/10 text-cosmic-glow',
-      orb: 'border-cosmic/80 bg-cosmic/15 text-cosmic-glow shadow-[0_0_40px_rgba(168,85,247,0.32)]',
-      action: 'border-cosmic bg-cosmic text-bone-white hover:brightness-110',
+      fill: '#4b2f80',
+      action: 'btn-neutral',
     });
   }
 
@@ -383,9 +384,8 @@ function buildClaimBeats(envelope: RunImpactEnvelope): ClaimBeat[] {
       collectLabel: trophy ? 'Raise trophy' : 'Accept contribution',
       payoff: `${first.headline} is now visible to your clan`,
       impacts: clan,
-      tone: 'border-cyber/70 bg-cyber/10 text-cyber',
-      orb: 'border-cyber/80 bg-cyber/15 text-cyber shadow-[0_0_44px_rgba(34,211,238,0.34)]',
-      action: 'border-cyber bg-cyber text-void-deep hover:brightness-110',
+      fill: '#0f5f74',
+      action: 'btn-neutral',
     });
   }
 
@@ -398,7 +398,7 @@ function BeatRune({ kind, dynasty, compact = false }: {
   compact?: boolean;
 }) {
   return (
-    <span className={`block ${compact ? 'h-6 w-6' : 'h-12 w-12'}`} aria-hidden="true">
+    <span className={`block ${compact ? 'h-5 w-5' : 'h-10 w-10'}`} aria-hidden="true">
       {kind === 'dna' ? (
         <DnaGlyph />
       ) : kind === 'career' ? (
@@ -410,6 +410,12 @@ function BeatRune({ kind, dynasty, compact = false }: {
   );
 }
 
+/**
+ * The beat is a drawn card: one authored fill, an ink contour on its own
+ * silhouette, one hard displaced block. The rune sits on a paper chip so the
+ * glyph reads as ink rather than as a lit object — the retired treatment was a
+ * rotated ring inside a ring inside a 40px coloured blur.
+ */
 function ActiveClaimBeat({
   beat,
   dynasty,
@@ -421,48 +427,51 @@ function ActiveClaimBeat({
 }) {
   return (
     <article
-      className={`relative overflow-hidden rounded-arcade border p-4 sm:p-6 ${beat.tone} animate-pop-in motion-reduce:animate-none`}
+      className="rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink p-3 text-left shadow-[var(--ink-drop-void-2)] animate-pop-in motion-reduce:animate-none sm:p-4"
+      style={{ backgroundColor: beat.fill }}
       data-testid={`impact-beat-${beat.id}`}
       data-state="ready"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_5%,rgba(255,255,255,0.12),transparent_31%),linear-gradient(115deg,transparent_35%,rgba(255,255,255,0.055)_50%,transparent_65%)]" />
-      <div className="relative grid items-center gap-5 text-center sm:grid-cols-[8rem_1fr] sm:text-left">
-        <div className="relative mx-auto flex h-28 w-28 items-center justify-center" data-testid={`impact-rune-${beat.id}`}>
-          <span className={`absolute inset-1 rotate-45 rounded-[1.4rem] border ${beat.orb}`} />
-          <span className="absolute inset-4 -rotate-6 rounded-full border border-current/45 bg-void-deep/85" />
-          <span className="relative drop-shadow-[0_0_10px_currentColor]">
-            <BeatRune kind={beat.id} dynasty={dynasty} />
-          </span>
-        </div>
-        <div className="min-w-0">
-          <p className="label-arcade text-current/85">{beat.eyebrow}</p>
-          <h3 className="mt-1 font-display text-2xl text-bone-white sm:text-3xl">{beat.headline}</h3>
-          <p className="mt-2 font-body text-sm leading-relaxed text-beige/75">{beat.detail}</p>
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-[#fffdf8] p-2 text-ink"
+          data-testid={`impact-rune-${beat.id}`}
+        >
+          <BeatRune kind={beat.id} dynasty={dynasty} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="label-arcade text-[10px] text-bone-white/75">{beat.eyebrow}</p>
+          <h3 className="heading-display mt-0.5 text-xl text-bone-white sm:text-2xl">
+            {beat.headline}
+          </h3>
+          <p className="mt-1 font-body text-xs leading-snug text-bone-white/80">
+            {beat.detail}
+          </p>
           {beat.impacts.length > 0 ? (
-            <ul className="mt-3 space-y-3">
+            <ul className="mt-2 space-y-2">
               {beat.impacts.map((impact) => (
                 <li key={impact.key}>
                   {impact.headline !== beat.headline ? (
                     <p className="font-body text-sm font-bold text-bone-white">{impact.headline}</p>
                   ) : null}
                   {impact.detail && impact.detail !== beat.detail ? (
-                    <p className="font-body text-xs text-beige/70">{impact.detail}</p>
+                    <p className="font-body text-xs text-bone-white/70">{impact.detail}</p>
                   ) : null}
                   <ImpactProgress impact={impact} collected={false} />
                 </li>
               ))}
             </ul>
           ) : null}
-          <button
-            type="button"
-            onClick={onCollect}
-            className={`mt-5 inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap rounded-arcade border px-6 py-3 font-display text-sm uppercase tracking-wide transition-[transform,filter] hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bone-white motion-reduce:transform-none sm:w-auto ${beat.action}`}
-            data-testid={`impact-collect-${beat.id}`}
-          >
-            <IconGift size={19} /> {beat.collectLabel}
-          </button>
         </div>
       </div>
+      <button
+        type="button"
+        onClick={onCollect}
+        className={`${beat.action} mt-3 inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-6 py-3 text-sm`}
+        data-testid={`impact-collect-${beat.id}`}
+      >
+        <IconGift size={18} /> {beat.collectLabel}
+      </button>
     </article>
   );
 }
@@ -473,25 +482,23 @@ function CollectedClaimBeat({ beat, dynasty }: {
 }) {
   return (
     <article
-      className={`rounded-arcade border p-3 ${beat.tone}`}
+      className="flex items-center gap-2.5 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink px-2.5 py-2 text-left shadow-[var(--ink-drop-void-1)]"
+      style={{ backgroundColor: beat.fill }}
       data-testid={`impact-beat-${beat.id}`}
       data-state="collected"
     >
-      <div className="flex items-start gap-3">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-arcade border border-current/40 bg-void-deep/65 p-2">
-          <BeatRune kind={beat.id} dynasty={dynasty} compact />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="label-arcade text-current/80">Collected</p>
-          <p className="font-display text-base text-bone-white">{beat.headline}</p>
-          {beat.impacts.map((impact) => (
-            <ImpactProgress key={impact.key} impact={impact} collected />
-          ))}
-        </div>
-        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-rarity-uncommon/60 bg-rarity-uncommon/15 text-rarity-uncommon">
-          <IconCheck size={17} />
-        </span>
+      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-chip)] border-[length:var(--ink-w-1)] border-ink bg-[#fffdf8] p-1.5 text-ink">
+        <BeatRune kind={beat.id} dynasty={dynasty} compact />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="heading-display truncate text-sm text-bone-white">{beat.headline}</p>
+        {beat.impacts.map((impact) => (
+          <ImpactProgress key={impact.key} impact={impact} collected />
+        ))}
       </div>
+      <span className="shrink-0 text-rarity-uncommon">
+        <IconCheck size={17} />
+      </span>
     </article>
   );
 }
@@ -501,28 +508,13 @@ function destinationSurface(impact: RunImpact): Omit<ResultDestinationHighlight,
     case 'chronicle':
     case 'mastery':
     case 'records':
-      return {
-        id: 'you',
-        label: 'You',
-        Icon: IconUser,
-        tone: 'border-venom-orange/55 text-venom-orange shadow-[0_0_22px_rgba(250,204,21,0.18)]',
-      };
+      return { id: 'you', label: 'You', Icon: IconUser };
     case 'lineage':
     case 'codex':
     case 'lab':
-      return {
-        id: 'lab',
-        label: 'Lab',
-        Icon: IconFlask,
-        tone: 'border-cosmic/55 text-cosmic-glow shadow-[0_0_22px_rgba(168,85,247,0.2)]',
-      };
+      return { id: 'lab', label: 'Lab', Icon: IconFlask };
     case 'clan':
-      return {
-        id: 'compete',
-        label: 'Compete',
-        Icon: IconShield,
-        tone: 'border-cyber/55 text-cyber shadow-[0_0_22px_rgba(34,211,238,0.2)]',
-      };
+      return { id: 'compete', label: 'Compete', Icon: IconShield };
     default:
       return null;
   }
@@ -557,31 +549,27 @@ function DestinationHighlights({ items }: { items: readonly ResultDestinationHig
   if (items.length === 0) return null;
   return (
     <section
-      className="animate-pop-in space-y-3 rounded-arcade border border-scale-blue-light/30 bg-void-deep/60 p-4 text-left motion-reduce:animate-none"
+      className="animate-pop-in text-left motion-reduce:animate-none"
       aria-label="Unseen progress destinations"
       data-testid="results-destination-attention"
     >
-      <div>
-        <p className="label-arcade text-rarity-legendary">Your world changed</p>
-        <p className="mt-1 font-body text-xs leading-relaxed text-beige/65">
-          These lights stay on until the exact progress is visible in its home.
-        </p>
-      </div>
-      <div className={`grid gap-2 ${items.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}>
+      <p className="label-arcade text-[10px] text-beige/55">Your world changed</p>
+      <div className="mt-1.5 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
         {items.map((item) => {
           const Icon = item.Icon;
           return (
             <div
               key={item.id}
-              className={`relative rounded-arcade border bg-black/20 p-3 ${item.tone}`}
+              className="rounded-[var(--radius-chip)] bg-[color:var(--fill-deck-2)] px-2.5 py-2"
               data-testid={`results-attention-${item.id}`}
             >
-              <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-current shadow-[0_0_12px_currentColor]" aria-label="Unseen change" />
-              <div className="flex items-center gap-2">
-                <Icon size={18} />
-                <span className="whitespace-nowrap font-display text-sm uppercase text-bone-white">{item.label}</span>
+              <div className="flex items-center gap-1.5 text-venom-orange">
+                <Icon size={15} />
+                <span className="heading-display whitespace-nowrap text-xs text-bone-white">
+                  {item.label}
+                </span>
               </div>
-              <p className="mt-2 font-body text-xs text-beige/70">
+              <p className="mt-1 font-body text-[11px] leading-snug text-beige/70">
                 {item.headline}{item.count > 1 ? ` · +${item.count - 1} more` : ''}
               </p>
             </div>
@@ -624,15 +612,15 @@ function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
 
   if (beats.length === 0) {
     return (
-      <div className="space-y-2" data-testid="impact-routine-list">
-        <p className="label-arcade text-cosmic">Run progress secured</p>
-        <ul className="space-y-2">
-        {envelope.impacts.map((impact) => (
-          <li key={impact.key} className="font-body text-sm text-beige">
-            {impact.headline}
-            {impact.detail ? <span className="text-beige/65"> — {impact.detail}</span> : null}
-          </li>
-        ))}
+      <div data-testid="impact-routine-list">
+        <p className="label-arcade text-[10px] text-beige/55">Run progress secured</p>
+        <ul className="mt-1 space-y-1">
+          {envelope.impacts.map((impact) => (
+            <li key={impact.key} className="font-body text-sm text-beige">
+              {impact.headline}
+              {impact.detail ? <span className="text-beige/65"> — {impact.detail}</span> : null}
+            </li>
+          ))}
         </ul>
       </div>
     );
@@ -689,100 +677,110 @@ function ImpactVictoryLap({ envelope }: { envelope: RunImpactEnvelope }) {
   };
 
   return (
-    <div className="space-y-3" data-testid="impact-victory-lap" aria-label="Run rewards and progress collection">
+    <div className="flex flex-col gap-2.5 text-left" data-testid="impact-victory-lap" aria-label="Run rewards and progress collection">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="label-arcade text-rarity-uncommon">{crashed ? 'What you kept' : 'Victory lap'}</p>
-          <p className="mt-1 flex items-start gap-1.5 font-body text-xs leading-relaxed text-beige/70">
-            <IconLock size={14} className="mt-0.5 shrink-0 text-rarity-uncommon" />
-            <span>Everything is already yours. Each tap reveals and celebrates it.</span>
+        <div className="min-w-0">
+          <p className="label-arcade text-[10px] text-venom-orange">
+            {crashed ? 'What you kept' : 'Victory lap'}
+          </p>
+          <p className="mt-0.5 flex items-start gap-1.5 font-body text-[11px] leading-snug text-beige/70">
+            <IconLock size={13} className="mt-0.5 shrink-0 text-venom-orange" />
+            <span>Already yours. Each tap reveals it.</span>
           </p>
         </div>
-        <p className={`shrink-0 whitespace-nowrap font-mono text-[11px] uppercase ${reducedMotion ? 'text-rarity-uncommon' : 'text-beige/60'}`} aria-live="polite">
+        <p className="shrink-0 whitespace-nowrap font-mono text-[11px] uppercase text-beige/60" aria-live="polite">
           {reducedMotion || finished ? (crashed ? 'All collected' : 'Lap complete') : `${collectedCount + 1} of ${beats.length}`}
         </p>
       </div>
+
       <div className="flex gap-1" aria-hidden="true">
         {beats.map((beat, index) => (
           <span
             key={beat.id}
-            className={`h-1.5 flex-1 rounded-full transition-colors motion-reduce:transition-none ${reducedMotion || index < collectedCount ? 'bg-rarity-uncommon' : index === collectedCount ? 'bg-cosmic shadow-[0_0_8px_#a855f7]' : 'bg-scale-blue-light/25'}`}
+            className={`h-2 flex-1 rounded-[var(--radius-chip)] border-[length:var(--ink-w-1)] border-ink transition-colors motion-reduce:transition-none ${
+              reducedMotion || index < collectedCount
+                ? 'bg-venom-orange'
+                : 'bg-[color:var(--fill-deck-0)]'
+            }`}
           />
         ))}
       </div>
 
       {routineSummary ? (
         <div
-          className="rounded-arcade border border-scale-blue-light/25 bg-void-deep/45 px-3 py-2 text-left"
+          className="rounded-[var(--radius-chip)] bg-[color:var(--fill-deck-0)] px-2.5 py-2"
           data-testid="impact-routine-summary"
         >
-          <p className="label-arcade text-beige/55">Also secured automatically</p>
-          <p className="mt-1 font-body text-xs text-beige/70">
+          <p className="label-arcade text-[10px] text-beige/50">Also secured</p>
+          <p className="mt-0.5 font-body text-[11px] leading-snug text-beige/70">
             {routineSummary}
           </p>
         </div>
       ) : null}
 
-      {!reducedMotion ? <div>
-      {lastPayoff ? (
-        <div
-          key={lastPayoff}
-          className="flex items-center gap-2 rounded-arcade border border-rarity-uncommon/45 bg-rarity-uncommon/10 px-3 py-2 text-rarity-uncommon animate-pop-in motion-reduce:animate-none"
-          role="status"
-          aria-live="polite"
-          data-testid="impact-collection-payoff"
-        >
-          <IconCheck size={18} className="shrink-0" />
-          <span className="font-body text-xs font-bold">{lastPayoff}</span>
-        </div>
-      ) : null}
+      {!reducedMotion ? (
+        <div className="flex flex-col gap-2.5">
+          {lastPayoff ? (
+            <div
+              key={lastPayoff}
+              className="flex items-center gap-2 rounded-[var(--radius-chip)] bg-[color:var(--fill-deck-2)] px-2.5 py-2 text-rarity-uncommon animate-pop-in motion-reduce:animate-none"
+              role="status"
+              aria-live="polite"
+              data-testid="impact-collection-payoff"
+            >
+              <IconCheck size={16} className="shrink-0" />
+              <span className="font-body text-[11px] font-bold">{lastPayoff}</span>
+            </div>
+          ) : null}
 
-      {current ? (
-        <div aria-live="polite">
-          <ActiveClaimBeat beat={current} dynasty={envelope.dynasty} onCollect={collect} />
+          {current ? (
+            <div aria-live="polite">
+              <ActiveClaimBeat beat={current} dynasty={envelope.dynasty} onCollect={collect} />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5" role="status" data-testid="impact-victory-complete">
+              <div className="rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-[color:var(--fill-deck-2)] p-3 text-center shadow-[var(--ink-drop-void-2)]">
+                <IconTrophy size={30} className="mx-auto text-venom-orange" />
+                <p className="heading-display mt-1 text-lg text-bone-white">
+                  {crashed ? 'That is what you kept' : 'Victory lap complete'}
+                </p>
+                <p className="mt-0.5 font-body text-[11px] text-beige/65">
+                  {crashed
+                    ? 'The run ended early. What you kept stays yours.'
+                    : 'Your prizes are collected.'}
+                </p>
+              </div>
+              <DestinationHighlights items={attention} />
+            </div>
+          )}
+
+          {collectedCount > 0 ? (
+            <div className="flex flex-col gap-1.5" aria-label="Collected prizes">
+              {beats.slice(0, collectedCount).map((beat) => (
+                <CollectedClaimBeat key={beat.id} beat={beat} dynasty={envelope.dynasty} />
+              ))}
+            </div>
+          ) : null}
+
+          {!finished && beats.length - collectedCount > 1 ? (
+            <button
+              type="button"
+              onClick={collectRemaining}
+              className="min-h-[44px] w-full px-4 font-body text-xs font-bold text-beige/65 underline decoration-dotted underline-offset-4 transition-colors hover:text-bone-white sm:w-auto"
+              data-testid="impact-collect-remaining"
+            >
+              Take everything left
+            </button>
+          ) : null}
         </div>
       ) : (
-        <div className="space-y-3" role="status" data-testid="impact-victory-complete">
-          <div className="rounded-arcade border border-rarity-uncommon/45 bg-rarity-uncommon/10 p-4 text-center">
-            <IconTrophy size={34} className="mx-auto text-rarity-legendary drop-shadow-[0_0_12px_currentColor]" />
-            <p className="mt-2 heading-display text-xl text-bone-white">
-              {crashed ? 'That is what you kept' : 'Victory lap complete'}
-            </p>
-            <p className="mt-1 font-body text-xs text-beige/65">
-              {crashed
-                ? 'The run ended early. What you kept is yours, and it stays yours.'
-                : 'Your prizes are collected. Their story continues in your world.'}
-            </p>
-          </div>
+        <div className="flex flex-col gap-1.5" data-testid="impact-reduced-summary">
+          {beats.map((beat) => (
+            <CollectedClaimBeat key={beat.id} beat={beat} dynasty={envelope.dynasty} />
+          ))}
           <DestinationHighlights items={attention} />
         </div>
       )}
-
-      {collectedCount > 0 ? (
-        <div className="space-y-2" aria-label="Collected prizes">
-          {beats.slice(0, collectedCount).map((beat) => (
-            <CollectedClaimBeat key={beat.id} beat={beat} dynasty={envelope.dynasty} />
-          ))}
-        </div>
-      ) : null}
-      {!finished && beats.length - collectedCount > 1 ? (
-        <button
-          type="button"
-          onClick={collectRemaining}
-          className="min-h-[44px] w-full rounded-full px-4 font-body text-xs font-bold text-beige/65 transition-colors hover:bg-scale-blue/25 hover:text-bone-white sm:w-auto"
-          data-testid="impact-collect-remaining"
-        >
-          Collect all remaining prizes
-        </button>
-      ) : null}
-      </div> : null}
-
-      {reducedMotion ? <div className="space-y-2" data-testid="impact-reduced-summary">
-        {beats.map((beat) => (
-          <CollectedClaimBeat key={beat.id} beat={beat} dynasty={envelope.dynasty} />
-        ))}
-        <DestinationHighlights items={attention} />
-      </div> : null}
     </div>
   );
 }
@@ -792,6 +790,9 @@ function serverNumber(value: unknown): number | null {
     ? Math.floor(value)
     : null;
 }
+
+/** ≤3 words, everywhere Depth appears (ruling). §6.2: Depth is in segments. */
+const DEPTH_GLOSS = 'Segments driven';
 
 function CrashConsequences({
   credited,
@@ -812,36 +813,118 @@ function CrashConsequences({
   if (salvage === null && !noClanContribution && threshold === null) return null;
 
   return (
-    <section
-      className="mx-auto grid max-w-lg gap-2 rounded-arcade border border-scale-blue-light/35 bg-scale-blue/10 p-3 text-left sm:grid-cols-2"
+    <div
+      className="grid gap-2 rounded-[var(--radius-chip)] bg-[color:var(--fill-deck-0)] p-2.5 text-left sm:grid-cols-2"
       aria-label="Exact crash consequences"
       data-testid="results-crash-consequences"
     >
       {salvage !== null ? (
         <div>
-          <p className="label-arcade text-venom-orange">Personal</p>
-          <p className="mt-1 font-display text-sm text-bone-white">
-            {formatAmount(salvage)} DNA kept
+          <p className="label-arcade text-[10px] text-beige/50">Kept</p>
+          <p className="heading-display mt-0.5 text-sm text-bone-white">
+            {formatAmount(salvage)} DNA
           </p>
         </div>
       ) : null}
       {noClanContribution ? (
-        <div className="border-t border-scale-blue-light/20 pt-2 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
-          <p className="label-arcade text-cyber">Clan</p>
-          <p className="mt-1 font-display text-sm text-bone-white">
-            No clan contribution banked
+        <div>
+          <p className="label-arcade text-[10px] text-beige/50">Clan</p>
+          <p className="heading-display mt-0.5 text-sm text-bone-white">
+            Nothing banked
           </p>
         </div>
       ) : null}
       {threshold !== null && threshold > 0 ? (
-        <div className="border-t border-scale-blue-light/20 pt-2 sm:col-span-2">
-          <p className="label-arcade text-cosmic-glow">Your fifth-best threshold</p>
-          <p className="mt-1 font-display text-sm text-bone-white">
-            {formatAmount(threshold)} Clan Depth
+        <div className="sm:col-span-2">
+          <p className="label-arcade text-[10px] text-beige/50">
+            Your fifth-best · {DEPTH_GLOSS}
+          </p>
+          <p className="heading-display mt-0.5 text-sm text-bone-white">
+            {formatAmount(threshold)} Depth
           </p>
         </div>
       ) : null}
-    </section>
+    </div>
+  );
+}
+
+/**
+ * THE ONE MONEY FIELD.
+ *
+ * `yieldDna` is the run's full-strength worth and `dnaCredited` is what that
+ * worth actually paid after the harvest factor (§6.2: "the DNA a run actually
+ * pays is Yield × the charge factor"). At ×1.0 they are the same number and
+ * only one is shown. When they differ — a lean run pays ×0.25 — the factor is
+ * shown BETWEEN them, so the only equation the layout implies is the one that
+ * is true.
+ */
+function PayoutField({
+  practice,
+  settlementPending,
+  worth,
+  credited,
+  committed,
+  multiplierBps,
+}: {
+  practice: boolean;
+  settlementPending: boolean;
+  worth: number;
+  credited: number | null;
+  committed: number;
+  multiplierBps: number;
+}) {
+  if (settlementPending) {
+    return (
+      <div data-testid="results-yield">
+        <p className="label-arcade text-[10px] text-beige/55">DNA banked</p>
+        <p className="heading-display text-3xl text-venom-orange">Finalizing…</p>
+      </div>
+    );
+  }
+
+  if (practice) {
+    return (
+      <div data-testid="results-yield">
+        <p className="label-arcade text-[10px] text-beige/55">Practice — nothing banked</p>
+        <p className="heading-display text-3xl text-beige/80">
+          <span data-testid="results-dna-banked">{formatAmount(worth)}</span>
+          <span className="ml-2 font-body text-sm text-beige/60">was the worth</span>
+        </p>
+      </div>
+    );
+  }
+
+  const banked = credited ?? worth;
+  const factorApplied = credited !== null && multiplierBps !== 10_000 && worth !== banked;
+
+  if (!factorApplied) {
+    return (
+      <div data-testid="results-yield">
+        <p className="label-arcade text-[10px] text-beige/55">DNA banked</p>
+        <p className="heading-display text-3xl text-venom-orange">
+          +<span data-testid="results-dna-banked">{formatAmount(banked)}</span>
+        </p>
+      </div>
+    );
+  }
+
+  const factor = multiplierBps / 10_000;
+  return (
+    <div data-testid="results-yield">
+      <p className="label-arcade text-[10px] text-beige/55">DNA banked</p>
+      <p className="heading-display text-3xl text-venom-orange">
+        +<span data-testid="results-dna-banked">{formatAmount(banked)}</span>
+      </p>
+      {/* The equation, stated once and stated true. */}
+      <p
+        className="mt-0.5 font-mono text-[11px] text-beige/60"
+        data-testid="results-payout-chain"
+      >
+        <span data-testid="results-payout-worth">{formatAmount(worth)}</span> worth ×
+        {factor.toFixed(factor < 1 ? 2 : 1)}{' '}
+        {committed > 0 ? `${committed} Energy` : 'lean harvest'}
+      </p>
+    </div>
   );
 }
 
@@ -851,13 +934,9 @@ export function RunResults({
   score,
   dnaCredited,
   yieldDna,
-  yieldBreakdown,
   energyCommitted,
   commitmentMultiplierBps,
   clanBattle,
-  take,
-  takeState,
-  onCollectTake,
   impact,
   settlementPending,
   nextAction,
@@ -871,7 +950,6 @@ export function RunResults({
   shareArtifact,
   genomeRecap = null,
   studyGenomeHref = null,
-  ascendanceProgression = null,
   collisionDetail = null,
 }: RunResultsProps) {
   const awaitingCanonicalImpact = !practice && settlementPending && !impact;
@@ -896,20 +974,36 @@ export function RunResults({
   const clanTotal = serverNumber(clanBattle?.clanTotal);
   /**
    * ENTERED an empty slot, or REPLACED a weaker result (PEO §6 step 5).
-   *
-   * The two were previously one sentence — "Entered your five" — with the
-   * replacement mentioned separately underneath, which reads as though a sixth
-   * slot appeared. A player has five slots; the honest question on a
-   * contributing run is which of the two things just happened to them.
    */
   const clanReplaced = Boolean(clanBattle?.replacedSessionId);
-  const scoreNeeded = clanThresholdBefore !== null && clanThresholdBefore > 0
+  /**
+   * The clan threshold and this run's contribution are BOTH Depth, which §6.2
+   * defines as accumulated Yield — the migration fills the contribution column
+   * from `game_sessions.yield_dna`. So this comparison is unit-consistent, and
+   * it is deliberately compared against the run's WORTH rather than against
+   * the DNA it banked: "Depth, Mastery, and every record read the full number".
+   */
+  const depthNeeded = clanThresholdBefore !== null && clanThresholdBefore > 0
     ? clanThresholdBefore + 1
     : null;
   const shortBy =
-    scoreNeeded !== null && !clanBattle?.enteredTopFive
-      ? Math.max(0, scoreNeeded - settledYield)
+    depthNeeded !== null && !clanBattle?.enteredTopFive
+      ? Math.max(0, depthNeeded - settledYield)
       : null;
+
+  /**
+   * REPLAY ROUTING (ruling D3). With Energy in stock, REPLAY re-enters the run
+   * with the same configuration, capped at 1 Energy by §5. With NO Energy, it
+   * used to silently downgrade the run to a ×0.25 lean harvest — a stake the
+   * player never chose, decided by a button labelled with the word "again".
+   *
+   * So an empty stock routes to Setup instead, where the Energy Reactor
+   * arrives preset to this run's commitment and 0 rods is FREE play stated as
+   * itself. The player still reaches a board in two taps from Results (§5's
+   * "≤2 taps from Results to the next run"), and the lean run is now a thing
+   * they chose rather than a thing that happened to them.
+   */
+  const replayRoutesToSetup = replayEnergy <= 0;
 
   useEffect(() => {
     if (!CAREER_SPINE_V1_ENABLED || !impact) return;
@@ -922,11 +1016,33 @@ export function RunResults({
     });
   }, [impact]);
 
+  /*
+    THE ORDER, AND THE ONE PLACE IT BENDS.
+
+    Ruled information order: Score → Victory Lap → payout facts. Actions come
+    after it on a screen with room for all of it.
+
+    On a phone there is no such room — the Victory Lap alone measures ~640px at
+    320×568 — so the actions would sit below two full screens of reading, and
+    an earlier ratified round already established that a player must never
+    scroll to act. The reconciliation is that ACTIONS ARE NOT INFORMATION: they
+    move to second position on mobile and the ruled reading order (Score, then
+    the lap, then the facts) is completely intact around them.
+
+    Done with flex `order`, so the DOM order is one order — the mobile one,
+    which is also the order a keyboard should meet these controls in, primary
+    action early.
+  */
   return (
-    <div className="space-y-6" data-testid="run-results">
-      <section data-testid="results-layer-1" aria-label="Outcome" className="space-y-4">
-        <div className="space-y-1">
-          <h2 className={`heading-display heading-ink text-4xl text-glow ${head.tone}`} data-testid={head.testId}>
+    <div className="flex flex-col gap-5 text-center" data-testid="run-results">
+      {/* ---------- 1 · OUTCOME AND SCORE ---------- */}
+      <section
+        data-testid="results-layer-1"
+        aria-label="Outcome"
+        className="order-1 flex flex-col gap-3"
+      >
+        <div>
+          <h2 className={`heading-display heading-ink text-4xl ${head.tone}`} data-testid={head.testId}>
             {head.title}
           </h2>
           <p className="font-body text-sm uppercase tracking-wide text-beige/60">
@@ -942,242 +1058,151 @@ export function RunResults({
           ) : null}
         </div>
 
+        {/*
+          SCORE STANDS ALONE. It is the skill number and it is build-blind by
+          law (Rule 2) — no gene, trait or anomaly reaches it, and nothing on
+          this screen multiplies it into money. Putting it in its own field,
+          above and apart from the payout, is what stops the eye trying.
+        */}
+        <div className="mx-auto">
+          <p className="label-arcade text-[10px] text-beige/55">Score · how well you flew</p>
+          <p className="heading-display text-5xl text-bone-white" data-testid="results-score">
+            {awaitingCanonicalImpact ? 'Finalizing…' : formatAmount(settledScore)}
+          </p>
+        </div>
+
         {!awaitingCanonicalImpact && personalBest && (
-          <p className="inline-flex items-center justify-center gap-2 rounded-arcade border border-venom-orange/60 bg-venom-orange/10 px-4 py-2 font-body text-sm font-bold text-venom-orange" data-testid="results-personal-best">
-            <IconMedal size={18} /> Personal best
+          <p
+            className="mx-auto inline-flex items-center justify-center gap-2 rounded-[var(--radius-chip)] border-[length:var(--ink-w-2)] border-ink bg-venom-orange px-3 py-1.5 font-display text-sm uppercase text-ink shadow-[var(--ink-drop-1)]"
+            data-testid="results-personal-best"
+          >
+            <IconMedal size={17} /> Personal best
           </p>
         )}
 
         {settlementPending && !practice ? (
           <div
-            className="panel-glow [--glow:#f2a03f] mx-auto max-w-lg px-5 py-4 text-left"
+            className="mx-auto max-w-lg rounded-[var(--radius-chip)] bg-[color:var(--fill-deck-0)] px-4 py-3 text-left"
             data-testid="results-settlement-pending"
             role="status"
           >
-            <p className="label-arcade text-venom-orange-light">Run secured</p>
-            <p className="mt-1 font-body text-sm text-beige/85">
-              Finalizing DNA, records, and Career progress on the server. You can safely leave this screen.
+            <p className="label-arcade text-[10px] text-venom-orange">Run secured</p>
+            <p className="mt-0.5 font-body text-sm text-beige/85">
+              Finalizing DNA, records, and Career progress. You can safely leave this screen.
             </p>
           </div>
-        ) : null}
-
-        {take && (
-          <div className="panel-glow [--glow:#facc15] mx-auto max-w-lg space-y-2 px-5 py-4 text-left" data-testid="results-take">
-            <p className="label-arcade text-[#facc15]">Daily Take</p>
-            <p className="font-body text-sm text-beige/85">
-              The day&apos;s first run pays <span className="font-bold text-bone-white">{take.amount} DNA</span>
-              {take.streakDays > 0 ? ` · day ${take.streakDays} streak${take.multiplier > 1 ? ` ×${take.multiplier}` : ''}` : ''}.
-            </p>
-            <button type="button" onClick={onCollectTake} disabled={take.collected || takeState === 'collecting' || takeState === 'collected' || takeState === 'unavailable'} data-testid="results-take-collect" className="btn-neutral inline-flex min-h-[44px] items-center gap-2 px-5 py-2">
-              <IconGift size={18} /> Collect
-            </button>
-            {takeMessage(takeState, take) && <p className="font-body text-xs text-beige/70" data-testid="results-take-status">{takeMessage(takeState, take)}</p>}
-          </div>
-        )}
-        {!awaitingCanonicalImpact ? shareArtifact : null}
-      </section>
-
-      <section data-testid="results-layer-2" aria-label="The two numbers" className="space-y-2 font-body">
-        <p className="text-2xl text-bone-white" data-testid="results-score">
-          Score:{' '}
-          <span className="font-bold text-venom-orange">
-            {awaitingCanonicalImpact ? 'Finalizing…' : formatAmount(settledScore)}
-          </span>
-        </p>
-        <p className="flex items-center justify-center gap-2 text-2xl text-bone-white" data-testid="results-yield">
-          <IconDna size={22} className="text-venom-orange" /> Payout:{' '}
-          <span className="font-bold text-venom-orange text-glow-orange">
-            {settlementPending ? 'Finalizing…' : formatAmount(settledYield)}
-          </span>
-        </p>
-
-        {!practice && settlementPending ? (
-          <p className="text-sm text-beige/70" data-testid="results-energy">
-            {committed > 0 ? `${committed} Energy committed` : 'Lean run'} · reward secured
-          </p>
-        ) : !practice && credited !== null ? (
-          <p className="text-sm text-beige/70" data-testid="results-energy">
-            {committed > 0 ? `${committed} Energy committed` : multiplier < 10_000 ? 'Lean run' : 'Energy-exempt run'} · {formatAmount(credited)} DNA credited
-          </p>
-        ) : null}
-        {practice && <p className="text-sm text-beige/70" data-testid="gameover-hypothetical">Practice pays nothing — this is what the run was worth.</p>}
-
-        {!settlementPending && (yieldBreakdown || (!practice && credited !== null)) && (
-          <details className="mx-auto max-w-sm rounded-arcade border border-scale-blue-light/25 bg-void-deep/40 px-4 py-2 text-left" data-testid="results-receipt-details">
-            <summary className="cursor-pointer text-xs text-beige/65">How the payout was settled</summary>
-            <div className="mt-2 grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 text-sm" data-testid={yieldBreakdown ? 'results-yield-breakdown' : undefined}>
-              {yieldBreakdown && <>
-                <span className="text-beige/70">Base run payout</span><span className="text-right font-mono text-bone-white">{formatAmount(yieldBreakdown.baseYield)}</span>
-                <span className="text-beige/70">Gen {yieldBreakdown.generation} Legacy ×{formatYieldMultiplier(yieldBreakdown.multiplier)}</span><span className="text-right font-mono text-venom-orange">+{formatAmount(yieldBreakdown.bonusYield)}</span>
-              </>}
-              {!practice && credited !== null && <>
-                <span className="text-beige/70">Harvest multiplier</span><span className="text-right font-mono text-bone-white">×{(multiplier / 10_000).toFixed(multiplier < 10_000 ? 2 : 1)}</span>
-                <span className="font-bold text-beige">Credited</span><span className="text-right font-mono font-bold text-bone-white">{formatAmount(credited)} DNA</span>
-              </>}
-            </div>
-          </details>
-        )}
-
-        {!settlementPending && genomeRecap ? <GenomeYieldRecap model={genomeRecap} /> : null}
-        {!settlementPending && genomeRecap && studyGenomeHref ? (
-          <Link
-            href={studyGenomeHref}
-            className="mx-auto flex min-h-[44px] max-w-sm items-center justify-center gap-2 rounded-full border border-cosmic/50 bg-cosmic/10 px-5 py-2 font-display text-sm text-cosmic transition-colors hover:border-cosmic hover:bg-cosmic/20"
-            data-testid="results-study-genome"
-          >
-            <IconFlask size={16} /> Study these powers <IconArrowRight size={15} />
-          </Link>
-        ) : null}
-        {!settlementPending && ascendanceProgression ? (
-          <div className="mx-auto max-w-lg text-left">
-            <AscendanceProgressionInstrument model={ascendanceProgression} compact />
-          </div>
-        ) : null}
-
-        {!settlementPending && clanBattle?.eligible && (
-          <div className="panel-glow [--glow:#7df9ff] mx-auto max-w-lg space-y-2 px-4 py-3 text-left" data-testid="results-clan-battle">
-            <p className="label-arcade text-[#7df9ff]">Clan Energy Battle</p>
-            {/*
-              What happened to the player's five, and what it did to the clan's
-              total (PEO §6 step 5). The first contributing run of an account is
-              the first time this block renders at all, so it is the one that
-              has to explain itself; every later one repeats the same two facts
-              rather than assuming the player remembers them.
-            */}
-            <p className="font-body text-sm text-bone-white" data-testid="results-clan-placement">
-              {clanBattle.enteredTopFive
-                ? `${clanReplaced ? 'Replaced your weakest counted result' : 'Entered your five'}${clanDelta !== null && clanDelta > 0 ? ` · +${formatAmount(clanDelta)} Clan Depth` : ''}.`
-                : 'Valid battle result · outside your five.'}
-            </p>
-            {clanBattle.enteredTopFive && clanTotal !== null && clanTotal > 0 ? (
-              <p className="font-body text-xs text-beige/65" data-testid="results-clan-total">
-                Your clan now stands at {formatAmount(clanTotal)} Clan Depth
-                {clanDelta !== null && clanDelta > 0
-                  ? `, ${formatAmount(clanDelta)} of it from this run`
-                  : ''}
-                .
-              </p>
-            ) : null}
-            {clanBattle.enteredTopFive && clanFifthBest !== null && clanFifthBest > 0 ? (
-              <p className="font-body text-xs text-beige/65">
-                Your fifth-best now stands at {formatAmount(clanFifthBest)} Clan Depth.
-              </p>
-            ) : null}
-            {!clanBattle.enteredTopFive && scoreNeeded !== null ? (
-              <p className="font-body text-xs text-beige/65" data-testid="results-clan-gap">
-                Needed {formatAmount(scoreNeeded)} · this run delivered {formatAmount(settledYield)}
-                {shortBy !== null && shortBy > 0 ? ` · ${formatAmount(shortBy)} short` : ''}.
-              </p>
-            ) : null}
-          </div>
-        )}
-        {!settlementPending && outcome === 'crashed' && !practice ? (
-          <CrashConsequences credited={credited} clanBattle={clanBattle} />
         ) : null}
       </section>
 
-      {/*
-        The two ways out of Results sit here - directly under the outcome and
-        the two numbers, above the progression ceremony - and they flow in
-        normal document order with no pinning and no backing tray.
-
-        Layer 3 is by far the tallest thing on this screen: at 320x568 its
-        recognition digest alone measures ~640px, which used to push Replay and
-        Setup to a first-viewport bottom of ~1362px. The ceremony is worth
-        reading, but it may not stand between a player and their next run
-        (Constitution: "<=2 taps from Results to the next run via REPLAY").
-        Putting the actions before it costs the ceremony nothing - it still
-        runs, in full, immediately below - and it holds in both the finalizing
-        and the settled state, since everything Layer 2 adds after settlement
-        renders below the two numbers.
-
-        The dock stays outside all three layers, and the layers keep their
-        constitutional order and contents; only these two nodes moved.
-      */}
-      <p className="mx-auto max-w-lg text-center font-body text-xs leading-relaxed text-beige/55">
-        {practice
-          ? 'Replay or return to Setup at any time. Practice creates no persistent reward.'
-          : impact || settlementPending
-            ? 'Replay or return to Setup at any time. Leaving never forfeits a secured prize.'
-            : 'Settlement recovery is still in progress; this screen never invents an unverified prize.'}
-      </p>
-      <div
-        className="mx-auto grid w-full max-w-lg grid-cols-2 gap-2 bg-transparent pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] pt-2 sm:flex sm:items-center sm:justify-center sm:pb-3 sm:pt-3"
-        data-testid="results-action-dock"
-        data-action-surface="integrated"
-      >
-        {/* REPLAY IS THE LABEL (ruling D3). It used to carry its own cost -
-            "Replay · 1 Energy" / "Replay · Lean" - which put a fact inside an
-            action word and made the button's width depend on the player's
-            stock. The word is the action; the cost is stated once, below. */}
-        <button type="button" onClick={onReplay} disabled={replayDisabled} data-testid="results-replay" className={`btn-go inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-8 py-4 text-xl sm:w-auto ${replayDisabled ? 'cursor-wait' : 'animate-glow-pulse shadow-venom-orange/50'}`}>
-          <IconPlay size={20} /> {replayPending ? 'Starting…' : 'REPLAY'}
-        </button>
-        <button type="button" onClick={onSetup} data-testid="results-setup" className="btn-neutral inline-flex min-h-[48px] w-full items-center justify-center gap-2 whitespace-nowrap px-6 py-3 sm:w-auto">
-          <IconReset size={18} /> SETUP
-        </button>
-      </div>
-      <p
-        className="mx-auto max-w-lg text-center font-body text-xs leading-relaxed text-beige/55"
-        data-testid="results-replay-cost"
-      >
-        {replayEnergy > 0
-          ? 'REPLAY runs it again on 1 Energy. SETUP reopens the page with your last stake ready.'
-          : 'No Energy left, so REPLAY runs lean — it still plays, it just pays less. SETUP reopens the page with your last stake ready.'}
-      </p>
-
-      <section data-testid="results-layer-3" aria-label="Progression" className="space-y-4">
+      {/* ---------- ACTIONS · second on a phone, last on a desktop ---------- */}
+      <div className="order-2 flex flex-col gap-1.5 sm:order-4">
         <div
-          className="panel-glow [--glow:#f2a03f] mx-auto max-w-lg p-4 text-left"
-          data-testid="results-digest"
+          className="mx-auto grid w-full max-w-lg grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-center"
+          data-testid="results-action-dock"
+          data-action-surface="integrated"
         >
-          <div className="space-y-3">
-            <p className="font-body text-sm text-beige/80" data-testid="impact-summary">
-              {CAREER_SPINE_V1_ENABLED
-                ? settlementPending
-                  ? 'Run secured — Career impact is finalizing.'
-                  : impact
-                  ? impactSummary(impact)
-                  : practice
-                    ? 'Practice advances no persistent progress.'
-                    : 'Run impact is pending server recovery.'
+          {/* REPLAY IS THE LABEL (ruling D3). The cost is stated once, below. */}
+          <button
+            type="button"
+            onClick={replayRoutesToSetup ? onSetup : onReplay}
+            disabled={replayDisabled && !replayRoutesToSetup}
+            data-testid="results-replay"
+            data-routes-to={replayRoutesToSetup ? 'setup' : 'run'}
+            className={`btn-go inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap px-8 py-3 text-xl sm:w-auto ${
+              replayDisabled && !replayRoutesToSetup ? 'cursor-wait' : ''
+            }`}
+          >
+            <IconPlay size={20} /> {replayPending ? 'Starting…' : 'REPLAY'}
+          </button>
+          <button
+            type="button"
+            onClick={onSetup}
+            data-testid="results-setup"
+            className="btn-neutral inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-nowrap px-6 py-3 sm:w-auto"
+          >
+            <IconReset size={18} /> SETUP
+          </button>
+        </div>
+        <p
+          className="mx-auto max-w-lg font-body text-[11px] leading-snug text-beige/55"
+          data-testid="results-replay-cost"
+        >
+          {replayRoutesToSetup
+            ? 'No Energy left — REPLAY opens Setup with your stake ready, so a free run is one you chose.'
+            : 'REPLAY runs it again on 1 Energy. SETUP reopens the page with your last stake ready.'}
+        </p>
+      </div>
+
+      {/* ---------- 2 · THE VICTORY LAP ---------- */}
+      <section
+        data-testid="results-layer-3"
+        aria-label="Progression"
+        className="order-3 flex flex-col gap-3 sm:order-2"
+      >
+        <div className="mx-auto w-full max-w-lg rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] p-3 text-left sm:p-4">
+          <p className="font-body text-sm text-beige/80" data-testid="impact-summary">
+            {CAREER_SPINE_V1_ENABLED
+              ? settlementPending
+                ? 'Run secured — Career impact is finalizing.'
+                : impact
+                ? impactSummary(impact)
                 : practice
                   ? 'Practice advances no persistent progress.'
-                  : 'Persistent progress was secured by the server.'}
-            </p>
-            {CAREER_SPINE_V1_ENABLED && impact ? (
+                  : 'Run impact is pending server recovery.'
+              : practice
+                ? 'Practice advances no persistent progress.'
+                : 'Persistent progress was secured by the server.'}
+          </p>
+          {CAREER_SPINE_V1_ENABLED && impact ? (
+            <div className="mt-3">
               <ImpactVictoryLap key={impact.sessionId} envelope={impact} />
-            ) : null}
-            {CAREER_SPINE_V1_ENABLED && !impact ? (
-              <p className="font-body text-xs text-beige/60">
-                {settlementPending
-                  ? 'The server accepted and froze this result. Settlement will complete exactly once even if you close the game.'
-                  : practice
-                  ? 'Only the live practice session existed; closing it leaves no earned state behind.'
-                  : 'Keep this tab online while settlement retries. The run becomes earned progress when the server accepts and validates its result; this device never stores a progress copy.'}
-              </p>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
+          {CAREER_SPINE_V1_ENABLED && !impact ? (
+            <p className="mt-2 font-body text-xs text-beige/60">
+              {settlementPending
+                ? 'The server accepted and froze this result. Settlement will complete exactly once even if you close the game.'
+                : practice
+                ? 'Only the live practice session existed; closing it leaves no earned state behind.'
+                : 'Keep this tab online while settlement retries. The run becomes earned progress when the server accepts and validates its result; this device never stores a progress copy.'}
+            </p>
+          ) : null}
         </div>
 
         {nextAction.href ? (
-          <Link href={nextAction.href} onClick={onNextAction} data-testid="results-next-action" data-next-action={nextAction.id} className="panel-glow [--glow:#f2a03f] mx-auto flex min-h-[44px] max-w-lg items-center justify-between gap-3 px-5 py-4 text-left">
-            <span><span className="block heading-display text-lg text-venom-orange-light">{nextAction.label}</span><span className="block font-body text-sm text-beige/75">{nextAction.description}</span></span>
-            <IconArrowRight size={20} className="shrink-0 text-venom-orange-light" />
+          <Link
+            href={nextAction.href}
+            onClick={onNextAction}
+            data-testid="results-next-action"
+            data-next-action={nextAction.id}
+            className="mx-auto flex min-h-[44px] w-full max-w-lg items-center justify-between gap-3 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-[color:var(--fill-deck-2)] px-4 py-3 text-left shadow-[var(--ink-drop-void-2)]"
+          >
+            <span className="min-w-0">
+              <span className="heading-display block text-base text-venom-orange">{nextAction.label}</span>
+              <span className="block font-body text-xs text-beige/75">{nextAction.description}</span>
+            </span>
+            <IconArrowRight size={19} className="shrink-0 text-venom-orange" />
           </Link>
         ) : (
-          <button type="button" onClick={onNextAction} data-testid="results-next-action" data-next-action={nextAction.id} className="panel-glow [--glow:#f2a03f] mx-auto flex min-h-[44px] w-full max-w-lg items-center justify-between gap-3 px-5 py-4 text-left">
-            <span><span className="block heading-display text-lg text-venom-orange-light">{nextAction.label}</span><span className="block font-body text-sm text-beige/75">{nextAction.description}</span></span>
-            <IconArrowRight size={20} className="shrink-0 text-venom-orange-light" />
+          <button
+            type="button"
+            onClick={onNextAction}
+            data-testid="results-next-action"
+            data-next-action={nextAction.id}
+            className="mx-auto flex min-h-[44px] w-full max-w-lg items-center justify-between gap-3 rounded-[var(--radius-card)] border-[length:var(--ink-w-2)] border-ink bg-[color:var(--fill-deck-2)] px-4 py-3 text-left shadow-[var(--ink-drop-void-2)]"
+          >
+            <span className="min-w-0">
+              <span className="heading-display block text-base text-venom-orange">{nextAction.label}</span>
+              <span className="block font-body text-xs text-beige/75">{nextAction.description}</span>
+            </span>
+            <IconArrowRight size={19} className="shrink-0 text-venom-orange" />
           </button>
         )}
 
         {/*
-          The decline half of §5's INVITATION. It is rendered only for an
-          invitation the server can actually close — one carrying an attention
-          id — so Layer 3 still offers exactly one RECOMMENDED action (§12.2)
-          with a way to say no beside it, never two competing invitations.
-          Declining hides nothing: the Gene is already in the player's Pods.
+          The decline half of §5's INVITATION, rendered only for an invitation
+          the server can actually close, so Layer 3 still offers exactly one
+          RECOMMENDED action (§12.2) with a way to say no beside it.
         */}
         {nextAction.attentionId && onDeclineNextAction ? (
           <button
@@ -1185,11 +1210,94 @@ export function RunResults({
             onClick={onDeclineNextAction}
             data-testid="results-next-action-decline"
             data-next-action-decline={nextAction.id}
-            className="mx-auto mt-2 flex min-h-[44px] items-center justify-center px-5 font-body text-sm text-beige/60 transition-colors hover:text-bone-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cosmic"
+            className="mx-auto flex min-h-[44px] items-center justify-center px-5 font-body text-sm text-beige/60 transition-colors hover:text-bone-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-venom-orange"
           >
             {nextAction.declineLabel ?? 'Not now'}
           </button>
         ) : null}
+      </section>
+
+      {/* ---------- 3 · PAYOUT FACTS ---------- */}
+      <section
+        data-testid="results-layer-2"
+        aria-label="Payout facts"
+        className="order-4 flex flex-col gap-3 sm:order-3"
+      >
+        <div className="mx-auto">
+          <PayoutField
+            practice={practice}
+            settlementPending={settlementPending}
+            worth={settledYield}
+            credited={practice ? 0 : credited}
+            committed={committed}
+            multiplierBps={multiplier}
+          />
+        </div>
+
+        {!settlementPending && shareArtifact ? (
+          <div className="mx-auto w-full max-w-lg">{shareArtifact}</div>
+        ) : null}
+
+        {!settlementPending && genomeRecap ? <GenomeYieldRecap model={genomeRecap} /> : null}
+        {!settlementPending && genomeRecap && studyGenomeHref ? (
+          <Link
+            href={studyGenomeHref}
+            className="mx-auto flex min-h-[44px] max-w-sm items-center justify-center gap-2 font-body text-sm text-beige/70 underline decoration-dotted underline-offset-4 transition-colors hover:text-bone-white"
+            data-testid="results-study-genome"
+          >
+            <IconFlask size={15} /> Study these powers <IconArrowRight size={14} />
+          </Link>
+        ) : null}
+
+        {!settlementPending && clanBattle?.eligible && (
+          <div
+            className="mx-auto w-full max-w-lg rounded-[var(--radius-card)] bg-[color:var(--fill-deck-0)] px-3 py-2.5 text-left"
+            data-testid="results-clan-battle"
+          >
+            <p className="label-arcade text-[10px] text-beige/55">
+              Clan battle · {DEPTH_GLOSS}
+            </p>
+            <p className="mt-1 font-body text-sm text-bone-white" data-testid="results-clan-placement">
+              {clanBattle.enteredTopFive
+                ? `${clanReplaced ? 'Replaced your weakest counted result' : 'Entered your five'}${clanDelta !== null && clanDelta > 0 ? ` · +${formatAmount(clanDelta)} Depth` : ''}.`
+                : 'Valid battle result · outside your five.'}
+            </p>
+            {clanBattle.enteredTopFive && clanTotal !== null && clanTotal > 0 ? (
+              <p className="mt-0.5 font-body text-[11px] text-beige/65" data-testid="results-clan-total">
+                Your clan stands at {formatAmount(clanTotal)} Depth
+                {clanDelta !== null && clanDelta > 0
+                  ? `, ${formatAmount(clanDelta)} of it from this run`
+                  : ''}
+                .
+              </p>
+            ) : null}
+            {clanBattle.enteredTopFive && clanFifthBest !== null && clanFifthBest > 0 ? (
+              <p className="mt-0.5 font-body text-[11px] text-beige/65">
+                Your fifth-best stands at {formatAmount(clanFifthBest)} Depth.
+              </p>
+            ) : null}
+            {!clanBattle.enteredTopFive && depthNeeded !== null ? (
+              <p className="mt-0.5 font-body text-[11px] text-beige/65" data-testid="results-clan-gap">
+                Needed {formatAmount(depthNeeded)} · this run was worth {formatAmount(settledYield)}
+                {shortBy !== null && shortBy > 0 ? ` · ${formatAmount(shortBy)} short` : ''}.
+              </p>
+            ) : null}
+          </div>
+        )}
+
+        {!settlementPending && outcome === 'crashed' && !practice ? (
+          <div className="mx-auto w-full max-w-lg">
+            <CrashConsequences credited={credited} clanBattle={clanBattle} />
+          </div>
+        ) : null}
+
+        <p className="mx-auto max-w-lg font-body text-[11px] leading-snug text-beige/55">
+          {practice
+            ? 'Practice creates no persistent reward.'
+            : impact || settlementPending
+              ? 'Leaving never forfeits a secured prize.'
+              : 'Settlement recovery is still in progress; this screen never invents an unverified prize.'}
+        </p>
       </section>
     </div>
   );

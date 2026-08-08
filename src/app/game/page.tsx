@@ -155,6 +155,7 @@ import {
   StrainSurgeOverlay,
 } from '@/components/game/PortalChoiceOverlay';
 import { GenomeCard } from '@/components/game/GenomeCard';
+import { GenomeBarcode } from '@/components/game/genome/GenomeBarcode';
 import { StrainChip } from '@/components/traits/StrainChip';
 import { ModeToggle } from '@/components/game/ModeToggle';
 import { EnergyReactor } from '@/components/game/EnergyReactor';
@@ -276,11 +277,6 @@ import {
   type SetupDynasty,
 } from '@/components/game/SnakePickerSheet';
 import { HeirloomSummary } from '@/components/game/HeirloomSummary';
-import {
-  collectDailyTake,
-  parseDailyTake,
-  type DailyTakeSlot,
-} from '@/lib/game/dailyTake';
 import { chooseNextAction } from '@/lib/game/resultsNextAction';
 import type { FtueBootstrapSnake } from '@/lib/ftue/types';
 import type {
@@ -292,7 +288,6 @@ import type {
 import {
   ascendanceYieldBreakdown,
   formatYieldMultiplier,
-  type AscendanceYieldBreakdown,
 } from '@/shared/game/ascendance';
 import {
   CURRENT_GENOME_V2_INTERACTION_VERSION,
@@ -326,7 +321,6 @@ import {
   buildGenomeV2CommitPresentation,
   type GenomeV2CommitPresentation,
 } from '@/components/game/genome/genomeV2CommitPresentation';
-import { buildAscendanceProgressionModel } from '@/components/progression/ascendancePresentationAdapter';
 import { applyEnergyHarvestMultiplier } from '@/shared/game/energyEnvelope';
 import {
   buildGenomeCardModel,
@@ -802,43 +796,6 @@ function normalizeStrainTier(value: number | undefined): StrainTier {
   return 0;
 }
 
-function parseAscendanceBreakdown(
-  value: unknown
-): AscendanceYieldBreakdown | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const raw = value as Record<string, unknown>;
-  if (
-    !Number.isInteger(raw.generation) ||
-    (raw.generation as number) < 1 ||
-    !Number.isInteger(raw.baseYield) ||
-    (raw.baseYield as number) < 0 ||
-    typeof raw.multiplier !== 'number' ||
-    !Number.isFinite(raw.multiplier) ||
-    raw.multiplier < 1 ||
-    !Number.isInteger(raw.bonusYield) ||
-    (raw.bonusYield as number) < 0 ||
-    !Number.isInteger(raw.totalYield) ||
-    (raw.totalYield as number) < 0 ||
-    (raw.baseYield as number) + (raw.bonusYield as number) !== raw.totalYield
-  ) {
-    return null;
-  }
-  const curveVersion = raw.curveVersion === 2 ? 2 : 1;
-  const multiplierBps = Number.isSafeInteger(raw.multiplierBps)
-    && (raw.multiplierBps as number) >= 10_000
-    ? raw.multiplierBps as number
-    : Math.round((raw.multiplier as number) * 10_000);
-  return {
-    generation: raw.generation as number,
-    curveVersion,
-    baseYield: raw.baseYield as number,
-    multiplierBps,
-    multiplier: raw.multiplier as number,
-    bonusYield: raw.bonusYield as number,
-    totalYield: raw.totalYield as number,
-  };
-}
-
 function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -1145,17 +1102,12 @@ export default function GamePage() {
   // ---------------------------------------------------------------------
   // Layer 1 personal-best truth comes only from the immutable server receipt.
   // The client never compares account snapshots to manufacture recognition.
-  // Layer 1: the Daily Take slot. `null` until WP-1.04's settlement says
-  // this was the day's first run (see lib/game/dailyTake.ts).
-  const [dailyTake, setDailyTake] = useState<DailyTakeSlot | null>(null);
-  const [takeState, setTakeState] = useState<
-    'idle' | 'collecting' | 'collected' | 'unavailable' | 'error'
-  >('idle');
+  // The Daily Take slot used to live here, because it was offered on Results.
+  // Ruling D2 moved it to a floating Home element that reads
+  // `GET /api/daily-take` for itself, so the run path no longer carries it.
   // Layer 2: the two numbers, as the server settled them.
   const [settledYield, setSettledYield] = useState<number | null>(null);
   const [settledCredited, setSettledCredited] = useState<number | null>(null);
-  const [settledYieldBreakdown, setSettledYieldBreakdown] =
-    useState<AscendanceYieldBreakdown | null>(null);
   const [settledGenomeRecap, setSettledGenomeRecap] =
     useState<GenomeYieldRecapModel | null>(null);
   const [runImpact, setRunImpact] = useState<RunImpactEnvelope | null>(null);
@@ -1283,7 +1235,6 @@ export default function GamePage() {
             setRunImpact(null);
             setSettledYield(null);
             setSettledCredited(null);
-            setSettledYieldBreakdown(null);
             setClanBattleResult(null);
           }
           if (result.impacts.length > 0) requestAttentionRefresh();
@@ -1408,14 +1359,11 @@ export default function GamePage() {
     setHypotheticalDna(result.hypotheticalDna);
     setSettledYield(result.yieldDna);
     setSettledCredited(0);
-    setSettledYieldBreakdown(parseAscendanceBreakdown(result.ascendance));
     const genomeRecord = parseGenomeV2RunRecord(result.genome);
     setSettledGenomeRecap(
       genomeRecord ? buildGenomeV2YieldRecap(genomeRecord) : null
     );
     setClanBattleResult(null);
-    setDailyTake(null);
-    setTakeState('idle');
     if (result.playerDna !== null) {
       useCollectionStore.getState().setDnaBalance(result.playerDna);
     }
@@ -3482,7 +3430,6 @@ export default function GamePage() {
                     setRunImpact(null);
                     setSettledYield(null);
                     setSettledCredited(null);
-                    setSettledYieldBreakdown(null);
                     setSettledGenomeRecap(null);
                     setClanBattleResult(null);
                   }
@@ -3544,7 +3491,6 @@ export default function GamePage() {
               setRunImpact(null);
               setSettledYield(null);
               setSettledCredited(null);
-              setSettledYieldBreakdown(null);
               setSettledGenomeRecap(null);
               setClanBattleResult(null);
             } else {
@@ -3573,9 +3519,6 @@ export default function GamePage() {
             setSettledYield(
               typeof validation.yieldDna === 'number' ? validation.yieldDna : null
             );
-            setSettledYieldBreakdown(
-              parseAscendanceBreakdown(validation.ascendance)
-            );
             const genomeV2Record = parseGenomeV2RunRecord(
               recordValue(resultRecord?.genome)?.v === 2
                 ? resultRecord?.genome
@@ -3597,8 +3540,6 @@ export default function GamePage() {
             // The Take slot: present only when the server says this was the
             // day's first run. WP-1.04 owns that answer; until it ships the
             // field is absent and the slot never renders.
-            setDailyTake(parseDailyTake(resultRecord));
-            setTakeState('idle');
 
             const snakeMeta = equippedSnakeRef.current;
             if (snakeMeta) {
@@ -4154,11 +4095,8 @@ export default function GamePage() {
     // WP-1.06: Results state belongs to the run that just ended. A new run
     // clears all of it before the board appears (Rule 1 - nothing from the
     // last run renders over this one).
-    setDailyTake(null);
-    setTakeState('idle');
     setSettledYield(null);
     setSettledCredited(null);
-    setSettledYieldBreakdown(null);
     setSettledGenomeRecap(null);
     setClanBattleResult(null);
     setRunImpact(null);
@@ -4696,7 +4634,6 @@ export default function GamePage() {
           setRunImpact(null);
           setSettledYield(null);
           setSettledCredited(null);
-          setSettledYieldBreakdown(null);
           setSettledGenomeRecap(null);
           setClanBattleResult(null);
         }
@@ -5884,18 +5821,10 @@ export default function GamePage() {
     setSetupReopened(true);
   }, [activeEnergyCommitted]);
 
-  // The game's ONE sanctioned collect (§7.2). WP-1.04 owns the endpoint; its
-  // absence resolves to a quiet `unavailable`, never an error state.
-  const handleCollectTake = useCallback(async () => {
-    const token = sessionRef.current?.access_token;
-    if (!token || !dailyTake || dailyTake.collected) return;
-    setTakeState('collecting');
-    const outcome = await collectDailyTake(token);
-    setTakeState(outcome.status === 'collected' ? 'collected' : outcome.status);
-    if (outcome.status === 'collected') {
-      setDailyTake((prev) => (prev ? { ...prev, collected: true } : prev));
-    }
-  }, [dailyTake]);
+  // The game's ONE sanctioned collect (§7.2) is no longer performed here. It
+  // moved with its surface to the floating Home element (ruling D2), which
+  // calls the same `POST /api/daily-take/collect` route. The run path neither
+  // offers the Take nor collects it.
 
   // ---------------------------------------------------------------------
   // The curriculum INVITATION (WP-D, PEO §5).
@@ -5955,16 +5884,10 @@ export default function GamePage() {
       showFirstResultDiscovery,
     ]
   );
-  const settledAscendanceProgression = useMemo(
-    () => settledYieldBreakdown
-      ? buildAscendanceProgressionModel({
-          generation: settledYieldBreakdown.generation,
-          curveVersion: settledYieldBreakdown.curveVersion,
-          frozenMultiplierBps: settledYieldBreakdown.multiplierBps,
-        })
-      : null,
-    [settledYieldBreakdown]
-  );
+  // The Legacy Gen-N projection tray was cut from Results by the 2026-08-05
+  // triage: a forecast about generations the player is not in has no place on
+  // the screen reporting the run they just finished. The instrument itself
+  // still lives in the Lab, on the variant it actually describes.
 
   /**
    * Move a server-owned invitation to a terminal state.
@@ -7463,15 +7386,9 @@ export default function GamePage() {
                   score={score}
                   dnaCredited={settledCredited}
                   yieldDna={settledYield ?? hypotheticalDna}
-                  yieldBreakdown={settledYieldBreakdown}
                   energyCommitted={activeEnergyCommitted}
                   commitmentMultiplierBps={activeEnergyMultiplierBps}
                   clanBattle={clanBattleResult}
-                  take={dailyTake}
-                  takeState={takeState}
-                  onCollectTake={() => {
-                    void handleCollectTake();
-                  }}
                   impact={runImpact}
                   settlementPending={settlementSecuredPending}
                   nextAction={resultsNextAction}
@@ -7483,7 +7400,7 @@ export default function GamePage() {
                   replayDisabled={isStarting || !equippedSnake}
                   replayEnergy={(charge?.available ?? 0) > 0 ? 1 : 0}
                   shareArtifact={
-                    lastGenomeCard ? <GenomeCard model={lastGenomeCard} /> : null
+                    lastGenomeCard ? <GenomeBarcode model={lastGenomeCard} /> : null
                   }
                   genomeRecap={settledGenomeRecap}
                   studyGenomeHref={genomeResearchHref({
@@ -7494,7 +7411,6 @@ export default function GamePage() {
                     practice: lastRunFree,
                     settlementPending: settlementSecuredPending,
                   })}
-                  ascendanceProgression={settledAscendanceProgression}
                   collisionDetail={collisionDiagnosticLabel(collisionDiagnostic)}
                 />
               ) : (
