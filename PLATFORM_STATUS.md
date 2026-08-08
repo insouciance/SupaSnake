@@ -1,6 +1,6 @@
 # SupaSnake platform status
 
-**Updated:** 2026-08-04
+**Updated:** 2026-08-08
 
 **Environment:** operator production, Stripe sandbox
 
@@ -28,10 +28,11 @@
 | Wardrobe | Server-held; `NEXT_PUBLIC_SNAKE_COSMETICS` live, two cosmetic definitions in the catalog (face + crown) and no food skins by design |
 | Presentation | The ratified 90s composition, live behind `NEXT_PUBLIC_NINETIES_COMPOSITION`; board themes SUPA SNAKE ORANGE / CYAN NEON / DARK NEON, HUD in 90s ink |
 | Camera | ET-5 canonical framing: pinned azimuth 0, pitch 28, fit 1.00, fov 44, with a four-wall fairness gate and OrbitControls off the live board |
+| Arrival motion | ET-1b `glide` shipped default: constant-velocity head that never trails the simulation cell, extruded neck, pause settle; `front`/`classic` remain dev A/B pins |
 | Brand | The Mark: rebuilt vector wordmark at locked geometry, first favicon, PWA/maskable icon family |
-| Player-feature baseline | `230fc68a2b82c8a5bce1836d88b6689a323cc606` |
-| Current deployment | `dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk` (`supasnake-8h3sqhc3r-josef-bells-projects.vercel.app`) |
-| Previous deployment | `dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` (`e62d300`); identical schema, surface, hash and rules version; it gives up the relaunched home, setup and HUD |
+| Player-feature baseline | `6c8bf6bfceafe603f66f7ccd948df0a602f24bdf` |
+| Current deployment | `dpl_2STQAbpETrKtMbW4Yzt63AiYLGjT` |
+| Previous deployment | `dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk` (`230fc68`); identical schema, surface, hash and rules version; it gives up the glide arrival motion |
 | Retired pre-Genome artifact | `dpl_EnCt6pRQPqsgWzrohK7r9oYSAssx`; not rollback-safe for issued v2 sessions—use a dual-version flag-off forward release |
 | Payments | Test/sandbox mode only |
 

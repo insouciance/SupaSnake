@@ -1,30 +1,32 @@
 # Production Release Runbook
 
-Current production baseline: the relaunch
-`230fc68a2b82c8a5bce1836d88b6689a323cc606` — 90S-Path, home, setup and HUD in
-the cartoon (PR 107), carrying the previous release record (PR 108) —
-independently verified on 8 August 2026 by successful production workflow
-`31229536224` (verify 00:14–00:31 UTC, deploy 00:31–00:38:32 UTC,
-`expected_migrations=none`) as deployment
-`dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk`
-(`supasnake-8h3sqhc3r-josef-bells-projects.vercel.app`), on a clean first
-dispatch. The outgoing anchor was
-`dpl_GPsiEqY6i1TbAZ4nVbExnSuUZ2Hm` on `e62d300`.
+Current production baseline: GLIDE
+`6c8bf6bfceafe603f66f7ccd948df0a602f24bdf` — ET-1b constant-velocity arrival
+(PR 110): the head enters its simulation cell the instant the tick fires and
+never trails it, the neck extrudes rear-anchored instead of inflating, pause
+settles to tile centres, and the shipped default arrival mode is `glide` with
+`front`/`classic` kept as dev A/B pins. Owner-ratified on the dev server
+("feels good now"); the second-half head–body gap is deliberately deferred —
+it predates glide and exists in all three modes. Deployed 8 August 2026 by
+successful production workflow `31256859849` (`expected_migrations=none`) as
+deployment `dpl_2STQAbpETrKtMbW4Yzt63AiYLGjT`, on a clean first dispatch. The
+outgoing anchor was `dpl_AfZj1jhbxJfFDwGKgRvRxqvyNNnk` on `230fc68` (the
+relaunch — the rollback target).
 
 **Nothing about the contract moved.** No migration, so the hosted
 schema stays **001–069** with no pending plan; the public surface stays at
 **25 flags** with `contractHash` equal to `declaredHash` at
-`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`, and the
-manifest was verified untouched by PR 107 before dispatch rather than merely
-assumed unchanged. Canonical health
-reports the exact release SHA, healthy database, project ref
+`127f659c52f7dc6e7dacade7e142870ed9a46a0d70455cc5acaaf3de10e93d4a`. Canonical
+health reports the exact release SHA, healthy database, project ref
 `gmpwyzqafoyowndbvlma`, and Genome schema/catalog/Ascendance 2/2/2 with eight
 Splices, rules version 2, and neutral 2/3/4 Strain thresholds.
 
-The relaunch was proved at runtime against pre-cutover baselines: `border-bone`
-went from 5 occurrences to **0** across the served CSS — the white-border death,
-literally — and `run-setup-mark` and `home-anomaly-flash` went from absent to
-present in the rotated page chunks.
+GLIDE was proved at runtime with a baselined discriminator: the `glide` mode
+literal — absent from every previous bundle — is present in two served
+chunks, and the rules chunk carries `snake-rules-2026-08-05.2` byte-identical
+as its sole rules string: no continuity boundary, running sessions
+unaffected. The renderer-only nature of the change is the release's safety
+argument — engine, journal, and server replay are untouched by construction.
 
 This release also ships the **nine-rule pattern library**, recorded in PR 107.
 It is the extrapolation authority for every remaining surface: later packages
