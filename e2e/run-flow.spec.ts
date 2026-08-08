@@ -1111,24 +1111,11 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     );
   });
 
-  test('the Take collect slot renders only on the day first run', async ({
-    page,
-  }) => {
-    // No `dailyTake` in the settlement → the server did not call this the
-    // day's first run → no slot, and nothing errors.
-    await installRunFlowFixtures(page);
-    await signInAsGuest(page);
-    await page.goto('/game', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByTestId('run-setup')).toBeVisible({ timeout: 60_000 });
-    await page.getByTestId('earn-start').click({ force: true });
-    await releaseHeldBoard(page);
-    await expect(page.getByTestId('run-results')).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByTestId('results-take')).toHaveCount(0);
-  });
-
-  test('the Take collect slot renders on a first-run-of-day settlement', async ({
-    page,
-  }) => {
+  // The Daily Take collect slot was removed from Results by ruling D2: it is a
+  // daily, it had nothing to do with the run being reported, and it now lives
+  // as a floating token on Home reading GET /api/daily-take. Results performs
+  // no economic collect at all, on any settlement.
+  test('Results offers no Daily Take on any settlement', async ({ page }) => {
     await installRunFlowFixtures(page, { withTake: true });
     await signInAsGuest(page);
     await page.goto('/game', { waitUntil: 'domcontentloaded' });
@@ -1136,25 +1123,8 @@ test.describe('Run Flow v1 — Run Setup and three-layer Results', () => {
     await page.getByTestId('earn-start').click({ force: true });
     await releaseHeldBoard(page);
     await expect(page.getByTestId('run-results')).toBeVisible({ timeout: 60_000 });
-
-    const take = page.getByTestId('results-take');
-    await expect(take).toBeVisible();
-    await expect(take).toContainText('150 DNA');
-    // It belongs to Layer 1.
-    await expect(page.getByTestId('results-layer-1').getByTestId('results-take'))
-      .toHaveCount(1);
-
-    // Collecting settles the Take. When this spec was written WP-1.04 had not
-    // shipped `/api/daily-take/collect` and the only requirement was that the
-    // button be a quiet no-op ("Your Take settles with the day."). The route
-    // exists now - `src/app/api/daily-take/collect` - so the assertion is the
-    // stronger one it always wanted to be: the collect lands, and the surface
-    // never shows the failure state (Rule 5 — nothing here may read as a
-    // loss).
-    await page.getByTestId('results-take-collect').click({ force: true });
-    const takeStatus = page.getByTestId('results-take-status');
-    await expect(takeStatus).toContainText(/collected/i, { timeout: 20_000 });
-    await expect(takeStatus).not.toContainText(/could not collect/i);
+    await expect(page.getByTestId('results-take')).toHaveCount(0);
+    await expect(page.getByTestId('results-take-collect')).toHaveCount(0);
   });
 
   test('SETUP reopens the setup page over a finished run', async ({ page }) => {

@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RunResults, type RunResultsProps } from './RunResults';
-import type { DailyTakeSlot } from '@/lib/game/dailyTake';
 import type { RunImpactEnvelope } from '@/lib/game/runImpactClient';
 
 jest.mock('@/lib/features/careerSpine', () => ({
@@ -74,19 +73,9 @@ function props(overrides: Partial<RunResultsProps> = {}): RunResultsProps {
     score: 420,
     dnaCredited: 180,
     yieldDna: 240,
-    yieldBreakdown: {
-      generation: 11,
-      baseYield: 213,
-      multiplier: 1.1273,
-      bonusYield: 27,
-      totalYield: 240,
-    },
     energyCommitted: 1,
     commitmentMultiplierBps: 10_000,
     clanBattle: null,
-    take: null,
-    takeState: 'idle',
-    onCollectTake: jest.fn(),
     impact,
     settlementPending: false,
     nextAction: {
@@ -105,14 +94,6 @@ function props(overrides: Partial<RunResultsProps> = {}): RunResultsProps {
   };
 }
 
-const take: DailyTakeSlot = {
-  firstRunOfDay: true,
-  amount: 150,
-  streakDays: 3,
-  multiplier: 1.25,
-  collected: false,
-};
-
 describe('RunResults constitutional hierarchy', () => {
   it('renders exactly three layers and one next action', () => {
     const { container } = render(<RunResults {...props()} />);
@@ -123,7 +104,7 @@ describe('RunResults constitutional hierarchy', () => {
     );
   });
 
-  it('places the exact Genome and Ascendance explanations in the Yield layer', () => {
+  it('places the exact Genome explanation with the payout facts', () => {
     render(
       <RunResults
         {...props({
@@ -140,29 +121,26 @@ describe('RunResults constitutional hierarchy', () => {
             bankCrashSummary: 'BANK secured the completed route value.',
           },
           studyGenomeHref: '/codex?view=workbench&result=session-1',
-          ascendanceProgression: {
-            generation: 11,
-            curveVersion: 2,
-            currentMultiplier: '1.1717',
-            nextGeneration: 12,
-            nextMultiplier: '1.1951',
-            relativeStepPercent: '2.00',
-            nextMilestoneGeneration: 15,
-            milestoneMultiplier: '1.2682',
-            generationsUntilMilestone: 4,
-          },
         })}
       />
     );
     const yieldLayer = screen.getByTestId('results-layer-2');
     expect(yieldLayer).toContainElement(screen.getByTestId('results-genome-recap'));
-    expect(yieldLayer).toContainElement(screen.getByTestId('ascendance-progression'));
     expect(screen.getByTestId('results-genome-recap')).toHaveTextContent('×2.40');
     expect(screen.getByTestId('results-study-genome')).toHaveAttribute(
       'href',
       '/codex?view=workbench&result=session-1'
     );
-    expect(screen.getByTestId('ascendance-v2-next')).toHaveTextContent('+2.00% relative');
+  });
+
+  // The Legacy Gen-N tray and its next-generation projections were cut by the
+  // 2026-08-05 triage. A forecast about a generation the player is not in is
+  // not a fact about the run they just finished.
+  it('carries no Legacy generation projection', () => {
+    render(<RunResults {...props()} />);
+    expect(screen.queryByTestId('ascendance-progression')).toBeNull();
+    expect(screen.queryByTestId('ascendance-v2-next')).toBeNull();
+    expect(screen.queryByText(/Next visible evolution|relative/i)).toBeNull();
   });
 
   it('keeps Replay and Setup outside every layer and immediately operable', () => {
@@ -180,17 +158,123 @@ describe('RunResults constitutional hierarchy', () => {
     expect(onSetup).toHaveBeenCalledTimes(1);
   });
 
-  it('places Replay and Setup in the normal results flow without a sticky backing tray', () => {
+  /**
+   * THE RULED ORDER, in one DOM order at every width: Score → Victory Lap →
+   * payout facts → actions. The actions are STICKY rather than reordered, so
+   * the ruled order holds and a player still never scrolls to reach REPLAY.
+   */
+  it('reads Score, then the lap, then the payout facts, then the actions', () => {
+    const { container } = render(<RunResults {...props()} />);
+    const root = container.querySelector('[data-testid="run-results"]')!;
+    const children = Array.from(root.children);
+    const at = (testId: string) =>
+      children.findIndex((child) => child.getAttribute('data-testid') === testId);
+
+    expect(at('results-layer-1')).toBe(0);
+    expect(at('results-layer-3')).toBe(1);
+    expect(at('results-layer-2')).toBe(2);
+    expect(children[3]).toContainElement(screen.getByTestId('results-action-dock'));
+
+    // No reordering trick: the reading order is the DOM order everywhere.
+    for (const child of children) {
+      expect(child.className).not.toMatch(/(^|\s)(sm:)?order-/);
+    }
+  });
+
+  it('pins the actions to the overlay floor without building a second tray', () => {
     render(<RunResults {...props()} />);
-    const actions = screen.getByTestId('results-action-dock');
-    expect(actions).toHaveAttribute('data-action-surface', 'integrated');
-    expect(actions).toHaveClass('bg-transparent');
-    expect(actions).not.toHaveClass('sticky');
-    expect(actions).not.toHaveClass('fixed');
-    expect(actions).not.toHaveClass('backdrop-blur-md');
-    expect(actions).not.toHaveClass('rounded-full');
-    expect(actions).not.toHaveClass('bg-void-deep/90');
-    expect(actions.previousElementSibling?.tagName).toBe('P');
+    const dock = screen.getByTestId('results-action-dock');
+    expect(dock).toHaveAttribute('data-action-surface', 'integrated');
+    const pinned = dock.parentElement!;
+    expect(pinned).toHaveClass('sticky', 'bottom-0');
+    // The tray's OWN fill, so it reads as the panel floor. No border, no
+    // radius, no shadow, no blur — those would make it a second tray.
+    expect(pinned.className).toContain('bg-[color:var(--fill-deck-1)]');
+    expect(pinned.className).not.toMatch(/border|rounded|shadow|backdrop-blur/);
+  });
+
+  /**
+   * THE PINNED DOCK MUST NOT EAT THE INVITATION.
+   *
+   * A sticky bar covers whatever sits under it, and an element under it is
+   * still "fully visible" to the browser — so a scroll-into-view does nothing
+   * and the click lands on the bar. Measured: with no clearance the decline
+   * control sat at y=592 under the dock, the scrollport never moved, and the
+   * handler never fired; with the clearance the scrollport moved 206px and it
+   * did. The scrollport carries `scroll-padding-bottom`; these two controls
+   * carry the matching per-element margin so the guarantee survives being
+   * mounted anywhere else.
+   */
+  it('keeps scroll clearance on the invitation controls', () => {
+    render(<RunResults {...props({
+      nextAction: {
+        id: 'curriculum-reveal',
+        label: 'Show me Double or Nothing',
+        description: 'Read what it changes.',
+        href: '/codex',
+        attentionId: 'attention-1',
+      },
+      onDeclineNextAction: jest.fn(),
+    })} />);
+    expect(screen.getByTestId('results-next-action').className).toContain('scroll-mb-36');
+    expect(screen.getByTestId('results-next-action-decline').className).toContain(
+      'scroll-mb-36'
+    );
+  });
+
+  /**
+   * RULING D3. REPLAY is the label in both states. With Energy in stock it
+   * re-enters the run; with none it opens Setup, where the Reactor is preset
+   * to this run's commitment and 0 rods reads as FREE play — instead of
+   * silently running a ×0.25 lean harvest the player never chose.
+   */
+  describe('REPLAY routing (D3)', () => {
+    it('re-enters the run directly while Energy remains', () => {
+      const onReplay = jest.fn();
+      const onSetup = jest.fn();
+      render(<RunResults {...props({ replayEnergy: 1, onReplay, onSetup })} />);
+      const replay = screen.getByTestId('results-replay');
+      expect(replay).toHaveTextContent('REPLAY');
+      expect(replay).toHaveAttribute('data-routes-to', 'run');
+      fireEvent.click(replay);
+      expect(onReplay).toHaveBeenCalledTimes(1);
+      expect(onSetup).not.toHaveBeenCalled();
+    });
+
+    it('routes to Setup with the commitment preselected when Energy is out', () => {
+      const onReplay = jest.fn();
+      const onSetup = jest.fn();
+      render(<RunResults {...props({ replayEnergy: 0, onReplay, onSetup })} />);
+      const replay = screen.getByTestId('results-replay');
+      // The word does not change — the destination does.
+      expect(replay).toHaveTextContent('REPLAY');
+      expect(replay).toHaveAttribute('data-routes-to', 'setup');
+      fireEvent.click(replay);
+      expect(onSetup).toHaveBeenCalledTimes(1);
+      expect(onReplay).not.toHaveBeenCalled();
+      expect(screen.getByTestId('results-replay-cost')).toHaveTextContent(
+        /No Energy left — REPLAY opens Setup/i
+      );
+    });
+
+    it('stays operable with no Energy even while a start is pending', () => {
+      const onSetup = jest.fn();
+      render(<RunResults {...props({ replayEnergy: 0, replayDisabled: true, onSetup })} />);
+      // Routing to Setup commits nothing, so a pending start must not block it.
+      expect(screen.getByTestId('results-replay')).toBeEnabled();
+      fireEvent.click(screen.getByTestId('results-replay'));
+      expect(onSetup).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('draws no second frame inside the one tray', () => {
+    const { container } = render(<RunResults {...props()} />);
+    const html = container.innerHTML;
+    // The overlay wrapper in game/page.tsx is the tray. Nothing in here may
+    // draw a panel, a glow, or the retired pale keyline.
+    expect(html).not.toMatch(/panel-glow|panel-elevated|modal-frame/);
+    expect(html).not.toMatch(/text-glow|shadow-glow|animate-glow-pulse/);
+    expect(html).not.toMatch(/rounded-arcade/);
   });
 
   it('has no commercial copy or destination', () => {
@@ -235,18 +319,27 @@ describe('Layer 1', () => {
     expect(screen.queryByTestId('results-collision-diagnostic')).toBeNull();
   });
 
-  it('keeps share and the one literal Daily Take collect in Layer 1', () => {
-    const onCollectTake = jest.fn();
+  /**
+   * The Daily Take left Results entirely (ruling D2). It is a daily, and it
+   * had nothing to do with the run being reported; it now lives as a floating
+   * token on Home. Results performs no economic collect at all.
+   */
+  it('offers no Daily Take and performs no collect of its own', () => {
+    const { container } = render(<RunResults {...props()} />);
+    expect(screen.queryByTestId('results-take')).toBeNull();
+    expect(screen.queryByTestId('results-take-collect')).toBeNull();
+    expect(container.textContent ?? '').not.toMatch(/daily take|streak/i);
+  });
+
+  it('keeps the genome barcode with the payout facts, and offers no card download', () => {
     render(<RunResults {...props({
-      take,
-      onCollectTake,
-      shareArtifact: <div data-testid="share-artifact">share</div>,
+      shareArtifact: <div data-testid="share-artifact">barcode</div>,
     })} />);
-    const layer = screen.getByTestId('results-layer-1');
-    expect(layer).toContainElement(screen.getByTestId('share-artifact'));
-    expect(layer).toContainElement(screen.getByTestId('results-take'));
-    fireEvent.click(screen.getByTestId('results-take-collect'));
-    expect(onCollectTake).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('results-layer-2')).toContainElement(
+      screen.getByTestId('share-artifact')
+    );
+    expect(screen.queryByTestId('genome-card-export')).toBeNull();
+    expect(screen.queryByRole('button', { name: /download|share/i })).toBeNull();
   });
 
   it('shows personal-best recognition only from the immutable receipt', () => {
@@ -268,12 +361,82 @@ describe('Layer 1', () => {
 });
 
 describe('Layer 2', () => {
-  it('uses the immutable receipt for Score, Yield, credited DNA, and commitment', () => {
+  it('uses the immutable receipt for Score and for the one money number', () => {
     render(<RunResults {...props()} />);
     expect(screen.getByTestId('results-score')).toHaveTextContent('440');
-    expect(screen.getByTestId('results-yield')).toHaveTextContent('260');
-    expect(screen.getByTestId('results-energy')).toHaveTextContent('2 Energy committed');
-    expect(screen.getByTestId('results-energy')).toHaveTextContent('572 DNA credited');
+    // The money field states what was BANKED, not the full-strength worth.
+    expect(screen.getByTestId('results-dna-banked')).toHaveTextContent('572');
+  });
+
+  /**
+   * THE DEFECT THIS RESTRUCTURE EXISTS TO FIX.
+   *
+   * `yieldDna` is the run's full-strength worth; `dnaCredited` is what that
+   * worth actually paid after the harvest factor. Results used to headline the
+   * first as "Payout" and, separately, headline the second in the Victory Lap
+   * as "+N DNA" — two large numbers, no stated relationship, and on a lean run
+   * a 4× gap between them.
+   */
+  it('states the harvest multiplication so the two money numbers reconcile', () => {
+    render(<RunResults {...props()} />);
+    // 260 worth × 2.2 = 572 banked, and the chain says so on screen.
+    expect(screen.getByTestId('results-dna-banked')).toHaveTextContent('572');
+    expect(screen.getByTestId('results-payout-worth')).toHaveTextContent('260');
+    expect(screen.getByTestId('results-payout-chain')).toHaveTextContent('×2.2');
+    expect(screen.getByTestId('results-payout-chain')).toHaveTextContent('2 Energy');
+    // The Victory Lap's DNA beat reads the SAME number as the money field.
+    expect(screen.getByTestId('impact-beat-dna')).toHaveTextContent('+572 DNA');
+  });
+
+  it('states a lean run’s multiplication rather than one unexplained number', () => {
+    render(<RunResults {...props({
+      impact: {
+        ...impact,
+        receipt: {
+          ...impact.receipt,
+          yieldDna: 240,
+          dnaCredited: 60,
+          energyCommitted: 0,
+          commitmentMultiplierBps: 2_500,
+        },
+      },
+    })} />);
+    expect(screen.getByTestId('results-dna-banked')).toHaveTextContent('60');
+    expect(screen.getByTestId('results-payout-worth')).toHaveTextContent('240');
+    expect(screen.getByTestId('results-payout-chain')).toHaveTextContent('×0.25');
+    expect(screen.getByTestId('results-payout-chain')).toHaveTextContent('lean harvest');
+  });
+
+  it('shows one number, not two, when the harvest changed nothing', () => {
+    render(<RunResults {...props({
+      impact: {
+        ...impact,
+        receipt: {
+          ...impact.receipt,
+          yieldDna: 300,
+          dnaCredited: 300,
+          energyCommitted: 1,
+          commitmentMultiplierBps: 10_000,
+        },
+      },
+    })} />);
+    expect(screen.getByTestId('results-dna-banked')).toHaveTextContent('300');
+    expect(screen.queryByTestId('results-payout-chain')).toBeNull();
+    expect(screen.queryByTestId('results-payout-worth')).toBeNull();
+  });
+
+  /** Rule 2: Score is build-blind, and no arithmetic here may reach it. */
+  it('never places Score inside the money field', () => {
+    render(<RunResults {...props()} />);
+    expect(screen.getByTestId('results-yield')).not.toContainElement(
+      screen.getByTestId('results-score')
+    );
+    expect(screen.getByTestId('results-layer-1')).toContainElement(
+      screen.getByTestId('results-score')
+    );
+    expect(screen.getByTestId('results-score').parentElement).toHaveTextContent(
+      /how well you flew/i
+    );
   });
 
   it('distinguishes durable acceptance from a completed reward receipt', () => {
@@ -297,19 +460,24 @@ describe('Layer 2', () => {
     expect(screen.queryByText('999')).toBeNull();
     expect(screen.queryByTestId('results-collision-diagnostic')).toBeNull();
     expect(screen.queryByText('Unverified share card')).toBeNull();
-    expect(screen.getByTestId('results-energy')).toHaveTextContent('reward secured');
-    expect(screen.queryByText(/DNA credited/i)).toBeNull();
+    expect(screen.queryByTestId('results-payout-chain')).toBeNull();
     expect(screen.getByTestId('impact-summary')).toHaveTextContent(
       /Career impact is finalizing/i
     );
     expect(screen.getByText(/even if you close the game/i)).toBeInTheDocument();
   });
 
-  it('keeps detailed reward math collapsed', () => {
-    render(<RunResults {...props()} />);
-    const details = screen.getByTestId('results-receipt-details') as HTMLDetailsElement;
-    expect(details.open).toBe(false);
-    expect(screen.getByTestId('results-yield-breakdown')).toHaveTextContent('Gen 11 Legacy ×1.1273');
+  /**
+   * The collapsed "How the payout was settled" tray is gone with the Legacy
+   * Gen-N row that was its only unique content. What it hid — the one true
+   * equation — is now stated in the open by the money field.
+   */
+  it('hides no payout arithmetic behind a disclosure', () => {
+    const { container } = render(<RunResults {...props()} />);
+    expect(screen.queryByTestId('results-receipt-details')).toBeNull();
+    expect(screen.queryByTestId('results-yield-breakdown')).toBeNull();
+    expect(container.querySelectorAll('details')).toHaveLength(0);
+    expect(container.textContent ?? '').not.toMatch(/Gen \d+ Legacy/);
   });
 
   it('shows only the clan delta and never repeats the full five', () => {
@@ -323,9 +491,9 @@ describe('Layer 2', () => {
         topFive: [{ sessionId: 'secret-row', score: 999_999, rank: 1, energyCommitted: 6, generation: 11 }],
       },
     })} />);
-    expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('+12,400 Clan Depth');
+    expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('+12,400 Depth');
     expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('Replaced your weakest counted result');
-    expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('fifth-best now stands at 19,820');
+    expect(screen.getByTestId('results-clan-battle')).toHaveTextContent('fifth-best stands at 19,820');
     expect(screen.queryByText('999,999 Yield')).toBeNull();
   });
 
@@ -370,7 +538,7 @@ describe('Layer 2', () => {
       },
     })} />);
     const total = screen.getByTestId('results-clan-total');
-    expect(total).toHaveTextContent('Your clan now stands at 61,000 Clan Depth');
+    expect(total).toHaveTextContent('Your clan stands at 61,000 Depth');
     expect(total).toHaveTextContent('12,400 of it from this run');
   });
 
@@ -392,7 +560,7 @@ describe('Layer 2', () => {
     })} />);
 
     expect(screen.getByTestId('results-clan-gap')).toHaveTextContent(
-      'Needed 501 · this run delivered 260 · 241 short'
+      'Needed 501 · this run was worth 260 · 241 short'
     );
   });
 
@@ -420,8 +588,8 @@ describe('Layer 2', () => {
     })} />);
 
     const consequences = screen.getByTestId('results-crash-consequences');
-    expect(consequences).toHaveTextContent('1,902 DNA kept');
-    expect(consequences).toHaveTextContent('No clan contribution banked');
+    expect(consequences).toHaveTextContent('1,902 DNA');
+    expect(consequences).toHaveTextContent('Nothing banked');
     expect(consequences).not.toHaveTextContent(/potential|fifth-best|short|gap/i);
     expect(screen.queryByTestId('results-clan-battle-lost')).toBeNull();
   });
@@ -441,7 +609,7 @@ describe('Layer 2', () => {
     })} />);
 
     const consequences = screen.getByTestId('results-crash-consequences');
-    expect(consequences).toHaveTextContent('572 DNA kept');
+    expect(consequences).toHaveTextContent('572 DNA');
     expect(consequences).not.toHaveTextContent(/clan|fifth-best|threshold/i);
   });
 });
@@ -452,7 +620,7 @@ describe('Layer 3 recognition', () => {
     expect(screen.getByTestId('results-digest')).toBeVisible();
     expect(screen.getByTestId('impact-summary')).toHaveTextContent('CYBER Mastery M6');
     expect(screen.getByTestId('impact-victory-lap')).toBeVisible();
-    expect(screen.getByText(/Everything is already yours/i)).toBeInTheDocument();
+    expect(screen.getByText(/Already yours/i)).toBeInTheDocument();
     expect(screen.getByTestId('impact-beat-dna')).toHaveAttribute('data-state', 'ready');
     expect(screen.getByTestId('impact-rune-dna').querySelector('svg')).toBeTruthy();
     expect(screen.getByTestId('results-replay')).toBeEnabled();
@@ -463,7 +631,7 @@ describe('Layer 3 recognition', () => {
   it('collects DNA, connected career progress, and the clan trophy through three meaningful taps', () => {
     render(<RunResults {...props()} />);
     expect(screen.getByText('1 of 3')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Take the DNA/i }));
     expect(screen.getByTestId('impact-collection-payoff')).toHaveTextContent('572 DNA secured');
     expect(screen.getByTestId('impact-beat-dna')).toHaveAttribute('data-state', 'collected');
     expect(screen.getByTestId('impact-rune-career').querySelector('svg')).toBeTruthy();
@@ -477,13 +645,13 @@ describe('Layer 3 recognition', () => {
     fireEvent.click(screen.getByRole('button', { name: /Raise trophy/i }));
     expect(screen.getByTestId('impact-victory-complete')).toHaveTextContent('Victory lap complete');
     expect(
-      screen.queryByRole('button', { name: /Collect DNA|Reveal discovery|Raise trophy/i })
+      screen.queryByRole('button', { name: /Take the DNA|Reveal discovery|Raise trophy/i })
     ).toBeNull();
   });
 
   it('moves an accessible progress bar from before to after only when collected', async () => {
     render(<RunResults {...props()} />);
-    fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Take the DNA/i }));
     const progress = screen.getByRole('progressbar', { name: /CYBER Mastery M6 progress/i });
     expect(progress).toHaveAttribute('aria-valuenow', '5');
     expect(progress).toHaveAttribute('aria-valuemax', '10');
@@ -541,7 +709,7 @@ describe('Layer 3 recognition', () => {
     };
     render(<RunResults {...props({ impact: attentionImpact })} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Take the DNA/i }));
     fireEvent.click(screen.getByRole('button', { name: /Accept mastery/i }));
     fireEvent.click(screen.getByRole('button', { name: /Raise trophy/i }));
 
@@ -549,7 +717,7 @@ describe('Layer 3 recognition', () => {
     expect(screen.getByTestId('results-attention-you')).toHaveTextContent('+1 more');
     expect(screen.getByTestId('results-attention-lab')).toHaveTextContent('World-first splice documented');
     expect(screen.getByTestId('results-attention-compete')).toHaveTextContent('Entered your clan five');
-    expect(screen.getByText(/stay on until the exact progress is visible/i)).toBeInTheDocument();
+    expect(screen.getByText(/Your world changed/i)).toBeInTheDocument();
   });
 
   it('states pending recovery instead of constructing client progress', () => {
@@ -578,7 +746,7 @@ describe('Layer 3 recognition', () => {
     expect(screen.getByTestId('impact-routine-summary')).toHaveTextContent(
       '+80 CYBER Mastery XP'
     );
-    fireEvent.click(screen.getByRole('button', { name: /Collect DNA/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Take the DNA/i }));
     expect(screen.getByTestId('impact-victory-complete')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Accept progress/i })).toBeNull();
   });
@@ -588,7 +756,7 @@ describe('Layer 3 recognition', () => {
     fireEvent.click(screen.getByTestId('impact-collect-remaining'));
     expect(screen.getByTestId('impact-victory-complete')).toBeInTheDocument();
     expect(screen.queryByTestId('impact-collect-remaining')).toBeNull();
-    expect(screen.getAllByText(/Collected/i).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByTestId(/^impact-beat-/).length).toBeGreaterThanOrEqual(3);
   });
 
   it('shows the complete static reward order without claim controls for reduced motion', async () => {
@@ -609,7 +777,7 @@ describe('Layer 3 recognition', () => {
         'World-first splice documented'
       );
       expect(screen.queryByTestId('impact-collect-remaining')).toBeNull();
-      expect(screen.queryByRole('button', { name: /Collect DNA/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Take the DNA/i })).toBeNull();
     } finally {
       window.matchMedia = original;
     }
@@ -617,7 +785,7 @@ describe('Layer 3 recognition', () => {
 
   it('stacks mobile actions and prevents action-label wrapping', () => {
     render(<RunResults {...props()} />);
-    expect(screen.getByRole('button', { name: /Collect DNA/i })).toHaveClass('whitespace-nowrap');
+    expect(screen.getByRole('button', { name: /Take the DNA/i })).toHaveClass('whitespace-nowrap');
     expect(screen.getByTestId('results-replay')).toHaveClass('whitespace-nowrap');
     expect(screen.getByTestId('results-setup')).toHaveClass('whitespace-nowrap');
   });

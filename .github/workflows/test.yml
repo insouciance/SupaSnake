@@ -17,7 +17,19 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # THE CEILING HAD NO HEADROOM LEFT.
+    #
+    # `npm test -- --coverage --runInBand` on main was finishing at 14m01s,
+    # 14m41s, 14m45s and 14m49s against a 15-minute limit — four of the last
+    # six runs within a minute of the wall. That is not a suite that passes;
+    # it is a suite that has been getting lucky, and the next PR to add a test
+    # file was always going to be the one blamed for it. This one was.
+    #
+    # Raised rather than "fixed" by trimming, because nothing here is broken:
+    # the suite is serial by choice (--runInBand keeps the coverage ratchet
+    # deterministic) and it grew honestly. If it approaches this ceiling too,
+    # the answer is sharding the job, not another number.
+    timeout-minutes: 25
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
