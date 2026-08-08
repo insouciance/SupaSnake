@@ -12,13 +12,79 @@ import {
   INTERPOLATION_CAPACITY,
   createInterpolationBuffer,
   getAlpha,
+  getGlideX,
+  getGlideZ,
   getInterpolatedX,
   getInterpolatedZ,
+  getRestSettle,
   recordTick,
   resetInterpolationBuffer,
+  REST_SETTLE_MS,
+  setHeadOutbound,
+  setPaused,
+  settleToward,
+  type InterpolationBuffer,
 } from './interpolationBuffer';
+import {
+  GLIDE_MOTION_AT_TICK_END,
+  GLIDE_MOTION_AT_TICK_START,
+  glideArrival,
+} from './arrivalEasing';
 
 const seg = (x: number, z: number) => ({ x, y: 0, z });
+
+type Cell = readonly [number, number];
+
+/** The snake occupying `length` cells of `path`, `step` moves in. */
+function snakeAt(path: readonly Cell[], step: number, length: number) {
+  const body = [];
+  for (let i = 0; i < length; i += 1) {
+    const [x, z] = path[Math.max(0, step - i)];
+    body.push(seg(x, z));
+  }
+  return body;
+}
+
+/**
+ * The unit direction of the move that lands on `path[step]`. Off either end of
+ * the script there is no next move, which is the zero outbound the engine
+ * publishes for a tick that moves the head nowhere.
+ */
+function headingInto(path: readonly Cell[], step: number): Cell {
+  if (step <= 0 || step >= path.length) return [0, 0];
+  const [px, pz] = path[step - 1];
+  const [x, z] = path[step];
+  const unit = (d: number) => (d > 1 ? -1 : d < -1 ? 1 : d);
+  return [unit(x - px), unit(z - pz)];
+}
+
+/**
+ * Walk `path` through the buffer as the game page does: stamp the tick, then
+ * publish the direction the NEXT tick will move the head in.
+ */
+function playTo(
+  buffer: InterpolationBuffer,
+  path: readonly Cell[],
+  step: number,
+  length: number
+): void {
+  for (let k = 0; k <= step; k += 1) {
+    recordTick(buffer, snakeAt(path, k, length), 100, k * 100);
+    const [dx, dz] = headingInto(path, k + 1);
+    setHeadOutbound(buffer, dx, dz, GLIDE_MOTION_AT_TICK_START);
+  }
+}
+
+/** A straight run, a right turn, a straight, and a left turn. */
+const CORNERS: readonly Cell[] = [
+  [5, 5],
+  [6, 5],
+  [7, 5],
+  [7, 6],
+  [7, 7],
+  [6, 7],
+  [5, 7],
+];
 
 describe('createInterpolationBuffer', () => {
   it('preallocates both planes at capacity 400 by default', () => {
@@ -232,5 +298,373 @@ describe('interpolated reads', () => {
         expect(getInterpolatedZ(buffer, 0, alpha)).toBe(11 + alpha);
       }
     });
+  });
+});
+
+/**
+ * ET-1b. The profile's own contracts live in arrivalEasing.test.ts; these are
+ * the POSITION contracts - what the two-anchor sampler actually draws, and the
+ * three properties the owner's design law reduces to.
+ */
+describe('the glide sampler', () => {
+  const SAMPLES = 401;
+  const alphas = Array.from({ length: SAMPLES }, (_, i) => i / (SAMPLES - 1));
+
+  it('never draws a segment outside the cell the simulation is on', () => {
+    // Constraint 2, in world units and for EVERY segment, not just the head.
+    // This is the invariant that makes glide safe: the pre-ET-1 lag put the
+    // head a full cell behind the simulation and killed players unfairly.
+    const buffer = createInterpolationBuffer(8);
+    for (let step = 1; step < CORNERS.length; step += 1) {
+      playTo(buffer, CORNERS, step, 4);
+      for (let index = 0; index < buffer.count; index += 1) {
+        const cx = buffer.curr[index * 2];
+        const cz = buffer.curr[index * 2 + 1];
+        for (const alpha of alphas) {
+          const motion = glideArrival(alpha);
+          expect(
+            Math.abs(getGlideX(buffer, index, motion) - cx)
+          ).toBeLessThanOrEqual(0.5 + 1e-12);
+          expect(
+            Math.abs(getGlideZ(buffer, index, motion) - cz)
+          ).toBeLessThanOrEqual(0.5 + 1e-12);
+        }
+      }
+    }
+  });
+
+  it('moves at one unvarying speed, including through the m = 1 junction', () => {
+    // Constraint 1. The junction is where the anchor changes from prev->curr
+    // to curr->next; a speed step there would be a per-tick tick-tock at the
+    // interval's midpoint, which is exactly the artefact ET-1b removes.
+    const buffer = createInterpolationBuffer(8);
+    playTo(buffer, CORNERS, 2, 4);
+    const step = 1 / 512;
+    for (let alpha = 0; alpha + step <= 1; alpha += step) {
+      const ax = getGlideX(buffer, 0, glideArrival(alpha));
+      const az = getGlideZ(buffer, 0, glideArrival(alpha));
+      const bx = getGlideX(buffer, 0, glideArrival(alpha + step));
+      const bz = getGlideZ(buffer, 0, glideArrival(alpha + step));
+      expect(Math.hypot(bx - ax, bz - az) / step).toBeCloseTo(1, 9);
+    }
+  });
+
+  it('joins consecutive ticks with no position step - straights and corners', () => {
+    // C0 across the tick boundary, for every segment. A body segment's
+    // end-of-tick position is midpoint(curr_i, curr_i-1), and index i occupies
+    // index i-1's cell on the next tick, so the next interval starts at that
+    // same world point. Nothing eases; nothing pops.
+    const buffer = createInterpolationBuffer(8);
+    for (let step = 1; step < CORNERS.length - 1; step += 1) {
+      playTo(buffer, CORNERS, step, 4);
+      const exitX: number[] = [];
+      const exitZ: number[] = [];
+      for (let index = 0; index < buffer.count; index += 1) {
+        exitX.push(getGlideX(buffer, index, GLIDE_MOTION_AT_TICK_END));
+        exitZ.push(getGlideZ(buffer, index, GLIDE_MOTION_AT_TICK_END));
+      }
+
+      recordTick(buffer, snakeAt(CORNERS, step + 1, 4), 100, (step + 1) * 100);
+      const [dx, dz] = headingInto(CORNERS, step + 2);
+      setHeadOutbound(buffer, dx, dz, GLIDE_MOTION_AT_TICK_START);
+
+      for (let index = 0; index < buffer.count; index += 1) {
+        expect(getGlideX(buffer, index, GLIDE_MOTION_AT_TICK_START)).toBe(
+          exitX[index]
+        );
+        expect(getGlideZ(buffer, index, GLIDE_MOTION_AT_TICK_START)).toBe(
+          exitZ[index]
+        );
+      }
+    }
+  });
+
+  it('is the existing blend, expression for expression, below m = 1', () => {
+    // Glide re-times the first half; it does not redraw it. That includes the
+    // way a COSMIC wrap is presented, which is deliberately left alone.
+    const buffer = createInterpolationBuffer(4);
+    recordTick(buffer, [seg(19, 4), seg(18, 4)], 100, 0);
+    recordTick(buffer, [seg(0, 4), seg(19, 4)], 100, 100);
+    for (const motion of [0.5, 0.6, 0.75, 0.9, 1]) {
+      expect(getGlideX(buffer, 0, motion)).toBe(
+        getInterpolatedX(buffer, 0, motion)
+      );
+      expect(getGlideZ(buffer, 0, motion)).toBe(
+        getInterpolatedZ(buffer, 0, motion)
+      );
+    }
+  });
+
+  it('reads a torus wrap as the one-cell step it is, not a board-width jump', () => {
+    // The raw delta across a wrap is -19 for a step of +1. Sign-corrected and
+    // capped, the outbound carries the head half a cell past the far edge it
+    // just entered - and the body segment still on the old edge half a cell
+    // toward the seam it is about to cross.
+    const buffer = createInterpolationBuffer(4);
+    recordTick(buffer, [seg(19, 4), seg(18, 4)], 100, 0);
+    recordTick(buffer, [seg(0, 4), seg(19, 4)], 100, 100);
+    expect(getGlideX(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBeCloseTo(0.5, 12);
+    expect(getGlideX(buffer, 1, GLIDE_MOTION_AT_TICK_END)).toBeCloseTo(19.5, 12);
+    expect(getGlideZ(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBe(4);
+  });
+
+  it('renders a segment that appeared this tick at its own cell', () => {
+    // Growth seeds prev = curr. The first half must draw the new tail piece on
+    // its cell rather than streaking it in from stale memory.
+    const buffer = createInterpolationBuffer(4);
+    recordTick(buffer, [seg(5, 5), seg(4, 5)], 100, 0);
+    recordTick(buffer, [seg(6, 5), seg(5, 5), seg(4, 5)], 100, 100);
+    for (const motion of [0.5, 0.7, 1]) {
+      expect(getGlideX(buffer, 2, motion)).toBe(4);
+      expect(getGlideZ(buffer, 2, motion)).toBe(5);
+    }
+    // ...and its second half still aims at the segment ahead, because a new
+    // tail index moves to index 1's cell on the very next tick like any other.
+    expect(getGlideX(buffer, 2, GLIDE_MOTION_AT_TICK_END)).toBeCloseTo(4.5, 12);
+  });
+
+  describe('the head outbound', () => {
+    it('honours the admitted direction over the current heading', () => {
+      // The bend begins when the press is admitted, not when the tick executes
+      // it. Travelling +x with a turn to -z queued, the head leans into the
+      // corner through the second half.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5)], 100, 100);
+      setHeadOutbound(buffer, 0, -1, GLIDE_MOTION_AT_TICK_START);
+      expect(getGlideX(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBe(6);
+      expect(getGlideZ(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBeCloseTo(4.5, 12);
+    });
+
+    it('falls back to the live heading when nothing is publishing', () => {
+      // The arena prototypes drive a buffer with no engine behind it.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5)], 100, 100);
+      expect(buffer.headOutboundKnown).toBe(false);
+      expect(getGlideX(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBeCloseTo(6.5, 12);
+      expect(getGlideZ(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBe(5);
+    });
+
+    it('rests the head where it is told the next tick moves it nowhere', () => {
+      // A zero outbound is a real answer, not a missing one: the phase gate's
+      // arrival beat holds the snake still for a tick, and a head that leaned
+      // off its cell anyway would snap back when that tick fired.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5)], 100, 100);
+      setHeadOutbound(buffer, 0, 0, GLIDE_MOTION_AT_TICK_START);
+      expect(buffer.headOutboundKnown).toBe(true);
+      expect(getGlideX(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBe(6);
+      expect(getGlideZ(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBe(5);
+    });
+
+    it('comes to rest on the obstacle edge when the engine stops', () => {
+      // Death: no further ticks, alpha clamps at 1, and the head is left
+      // touching the wall it hit rather than a cell short of it.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(18, 4)], 100, 0);
+      recordTick(buffer, [seg(19, 4)], 100, 100);
+      setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+      const resting = glideArrival(getAlpha(buffer, 100_000));
+      expect(getGlideX(buffer, 0, resting)).toBeCloseTo(19.5, 12);
+    });
+
+    it('bends a late press over the interval instead of stepping sideways', () => {
+      // Worst case for a mid-glide retarget: the aim is frozen as drawn at the
+      // press (no step at all) and reaches the new direction exactly at the
+      // exit edge, so the next tick still starts where this one ended.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5)], 100, 100);
+      setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+
+      const beforeX = getGlideX(buffer, 0, 1.25);
+      const beforeZ = getGlideZ(buffer, 0, 1.25);
+      setHeadOutbound(buffer, 0, -1, 1.25);
+      expect(getGlideX(buffer, 0, 1.25)).toBeCloseTo(beforeX, 12);
+      expect(getGlideZ(buffer, 0, 1.25)).toBeCloseTo(beforeZ, 12);
+
+      expect(getGlideX(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBe(6);
+      expect(getGlideZ(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBeCloseTo(4.5, 12);
+
+      // The bend stays inside the cell the whole way through.
+      for (let m = 1.25; m <= GLIDE_MOTION_AT_TICK_END; m += 0.01) {
+        expect(Math.abs(getGlideX(buffer, 0, m) - 6)).toBeLessThanOrEqual(
+          0.5 + 1e-12
+        );
+        expect(Math.abs(getGlideZ(buffer, 0, m) - 5)).toBeLessThanOrEqual(
+          0.5 + 1e-12
+        );
+      }
+    });
+
+    it('does not carry a bend across the tick that ended it', () => {
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5)], 100, 100);
+      setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+      setHeadOutbound(buffer, 0, -1, 1.4);
+      recordTick(buffer, [seg(6, 4)], 100, 200);
+      expect(buffer.headOutboundTurnAt).toBe(1);
+      expect(buffer.headOutboundPriorX).toBe(0);
+      expect(buffer.headOutboundPriorZ).toBe(-1);
+    });
+  });
+
+  describe('a head that is not travelling has nothing to lead toward', () => {
+    it('rests on its tile centre at spawn, whatever direction it faces', () => {
+      // The defect this gate exists for: at spawn the loop is not armed, alpha
+      // reads 1, and the lead put the head half a cell along its facing before
+      // the run had started. The first snapshot seeds prev = curr, so it is
+      // stationary by construction and must draw on the centre.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(10, 10), seg(10, 11)], 100, 0);
+      setHeadOutbound(buffer, 0, -1, GLIDE_MOTION_AT_TICK_START);
+      expect(buffer.headMoved).toBe(false);
+      for (const alpha of [0, 0.25, 0.5, 0.75, 1]) {
+        expect(getGlideX(buffer, 0, glideArrival(alpha))).toBe(10);
+        expect(getGlideZ(buffer, 0, glideArrival(alpha))).toBe(10);
+      }
+    });
+
+    it('rests on its tile centre on any stationary stamp', () => {
+      // A paused loop re-stamps an unmoved snake; each stamp restarts alpha,
+      // and without this gate the head re-ran the lead every time - the
+      // oscillation between the cell and the first half of the next one.
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5), seg(4, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5), seg(5, 5)], 100, 100);
+      expect(buffer.headMoved).toBe(true);
+      recordTick(buffer, [seg(6, 5), seg(5, 5)], 100, 200);
+      expect(buffer.headMoved).toBe(false);
+      setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+      for (const alpha of [0, 0.5, 1]) {
+        expect(getGlideX(buffer, 0, glideArrival(alpha))).toBe(6);
+        expect(getGlideZ(buffer, 0, glideArrival(alpha))).toBe(5);
+      }
+      // The body rests with it - nothing moved, so nothing leads.
+      expect(getGlideX(buffer, 1, GLIDE_MOTION_AT_TICK_END)).toBe(5);
+    });
+
+    it('resumes leading on the first stamp that moves the head again', () => {
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(6, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5)], 100, 100);
+      expect(buffer.headMoved).toBe(false);
+      recordTick(buffer, [seg(7, 5)], 100, 200);
+      setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+      expect(buffer.headMoved).toBe(true);
+      expect(getGlideX(buffer, 0, GLIDE_MOTION_AT_TICK_END)).toBeCloseTo(7.5, 12);
+    });
+  });
+
+  describe('the rest pose under a pause', () => {
+    /** Mid-glide, travelling +x, three quarters through the interval. */
+    const gliding = () => {
+      const buffer = createInterpolationBuffer(4);
+      recordTick(buffer, [seg(5, 5)], 100, 0);
+      recordTick(buffer, [seg(6, 5)], 100, 100);
+      setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+      return buffer;
+    };
+    const drawnX = (buffer: InterpolationBuffer, at: number) =>
+      settleToward(
+        getGlideX(buffer, 0, glideArrival(getAlpha(buffer, at))),
+        buffer.curr[0],
+        getRestSettle(buffer, at)
+      );
+
+    it('composes onto the tile centre over the settle beat', () => {
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      // At the instant of the pause nothing has moved yet - no snap.
+      expect(drawnX(buffer, 175)).toBeCloseTo(
+        getGlideX(buffer, 0, glideArrival(getAlpha(buffer, 175))),
+        10
+      );
+      // ...and by the end of the beat it is exactly on the cell.
+      expect(drawnX(buffer, 175 + REST_SETTLE_MS)).toBeCloseTo(6, 10);
+      expect(drawnX(buffer, 175 + REST_SETTLE_MS * 4)).toBeCloseTo(6, 10);
+    });
+
+    it('draws the settle without ever leaving the simulation cell', () => {
+      // The settle competes with an alpha that is still running out - the
+      // pause lands mid-interval - so the drawn head is not monotone for the
+      // remainder of that interval. What must hold is that the pull is
+      // monotone and the head stays on its own tile the whole way.
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      let previous = -1;
+      for (let step = 0; step <= 24; step += 1) {
+        const at = 175 + (REST_SETTLE_MS * step) / 24;
+        const settle = getRestSettle(buffer, at);
+        expect(settle).toBeGreaterThanOrEqual(previous - 1e-12);
+        expect(Math.abs(drawnX(buffer, at) - 6)).toBeLessThanOrEqual(0.5 + 1e-12);
+        previous = settle;
+      }
+      expect(previous).toBe(1);
+    });
+
+    it('picks the glide back up on resume with no position step', () => {
+      // The blend runs both ways, so the frame the overlay clears is the frame
+      // the head starts moving again - from exactly where it was resting.
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      const atRest = drawnX(buffer, 175 + REST_SETTLE_MS * 3);
+      expect(atRest).toBeCloseTo(6, 10);
+
+      const resumedAt = 175 + REST_SETTLE_MS * 3;
+      setPaused(buffer, false, resumedAt);
+      expect(drawnX(buffer, resumedAt)).toBeCloseTo(atRest, 10);
+      // ...and it is back on the live glide once the beat is spent.
+      const settled = resumedAt + REST_SETTLE_MS;
+      expect(getRestSettle(buffer, settled)).toBe(0);
+      expect(drawnX(buffer, settled)).toBeCloseTo(
+        getGlideX(buffer, 0, glideArrival(getAlpha(buffer, settled))),
+        10
+      );
+    });
+
+    it('is exempt from constant speed only while it is settling', () => {
+      // The settle deliberately eases - it is a one-shot pose change, not the
+      // per-tick motion clock. Outside it, nothing is re-timed at all.
+      const buffer = gliding();
+      expect(getRestSettle(buffer, 0)).toBe(0);
+      expect(getRestSettle(buffer, 10_000)).toBe(0);
+      setPaused(buffer, true, 175);
+      expect(getRestSettle(buffer, 175)).toBe(0);
+      expect(getRestSettle(buffer, 175 + REST_SETTLE_MS / 2)).toBeCloseTo(0.5, 10);
+      expect(getRestSettle(buffer, 175 + REST_SETTLE_MS)).toBe(1);
+    });
+
+    it('does not restart the beat when the same state is re-declared', () => {
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      setPaused(buffer, true, 250);
+      expect(buffer.pausedChangedAt).toBe(175);
+    });
+
+    it('is cleared by a reset, and a fresh buffer is never mid-settle', () => {
+      // `performance.now()` is smaller than the settle beat for the first
+      // frames of a page, so a zero stamp would have drawn a brand new board
+      // as if it were recovering from a pause.
+      expect(getRestSettle(createInterpolationBuffer(4), 0)).toBe(0);
+      const buffer = gliding();
+      setPaused(buffer, true, 175);
+      resetInterpolationBuffer(buffer);
+      expect(buffer.paused).toBe(false);
+      expect(getRestSettle(buffer, 0)).toBe(0);
+    });
+  });
+
+  it('is cleared by a reset, so a new run never leans toward the dead one', () => {
+    const buffer = createInterpolationBuffer(4);
+    recordTick(buffer, [seg(5, 5)], 100, 0);
+    setHeadOutbound(buffer, 1, 0, GLIDE_MOTION_AT_TICK_START);
+    resetInterpolationBuffer(buffer);
+    expect(buffer.headOutboundKnown).toBe(false);
+    expect(buffer.headOutboundX).toBe(0);
+    expect(buffer.headOutboundZ).toBe(0);
   });
 });

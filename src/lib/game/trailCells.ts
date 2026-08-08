@@ -157,6 +157,24 @@ export function updateTrailCells(
   }
 }
 
+/**
+ * The cell key for a grid position, or -1 if it is off the board. The inverse
+ * of `trailCellX`/`trailCellZ`, for callers holding a position rather than a
+ * key - the renderer identifying the tile the head just left.
+ */
+export function trailCellIndex(
+  state: TrailCellState,
+  x: number,
+  z: number
+): number {
+  const gx = Math.round(x);
+  const gz = Math.round(z);
+  if (gx < 0 || gx >= state.gridSize || gz < 0 || gz >= state.gridSize) {
+    return -1;
+  }
+  return gz * state.gridSize + gx;
+}
+
 export function trailCellX(state: TrailCellState, cell: number): number {
   return cell % state.gridSize;
 }

@@ -20,11 +20,13 @@ import {
   createInterpolationBuffer,
   recordTick,
   getAlpha,
+  getGlideZ,
   INTERPOLATION_CAPACITY,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
 import {
   ARRIVAL_ALPHA,
+  glideArrival,
   resetArrivalMode,
   setArrivalMode,
 } from '@/lib/game/arrivalEasing';
@@ -330,12 +332,9 @@ describe('Dynasty and Strain body colour', () => {
 });
 
 describe('tail taper is fluid across engine ticks', () => {
-  it('blends a persistent cell from its previous to current vacancy state', () => {
-    const previous = straight(10); // z 5..14
-    const current = [at(5, 4), ...previous.slice(0, -1)]; // z 4..13
-    const buffer = movingBuffer(previous, current);
-    const levels = new Array(10).fill(1);
-    const heightAt = (alpha: number) => {
+  /** The vacancy height of the cell about to free up, at a given alpha. */
+  const taperAt = (buffer: ReturnType<typeof movingBuffer>, levels: number[]) =>
+    (alpha: number) => {
       const instance = emit(buffer, levels, alpha).sink.instances.find(
         (entry) => Math.abs(entry.position.z - 13.5) < 1e-6
       );
@@ -343,21 +342,54 @@ describe('tail taper is fluid across engine ticks', () => {
       return instance!.scale.y;
     };
 
+  it('blends a persistent cell from its previous to current vacancy state', () => {
     // The property under test is that the vacancy taper FLOWS rather than
-    // blinking once per engine tick. It still does - it just runs on ET-1's
-    // clock now, which completes at ARRIVAL_ALPHA instead of at alpha 1. The
-    // sample points move with the curve; the contract does not.
-    const previousHeight = heightAt(0);
-    const middleHeight = heightAt(ARRIVAL_ALPHA / 2);
-    const arrivedHeight = heightAt(ARRIVAL_ALPHA);
-    expect(previousHeight).toBeGreaterThan(middleHeight);
-    expect(middleHeight).toBeGreaterThan(arrivedHeight);
+    // blinking once per engine tick. Pinned to `front` explicitly: this is the
+    // front-loaded clock's own contract - complete by ARRIVAL_ALPHA, then hold
+    // - and it has to keep being tested for as long as that leg ships for the
+    // A/B, whatever the default happens to be.
+    setArrivalMode('front');
+    try {
+      const previous = straight(10); // z 5..14
+      const current = [at(5, 4), ...previous.slice(0, -1)]; // z 4..13
+      const heightAt = taperAt(movingBuffer(previous, current), new Array(10).fill(1));
 
-    // ...and having landed, it HOLDS. The trail must not keep creeping while
-    // the head sits on its cell, or the body would visibly lag the creature
-    // for the whole settle - the accordion ET-1 exists to prevent.
-    expect(heightAt(0.7)).toBeCloseTo(arrivedHeight, 10);
-    expect(heightAt(1)).toBeCloseTo(arrivedHeight, 10);
+      const previousHeight = heightAt(0);
+      const middleHeight = heightAt(ARRIVAL_ALPHA / 2);
+      const arrivedHeight = heightAt(ARRIVAL_ALPHA);
+      expect(previousHeight).toBeGreaterThan(middleHeight);
+      expect(middleHeight).toBeGreaterThan(arrivedHeight);
+
+      // ...and having landed, it HOLDS. The trail must not keep creeping while
+      // the head sits on its cell, or the body would visibly lag the creature
+      // for the whole settle - the accordion ET-1 exists to prevent.
+      expect(heightAt(0.7)).toBeCloseTo(arrivedHeight, 10);
+      expect(heightAt(1)).toBeCloseTo(arrivedHeight, 10);
+    } finally {
+      resetArrivalMode();
+    }
+  });
+
+  it('runs the glide leg at the constant rate the head travels at', () => {
+    // ET-1b: one clock, and under glide that clock never stops inside an
+    // interval. The head crosses its cell at a fixed speed for the whole tick,
+    // so the cell it deposits behind it grows at that same fixed rate and
+    // completes at alpha 1. A taper that landed early under a head still
+    // travelling is the accordion, inverted.
+    setArrivalMode('glide');
+    try {
+      const previous = straight(10);
+      const current = [at(5, 4), ...previous.slice(0, -1)];
+      const heightAt = taperAt(movingBuffer(previous, current), new Array(10).fill(1));
+
+      expect(heightAt(0)).toBeGreaterThan(heightAt(0.5));
+      expect(heightAt(0.5)).toBeGreaterThan(heightAt(1));
+      // Still moving at the instant `front` had already stopped - which is
+      // exactly the difference between the two legs.
+      expect(heightAt(ARRIVAL_ALPHA)).toBeGreaterThan(heightAt(1));
+    } finally {
+      resetArrivalMode();
+    }
   });
 
   it('runs the classic leg on the old symmetric curve, end to end', () => {
@@ -640,10 +672,142 @@ describe('selective interpolation: expressive front, settled interior', () => {
       late.instances[1].scale.y,
       6
     );
-    expect(early.instances[0].position.z).toBeCloseTo(5.5, 10);
-    expect(late.instances[0].position.z).toBeCloseTo(5.5, 10);
-    expect(late.instances[0].scale.y).toBeGreaterThan(early.instances[0].scale.y);
+    // The entering cell is THE NECK, and under glide it extrudes rather than
+    // inflating: its REAR face is what stays put, not its centre, and its
+    // height is full from the first frame. (Geometry proven below.)
+    const rearFace = (entry: { position: { z: number }; scale: { z: number } }) =>
+      entry.position.z + entry.scale.z / 2;
+    expect(rearFace(early.instances[0])).toBeCloseTo(
+      rearFace(late.instances[0]),
+      10
+    );
+    expect(late.instances[0].scale.y).toBeCloseTo(
+      early.instances[0].scale.y,
+      10
+    );
     expect(getAlpha(buffer, 1150)).toBeCloseTo(0.5, 10);
+  });
+});
+
+/**
+ * GLIDE-2 defect 2. The owner: "the first segment behind the head is very
+ * small and grows, then disappears at the next cell - cool in general but pain
+ * in the eyes." The coil is tile-snapped and only the head glides, so the
+ * just-vacated tile was center-scaling from nothing across the whole interval.
+ *
+ * The ruling is EXTRUDE, DON'T INFLATE.
+ */
+describe('the neck extrudes out of the tile behind it', () => {
+  /** Head travelling -z from (5,5) to (5,4); the neck is the cell (5,5). */
+  const neckBuffer = () => {
+    const buffer = createInterpolationBuffer();
+    recordTick(buffer, [at(5, 5), at(5, 6), at(5, 7)], 100, 1000);
+    recordTick(buffer, [at(5, 4), at(5, 5), at(5, 6)], 100, 1100);
+    return buffer;
+  };
+  const neckAt = (buffer: InterpolationBuffer, alpha: number) => {
+    const entry = emit(buffer, [0, 0, 0], alpha).sink.instances[0];
+    // Travel is -z, so the REAR face is the +z one and the front face leads.
+    return {
+      rear: entry.position.z + entry.scale.z / 2,
+      front: entry.position.z - entry.scale.z / 2,
+      length: entry.scale.z,
+      width: entry.scale.x,
+      height: entry.scale.y,
+    };
+  };
+
+  it('is half present at the tick, with its front face on the tile centre', () => {
+    // The departing head cube's trailing half occupied exactly this, so the
+    // handoff is continuous - the pop the owner saw was the cell starting at
+    // nothing while the head had already left.
+    const neck = neckAt(neckBuffer(), 0);
+    expect(neck.front).toBeCloseTo(5.5, 10);
+    expect(neck.length).toBeCloseTo(neck.width * 0.5, 10);
+  });
+
+  it('is complete by the interval midpoint and still after it', () => {
+    const buffer = neckBuffer();
+    const mid = neckAt(buffer, 0.5);
+    const late = neckAt(buffer, 0.9);
+    const end = neckAt(buffer, 1);
+    expect(mid.length).toBeCloseTo(mid.width, 10);
+    expect(late.length).toBeCloseTo(mid.length, 10);
+    expect(end.length).toBeCloseTo(mid.length, 10);
+    // Complete means complete: at the boundary it is already the size it will
+    // hold as an ordinary persistent cell, so the next tick cannot pop it.
+    expect(end.front).toBeCloseTo(mid.front, 10);
+  });
+
+  it('pins its rear face and grows only forward', () => {
+    const buffer = neckBuffer();
+    const samples = [0, 0.2, 0.4, 0.6, 0.8, 1].map((a) => neckAt(buffer, a));
+    for (const sample of samples) {
+      expect(sample.rear).toBeCloseTo(samples[0].rear, 10);
+    }
+    // Monotone forward, and never inflating sideways or vertically.
+    for (let i = 1; i < samples.length; i += 1) {
+      expect(samples[i].front).toBeLessThanOrEqual(samples[i - 1].front + 1e-12);
+      expect(samples[i].width).toBeCloseTo(samples[0].width, 10);
+      expect(samples[i].height).toBeCloseTo(samples[0].height, 10);
+    }
+  });
+
+  it('leaves no daylight between its front face and the head', () => {
+    // THE invariant that makes the chain read as one creature rather than a
+    // head towing a stack: while the neck is still growing, its front face IS
+    // the head's trailing face, exactly, at every alpha. Not "close" - equal.
+    const buffer = neckBuffer();
+    const half = neckAt(buffer, 1).width / 2;
+    for (const fraction of [0, 0.25, 0.5, 0.75, 0.95]) {
+      const alpha = fraction * half;
+      const neck = neckAt(buffer, alpha);
+      // Head centre in grid units, travelling -z from z=5 toward z=4; the head
+      // occupies one cell, so its trailing face is half a cell behind it.
+      const headCentre = getGlideZ(buffer, 0, glideArrival(alpha)) + 0.5;
+      expect(neck.front).toBeCloseTo(headCentre + 0.5, 10);
+    }
+
+    // Once whole it stops, by ruling - clamped to its own tile. The separation
+    // that opens after that is glide's half-cell lead, not this geometry.
+    const whole = neckAt(buffer, 1);
+    expect(whole.length).toBeCloseTo(whole.width, 10);
+  });
+
+  it('extrudes along the wrap direction on a torus crossing', () => {
+    // The head stepped 19 -> 0 on x, which is +1, not -19. The neck at x=19
+    // must grow toward the seam it just handed the head across.
+    const buffer = createInterpolationBuffer();
+    recordTick(buffer, [at(19, 4), at(18, 4)], 100, 1000);
+    recordTick(buffer, [at(0, 4), at(19, 4)], 100, 1100);
+    const entry = (alpha: number) => emit(buffer, [0, 0], alpha).sink.instances[0];
+    const early = entry(0);
+    const full = entry(1);
+    // Travel is +x, so the rear face is the -x one and stays pinned.
+    expect(early.position.x - early.scale.x / 2).toBeCloseTo(
+      full.position.x - full.scale.x / 2,
+      10
+    );
+    expect(early.scale.x).toBeCloseTo(full.scale.x * 0.5, 10);
+    // ...and the cross-axis is untouched.
+    expect(early.scale.z).toBeCloseTo(full.scale.z, 10);
+  });
+
+  it('leaves front and classic inflating exactly as they did', () => {
+    // The A/B legs are controls; the ruling applies to the shipped profile.
+    for (const leg of ['front', 'classic'] as const) {
+      setArrivalMode(leg);
+      try {
+        const buffer = neckBuffer();
+        const early = emit(buffer, [0, 0, 0], 0.1).sink.instances[0];
+        const late = emit(buffer, [0, 0, 0], 0.9).sink.instances[0];
+        expect(early.position.z).toBeCloseTo(5.5, 10);
+        expect(late.position.z).toBeCloseTo(5.5, 10);
+        expect(late.scale.y).toBeGreaterThan(early.scale.y);
+      } finally {
+        resetArrivalMode();
+      }
+    }
   });
 });
 

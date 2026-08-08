@@ -115,7 +115,7 @@ import { getGameMaterialProfile } from '@/components/game/screen/gameMaterialPro
 import { RunCockpit } from '@/components/game/cockpit/RunCockpit';
 import type { RunCockpitModel } from '@/components/game/cockpit/types';
 import { AimRenderer, type AimRendererProps } from '@/components/game/AimRenderer';
-import type { AimTarget } from '@/components/game/aimUtils';
+import { DIRECTION_DELTAS, type AimTarget } from '@/components/game/aimUtils';
 import { AimSystemSelector } from '@/components/game/AimSystemSelector';
 import { RunInsightCard } from '@/components/game/RunInsightCard';
 import {
@@ -180,11 +180,17 @@ import { haptics } from '@/lib/effects/Haptics';
 import { screenShake } from '@/lib/effects/ScreenShake';
 import {
   createInterpolationBuffer,
+  getAlpha,
   recordTick,
   resetInterpolationBuffer,
+  setHeadOutbound,
+  setPaused as setBufferPaused,
   type InterpolationBuffer,
 } from '@/lib/game/interpolationBuffer';
-import { applyArrivalModeFromSearch } from '@/lib/game/arrivalEasing';
+import {
+  applyArrivalModeFromSearch,
+  glideArrival,
+} from '@/lib/game/arrivalEasing';
 import { useToast } from '@/components/ui/Toast';
 import {
   enqueueReward,
@@ -457,6 +463,39 @@ const DIRECTION_BY_KEY: Record<string, Direction> = {
   A: 'LEFT',
   D: 'RIGHT',
 };
+
+/**
+ * Tell the renderer which way the NEXT tick will move the head (ET-1b).
+ *
+ * Glide draws the head travelling toward the cell it is about to occupy, and
+ * the head is the one segment whose next cell is not already in the
+ * interpolation buffer. That answer is `directionQueue[0] ?? direction` - the
+ * turn this boundary will consume, or the live heading when nothing is
+ * buffered - and it is ZERO while an arrival beat is armed, because that tick
+ * takes no move at all and a head leaning off its cell would snap back when it
+ * fired.
+ *
+ * Strictly one-way. This reads the engine's already-formed intention through
+ * its public accessors and writes it into a renderer-owned buffer; nothing
+ * here can reach the engine, the journal or the replay. Called once per tick
+ * and once per admitted press - never on the render path - so the visual bend
+ * begins when the player presses rather than when the tick executes.
+ */
+function publishNextMove(
+  buffer: InterpolationBuffer,
+  direction: Direction,
+  queued: readonly Direction[],
+  arrivalBeatTicksRemaining: number,
+  now: number
+): void {
+  const motion = glideArrival(getAlpha(buffer, now));
+  if (arrivalBeatTicksRemaining > 0) {
+    setHeadOutbound(buffer, 0, 0, motion);
+    return;
+  }
+  const delta = DIRECTION_DELTAS[queued.length > 0 ? queued[0] : direction];
+  setHeadOutbound(buffer, delta.x, delta.z, motion);
+}
 
 const ACTIVE_RUN_CHECKPOINT_INTERVAL_MS = 3_000;
 const ACTIVE_RUN_CONNECTION_HOLD_MS = 10_000;
@@ -3768,12 +3807,23 @@ export default function GamePage() {
     gameRef.current.on('pause', () => {
       setPaused(true);
       setQueuedDirections([]);
+      // The renderer composes the board onto tile centres while play is
+      // stopped (ET-1b): a paused loop keeps stamping an unmoved snake, and a
+      // lead drawn against a live alpha re-animates a move that is not
+      // happening. A ref on the buffer, read per frame - no engine reads this
+      // back, and no React work happens on the render path.
+      if (interpBufferRef.current) {
+        setBufferPaused(interpBufferRef.current, true, performance.now());
+      }
       audioManager.play('pause');
       secureRunBoundary();
     });
 
     gameRef.current.on('resume', () => {
       setPaused(false);
+      if (interpBufferRef.current) {
+        setBufferPaused(interpBufferRef.current, false, performance.now());
+      }
       secureRunBoundary();
     });
 
@@ -3986,6 +4036,16 @@ export default function GamePage() {
         gameRef.current.getSpeed(),
         tickAtMs
       );
+      // ...and, on the fresh interval, which way the next boundary moves the
+      // head. On the fatal tick this is the direction of the killing move, so
+      // the head glides to the obstacle's contact edge and rests there.
+      publishNextMove(
+        interpBufferRef.current!,
+        state.direction,
+        queued,
+        state.arrivalBeatTicksRemaining,
+        tickAtMs
+      );
     }
   }, [setSnake, setFood, setScore, setDnaCollected, setDirection, setQueuedDirections, setFoodEaten, setExitTile, setExitTile2, setExtraFoods, setConstellation, setMutationTile, setStrains, setFusedSplices, setGildedCells, setInfusesCount, setPortalChoicePending, setSurgeChoicePending, setRevive, setRevivePhaseTicks, setSimulationTick, setTerrain]);
 
@@ -3998,7 +4058,19 @@ export default function GamePage() {
       // queue, so tracking here prevents false "consumed" reads on ticks.
       prevQueueLengthRef.current = queued.length;
       const prev = useGameStore.getState();
-      const direction = gameRef.current.getState().direction;
+      const state = gameRef.current.getState();
+      const direction = state.direction;
+      // The press just changed which cell the next tick lands on, so the head
+      // starts bending toward it now rather than at the boundary.
+      if (interpBufferRef.current) {
+        publishNextMove(
+          interpBufferRef.current,
+          direction,
+          queued,
+          state.arrivalBeatTicksRemaining,
+          performance.now()
+        );
+      }
       if (prev.direction !== direction) setDirection(direction);
       if (!sameDirections(prev.queuedDirections, queued)) {
         setQueuedDirections(queued);

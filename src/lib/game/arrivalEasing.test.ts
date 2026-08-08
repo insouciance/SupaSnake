@@ -17,6 +17,9 @@ import {
   DEFAULT_ARRIVAL_MODE,
   frontLoadedArrival,
   getArrivalMode,
+  GLIDE_MOTION_AT_TICK_END,
+  GLIDE_MOTION_AT_TICK_START,
+  glideArrival,
   parseArrivalMode,
   resetArrivalMode,
   setArrivalMode,
@@ -164,6 +167,79 @@ describe('head and body share one clock', () => {
   });
 });
 
+describe('ET-1b glide: constant rate, permanently half a cell ahead', () => {
+  it('moves at exactly one cell per interval, everywhere, with no junction', () => {
+    // Constraint 1 of the owner's design law, measured. `front` peaks above 3
+    // cells per interval and returns to rest twice a tick; if this ever reads
+    // anything but a flat 1 the strobe is back.
+    for (const alpha of sweep()) {
+      const h = 1e-7;
+      const speed =
+        (glideArrival(Math.min(1, alpha + h)) -
+          glideArrival(Math.max(0, alpha - h))) /
+        (Math.min(1, alpha + h) - Math.max(0, alpha - h));
+      expect(speed).toBeCloseTo(1, 6);
+    }
+  });
+
+  it('is on the entry edge at the tick and the exit edge at the next one', () => {
+    // Constraint 2: never behind. m = 0.5 at the tick instant is the head
+    // sitting on the edge its own cell shares with the one it came from - the
+    // furthest back it is ever drawn, and still inside the true tile.
+    expect(glideArrival(0)).toBe(GLIDE_MOTION_AT_TICK_START);
+    expect(glideArrival(0.5)).toBeCloseTo(1, 12);
+    expect(glideArrival(1)).toBe(GLIDE_MOTION_AT_TICK_END);
+    expect(GLIDE_MOTION_AT_TICK_END - GLIDE_MOTION_AT_TICK_START).toBeCloseTo(1, 12);
+  });
+
+  it('crosses the tile edge exactly when the tick fires', () => {
+    // Constraint 3: the beat belongs to the highlight, which snaps at the
+    // tick. The mesh must reach the shared edge at that same instant or the
+    // two channels disagree about when the move happened.
+    const exit = glideArrival(1) - 1;
+    const entry = glideArrival(0);
+    expect(exit).toBeCloseTo(0.5, 12);
+    expect(entry).toBeCloseTo(0.5, 12);
+    // ...and the two are the SAME world point one cell apart, which is what
+    // makes consecutive intervals join with no position step at all.
+    expect(exit + entry).toBeCloseTo(1, 12);
+  });
+
+  it('stays inside the simulation cell for the whole interval', () => {
+    for (const alpha of sweep()) {
+      const offset = glideArrival(alpha) - 1; // signed cells from `curr`
+      expect(Math.abs(offset)).toBeLessThanOrEqual(0.5 + 1e-12);
+    }
+  });
+
+  it('clamps to the exit edge, which is contact on the fatal tick', () => {
+    // The engine stops ticking on a death, alpha clamps at 1, and the head
+    // comes to rest touching the obstacle rather than a cell short of it.
+    expect(glideArrival(1.4)).toBe(GLIDE_MOTION_AT_TICK_END);
+    expect(glideArrival(-0.2)).toBe(GLIDE_MOTION_AT_TICK_START);
+  });
+
+  it('runs the trail on plain linear alpha - one clock, no easing anywhere', () => {
+    for (const alpha of sweep()) {
+      expect(arrivalTransition(alpha, 'glide')).toBeCloseTo(alpha, 12);
+    }
+    expect(arrivalTransition(-1, 'glide')).toBe(0);
+    expect(arrivalTransition(2, 'glide')).toBe(1);
+    expect(arrivalMotion(0.25, 'glide')).toBeCloseTo(0.75, 12);
+  });
+
+  it('leaves front and classic bit-for-bit alone', () => {
+    // The A/B is only worth playing if the other two legs are untouched.
+    for (const alpha of sweep()) {
+      expect(arrivalMotion(alpha, 'front')).toBe(frontLoadedArrival(alpha));
+      expect(arrivalMotion(alpha, 'classic')).toBe(alpha);
+      expect(arrivalTransition(alpha, 'classic')).toBe(
+        symmetricSmoothstep(alpha)
+      );
+    }
+  });
+});
+
 describe('the classic leg reproduces the pre-ET-1 timing exactly', () => {
   it('is the raw elapsed-time alpha for position and the symmetric smoothstep for transitions', () => {
     // The A/B is only worth the owner's time if one leg is honestly the old
@@ -186,9 +262,9 @@ describe('the classic leg reproduces the pre-ET-1 timing exactly', () => {
 });
 
 describe('the dev A/B pin', () => {
-  it('ships front-loaded and only a recognised flag changes it', () => {
-    expect(DEFAULT_ARRIVAL_MODE).toBe('front');
-    expect(getArrivalMode()).toBe('front');
+  it('ships the glide profile and only a recognised flag changes it', () => {
+    expect(DEFAULT_ARRIVAL_MODE).toBe('glide');
+    expect(getArrivalMode()).toBe('glide');
 
     expect(applyArrivalModeFromSearch('?arrival=classic')).toBe('classic');
     expect(getArrivalMode()).toBe('classic');
@@ -202,12 +278,16 @@ describe('the dev A/B pin', () => {
     expect(applyArrivalModeFromSearch('?arrival=fast')).toBe('classic');
 
     expect(applyArrivalModeFromSearch('?arrival=front&perf=1')).toBe('front');
+    expect(applyArrivalModeFromSearch('?arrival=glide')).toBe('glide');
+    expect(getArrivalMode()).toBe('glide');
   });
 
   it('parses strictly', () => {
     expect(parseArrivalMode('front')).toBe('front');
     expect(parseArrivalMode('classic')).toBe('classic');
+    expect(parseArrivalMode('glide')).toBe('glide');
     expect(parseArrivalMode('FRONT')).toBeNull();
+    expect(parseArrivalMode('GLIDE')).toBeNull();
     expect(parseArrivalMode(undefined)).toBeNull();
     expect(parseArrivalMode('')).toBeNull();
   });

@@ -37,8 +37,12 @@ import type { AimSystemId } from '@/lib/game/aimSystems';
 import type { InterpolationBuffer } from '@/lib/game/interpolationBuffer';
 import {
   getAlpha,
+  getGlideX,
+  getGlideZ,
   getInterpolatedX,
   getInterpolatedZ,
+  getRestSettle,
+  settleToward,
 } from '@/lib/game/interpolationBuffer';
 import { arrivalMotion, getArrivalMode } from '@/lib/game/arrivalEasing';
 import {
@@ -216,6 +220,45 @@ const _headSample: LeadHeadSample = {
   snapZ: 0,
 };
 
+const _drawnHead = { x: 0, z: 0 };
+
+/**
+ * Where the head is DRAWN this frame, in grid units, under whichever arrival
+ * mode is active.
+ *
+ * Everything glued to the head - THE LEAD, the rails, the drone - samples
+ * through this one function. Three copies of the composition is how one of
+ * them ends up on a different curve than the creature it is bound to, which is
+ * the ET-1 defect reintroduced one layer up. The mode also selects the
+ * SAMPLER: glide's motion above 1 is travel toward the next cell and only
+ * `getGlideX/Z` resolve it against that anchor.
+ *
+ * Returns shared module scratch; callers read the fields immediately.
+ */
+function sampleDrawnHead(buffer: InterpolationBuffer, now: number) {
+  const mode = getArrivalMode();
+  const motion = arrivalMotion(getAlpha(buffer, now), mode);
+  if (mode === 'glide') {
+    // Under a pause the whole board composes onto tile centres; the telegraph
+    // settles with the head rather than hanging where the glide left it.
+    const settle = getRestSettle(buffer, now);
+    _drawnHead.x = settleToward(
+      getGlideX(buffer, 0, motion),
+      buffer.curr[0],
+      settle
+    );
+    _drawnHead.z = settleToward(
+      getGlideZ(buffer, 0, motion),
+      buffer.curr[1],
+      settle
+    );
+  } else {
+    _drawnHead.x = getInterpolatedX(buffer, 0, motion);
+    _drawnHead.z = getInterpolatedZ(buffer, 0, motion);
+  }
+  return _drawnHead;
+}
+
 /**
  * The head sample THE LEAD is bound to: the interpolated centre to glide with,
  * and the authoritative cell to snap to.
@@ -235,12 +278,11 @@ export function readLeadHeadSample(
   _headSample.snapX = head.x;
   _headSample.snapZ = head.z;
   if (buffer && buffer.count > 0) {
-    // ET-1: the same front-loaded arrival the head itself is drawn with. THE
-    // LEAD is glued to the head; sampling it on a different curve would drag
-    // the telegraph a cell behind the creature it belongs to.
-    const alpha = arrivalMotion(getAlpha(buffer, now), getArrivalMode());
-    _headSample.smoothX = getInterpolatedX(buffer, 0, alpha);
-    _headSample.smoothZ = getInterpolatedZ(buffer, 0, alpha);
+    // THE LEAD is glued to the head: it is drawn wherever the head is drawn,
+    // and it snaps to the cell the simulation is on.
+    const drawn = sampleDrawnHead(buffer, now);
+    _headSample.smoothX = drawn.x;
+    _headSample.smoothZ = drawn.z;
     _headSample.snapX = buffer.curr[0];
     _headSample.snapZ = buffer.curr[1];
   }
@@ -629,13 +671,9 @@ function Gridlock({ head, targets, gridSize, bufferRef, color, laneColor }: Grid
     let snapX = head.x;
     let snapZ = head.z;
     if (buffer && buffer.count > 0) {
-      // Rails ride the head's own ET-1 arrival curve (see readLeadHeadSample).
-      const alpha = arrivalMotion(
-        getAlpha(buffer, performance.now()),
-        getArrivalMode()
-      );
-      smoothX = getInterpolatedX(buffer, 0, alpha);
-      smoothZ = getInterpolatedZ(buffer, 0, alpha);
+      const drawn = sampleDrawnHead(buffer, performance.now());
+      smoothX = drawn.x;
+      smoothZ = drawn.z;
       snapX = buffer.curr[0];
       snapZ = buffer.curr[1];
     }
@@ -927,16 +965,9 @@ function Firefly({ head, targets, bufferRef }: FireflyProps) {
       const buffer = bufferRef.current;
       if (buffer && buffer.count > 0) {
         // The drone drifts home to where the head IS drawn, not to where a
-        // symmetric blend would have put it (ET-1).
-        const alpha = arrivalMotion(
-          getAlpha(buffer, performance.now()),
-          getArrivalMode()
-        );
-        _pursuit.set(
-          getInterpolatedX(buffer, 0, alpha) + 0.5,
-          FIREFLY_HOVER + 0.4,
-          getInterpolatedZ(buffer, 0, alpha) + 0.5
-        );
+        // plain blend would have put it.
+        const drawn = sampleDrawnHead(buffer, performance.now());
+        _pursuit.set(drawn.x + 0.5, FIREFLY_HOVER + 0.4, drawn.z + 0.5);
       } else {
         _pursuit.set(head.x + 0.5, FIREFLY_HOVER + 0.4, head.z + 0.5);
       }
