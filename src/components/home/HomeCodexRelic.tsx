@@ -9,6 +9,7 @@ import {
   useNotificationStore,
 } from '@/lib/stores/notificationStore';
 import { STRAIN_IDS, STRAINS } from '@/shared/game/strains';
+import { HOME_RUNE_INK } from './homeGlyphInk';
 import { SnakeCubeChrome, snakeCubeVars } from './SnakeCubeButton';
 import type { DynastyId } from '@/shared/types/game';
 
@@ -64,7 +65,23 @@ export function HomeCodexRelic({ dynasty }: { dynasty?: DynastyId }) {
           with each other; outside it they ring the segment the way they ringed
           the diamond, and the cube's face stays the one clean surface. The
           rotation moved here with them — it was always the runes that made the
-          object look like an instrument. */}
+          object look like an instrument.
+
+          THEY ARE DRAWN BOLD, AND BIGGER BY THE SAME RULING. (Owner, 2026-08-08:
+          "the workbench cube is cool, just the symbols (for the genes) need to
+          be bolder, those thin lines dont fit the concept.") 14px carrying the
+          rack rung is a 1.28px line, which is under every rung of the --ink-w
+          ladder and reads as a technical hairline against a character drawn
+          with a 6px hull. They go to 16px at a 2px line — see `homeGlyphInk.ts`
+          for the conversion.
+
+          The ring's 8px outset is DELIBERATELY not grown to match. At 16px each
+          rune now straddles the silhouette exactly — half on the cube's ink
+          hull, half on the room — which is the placement the ring was
+          approaching at 14px anyway, and growing the outset instead would push
+          the ring past the relic's own 9.6px margin and clip it off the right
+          edge of a phone. The cube itself does not move: it is measured by the
+          axis harness. */}
       <span
         aria-hidden="true"
         className="pointer-events-none absolute -inset-2 transition-transform duration-300 group-hover:rotate-90"
@@ -72,10 +89,10 @@ export function HomeCodexRelic({ dynasty }: { dynasty?: DynastyId }) {
         {STRAIN_IDS.map((strain, index) => (
           <span
             key={strain}
-            className={`absolute flex h-3.5 w-3.5 items-center justify-center ${RUNE_POSITIONS[index]}`}
+            className={`absolute flex h-4 w-4 items-center justify-center ${RUNE_POSITIONS[index]}`}
             style={{ color: STRAINS[strain].color }}
           >
-            <StrainGlyph id={strain} />
+            <StrainGlyph id={strain} weight={HOME_RUNE_INK} />
           </span>
         ))}
       </span>

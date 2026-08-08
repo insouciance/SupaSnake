@@ -5,6 +5,11 @@ import { StrainGlyph } from '@/components/game/cockpit/CockpitGlyphs';
 import { IconBolt, IconDna, IconGear, IconShield } from '@/components/ui/icons';
 import { STRAINS, type StrainId } from '@/shared/game/strains';
 import { formatAmount } from '@/shared/format/amount';
+import {
+  HEADER_GLYPH_INK_15,
+  HEADER_GLYPH_INK_18,
+  HOME_RUNE_INK,
+} from './homeGlyphInk';
 import { SnakeCubeChrome, snakeCubeVars } from './SnakeCubeButton';
 import type { DynastyId } from '@/shared/types/game';
 
@@ -272,7 +277,10 @@ export function HomeIdentityHud({
                     aria-hidden="true"
                     data-testid="home-lineage-rune"
                   >
-                    <StrainGlyph id={specimen.lineageStrain} />
+                    <StrainGlyph
+                      id={specimen.lineageStrain}
+                      weight={HOME_RUNE_INK}
+                    />
                   </span>
                 ) : null}
                 <span className="min-w-0 truncate" data-testid="home-specimen-name">
@@ -306,7 +314,7 @@ export function HomeIdentityHud({
                     dynasty={dynasty}
                     glyphClassName="text-[color:var(--snake-ink)]"
                   >
-                    <IconShield size={15} />
+                    <IconShield size={15} strokeWidth={HEADER_GLYPH_INK_15} />
                   </SnakeCubeChrome>
                 </span>
                 <span
@@ -385,7 +393,7 @@ export function HomeIdentityHud({
           dynasty={dynasty}
           glyphClassName="text-[color:var(--snake-ink)]"
         >
-          <IconGear size={18} />
+          <IconGear size={18} strokeWidth={HEADER_GLYPH_INK_18} />
         </SnakeCubeChrome>
       </Link>
     </header>
