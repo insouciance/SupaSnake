@@ -26,8 +26,26 @@
  *   interval the head is drawn is a separate, re-timable decision that lives
  *   in `arrivalEasing.ts` (ET-1): renderers read `getAlpha`, map it through
  *   `arrivalMotion`/`arrivalTransition`, and pass the result here.
+ * - Two position samplers, because ET-1b's glide needs an anchor prev/curr
+ *   cannot supply. `getInterpolatedX/Z` blend prev -> curr and treat motion
+ *   above 1 as a bounded overshoot; `getGlideX/Z` treat it as real travel
+ *   toward the cell the segment is about to occupy. Handing a glide motion to
+ *   the wrong one extrapolates along the INCOMING direction, which is wrong at
+ *   exactly the corners that matter - so they are separate functions and the
+ *   caller picks by mode rather than passing a flag.
+ * - The outbound anchor is free for the body: index i moves to index i-1's
+ *   current cell every tick, growth or not, so it is already in `curr`. Only
+ *   the head has no segment ahead of it, and the page publishes its next
+ *   direction through `setHeadOutbound`. That is a READ of engine intention;
+ *   nothing here can write to the engine.
+ *
+ * This module imports one number from `arrivalEasing.ts` - glide's motion at
+ * the end of a tick - because a turn admitted mid-glide has to finish bending
+ * exactly when the interval does. It imports no curve: the timing decision
+ * still belongs entirely to that module.
  */
 
+import { GLIDE_MOTION_AT_TICK_END } from './arrivalEasing';
 import type { Position } from './SnakeGameLogic';
 
 /** Initial segment capacity. Logical length may exceed the 400 board cells. */
@@ -49,6 +67,31 @@ export interface InterpolationBuffer {
   /** Milliseconds until the next tick: the engine's getSpeed() read AFTER
    *  the tick ran, which is the exact interval the loop re-arms with */
   tickInterval: number;
+  /**
+   * Unit grid direction the NEXT tick will move the HEAD in - glide's outbound
+   * anchor for segment 0 (ET-1b). Zero is a legitimate value: it means the
+   * next tick moves the head nowhere (the phase gate's arrival beat), and the
+   * head correctly comes to rest on its cell instead of leaning off it.
+   */
+  headOutboundX: number;
+  headOutboundZ: number;
+  /**
+   * The outbound the head was aiming at when the current one was admitted, and
+   * the motion at which that happened. A turn admitted while the head is
+   * already past its cell centre would otherwise step the head sideways by up
+   * to 0.7 cells in a single frame; instead the aim bends from here to there
+   * over the interval's remainder, arriving exactly at the exit edge so the
+   * next tick still starts where this one ended.
+   */
+  headOutboundPriorX: number;
+  headOutboundPriorZ: number;
+  headOutboundTurnAt: number;
+  /**
+   * Whether a producer declares the head's next move at all. Distinguishes
+   * "the engine says the head stays put" (known, zero) from "nothing is
+   * publishing" (the arena prototypes, which fall back to the live heading).
+   */
+  headOutboundKnown: boolean;
 }
 
 export function createInterpolationBuffer(
@@ -62,6 +105,12 @@ export function createInterpolationBuffer(
     initialized: false,
     tickAt: 0,
     tickInterval: 0,
+    headOutboundX: 0,
+    headOutboundZ: 0,
+    headOutboundPriorX: 0,
+    headOutboundPriorZ: 0,
+    headOutboundTurnAt: 1,
+    headOutboundKnown: false,
   };
 }
 
@@ -73,6 +122,13 @@ export function resetInterpolationBuffer(buffer: InterpolationBuffer): void {
   buffer.initialized = false;
   buffer.tickAt = 0;
   buffer.tickInterval = 0;
+  buffer.headOutboundX = 0;
+  buffer.headOutboundZ = 0;
+  buffer.headOutboundPriorX = 0;
+  buffer.headOutboundPriorZ = 0;
+  buffer.headOutboundTurnAt = 1;
+  // A new run's first frames must not lean toward the dead snake's next cell.
+  buffer.headOutboundKnown = false;
 }
 
 /**
@@ -119,6 +175,12 @@ export function recordTick(
   buffer.initialized = true;
   buffer.tickAt = now;
   buffer.tickInterval = tickInterval;
+  // A bend admitted during the last interval finished when that interval did.
+  // Carrying it across the boundary would bend the new one toward a cell the
+  // engine has already moved past.
+  buffer.headOutboundPriorX = buffer.headOutboundX;
+  buffer.headOutboundPriorZ = buffer.headOutboundZ;
+  buffer.headOutboundTurnAt = 1;
 }
 
 function ensureInterpolationCapacity(
@@ -194,4 +256,161 @@ export function getInterpolatedZ(
   const p = buffer.prev[index * 2 + 1];
   const delta = buffer.curr[index * 2 + 1] - p;
   return p + delta * (alpha < 1 ? alpha : 1) + boundedOvershoot(delta, alpha);
+}
+
+// -----------------------------------------------------------------------------
+// ET-1b - the glide sampler
+// -----------------------------------------------------------------------------
+
+/**
+ * One axis of a one-cell grid step, reduced to a unit and corrected for the
+ * torus.
+ *
+ * A COSMIC wrap's raw delta is -(gridSize - 1) for a step of +1, so any
+ * magnitude above one cell is a wrap and its true direction is the OPPOSITE of
+ * its sign. Ordinary steps are already -1, 0 or +1 and pass through untouched.
+ */
+function unitStep(delta: number): number {
+  if (delta > 1) return -1;
+  if (delta < -1) return 1;
+  return delta;
+}
+
+/**
+ * The head's aim, part-way through a bend admitted mid-glide.
+ *
+ * Linear in motion and reaching `target` exactly at the exit edge: the tick
+ * boundary stays continuous no matter when the press landed. Between two
+ * perpendicular headings the blended vector is shorter than either (0.707 at
+ * the midpoint), so the head eases through the corner rather than pivoting on
+ * it - a bounded, sub-interval dip that reads as weight in a turn, and the
+ * only place in glide where the drawn speed is not exactly one cell per tick.
+ */
+function turnBlend(
+  prior: number,
+  target: number,
+  turnAt: number,
+  motion: number
+): number {
+  const window = GLIDE_MOTION_AT_TICK_END - turnAt;
+  if (window <= 0) return target;
+  const progress = (motion - turnAt) / window;
+  if (progress <= 0) return prior;
+  if (progress >= 1) return target;
+  return prior + (target - prior) * progress;
+}
+
+/**
+ * Where segment `index` is heading next, per axis, as a unit grid direction.
+ *
+ * Body segments read it out of `curr`: index i occupies index i-1's current
+ * cell on the next tick, growth or not, which is what makes the coil continue
+ * across a tick boundary with no position step. The head has no segment ahead,
+ * so it uses the admitted next direction when the page is publishing one and
+ * otherwise keeps its current heading.
+ */
+function glideOutboundX(
+  buffer: InterpolationBuffer,
+  index: number,
+  motion: number
+): number {
+  if (index > 0) {
+    return unitStep(buffer.curr[(index - 1) * 2] - buffer.curr[index * 2]);
+  }
+  if (!buffer.headOutboundKnown) return unitStep(buffer.curr[0] - buffer.prev[0]);
+  return turnBlend(
+    buffer.headOutboundPriorX,
+    buffer.headOutboundX,
+    buffer.headOutboundTurnAt,
+    motion
+  );
+}
+
+function glideOutboundZ(
+  buffer: InterpolationBuffer,
+  index: number,
+  motion: number
+): number {
+  if (index > 0) {
+    return unitStep(
+      buffer.curr[(index - 1) * 2 + 1] - buffer.curr[index * 2 + 1]
+    );
+  }
+  if (!buffer.headOutboundKnown) return unitStep(buffer.curr[1] - buffer.prev[1]);
+  return turnBlend(
+    buffer.headOutboundPriorZ,
+    buffer.headOutboundZ,
+    buffer.headOutboundTurnAt,
+    motion
+  );
+}
+
+/**
+ * World-grid X of segment `index` at glide `motion` (arrivalEasing's
+ * `glideArrival`, in [0.5, 1.5]).
+ *
+ * Below 1 this is the existing prev -> curr blend, expression for expression -
+ * including the way a torus wrap is presented, which glide deliberately does
+ * not change. Above 1 it is travel toward the next cell at the same rate.
+ */
+export function getGlideX(
+  buffer: InterpolationBuffer,
+  index: number,
+  motion: number
+): number {
+  const p = buffer.prev[index * 2];
+  const c = buffer.curr[index * 2];
+  if (motion <= 1) return p + (c - p) * motion;
+  return c + (motion - 1) * glideOutboundX(buffer, index, motion);
+}
+
+/** World-grid Z of segment `index` at glide `motion`. */
+export function getGlideZ(
+  buffer: InterpolationBuffer,
+  index: number,
+  motion: number
+): number {
+  const p = buffer.prev[index * 2 + 1];
+  const c = buffer.curr[index * 2 + 1];
+  if (motion <= 1) return p + (c - p) * motion;
+  return c + (motion - 1) * glideOutboundZ(buffer, index, motion);
+}
+
+/**
+ * Publish the direction the next tick will move the head in.
+ *
+ * `motion` is the glide motion at the moment of the call, so a turn admitted
+ * after the head has passed its cell centre bends from the aim it is actually
+ * drawing rather than snapping to the new one. Called once per tick and once
+ * per admitted press - never on the render path, and never with anything the
+ * engine reads back.
+ */
+export function setHeadOutbound(
+  buffer: InterpolationBuffer,
+  x: number,
+  z: number,
+  motion: number
+): void {
+  if (
+    buffer.headOutboundKnown &&
+    x === buffer.headOutboundX &&
+    z === buffer.headOutboundZ
+  ) {
+    return;
+  }
+  if (buffer.headOutboundKnown && motion > 1) {
+    // Mid-glide retarget: freeze the aim as currently drawn, then bend from it.
+    const priorX = glideOutboundX(buffer, 0, motion);
+    const priorZ = glideOutboundZ(buffer, 0, motion);
+    buffer.headOutboundPriorX = priorX;
+    buffer.headOutboundPriorZ = priorZ;
+    buffer.headOutboundTurnAt = motion;
+  } else {
+    buffer.headOutboundPriorX = x;
+    buffer.headOutboundPriorZ = z;
+    buffer.headOutboundTurnAt = 1;
+  }
+  buffer.headOutboundX = x;
+  buffer.headOutboundZ = z;
+  buffer.headOutboundKnown = true;
 }
