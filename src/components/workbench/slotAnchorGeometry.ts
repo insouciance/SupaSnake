@@ -44,8 +44,28 @@ export interface SlotAnchor {
 export const ANCHOR_GUTTER = 12;
 /** The gap between the slot's edge and the panel. Matches the CSS offset. */
 export const ANCHOR_OFFSET = 10;
-/** Below this a panel cannot show one option and its action, so it scrolls. */
-export const ANCHOR_MIN_HEIGHT = 176;
+/**
+ * THE FLOOR IS ONE WHOLE OPTION.
+ *
+ * It was 176px, and 176px is where the cut-off defect lived on a landscape
+ * phone: the panel's own furniture costs ~134px there (12px of padding, a
+ * 44px dismiss target, the hint, the list's margin), which left 72px of list
+ * for a 92px option. The list could not show ONE row whole, so the first
+ * thing the player saw was a sliced card — and no amount of snapping fixes a
+ * box that is smaller than its smallest content.
+ *
+ * 228 is the measured answer: 134 of furniture plus the 92px row the
+ * compacted option settles at, plus a little air. It is also the height the
+ * flip case already produces, so the panel does not become a new shape — it
+ * stops being shorter than the thing inside it.
+ *
+ * The cost is stated rather than hidden: on a 390px-tall viewport a 228px
+ * panel overlaps the lower part of the slot it belongs to. The slot's glyph
+ * and name stay visible above it and the panel's header names the slot again,
+ * so the question "which slot is this filling" is still answered twice. A
+ * permanently sliced first option answers nothing.
+ */
+export const ANCHOR_MIN_HEIGHT = 228;
 /** A research panel that grows past this stops being readable in one look. */
 export const ANCHOR_MAX_HEIGHT = 440;
 

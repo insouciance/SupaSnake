@@ -13,8 +13,19 @@ import {
   ANCHOR_GUTTER,
   ANCHOR_MAX_HEIGHT,
   ANCHOR_MIN_HEIGHT,
+  fitWholeRows,
   resolveSlotAnchor,
 } from './slotAnchorGeometry';
+
+/** Rows as the browser reports them: `top` from the list's content box. */
+function rowsOf(heights: readonly number[], gap = 6) {
+  let top = 0;
+  return heights.map((height) => {
+    const row = { top, height };
+    top += height + gap;
+    return row;
+  });
+}
 
 /** A roomy desktop: the panel hangs below slot 3 and needs no help. */
 const DESKTOP = {
@@ -148,5 +159,71 @@ describe('the picker stays at its slot and inside the viewport', () => {
       appliedDy: first.dy,
     });
     expect(second).toEqual(first);
+  });
+
+  it('never proposes a panel too short to hold one whole option', () => {
+    // The landscape case that produced the defect: 72px of list for a 92px
+    // row. Whatever the room, the answer clears one option plus the panel's
+    // own furniture.
+    const anchor = resolveSlotAnchor({
+      ...DESKTOP,
+      viewportWidth: 844,
+      viewportHeight: 390,
+      slot: { top: 108, bottom: 192, left: 300, right: 546 },
+      panel: { top: 202, bottom: 378, left: 112, right: 732 },
+    });
+    expect(anchor.maxHeight).toBeGreaterThanOrEqual(ANCHOR_MIN_HEIGHT);
+    expect(ANCHOR_MIN_HEIGHT).toBeGreaterThanOrEqual(134 + 92);
+  });
+});
+
+/**
+ * THE LIST ENDS WHERE A ROW ENDS.
+ *
+ * The defect these pin: the option list was given the panel's leftover height
+ * — 282px against rows 92 to 144px tall — so it ended in the middle of a card
+ * and the player's first sight of the catalog was a sliced option. The
+ * remainder knew nothing about rows; this is the arithmetic that teaches it.
+ */
+describe('the option list shows whole rows', () => {
+  it('shrinks to the content when the whole list already fits', () => {
+    // Three 92px rows and two 6px gaps is 288; the panel offered 400. Taking
+    // only what is needed is what makes the panel compact rather than tall.
+    expect(fitWholeRows({ rows: rowsOf([92, 92, 92]), available: 400 })).toBe(288);
+  });
+
+  it('stops at the last row that fits completely', () => {
+    // 144 + 6 + 92 = 242 fits; the next row would end at 340.
+    const rows = rowsOf([144, 92, 92, 92]);
+    expect(fitWholeRows({ rows, available: 282 })).toBe(242);
+  });
+
+  it('never ends inside a row, whatever the remainder is', () => {
+    const rows = rowsOf([144, 92, 118, 92, 92]);
+    const bottoms = rows.map((row) => row.top + row.height);
+    for (let available = 1; available <= 600; available += 1) {
+      const fitted = fitWholeRows({ rows, available });
+      const insideARow = rows.some(
+        (row) => fitted > row.top && fitted < row.top + row.height
+      );
+      expect(insideARow).toBe(false);
+      expect(bottoms).toContain(fitted);
+    }
+  });
+
+  it('shows one whole option rather than part of one when nothing fits', () => {
+    // The floor. `ANCHOR_MIN_HEIGHT` is set so a real viewport never reaches
+    // it, but a function that answered "0" here would hide the catalog.
+    expect(fitWholeRows({ rows: rowsOf([144, 92]), available: 40 })).toBe(144);
+  });
+
+  it('leaves an empty list alone', () => {
+    expect(fitWholeRows({ rows: [], available: 282 })).toBe(282);
+  });
+
+  it('is idempotent: fitting an already-fitted list changes nothing', () => {
+    const rows = rowsOf([144, 92, 92, 92]);
+    const once = fitWholeRows({ rows, available: 282 });
+    expect(fitWholeRows({ rows, available: once })).toBe(once);
   });
 });
