@@ -16,7 +16,17 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-import { dismissTarget, seedConsent, signInAsGuest } from './helpers';
+import {
+  closeWorkbenchPicker,
+  dismissTarget,
+  openWorkbenchPicker,
+  seedConsent,
+  signInAsGuest,
+} from './helpers';
+import {
+  GENOME_V2_GENES,
+  type GenomeV2ActiveGeneId,
+} from '../src/shared/game/genes';
 
 const PHONE = { width: 390, height: 844 } as const;
 const GENOME_V2_ENABLED = process.env.NEXT_PUBLIC_GENOME_V2 === 'true';
@@ -183,7 +193,20 @@ test.describe('Genome Research has one Workbench destination', () => {
       await expect(page.getByTestId('workbench-public-research')).toBeVisible();
       await expect(page.getByTestId('workbench-research-table')).toBeVisible();
       await expect(page.getByTestId('workbench-strains')).toBeVisible();
-      await expect(page.getByTestId('workbench-gene-palette')).toBeVisible();
+      // ONE destination means the whole instrument is reachable from it, not
+      // that every part of the instrument is on screen at once. Slot-first
+      // moved the powers into a picker at the slot being filled, so the six
+      // slots are what this route now has to offer a visitor, and the powers
+      // have to be one tap away from them. Both are asserted, because a stage
+      // with no reachable catalogue behind it would be the second, incoherent
+      // destination this test exists to forbid.
+      await expect(page.getByTestId('workbench-loci')).toBeVisible();
+      const picker = await openWorkbenchPicker(page);
+      await expect(picker.getByTestId('workbench-gene-palette')).toBeVisible();
+      // Hand the page back before reading the subordinate record below: the
+      // picker's catcher is a fixed full-screen layer, so a spec that walks
+      // away from an open picker is testing a state no player is ever stuck in.
+      await closeWorkbenchPicker(page);
     } else if (!GENOME_V2_ENABLED && WORKBENCH_V1_ENABLED) {
       await expect(page.getByTestId('workbench-signed-out')).toBeVisible();
       await expect(
@@ -237,7 +260,39 @@ test.describe('Genome Research has one Workbench destination', () => {
       timeout: 60_000,
     });
     await expect(page.getByTestId('workbench-research-table')).toBeVisible();
-    await expect(page.getByTestId('workbench-gene-palette')).toBeVisible();
+
+    // THE CATALOGUE, AFTER SLOT-FIRST. What a guest at zero banked runs is
+    // owed is the v2 catalogue rather than a countdown to one — and a
+    // catalogue is a list of powers a player can actually read, not merely a
+    // container that exists. The old rail proved this by being on screen. The
+    // picker proves it by opening on the slot being filled and listing the
+    // same powers, so the claim is now made where the choice is made.
+    const picker = await openWorkbenchPicker(page);
+    const palette = picker.getByTestId('workbench-gene-palette');
+    await expect(palette).toBeVisible();
+    const options = palette.locator('> button[data-testid^="workbench-gene-"]');
+    // More than one, or "catalogue" would be an assignment wearing the word.
+    expect(await options.count()).toBeGreaterThan(1);
+
+    // WHOLE OPTIONS. Every row carries the power's name, the category that
+    // says what KIND of thing it is, and the one-liner that says what it does
+    // — read back from the production rules module, so a catalogue that
+    // rendered plausible-looking copy of its own would fail here.
+    const ids = await options.evaluateAll((nodes) =>
+      nodes.map((node) =>
+        (node.getAttribute('data-testid') ?? '').replace('workbench-gene-', '')
+      )
+    );
+    expect(ids.length).toBeGreaterThan(1);
+    for (const id of ids) {
+      const gene = GENOME_V2_GENES[id as GenomeV2ActiveGeneId];
+      expect(gene, `${id} is not a Genome v2 power`).toBeTruthy();
+      const option = palette.getByTestId(`workbench-gene-${id}`);
+      await expect(option).toContainText(gene.name);
+      await expect(option).toContainText(gene.category);
+      await expect(option).toContainText(gene.effect);
+    }
+
     // The old behaviour was a bare "Bank 15 runs to open the Genome Codex".
     await expect(page.getByText(/Bank 15 runs to open/i)).toHaveCount(0);
   });

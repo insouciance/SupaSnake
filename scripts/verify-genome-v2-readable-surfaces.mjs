@@ -241,6 +241,9 @@ async function auditLoom(browser, viewport) {
   await context.close();
 }
 
+/** The player-facing name of `compound_interest` in the shipped v2 catalog. */
+const GENE_UNDER_AUDIT = 'Stash';
+
 async function auditWorkbench(browser, viewport) {
   const { context, page, errors } = await openPage(
     browser,
@@ -249,6 +252,21 @@ async function auditWorkbench(browser, viewport) {
   );
   const workbench = page.locator('[data-testid="workbench-research-table"]');
   await workbench.waitFor({ state: 'visible' });
+
+  // SLOT-FIRST (owner ruling, D1). Powers live in a picker that opens ON the
+  // slot being filled, so the audit reaches them the way a player does. The
+  // open slot is the lowest empty index, because that is the cell the reducer
+  // fills — `firstOpenSlot` in `genomeV2Workbench`.
+  //
+  // Two powers, for two different readings. A dual-Strain power is TAKEN, so
+  // slot 0 carries both its badges; then the next slot's picker holds a
+  // selected power, which is what the focused-name and focused-badge measures
+  // read. Both surfaces have to survive the same viewport at once.
+  await page.locator('[data-testid="workbench-locus-0"]').click();
+  await page.locator('[data-testid="workbench-gene-loan_shark"]').click();
+  await page.locator('[data-testid="workbench-thread"]').click();
+  await settle(page);
+  await page.locator('[data-testid="workbench-locus-1"]').click();
   await page.locator('[data-testid="workbench-gene-compound_interest"]').click();
   await settle(page);
 
@@ -325,7 +343,7 @@ async function auditWorkbench(browser, viewport) {
       focusedClientHeight: focused.clientHeight,
       targets,
       focusedBadges: badge('[data-testid^="workbench-focused-gene-strain-"]'),
-      dualGeneBadges: badge('[data-testid^="workbench-locus-1-strain-"]'),
+      dualGeneBadges: badge('[data-testid^="workbench-locus-0-strain-"]'),
       strainOverflowX: getComputedStyle(strainRail).overflowX,
       geneOverflowX: getComputedStyle(geneRail).overflowX,
       strainBox: rect(strainRail),
@@ -345,7 +363,7 @@ async function auditWorkbench(browser, viewport) {
   });
 
   invariant(errors.length === 0, `workbench/${viewport.name}: ${errors.join('; ')}`);
-  invariant(metrics.focusedText === 'Compound Interest', `workbench/${viewport.name}: full selected name missing`);
+  invariant(metrics.focusedText === GENE_UNDER_AUDIT, `workbench/${viewport.name}: full selected name missing`);
   invariant(metrics.focusedWhiteSpace !== 'nowrap', `workbench/${viewport.name}: selected name cannot wrap`);
   invariant(
     !metrics.focusedClippedX && !metrics.focusedClippedY,

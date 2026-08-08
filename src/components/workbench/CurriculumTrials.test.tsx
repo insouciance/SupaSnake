@@ -81,10 +81,29 @@ describe('CurriculumTrials', () => {
 describe('Workbench palette annotation', () => {
   const plan = { v: 2 as const, dynasty: 'CYBER' as const, actions: [] };
 
+  /**
+   * SLOT-FIRST (owner ruling, D1) MOVED THE PALETTE, NOT THE CONTRACT.
+   *
+   * The powers used to sit on a permanent rail at the foot of the tray. They
+   * now live in the picker, which opens on the slot being filled — so a test
+   * that reads a power reaches it the way a player does, by opening the slot
+   * first. On a fresh bench the open slot is 0: `firstOpenSlot` in the
+   * read-only rules module fills the lowest empty index, and the surface
+   * derives its one live cell from the same fact rather than choosing its own.
+   *
+   * What is asserted below is unchanged. The annotation still reaches every
+   * power, still gates none of it, and a not-yet-offerable power is still
+   * fully selectable on the free instrument.
+   */
+  function openBenchSlot(slot = 0) {
+    fireEvent.click(screen.getByTestId(`workbench-locus-${slot}`));
+  }
+
   it('annotates each power without gating any of it', () => {
     render(
       <ResearchTable plan={plan} onPlan={jest.fn()} curriculum={handle(projection())} />
     );
+    openBenchSlot();
     const eligible = screen.getByTestId('workbench-gene-gold_trail');
     expect(eligible).toHaveAttribute('data-eligibility', 'offer_eligible');
     expect(
@@ -103,6 +122,7 @@ describe('Workbench palette annotation', () => {
 
   it('renders exactly today’s palette when the curriculum is absent (flag off)', () => {
     render(<ResearchTable plan={plan} onPlan={jest.fn()} />);
+    openBenchSlot();
     expect(screen.getByTestId('workbench-gene-gold_trail')).not.toHaveAttribute(
       'data-eligibility'
     );

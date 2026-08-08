@@ -18,6 +18,8 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import {
+  closeWorkbenchPicker,
+  openWorkbenchPicker,
   releaseHeldBoard,
   seedConsent,
   signInAsGuest,
@@ -167,43 +169,56 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
 
     await page.goto('/codex', { waitUntil: 'domcontentloaded' });
     const table = page.getByTestId('workbench-research-table');
-    const palette = page.getByTestId('workbench-gene-palette');
-    await expect(palette).toBeVisible({ timeout: 60_000 });
+    await expect(table).toBeVisible({ timeout: 60_000 });
 
-    // The rail shows only powers NOT YET TAKEN by the current plan
+    // The picker offers only powers NOT YET TAKEN by the current plan
     // (`genomeV2Workbench.ts:588`), and the Workbench opens with a plan already
-    // computed. Clearing it returns as much of the roster to the rail as the
+    // computed. Clearing it returns as much of the roster to the picker as the
     // reading's own base state allows.
+    //
+    // CLEAR COMES BEFORE THE PICKER OPENS, and that order is load-bearing
+    // under slot-first: Clear calls `closePicker()` on its way to rewriting the
+    // plan (WorkbenchView.tsx:1053), so clearing with the picker open would
+    // shut the very list this test is about.
     const clear = table.getByRole('button', { name: /^clear$/i });
     if (await clear.isEnabled().catch(() => false)) {
       await clear.click();
     }
 
-    // THE STARTER-POOL DROP, asserted against the rail's ACTUAL membership
+    // SLOT-FIRST (owner ruling D1) MOVED THE PALETTE, NOT THE CURRICULUM.
+    // The permanent rail at the foot of the tray is gone; the powers are the
+    // contents of the picker that opens on the slot being filled. Every claim
+    // below is unchanged, and is now read where a player reads it. The unit
+    // contracts moved the same way (`CurriculumTrials.test.tsx`, `openBenchSlot`).
+    const picker = await openWorkbenchPicker(page);
+    const palette = picker.getByTestId('workbench-gene-palette');
+    await expect(palette).toBeVisible({ timeout: 30_000 });
+
+    // THE STARTER-POOL DROP, asserted against the picker's ACTUAL membership
     // rather than against the roster's length. How many powers a reading's base
     // state consumes is the Workbench's business and changes with the plan; the
     // curriculum's claim is about WHICH powers may reach a real run's Pods, and
-    // that claim has to hold for every Gene the rail is showing.
-    // THE ANNOTATION RACE (#35). The rail renders
-    // `data-eligibility={annotation?.state}` (WorkbenchView.tsx:591) and React
+    // that claim has to hold for every Gene the picker is showing.
+    // THE ANNOTATION RACE (#35). Each option renders
+    // `data-eligibility={annotation?.state}` (WorkbenchView.tsx:705) and React
     // OMITS an attribute whose value is undefined — so before `useCurriculum`'s
-    // fetch resolves, every tile is present and NONE carries the attribute.
-    // Reading the rail in the frame right after Clear therefore legitimately
-    // snapshotted zero annotated tiles: `railIds.length = 0`, and the failure
+    // fetch resolves, every option is present and NONE carries the attribute.
+    // Reading the list in the frame right after it opens therefore legitimately
+    // snapshotted zero annotated options: `railIds.length = 0`, and the failure
     // looked like a curriculum bug rather than a read taken too early.
     //
-    // Waiting for the rail to MOUNT is not enough — that is what the earlier
-    // fix waited for, and the rail mounts unannotated.
+    // Waiting for the list to MOUNT is not enough — that is what the earlier
+    // fix waited for, and it mounts unannotated.
     //
-    // Nor is "every tile carries the attribute" the right condition, though it
-    // reads like it should be: the rail iterates `reading.availableGenes`
-    // (WorkbenchView.tsx:577) while the curriculum annotates only
-    // `genomeV2ActivePool(dynasty)` (curriculum.ts:174), so a tile outside the
-    // active pool NEVER gets annotated and that wait can never come true.
+    // Nor is "every option carries the attribute" the right condition, though
+    // it reads like it should be: the picker iterates `reading.availableGenes`
+    // (WorkbenchView.tsx:683, fed at :1091) while the curriculum annotates only
+    // `genomeV2ActivePool(dynasty)` (curriculum.ts:174), so an option outside
+    // the active pool NEVER gets annotated and that wait can never come true.
     //
-    // The honest signal is that ANY tile is annotated. `annotations` is
-    // derived from one `curriculum` state value, so every annotatable tile
-    // gains its attribute in a single React commit — the first annotated tile
+    // The honest signal is that ANY option is annotated. `annotations` is
+    // derived from one `curriculum` state value, so every annotatable option
+    // gains its attribute in a single React commit — the first annotated option
     // and the last arrive in the same frame. One is therefore proof the fetch
     // resolved, which is the only thing this wait needs to establish.
     const annotatedTiles = palette.locator('> button[data-eligibility]');
@@ -222,7 +237,7 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
       (id) => !(STARTERS as readonly string[]).includes(id)
     );
     // Both halves must actually be represented, or the assertions below would
-    // pass vacuously on a rail that happened to show only one kind.
+    // pass vacuously on a list that happened to show only one kind.
     expect(railStarters.length).toBeGreaterThan(0);
     expect(railStaged.length).toBeGreaterThan(0);
 
@@ -250,8 +265,17 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
       await expect(note).not.toContainText(/locked|stronger|better|rare/i);
     }
 
+    // Hand the page back before choosing a trial. The picker's catcher is a
+    // fixed full-screen layer, so the trial panel below is genuinely
+    // unreachable while the picker is open — closing it is what a player does,
+    // not a workaround for one.
+    await closeWorkbenchPicker(page);
+
     // A TRIAL APPEARS. Two candidates, because one is an assignment and three
-    // is a menu, and the panel recommends neither.
+    // is a menu, and the panel recommends neither. The panel lives outside the
+    // slot tray (WorkbenchView.tsx:1159), so slot-first neither moved it nor
+    // put it behind a slot: choosing the next trial is still a decision the
+    // Workbench offers on arrival.
     const trials = page.getByTestId('curriculum-trials');
     await expect(trials).toBeVisible();
     await expect(trials).toHaveAttribute('data-state', 'open');
@@ -265,10 +289,14 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
     // Switching costs nothing and loses nothing — the panel says so, because a
     // player who suspects a hidden cost will not experiment (§4.4).
     await expect(trials).toContainText(/switching costs nothing/i);
-    await expect(page.getByTestId(`workbench-gene-${chosen}`)).toHaveAttribute(
-      'data-eligibility',
-      'trial'
-    );
+
+    // AND THE CHOICE REACHES THE POWERS. The trial annotation is read where
+    // the power is picked, so this reopens the picker rather than asserting
+    // against a rail that no longer exists — the same claim, one tap later.
+    const reopened = await openWorkbenchPicker(page);
+    await expect(
+      reopened.getByTestId(`workbench-gene-${chosen}`)
+    ).toHaveAttribute('data-eligibility', 'trial');
   });
 
   test('a promoted Gene invites on Results, and Show me / Not now both answer the server', async ({
@@ -337,9 +365,25 @@ test.describe('Genome Discovery — the curriculum flag ON', () => {
 
     // REFERENCE (§5): the destination names the Gene and where to read it,
     // rather than saying "something is new" and making the player hunt.
-    await expect(page.getByText(GENOME_V2_GENES[UNLOCKED].name).first()).toBeVisible({
+    //
+    // THIS IS NOW AN EXACT CLAIM RATHER THAN A LUCKY ONE. A bare
+    // `getByText(name).first()` used to land on the Workbench's permanent gene
+    // rail simply because the rail came first in the document. With the rail
+    // gone it landed instead on a HIDDEN recipe line inside the collapsed
+    // Research Record — "Recipe: Double or Nothing + Phoenix" — and failed on
+    // visibility. That was never the reference this test meant: a recipe that
+    // mentions a power in passing, inside a closed disclosure, is exactly the
+    // "make the player hunt" outcome §5 forbids. So the assertion now names
+    // the power WHERE THE PLAYER READS IT — as its own option, in the picker
+    // the destination's one live slot opens — which is both the honest
+    // slot-first reading and a stronger claim than the one it replaces.
+    await expect(page.getByTestId('workbench-view')).toBeVisible({
       timeout: 60_000,
     });
+    const picker = await openWorkbenchPicker(page);
+    const promoted = picker.getByTestId(`workbench-gene-${UNLOCKED}`);
+    await expect(promoted).toBeVisible({ timeout: 60_000 });
+    await expect(promoted).toContainText(GENOME_V2_GENES[UNLOCKED].name);
   });
 });
 
